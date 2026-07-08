@@ -715,12 +715,6 @@
   .edit-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--gray-400); margin-bottom: 8px; }
   .en-pedido-badge { font-size: 10px; font-weight: 700; color: var(--accent-dark); white-space: nowrap; }
 </style>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#c8a96e">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ORBITAL">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%230a0a0a' width='180' height='180'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='100' font-weight='bold' fill='%23c8a96e' font-family='Arial'>O</text></svg>">
 </head>
 <body>
 
@@ -731,9 +725,15 @@
     <h2>Acceso Vendedores</h2>
     <select id="sel-vendedor" onchange="prefillTelegram()">
       <option value="">Seleccioná tu nombre</option>
+      <option value="">--- VENDEDORES ---</option>
       <option value="Adrián">Adrián</option>
       <option value="Martín">Martín</option>
-      <option value="Damián">Damián</option>
+      <option value="">--- CORPORATIVOS ---</option>
+      <option value="Gastón">Gastón</option>
+      <option value="">--- ADMINISTRADORES ---</option>
+      <option value="Gustavo">Gustavo</option>
+      <option value="Alicia">Alicia</option>
+      <option value="">--- OPERACIÓN ---</option>
       <option value="Deposito">Depósito</option>
       <option value="Logistica">Logística</option>
       <option value="Administracion">Administración</option>
@@ -765,6 +765,7 @@
     </div>
   </header>
   <div class="tabs">
+    <div class="tab" id="tab-actividad-btn" style="display:none" onclick="switchTab('actividad')">⚡ Actividad Comercial</div>
     <div class="tab active" id="tab-pedido-btn" onclick="switchTab('pedido')">Cargar Pedido</div>
     <div class="tab" onclick="switchTab('log')" id="tab-log">Mis Pedidos</div>
     <div class="tab" id="tab-admin" style="display:none" onclick="switchTab('admin')">Gestión de Stock</div>
@@ -1127,6 +1128,48 @@
     </div>
   </div>
 
+  <!-- ACTIVIDAD COMERCIAL -->
+  <div class="section" id="section-actividad">
+    <div style="padding:20px">
+      <h2 style="margin-bottom:20px">⚡ Actividad Comercial</h2>
+      
+      <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;border-bottom:1px solid #ddd;padding-bottom:16px">
+        <button style="padding:8px 0;border:none;background:none;cursor:pointer;color:#999;font-weight:600;border-bottom:2px solid transparent" onclick="filterActividadTipo('prospection')">Prospección</button>
+        <button style="padding:8px 0;border:none;background:none;cursor:pointer;color:#999;font-weight:600;border-bottom:2px solid transparent" onclick="filterActividadTipo('venta-directa')">Prosp. venta directa</button>
+        <button style="padding:8px 0;border:none;background:none;cursor:pointer;color:#999;font-weight:600;border-bottom:2px solid transparent" onclick="filterActividadTipo('corporativo')">Corporativo</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px">
+        <div style="padding:20px;background:white;border-radius:8px;border-top:4px solid #c8a96e">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:8px">CON VENTAS 2025</div>
+          <div style="font-size:32px;font-weight:bold;color:#000" id="card-ventas-2025">0</div>
+        </div>
+        <div style="padding:20px;background:white;border-radius:8px;border-top:4px solid #ff9800">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:8px">CANJE PROPUESTO</div>
+          <div style="font-size:32px;font-weight:bold;color:#000" id="card-canje">0</div>
+        </div>
+        <div style="padding:20px;background:white;border-radius:8px;border-top:4px solid #f57c00">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:8px">A RECUPERAR</div>
+          <div style="font-size:32px;font-weight:bold;color:#000" id="card-recuperar">0</div>
+        </div>
+        <div style="padding:20px;background:white;border-radius:8px;border-top:4px solid #e91e63">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:8px">BIENVENIDA</div>
+          <div style="font-size:32px;font-weight:bold;color:#000" id="card-bienvenida">0</div>
+        </div>
+      </div>
+
+      <div style="background:white;border-radius:4px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:20px">
+        <div style="padding:12px;background:#0a0a0a;color:#c8a96e;font-weight:600;text-transform:uppercase;font-size:12px">Mis Clientes - Prospección</div>
+        <div id="actividad-clientes-table"></div>
+      </div>
+
+      <div style="text-align:center;padding:20px;background:#f5f5f5;border-radius:4px;color:#666">
+        <p style="margin-bottom:10px">ℹ️ Los datos se cargan desde Supabase automáticamente</p>
+        <p style="font-size:12px">TABs internos: Agenda | Cartera | Cargar Actividad | Mis Resultados | Marketing | Admin</p>
+      </div>
+    </div>
+  </div>
+
 <!-- MODAL: Nuevo Cliente -->
 <div id="modal-nuevo-cliente" class="modal-overlay" style="display:none">
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:460px;max-height:90vh;overflow-y:auto">
@@ -1342,9 +1385,18 @@ let currentTelegramUser = '';
 // real (usuarios y contraseñas de verdad, con permisos en la base de
 // datos), eso requiere sumar autenticación de Supabase — es otro proyecto.
 const ROLE_PINS = {
+  // VENDEDORES (Actividad Comercial)
   'Adrián':         '1101',
   'Martín':         '1102',
-  'Damián':         '1103',
+  
+  // CORPORATIVOS
+  'Gastón':         '2000',
+  
+  // ADMINISTRADORES
+  'Gustavo':        '3001',
+  'Alicia':         '3002',
+  
+  // OPERACIÓN
   'Deposito':       '2001',
   'Logistica':      '2002',
   'Administracion': '3001',
@@ -1491,6 +1543,7 @@ async function login() {
   const esAdministracion   = currentUser === 'Administracion';
   const esDepositoUser     = currentUser === 'Deposito';
   const esLogisticaUser    = currentUser === 'Logistica';
+  const esVendedor         = ['Adrián', 'Martín'].includes(currentUser);
 
   // Todos los no-vendedores ven filtros
   if (['Admin','Administracion','Deposito','Logistica'].includes(currentUser)) {
@@ -1500,6 +1553,18 @@ async function login() {
   const show = id => { const el = document.getElementById(id); if(el) el.style.display='block'; };
   const hide = id => { const el = document.getElementById(id); if(el) el.style.display='none'; };
   const setText = (id,txt) => { const el = document.getElementById(id); if(el) el.textContent=txt; };
+
+  // VENDEDORES: VEN ACTIVIDAD COMERCIAL
+  if (esVendedor) {
+    show('tab-actividad-btn');
+    hide('tab-pedido-btn');
+    hide('tab-admin');
+    hide('tab-dashboard');
+    hide('tab-cobranzas');
+    hide('tab-clientes');
+    switchTab('actividad');
+    loadActividadComercial();
+  }
 
   if (esAdminUser) {
     setText('tab-log', 'Todos los Pedidos');
@@ -3463,12 +3528,71 @@ function showToast(msg, type='') {
 // Init
 // Estado se carga al hacer login
 
-// Registrar service worker para PWA
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/orbital-pedidos/service-worker.js')
-    .then(() => console.log('Service Worker registrado'))
-    .catch(err => console.log('SW error:', err));
+// ACTIVIDAD COMERCIAL
+// ──────────────────────────────────────────────
+function loadActividadComercial() {
+  renderActividadClientesTable();
 }
+
+function renderActividadClientesTable() {
+  const container = document.getElementById('actividad-clientes-table');
+  
+  sbFetch('clientes?limit=50&select=cod,razon,localidad,telefono,nomcomerc,email').then(clientes => {
+    if (!clientes || clientes.length === 0) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#999">Sin clientes registrados</div>';
+      return;
+    }
+    
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:#f5f5f5;border-bottom:1px solid #ddd">
+          <th style="padding:12px;text-align:left;font-weight:600;color:#0a0a0a">COMERCIO</th>
+          <th style="padding:12px;text-align:left;font-weight:600;color:#0a0a0a">ZONA / LOCALIDAD</th>
+          <th style="padding:12px;text-align:left;font-weight:600;color:#0a0a0a">WHATSAPP</th>
+          <th style="padding:12px;text-align:left;font-weight:600;color:#0a0a0a">ACCIONES</th>
+        </tr>
+      </thead>
+      <tbody>`;
+    
+    clientes.forEach(c => {
+      html += `<tr style="border-bottom:1px solid #eee;hover:background:#f9f9f9">
+        <td style="padding:12px"><strong>${c.razon || 'N/A'}</strong><br><small style="color:#999">${c.cod}</small></td>
+        <td style="padding:12px">${c.localidad || 'N/A'}</td>
+        <td style="padding:12px">${c.telefono || '-'}</td>
+        <td style="padding:12px">
+          <button onclick="selectClienteForPedido('${c.cod}','${c.razon}')" 
+            style="padding:6px 12px;background:#c8a96e;color:#0a0a0a;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px">
+            📦 Pedido
+          </button>
+        </td>
+      </tr>`;
+    });
+    
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  }).catch(err => {
+    console.error('Error loading clientes:', err);
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#d44">Error cargando clientes</div>';
+  });
+}
+
+function selectClienteForPedido(cod, razon) {
+  // Seleccionar cliente en el modal/form de pedido
+  const searchInput = document.getElementById('input-cliente-search');
+  if (searchInput) {
+    searchInput.value = cod;
+    buscarCliente(cod);
+  }
+  // Cambiar a TAB de Pedidos
+  switchTab('pedido');
+  showToast(`Cliente ${razon} seleccionado. Cargá el pedido.`, 'success');
+}
+
+function filterActividadTipo(tipo) {
+  // Placeholder para filtrar por tipo de prospección
+  console.log('Filter por:', tipo);
+}
+
 </script>
 </body>
 </html>
