@@ -9,8 +9,10 @@ interface AuthCtx {
   loading: boolean
   /** Rol efectivo: el real, o el que el admin eligió en "Ver como" */
   rolEfectivo: Rol
-  viewAs: Rol | null
-  setViewAs: (r: Rol | null) => void
+  /** Código de vendedor efectivo (si el admin está viendo como un vendedor puntual) */
+  codigoEfectivo: string
+  viewAs: string | null
+  setViewAs: (r: string | null) => void
   signInWithEmail: (email: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
@@ -21,7 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [vendedor, setVendedor] = useState<Vendedor | null>(null)
   const [loading, setLoading] = useState(true)
-  const [viewAs, setViewAs] = useState<Rol | null>(null)
+  const [viewAs, setViewAs] = useState<string | null>(null)
 
   async function loadVendedor(userId: string) {
     try {
@@ -74,11 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const rolReal = (vendedor?.rol ?? 'vendedor') as Rol
-  const rolEfectivo: Rol = rolReal === 'admin' && viewAs ? viewAs : rolReal
+  let rolEfectivo: Rol = rolReal
+  let codigoEfectivo = vendedor?.codigo ?? ''
+  if (rolReal === 'admin' && viewAs) {
+    if (viewAs.startsWith('vendedor:')) {
+      rolEfectivo = 'vendedor'
+      codigoEfectivo = viewAs.split(':')[1]
+    } else {
+      rolEfectivo = viewAs as Rol
+    }
+  }
 
   return (
     <Ctx.Provider
-      value={{ session, vendedor, loading, rolEfectivo, viewAs, setViewAs, signInWithEmail, signOut }}
+      value={{ session, vendedor, loading, rolEfectivo, codigoEfectivo, viewAs, setViewAs, signInWithEmail, signOut }}
     >
       {children}
     </Ctx.Provider>

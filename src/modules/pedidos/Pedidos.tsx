@@ -20,7 +20,7 @@ const ESTADOS: EstadoPedido[] = [
 const TRANSPORTES = ['Moto', 'Expreso / Transporte', 'Comisionista', 'Retira el cliente', 'Correo', 'Otro']
 
 export default function Pedidos() {
-  const { vendedor, rolEfectivo } = useAuth()
+  const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const toast = useToast()
   const rol = rolEfectivo
   const esAdmin = rol === 'admin'
@@ -68,7 +68,7 @@ export default function Pedidos() {
 
   const filtrados = useMemo(() => {
     let logs = [...pedidos]
-    if (esVendedor) logs = logs.filter((l) => l.vendedor === vendedor?.codigo)
+    if (esVendedor) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
     if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (esAdministracion) logs = logs.filter((l) => ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
@@ -81,7 +81,7 @@ export default function Pedidos() {
           (l.items || []).some((i) => (i.modelo || '').toLowerCase().includes(q))
       )
     return logs
-  }, [pedidos, esVendedor, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor])
+  }, [pedidos, esVendedor, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
 
   async function cambiarEstado(id: number, estado: EstadoPedido, extra: Record<string, unknown> = {}) {
     const { error } = await supabase.from('pedidos').update({ estado, ...extra }).eq('id', id)

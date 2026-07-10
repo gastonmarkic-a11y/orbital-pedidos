@@ -12,10 +12,10 @@ const VENDEDORES_CAMPO = [
 ]
 
 export default function CargarActividad() {
-  const { vendedor, rolEfectivo } = useAuth()
+  const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const location = useLocation()
   const esAdmin = rolEfectivo === 'admin'
-  const esProspeccion = vendedor?.codigo === 'Marketing'
+  const esProspeccion = codigoEfectivo === 'Marketing'
 
   const [resultados, setResultados] = useState<Cliente[]>([])
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
@@ -81,14 +81,14 @@ export default function CargarActividad() {
         .limit(8)
       if (!esAdmin && vendedor) {
         query =
-          vendedor.codigo === 'Marketing'
+          codigoEfectivo === 'Marketing'
             ? query.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-            : query.eq('vendedor_asignado', vendedor.codigo)
+            : query.eq('vendedor_asignado', codigoEfectivo)
       }
       query.then(({ data }) => setResultados((data as Cliente[]) ?? []))
     }, 250)
     return () => clearTimeout(t)
-  }, [busqueda, esAdmin, vendedor])
+  }, [busqueda, esAdmin, vendedor, codigoEfectivo])
 
   const sugerencias = resultados
 
@@ -134,7 +134,7 @@ export default function CargarActividad() {
     const propNombre = propuestas.find((p) => String(p.id) === propuestaId)?.nombre
     const desarrollo = propNombre ? `Propuesta enviada: ${propNombre}` : huboVenta ? 'Venta' : 'Seguimiento / nota'
     await supabase.from('actividad_diaria').insert({
-      vendedor: cliente.vendedor_asignado || vendedor.codigo,
+      vendedor: cliente.vendedor_asignado || codigoEfectivo,
       cod_cliente: cliente.cod,
       nombre_comercio: cliente.nomcomerc,
       contacto: cliente.contacto,

@@ -7,7 +7,7 @@ import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
 
 export default function MisResultados() {
-  const { vendedor } = useAuth()
+  const { vendedor, codigoEfectivo } = useAuth()
   const [objetivo, setObjetivo] = useState<ObjetivoMes | null>(null)
   const [acts, setActs] = useState<Actividad[]>([])
   const [vencidos, setVencidos] = useState(0)
@@ -17,12 +17,12 @@ export default function MisResultados() {
     if (!vendedor) return
     const mes = monthKey()
     Promise.all([
-      supabase.from('objetivos_mes').select('*').eq('vendedor', vendedor.codigo).eq('mes_anio', mes).maybeSingle(),
-      supabase.from('actividad_diaria').select('*').eq('vendedor', vendedor.codigo).gte('fecha', `${mes}-01`),
+      supabase.from('objetivos_mes').select('*').eq('vendedor', codigoEfectivo).eq('mes_anio', mes).maybeSingle(),
+      supabase.from('actividad_diaria').select('*').eq('vendedor', codigoEfectivo).gte('fecha', `${mes}-01`),
       supabase
         .from('clientes')
         .select('cod', { count: 'exact', head: true })
-        .eq('vendedor_asignado', vendedor.codigo)
+        .eq('vendedor_asignado', codigoEfectivo)
         .lt('proxima_agenda_fecha', new Date().toISOString().slice(0, 10)),
     ]).then(([obj, act, venc]) => {
       setObjetivo(obj.data as ObjetivoMes | null)
@@ -30,7 +30,7 @@ export default function MisResultados() {
       setVencidos(venc.count ?? 0)
       setLoading(false)
     })
-  }, [vendedor])
+  }, [vendedor, codigoEfectivo])
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando resultados...</p>
 

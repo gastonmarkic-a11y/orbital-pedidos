@@ -13,6 +13,39 @@ export default function Clientes() {
   const [nuevo, setNuevo] = useState({
     cod: '', razon: '', nomcomerc: '', cuit: '', direccion: '', localidad: '', telefono: '', email: '', contacto: '', nro_lista: '5', nota: '',
   })
+  const [pendientes, setPendientes] = useState<Cliente[]>([])
+  const [recargaPend, setRecargaPend] = useState(0)
+
+  useEffect(() => {
+    supabase
+      .from('clientes')
+      .select('*')
+      .like('cod', 'TMP-%')
+      .order('actualizado_en', { ascending: false })
+      .then(({ data }) => setPendientes((data as Cliente[]) ?? []))
+  }, [recargaPend])
+
+  async function asignarCodigo(c: Cliente) {
+    const nuevoCod = window.prompt(
+      `Código de cliente definitivo para "${c.nomcomerc || c.razon}" (provisorio ${c.cod}):`
+    )
+    if (!nuevoCod || !nuevoCod.trim()) return
+    const cod = nuevoCod.trim()
+    const { error } = await supabase.from('clientes').update({ cod }).eq('cod', c.cod)
+    if (error) {
+      toast(error.code === '23505' ? 'Ese código ya existe' : 'Error al asignar el código', 'error')
+      return
+    }
+    await supabase.from('actividad_diaria').update({ cod_cliente: cod }).eq('cod_cliente', c.cod)
+    await supabase.from('pedidos').update({ cod_cliente: cod }).eq('cod_cliente', c.cod)
+    await supabase
+      .from('clientes')
+      .update({ nota: (c.nota ?? '').replace('⏳ Código de cliente pendiente de validación por Administración.', '').trim() || null })
+      .eq('cod', cod)
+    toast(`✓ Código ${cod} asignado`, 'success')
+    setRecargaPend((r) => r + 1)
+  }
+
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -63,6 +96,30 @@ export default function Clientes() {
           + Nuevo cliente
         </button>
       </div>
+
+      {pendientes.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+            ⏳ Prospectos pendientes de código ({pendientes.length})
+          </p>
+          {pendientes.map((c) => (
+            <div key={c.cod} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-black/10 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{c.nomcomerc || c.razon}</p>
+                <p className="text-xs text-faint">
+                  {c.cod} · {c.localidad || '—'} · cargado por {c.vendedor_asignado || '—'}
+                </p>
+              </div>
+              <button
+                onClick={() => asignarCodigo(c)}
+                className="text-xs font-semibold bg-amber-500 text-white rounded-lg px-3 py-1.5 shrink-0"
+              >
+                Asignar código
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <input
         placeholder="Buscar por código, razón social, CUIT o nombre comercial..."

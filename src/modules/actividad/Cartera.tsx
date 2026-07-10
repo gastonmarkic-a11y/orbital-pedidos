@@ -34,11 +34,11 @@ const TABS_VENDEDOR = [
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
 
 export default function Cartera() {
-  const { vendedor, rolEfectivo } = useAuth()
+  const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const navigate = useNavigate()
   const esAdmin = rolEfectivo === 'admin'
   const [tabVendedor, setTabVendedor] = useState('Adrian')
-  const codigoActivo = esAdmin ? tabVendedor : vendedor?.codigo ?? ''
+  const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
   const [propuestaMes, setPropuestaMes] = useState<Record<string, string>>({})
@@ -47,6 +47,10 @@ export default function Cartera() {
   const [segmento, setSegmento] = useState<Segmento>('canje')
   const [busqueda, setBusqueda] = useState('')
   const [historial, setHistorial] = useState<Cliente | null>(null)
+  const [nuevoOpen, setNuevoOpen] = useState(false)
+  const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
+  const [npSaving, setNpSaving] = useState(false)
+  const [recarga, setRecarga] = useState(0)
 
   useEffect(() => {
     supabase.from('propuestas_julio').select('*').then(({ data }) => setPropuestas((data as Propuesta[]) ?? []))
@@ -89,7 +93,7 @@ export default function Cartera() {
       setLoading(false)
     }
     cargar()
-  }, [vendedor, codigoActivo])
+  }, [vendedor, codigoActivo, recarga])
 
   const conVentas = useMemo(
     () => clientes.filter((c) => (c.unidades_2025 ?? 0) > 0 && c.clasificacion_recupero !== 'fidelizacion'),
@@ -125,6 +129,34 @@ export default function Cartera() {
       .sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
       .map((c) => ({ c, maxCanje }))
   }, [segmentoRows, busqueda, ultimaAct])
+
+  async function guardarProspecto() {
+    if (!np.nomcomerc.trim() && !np.razon.trim()) return
+    setNpSaving(true)
+    const codTemporal = 'TMP-' + Date.now().toString().slice(-8)
+    const { error } = await supabase.from('clientes').insert({
+      cod: codTemporal,
+      razon: np.razon.trim() || np.nomcomerc.trim(),
+      nomcomerc: np.nomcomerc.trim() || null,
+      contacto: np.contacto.trim() || null,
+      telefono: np.telefono.trim() || null,
+      whatsapp: np.telefono.trim() || null,
+      email: np.email.trim() || null,
+      localidad: np.localidad.trim() || null,
+      zona: np.zona.trim() || null,
+      origen: 'propio',
+      vendedor_asignado: codigoActivo || codigoEfectivo,
+      clasificacion_recupero: 'sin_historial',
+      nota: ('⏳ Código de cliente pendiente de validación por Administración. ' + np.nota.trim()).trim(),
+    })
+    setNpSaving(false)
+    if (!error) {
+      setNuevoOpen(false)
+      setNp({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
+      setSegmento('bienvenida')
+      setRecarga((r) => r + 1)
+    }
+  }
 
   function cargar(c: Cliente) {
     navigate('/cargar', { state: { cliente: c } })
@@ -166,7 +198,13 @@ export default function Cartera() {
         ))}
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
+        <button
+          onClick={() => setNuevoOpen(true)}
+          className="text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-600 text-white"
+        >
+          + Nuevo prospecto
+        </button>
         {(
           [
             ['canje', `↩ Con canje (${conVentas.length})`],
@@ -348,6 +386,56 @@ export default function Cartera() {
       </div>
 
       {historial && <HistorialModal cliente={historial} propuestas={propuestas} onClose={() => setHistorial(null)} />}
+
+      {nuevoOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setNuevoOpen(false)}>
+          <div
+            className="bg-white rounded-2xl border border-black/10 w-full max-w-md p-4 max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-ink mb-1">+ Nuevo prospecto</p>
+            <p className="text-xs text-faint mb-3">
+              Se crea con un código provisorio. Administración le asigna el código de cliente definitivo cuando lo
+              valida.
+            </p>
+            <div className="space-y-2">
+              {(
+                [
+                  ['nomcomerc', 'Nombre del comercio *'],
+                  ['razon', 'Razón social'],
+                  ['contacto', 'Nombre de contacto'],
+                  ['telefono', 'Teléfono / WhatsApp'],
+                  ['email', 'Mail'],
+                  ['localidad', 'Localidad'],
+                  ['zona', 'Zona'],
+                  ['nota', 'Nota'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="block text-xs text-muted">
+                  {label}
+                  <input
+                    value={np[key]}
+                    onChange={(e) => setNp({ ...np, [key]: e.target.value })}
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-3">
+              <button onClick={() => setNuevoOpen(false)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarProspecto}
+                disabled={npSaving || (!np.nomcomerc.trim() && !np.razon.trim())}
+                className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold disabled:opacity-40"
+              >
+                {npSaving ? 'Guardando...' : '+ Crear prospecto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

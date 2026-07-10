@@ -136,13 +136,16 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-const ROL_LABELS: Record<Rol, string> = {
-  admin: 'Admin (todo)',
-  vendedor: 'Vendedor',
-  deposito: 'Depósito',
-  logistica: 'Logística',
-  administracion: 'Administración',
-}
+const VIEW_OPTIONS = [
+  { value: 'admin', label: 'Admin (todo)' },
+  { value: 'vendedor:Adrian', label: 'Adrián' },
+  { value: 'vendedor:Martin', label: 'Martín' },
+  { value: 'vendedor:Marketing', label: 'Prospección' },
+  { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
+  { value: 'deposito', label: 'Depósito' },
+  { value: 'logistica', label: 'Logística' },
+  { value: 'administracion', label: 'Administración' },
+]
 
 function ThemeToggle() {
   const [dark, setDark] = useState(() => localStorage.getItem('orbital_theme') === 'dark')
@@ -175,20 +178,25 @@ function Layout() {
           <p className="text-sm font-semibold text-ink">Orbital Suite</p>
           <p className="text-xs text-muted truncate">
             {vendedor?.nombre ?? '—'}
-            {viewAs && <span className="text-brandDark"> · viendo como {ROL_LABELS[viewAs]}</span>}
+            {viewAs && (
+              <span className="text-brandDark">
+                {' '}
+                · viendo como {VIEW_OPTIONS.find((o) => o.value === viewAs)?.label ?? viewAs}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {esAdminReal && (
             <select
               value={viewAs ?? 'admin'}
-              onChange={(e) => setViewAs(e.target.value === 'admin' ? null : (e.target.value as Rol))}
-              title="Ver la app como cada rol"
-              className="text-xs bg-white border border-black/10 rounded-lg px-2 py-1.5 text-muted max-w-[130px]"
+              onChange={(e) => setViewAs(e.target.value === 'admin' ? null : e.target.value)}
+              title="Ver la app como cada usuario"
+              className="text-xs bg-white border border-black/10 rounded-lg px-2 py-1.5 text-muted max-w-[150px]"
             >
-              {(Object.keys(ROL_LABELS) as Rol[]).map((r) => (
-                <option key={r} value={r}>
-                  👁 {ROL_LABELS[r]}
+              {VIEW_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  👁 {o.label}
                 </option>
               ))}
             </select>

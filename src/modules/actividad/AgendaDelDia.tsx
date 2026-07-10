@@ -6,7 +6,7 @@ import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 
 export default function AgendaDelDia() {
-  const { vendedor, rolEfectivo } = useAuth()
+  const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const navigate = useNavigate()
   const esAdmin = rolEfectivo === 'admin'
   const [modo, setModo] = useState<'hoy' | 'semana'>('hoy')
@@ -16,7 +16,7 @@ export default function AgendaDelDia() {
 
   useEffect(() => {
     if (!vendedor) return
-    const codigo = vendedor.codigo
+    const codigo = codigoEfectivo
     setLoading(true)
     const hoy = ymd(new Date())
     const desde = modo === 'hoy' ? hoy : ymd(mondayOfWeek())
@@ -36,7 +36,7 @@ export default function AgendaDelDia() {
       setVencidos((v.data as Cliente[]) ?? [])
       setLoading(false)
     })
-  }, [vendedor, esAdmin, modo])
+  }, [vendedor, esAdmin, modo, codigoEfectivo])
 
   function cargar(c: Cliente) {
     navigate('/cargar', { state: { cliente: c } })

@@ -13,7 +13,7 @@ interface Cuota {
 }
 
 export default function NuevoPedido() {
-  const { vendedor } = useAuth()
+  const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
   const location = useLocation()
 
@@ -207,7 +207,7 @@ export default function NuevoPedido() {
       // Crear pedido (el trigger de la base registra la actividad comercial automáticamente)
       await supabase.from('pedidos').insert({
         fecha: new Date().toLocaleString('es-AR'),
-        vendedor: vendedor?.codigo ?? '',
+        vendedor: codigoEfectivo || (vendedor?.codigo ?? ''),
         nro_lista: cliente.nro_lista ?? 5,
         blanco_pct: blancoPct,
         negro_pct: negroPct,
