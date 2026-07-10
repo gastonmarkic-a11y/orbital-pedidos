@@ -34,6 +34,7 @@ export interface Cliente {
   ultima_compra_monto: number | null
   unidades_2025: number | null
   clasificacion_recupero: string | null
+  segmento_corporativo: string | null
   nota: string | null
 }
 

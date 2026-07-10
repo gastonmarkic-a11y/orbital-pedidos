@@ -48,6 +48,7 @@ export default function Cartera() {
   const [segmento, setSegmento] = useState<Segmento>('canje')
   const [busqueda, setBusqueda] = useState('')
   const [zonaFiltro, setZonaFiltro] = useState('')
+  const [corpFiltro, setCorpFiltro] = useState('')
   const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
   const [nuevoOpen, setNuevoOpen] = useState(false)
@@ -133,6 +134,7 @@ export default function Cartera() {
           (c.nota || '').toLowerCase().includes(q)
       )
     if (zonaFiltro) base = base.filter((c) => (c.zona || '') === zonaFiltro)
+    if (corpFiltro && codigoActivo === 'Corporativo') base = base.filter((c) => (c.segmento_corporativo || '') === corpFiltro)
 
     const maxCanje = Math.max(...base.map((c) => Math.floor((c.unidades_2025 ?? 0) * 0.2)), 1)
     const ordenadas = [...base]
@@ -155,7 +157,7 @@ export default function Cartera() {
       ordenadas.sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
     }
     return ordenadas.map((c) => ({ c, maxCanje }))
-  }, [segmentoRows, clientes, busqueda, zonaFiltro, orden, ultimaAct])
+  }, [segmentoRows, clientes, busqueda, zonaFiltro, corpFiltro, codigoActivo, orden, ultimaAct])
 
   function toggleOrden(col: ColOrden) {
     setOrden((prev) => (prev?.col === col ? (prev.dir === 1 ? { col, dir: -1 } : null) : { col, dir: 1 }))
@@ -283,6 +285,18 @@ export default function Cartera() {
           onChange={(e) => setBusqueda(e.target.value)}
           className="flex-1 min-w-[200px] bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:border-brand"
         />
+        {codigoActivo === 'Corporativo' && (
+          <select
+            value={corpFiltro}
+            onChange={(e) => setCorpFiltro(e.target.value)}
+            className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm text-muted"
+          >
+            <option value="">Corporativo: todos</option>
+            <option value="corporativo">🏢 Corporativo</option>
+            <option value="prensa">📰 Prensa</option>
+            <option value="exterior">🌎 Exterior</option>
+          </select>
+        )}
         <select
           value={zonaFiltro}
           onChange={(e) => setZonaFiltro(e.target.value)}
