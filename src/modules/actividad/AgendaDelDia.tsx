@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
+import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 
@@ -13,6 +14,36 @@ export default function AgendaDelDia() {
   const [agendados, setAgendados] = useState<Cliente[]>([])
   const [vencidos, setVencidos] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
+  const toast = useToast()
+  const [editCod, setEditCod] = useState<string | null>(null)
+  const [ed, setEd] = useState({ contacto: '', telefono: '', email: '' })
+  const [edSaving, setEdSaving] = useState(false)
+
+  function empezarEdicion(c: Cliente) {
+    setEditCod(c.cod)
+    setEd({ contacto: c.contacto ?? '', telefono: c.whatsapp ?? c.telefono ?? '', email: c.email ?? '' })
+  }
+
+  async function guardarDatos(c: Cliente) {
+    setEdSaving(true)
+    const cambios = {
+      contacto: ed.contacto.trim() || null,
+      whatsapp: ed.telefono.trim() || null,
+      telefono: ed.telefono.trim() || c.telefono,
+      email: ed.email.trim() || null,
+    }
+    const { error } = await supabase.from('clientes').update(cambios).eq('cod', c.cod)
+    setEdSaving(false)
+    if (error) {
+      toast('No se pudo guardar: ' + error.message, 'error')
+      return
+    }
+    const aplicar = (lista: Cliente[]) => lista.map((x) => (x.cod === c.cod ? { ...x, ...cambios } : x))
+    setAgendados(aplicar)
+    setVencidos(aplicar)
+    setEditCod(null)
+    toast('✓ Datos de contacto guardados', 'success')
+  }
 
   useEffect(() => {
     if (!vendedor) return
@@ -126,10 +157,49 @@ export default function AgendaDelDia() {
                           Cargar actividad →
                         </button>
                       </div>
-                      {(c.contacto || c.email || c.whatsapp || c.telefono) && (
+                      {editCod === c.cod ? (
+                        <div className="mt-2 space-y-1.5 bg-[#f7f7fa] rounded-lg p-2">
+                          <input
+                            value={ed.contacto}
+                            onChange={(e) => setEd({ ...ed, contacto: e.target.value })}
+                            placeholder="Nombre de contacto"
+                            className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                          />
+                          <input
+                            value={ed.telefono}
+                            onChange={(e) => setEd({ ...ed, telefono: e.target.value })}
+                            placeholder="Teléfono / WhatsApp"
+                            className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                          />
+                          <input
+                            value={ed.email}
+                            onChange={(e) => setEd({ ...ed, email: e.target.value })}
+                            placeholder="Mail"
+                            type="email"
+                            className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => guardarDatos(c)}
+                              disabled={edSaving}
+                              className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium disabled:opacity-50"
+                            >
+                              {edSaving ? 'Guardando...' : 'Guardar'}
+                            </button>
+                            <button
+                              onClick={() => setEditCod(null)}
+                              className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
                         <p className="text-xs text-muted mt-1.5">
-                          👤 {c.contacto || '—'} · 📞 {c.whatsapp || c.telefono || '—'}
-                          {c.email ? ` · ✉️ ${c.email}` : ''}
+                          👤 {c.contacto || '—'} · 📞 {c.whatsapp || c.telefono || '—'} · ✉️ {c.email || '—'}{' '}
+                          <button onClick={() => empezarEdicion(c)} className="text-brandDark font-medium ml-1">
+                            ✏️ Editar
+                          </button>
                         </p>
                       )}
                       {c.proximo_paso && <p className="text-xs text-ink mt-2">➡ {c.proximo_paso}</p>}

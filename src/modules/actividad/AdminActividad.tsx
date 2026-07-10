@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { fetchPaged } from '../../lib/fetchAll'
 import { Actividad, ObjetivoMes, Propuesta, Vendedor } from '../../lib/types'
-import { monthKey } from '../../lib/dates'
+import { monthKey, habilesTranscurridos, habilesDelMes } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import { useAuth } from '../../lib/auth'
 
@@ -24,9 +24,7 @@ interface FilaVendedor {
   ventas: number
 }
 
-const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
 const COLORES_PERSONA = ['#7048e8', '#2a9d5c', '#e07020', '#1a7abf', '#c0392b', '#c8a96e']
-const COLORES_TEMA = ['#7048e8', '#2a9d5c', '#e07020', '#1a7abf', '#c0392b', '#c8a96e', '#9797ad']
 
 function colorAvance(pct: number) {
   return pct >= 100 ? '#10b981' : pct >= 60 ? '#7048e8' : pct >= 30 ? '#f59e0b' : '#ef4444'
@@ -65,63 +63,23 @@ function Donut({ real, objetivo, label }: Metrica) {
   )
 }
 
-function Pie({ data, size = 132 }: { data: { label: string; value: number; color: string }[]; size?: number }) {
-  const activos = data.filter((d) => d.value > 0)
-  const total = activos.reduce((a, d) => a + d.value, 0)
-  const cx = size / 2
-  const cy = size / 2
-  const r = size / 2 - 2
-  if (total === 0)
-    return (
-      <div className="flex items-center justify-center text-xs text-faint" style={{ width: size, height: size }}>
-        Sin datos
-      </div>
-    )
-  if (activos.length === 1)
-    return (
-      <svg width={size} height={size}>
-        <circle cx={cx} cy={cy} r={r} fill={activos[0].color} />
-      </svg>
-    )
-  let acc = 0
+function BarrasComparativas({ data, unidad }: { data: { label: string; value: number; color: string }[]; unidad: string }) {
+  const max = Math.max(...data.map((d) => d.value), 1)
+  const total = data.reduce((a, d) => a + d.value, 0)
   return (
-    <svg width={size} height={size}>
-      {activos.map((d) => {
-        const a0 = (acc / total) * 2 * Math.PI - Math.PI / 2
-        acc += d.value
-        const a1 = (acc / total) * 2 * Math.PI - Math.PI / 2
-        const large = a1 - a0 > Math.PI ? 1 : 0
-        const x0 = cx + r * Math.cos(a0)
-        const y0 = cy + r * Math.sin(a0)
-        const x1 = cx + r * Math.cos(a1)
-        const y1 = cy + r * Math.sin(a1)
-        return (
-          <path
-            key={d.label}
-            d={`M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`}
-            fill={d.color}
-            stroke="rgba(255,255,255,0.35)"
-            strokeWidth="1"
-          />
-        )
-      })}
-    </svg>
-  )
-}
-
-function Leyenda({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const total = data.reduce((a, d) => a + d.value, 0) || 1
-  return (
-    <div className="space-y-1 min-w-0">
+    <div className="space-y-2">
       {data.map((d) => (
-        <div key={d.label} className="flex items-center gap-1.5 text-xs">
-          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.color }} />
-          <span className="text-muted truncate">{d.label}</span>
-          <span className="font-semibold text-ink ml-auto">
-            {d.value} <span className="text-faint font-normal">({Math.round((d.value / total) * 100)}%)</span>
+        <div key={d.label} className="flex items-center gap-2 text-xs">
+          <span className="w-28 truncate text-muted shrink-0">{d.label}</span>
+          <div className="flex-1 h-3.5 bg-black/5 rounded-full overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${Math.round((d.value / max) * 100)}%`, background: d.color }} />
+          </div>
+          <span className="w-20 text-right font-semibold text-ink shrink-0">
+            {d.value} <span className="text-faint font-normal">({total > 0 ? Math.round((d.value / total) * 100) : 0}%)</span>
           </span>
         </div>
       ))}
+      {total === 0 && <p className="text-xs text-faint">Sin {unidad} este mes todavía.</p>}
     </div>
   )
 }
@@ -154,23 +112,28 @@ export default function AdminActividad() {
       const rows: FilaVendedor[] = []
       let colorIdx = 0
 
+      async function vencidosDe(codigo: string) {
+        const { count } = await supabase
+          .from('clientes')
+          .select('cod', { count: 'exact', head: true })
+          .eq('vendedor_asignado', codigo)
+          .lt('proxima_agenda_fecha', hoy)
+        return count ?? 0
+      }
+
+      // Vendedores de campo: Adrián y Martín (objetivos de julio como estaban)
       const campo = ((vend as Vendedor[]) ?? []).filter(
-        (v) => v.rol === 'vendedor' && !PROSPECCION.includes(v.codigo) && v.codigo !== 'Corporativo'
+        (v) => v.rol === 'vendedor' && !['Marketing', 'ProspeccionVenta', 'Damian', 'Corporativo'].includes(v.codigo)
       )
       for (const v of campo) {
         const actos = acts.filter((a) => a.vendedor === v.codigo)
         const obj = objetivos.find((o) => o.vendedor === v.codigo)
-        const { count } = await supabase
-          .from('clientes')
-          .select('cod', { count: 'exact', head: true })
-          .eq('vendedor_asignado', v.codigo)
-          .lt('proxima_agenda_fecha', hoy)
         rows.push({
           codigo: v.codigo,
           nombre: v.nombre,
           esProspeccion: false,
           color: COLORES_PERSONA[colorIdx++ % COLORES_PERSONA.length],
-          vencidos: count ?? 0,
+          vencidos: await vencidosDe(v.codigo),
           totalActividades: actos.length,
           ventas: actos.filter((a) => (a.unidades_vendidas ?? 0) > 0).length,
           metricas: [
@@ -185,36 +148,38 @@ export default function AdminActividad() {
         })
       }
 
-      const actosProsp = acts.filter((a) => a.vendedor && PROSPECCION.includes(a.vendedor))
-      const objProsp = objetivos.find((o) => o.vendedor === 'Marketing')
-      const { count: vencProsp } = await supabase
-        .from('clientes')
-        .select('cod', { count: 'exact', head: true })
-        .eq('vendedor_asignado', 'Marketing')
-        .lt('proxima_agenda_fecha', hoy)
-      const cierres = actosProsp.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Venta directa cerrada')).length
-      rows.push({
-        codigo: 'Marketing',
-        nombre: 'Prospección (Luna + Damián)',
-        esProspeccion: true,
-        color: COLORES_PERSONA[colorIdx++ % COLORES_PERSONA.length],
-        vencidos: vencProsp ?? 0,
-        totalActividades: actosProsp.length,
-        ventas: cierres,
-        metricas: [
-          {
-            label: 'Propuestas válidas (Bienv./Canje/Preventa)',
-            real: actosProsp.filter((a) => a.propuesta_enviada_id && propValidas.has(a.propuesta_enviada_id)).length,
-            objetivo: objProsp?.objetivo_propuestas ?? 300,
-          },
-          {
-            label: 'Reuniones coordinadas',
-            real: actosProsp.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Derivado a ')).length,
-            objetivo: objProsp?.objetivo_contactos ?? 24,
-          },
-          { label: 'Cierres telefónicos (venta directa)', real: cierres, objetivo: objProsp?.objetivo_ventas ?? 18 },
-        ],
-      })
+      // Prospectadores: Luna (Marketing) y Damián (ProspeccionVenta + Damian) — objetivos individuales
+      const prospectadores: { nombre: string; codigos: string[]; objetivoDe: string; vencidosDe: string }[] = [
+        { nombre: 'Luna (Prospección)', codigos: ['Marketing'], objetivoDe: 'Marketing', vencidosDe: 'Marketing' },
+        { nombre: 'Damián (Prospección)', codigos: ['ProspeccionVenta', 'Damian'], objetivoDe: 'ProspeccionVenta', vencidosDe: 'ProspeccionVenta' },
+      ]
+      for (const p of prospectadores) {
+        const actos = acts.filter((a) => a.vendedor && p.codigos.includes(a.vendedor))
+        const obj = objetivos.find((o) => o.vendedor === p.objetivoDe)
+        const cierres = actos.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Venta directa cerrada')).length
+        rows.push({
+          codigo: p.objetivoDe,
+          nombre: p.nombre,
+          esProspeccion: true,
+          color: COLORES_PERSONA[colorIdx++ % COLORES_PERSONA.length],
+          vencidos: await vencidosDe(p.vencidosDe),
+          totalActividades: actos.length,
+          ventas: cierres,
+          metricas: [
+            {
+              label: 'Propuestas válidas (Bienv./Canje/Preventa)',
+              real: actos.filter((a) => a.propuesta_enviada_id && propValidas.has(a.propuesta_enviada_id)).length,
+              objetivo: obj?.objetivo_propuestas ?? 300,
+            },
+            {
+              label: 'Reuniones coordinadas',
+              real: actos.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Derivado a ')).length,
+              objetivo: obj?.objetivo_contactos ?? 24,
+            },
+            { label: 'Cierres telefónicos (venta directa)', real: cierres, objetivo: obj?.objetivo_ventas ?? 18 },
+          ],
+        })
+      }
 
       setFilas(rows)
 
@@ -235,9 +200,28 @@ export default function AdminActividad() {
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando tablero del equipo...</p>
 
-  const pieActividad = filas.map((f) => ({ label: f.nombre, value: f.totalActividades, color: f.color }))
-  const pieVentas = filas.map((f) => ({ label: f.nombre, value: f.ventas, color: f.color }))
-  const pieTemas = temas.map((t, i) => ({ label: t.label, value: t.count, color: COLORES_TEMA[i % COLORES_TEMA.length] }))
+  const barActividad = filas.map((f) => ({ label: f.nombre, value: f.totalActividades, color: f.color }))
+  const barVentas = filas.map((f) => ({ label: f.nombre, value: f.ventas, color: f.color }))
+  const maxTema = Math.max(...temas.map((t) => t.count), 1)
+
+  // Reseña automática del mes
+  const habilesT = habilesTranscurridos()
+  const habilesM = habilesDelMes()
+  const pctMes = Math.round((habilesT / Math.max(habilesM, 1)) * 100)
+  const reseña: string[] = [`Va el día hábil ${habilesT} de ${habilesM} (${pctMes}% del mes).`]
+  const masActivo = [...filas].sort((a, b) => b.totalActividades - a.totalActividades)[0]
+  if (masActivo && masActivo.totalActividades > 0)
+    reseña.push(`${masActivo.nombre} lidera en actividad con ${masActivo.totalActividades} registros.`)
+  const masVentas = [...filas].sort((a, b) => b.ventas - a.ventas)[0]
+  if (masVentas && masVentas.ventas > 0) reseña.push(`${masVentas.nombre} encabeza las ventas/cierres con ${masVentas.ventas}.`)
+  for (const f of filas) {
+    const atrasadas = f.metricas.filter((m) => m.objetivo > 0 && Math.round((m.real / m.objetivo) * 100) < pctMes - 20)
+    if (atrasadas.length)
+      reseña.push(`⚠ ${f.nombre} viene atrasado en: ${atrasadas.map((m) => m.label.toLowerCase()).join(', ')}.`)
+  }
+  const conVencidos = filas.filter((f) => f.vencidos > 0)
+  if (conVencidos.length)
+    reseña.push(`Agendas vencidas: ${conVencidos.map((f) => `${f.nombre} (${f.vencidos})`).join(', ')}.`)
 
   return (
     <div className="space-y-4 text-ink">
@@ -250,7 +234,18 @@ export default function AdminActividad() {
         )}
       </div>
 
-      {/* Avance de objetivos por persona: anillos */}
+      {/* Reseña del mes */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">📝 Lectura rápida del mes</p>
+        {reseña.map((r, i) => (
+          <p key={i} className="text-sm text-ink flex gap-2 py-0.5">
+            <span className="text-brand">•</span>
+            <span>{r}</span>
+          </p>
+        ))}
+      </div>
+
+      {/* Avance de objetivos por persona */}
       {filas.map((f) => (
         <div key={f.codigo} className="bg-white rounded-xl p-4 border border-black/10">
           <div className="flex items-center justify-between mb-2">
@@ -270,38 +265,37 @@ export default function AdminActividad() {
         </div>
       ))}
 
-      {/* Reparto del mes: tortas */}
+      {/* Comparativas en barras */}
       <div className="grid md:grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-4 border border-black/10">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">🍕 Actividades del mes — quién hizo qué</p>
-          <div className="flex items-center gap-4">
-            <Pie data={pieActividad} />
-            <Leyenda data={pieActividad} />
-          </div>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Actividades registradas este mes</p>
+          <BarrasComparativas data={barActividad} unidad="actividades" />
         </div>
         <div className="bg-white rounded-xl p-4 border border-black/10">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">💰 Ventas / cierres del mes</p>
-          <div className="flex items-center gap-4">
-            <Pie data={pieVentas} />
-            <Leyenda data={pieVentas} />
-          </div>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Ventas y cierres este mes</p>
+          <BarrasComparativas data={barVentas} unidad="ventas" />
         </div>
       </div>
 
-      {/* Voz del cliente: torta de temas */}
+      {/* Voz del cliente en barras */}
       <div className="bg-white rounded-xl p-4 border border-black/10">
         <p className="text-sm font-semibold text-ink mb-1">🗣 Voz del cliente — temas frecuentes</p>
-        <p className="text-[11px] text-faint mb-3">
-          Clasificación automática de lo que dicen los clientes en cada contacto, para detectar problemas o fortalezas.
-        </p>
-        {pieTemas.length === 0 ? (
+        <p className="text-[11px] text-faint mb-3">Lo que dicen los clientes en cada contacto, clasificado automáticamente.</p>
+        {temas.length === 0 ? (
           <p className="text-sm text-faint">Todavía no hay suficientes notas de clientes clasificables.</p>
         ) : (
-          <div className="flex items-center gap-4 flex-wrap">
-            <Pie data={pieTemas} size={150} />
-            <div className="flex-1 min-w-[220px]">
-              <Leyenda data={pieTemas} />
-            </div>
+          <div className="space-y-2">
+            {temas.map((t) => (
+              <div key={t.label}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-ink font-medium">{t.label}</span>
+                  <span className="text-faint">{t.count}</span>
+                </div>
+                <div className="h-2 bg-black/5 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand rounded-full" style={{ width: `${(t.count / maxTema) * 100}%` }} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

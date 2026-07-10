@@ -18,6 +18,7 @@ export default function Marketing() {
   const [loading, setLoading] = useState(true)
   const [copiado, setCopiado] = useState<number | null>(null)
   const [abriendo, setAbriendo] = useState<number | null>(null)
+  const [tema, setTema] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -58,18 +59,50 @@ export default function Marketing() {
     (g) => g.items.length > 0
   )
 
+  // Paso 1: elegir el tema
+  if (!tema) {
+    return (
+      <div className="space-y-4 text-ink">
+        <h2 className="text-base font-semibold">Piezas de Marketing</h2>
+        <p className="text-xs text-muted">Elegí el tema para ver el material disponible.</p>
+        {grupos.length === 0 && (
+          <p className="text-sm text-faint text-center py-10">
+            Todavía no hay piezas cargadas. Pedile al admin que suba copys, propuestas, imágenes, videos, catálogo o
+            lista de precios.
+          </p>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {grupos.map((g) => (
+            <button
+              key={g.categoria}
+              onClick={() => setTema(g.categoria)}
+              className="bg-white border border-black/10 rounded-2xl p-5 text-left hover:border-brand/50 transition-colors"
+            >
+              <p className="text-2xl mb-2">{CATEGORIAS[g.categoria].split(' ')[0]}</p>
+              <p className="text-sm font-semibold">{CATEGORIAS[g.categoria].split(' ').slice(1).join(' ')}</p>
+              <p className="text-xs text-faint mt-1">
+                {g.items.length} pieza{g.items.length !== 1 ? 's' : ''}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Paso 2: material del tema elegido
+  const grupoActivo = grupos.filter((g) => g.categoria === tema)
+
   return (
     <div className="space-y-5 text-ink">
-      <h2 className="text-base font-semibold">Piezas de Marketing</h2>
-      {grupos.length === 0 && (
-        <p className="text-sm text-faint text-center py-10">
-          Todavía no hay piezas cargadas. Pedile al admin que suba copys, propuestas, imágenes, videos, catálogo o
-          lista de precios.
-        </p>
-      )}
-      {grupos.map((g) => (
+      <div className="flex items-center gap-3">
+        <button onClick={() => setTema(null)} className="text-sm text-brandDark font-medium">
+          ← Temas
+        </button>
+        <h2 className="text-base font-semibold">{CATEGORIAS[tema]}</h2>
+      </div>
+      {grupoActivo.map((g) => (
         <div key={g.categoria} className="space-y-2">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">{CATEGORIAS[g.categoria]}</p>
           <div className="space-y-2">
             {g.items.map((p) => (
               <div key={p.id} className="bg-white border border-black/10 rounded-xl p-3">
