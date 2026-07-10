@@ -6,9 +6,9 @@ import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 
 export default function AgendaDelDia() {
-  const { vendedor } = useAuth()
+  const { vendedor, rolEfectivo } = useAuth()
   const navigate = useNavigate()
-  const esAdmin = vendedor?.rol === 'admin'
+  const esAdmin = rolEfectivo === 'admin'
   const [modo, setModo] = useState<'hoy' | 'semana'>('hoy')
   const [agendados, setAgendados] = useState<Cliente[]>([])
   const [vencidos, setVencidos] = useState<Cliente[]>([])

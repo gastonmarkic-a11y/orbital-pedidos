@@ -20,9 +20,9 @@ const ESTADOS: EstadoPedido[] = [
 const TRANSPORTES = ['Moto', 'Expreso / Transporte', 'Comisionista', 'Retira el cliente', 'Correo', 'Otro']
 
 export default function Pedidos() {
-  const { vendedor } = useAuth()
+  const { vendedor, rolEfectivo } = useAuth()
   const toast = useToast()
-  const rol = vendedor?.rol ?? 'vendedor'
+  const rol = rolEfectivo
   const esAdmin = rol === 'admin'
   const esDeposito = rol === 'deposito'
   const esLogistica = rol === 'logistica'

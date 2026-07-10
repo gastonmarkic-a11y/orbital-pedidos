@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
-import { FormEvent, ReactNode, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/auth'
 import { ToastProvider } from './lib/toast'
 import { Rol } from './lib/types'
@@ -136,22 +136,68 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+const ROL_LABELS: Record<Rol, string> = {
+  admin: 'Admin (todo)',
+  vendedor: 'Vendedor',
+  deposito: 'Depósito',
+  logistica: 'Logística',
+  administracion: 'Administración',
+}
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => localStorage.getItem('orbital_theme') === 'dark')
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('orbital_theme', dark ? 'dark' : 'light')
+  }, [dark])
+  return (
+    <button
+      onClick={() => setDark(!dark)}
+      title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+      className="text-base leading-none px-1.5 py-1 rounded-lg border border-black/10"
+    >
+      {dark ? '☀️' : '🌙'}
+    </button>
+  )
+}
+
 function Layout() {
-  const { vendedor, signOut } = useAuth()
-  const rol = (vendedor?.rol ?? 'vendedor') as Rol
+  const { vendedor, signOut, rolEfectivo, viewAs, setViewAs } = useAuth()
+  const esAdminReal = vendedor?.rol === 'admin'
+  const rol = rolEfectivo
   const items = navFor(rol)
   const esVendedorOAdmin = rol === 'vendedor' || rol === 'admin'
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f4f4f7]">
-      <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div>
+      <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10 gap-2">
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">Orbital Suite</p>
-          <p className="text-xs text-muted">{vendedor?.nombre ?? '—'}</p>
+          <p className="text-xs text-muted truncate">
+            {vendedor?.nombre ?? '—'}
+            {viewAs && <span className="text-brandDark"> · viendo como {ROL_LABELS[viewAs]}</span>}
+          </p>
         </div>
-        <button onClick={signOut} className="text-xs text-muted underline">
-          Salir
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {esAdminReal && (
+            <select
+              value={viewAs ?? 'admin'}
+              onChange={(e) => setViewAs(e.target.value === 'admin' ? null : (e.target.value as Rol))}
+              title="Ver la app como cada rol"
+              className="text-xs bg-white border border-black/10 rounded-lg px-2 py-1.5 text-muted max-w-[130px]"
+            >
+              {(Object.keys(ROL_LABELS) as Rol[]).map((r) => (
+                <option key={r} value={r}>
+                  👁 {ROL_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          )}
+          <ThemeToggle />
+          <button onClick={signOut} className="text-xs text-muted underline">
+            Salir
+          </button>
+        </div>
       </header>
       <main className="flex-1 pb-20 max-w-6xl w-full mx-auto px-3 pt-3">
         <Routes>

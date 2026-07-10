@@ -33,9 +33,9 @@ const TABS_VENDEDOR = [
 type Segmento = 'canje' | 'recuperar' | 'bienvenida'
 
 export default function Cartera() {
-  const { vendedor } = useAuth()
+  const { vendedor, rolEfectivo } = useAuth()
   const navigate = useNavigate()
-  const esAdmin = vendedor?.rol === 'admin'
+  const esAdmin = rolEfectivo === 'admin'
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : vendedor?.codigo ?? ''
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -313,6 +313,12 @@ export default function Cartera() {
                     <div className="flex flex-col items-start gap-1">
                       <button onClick={() => cargar(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
                         Cargar →
+                      </button>
+                      <button
+                        onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
+                        className="text-[11px] text-emerald-600 font-medium whitespace-nowrap"
+                      >
+                        🛒 Pedido →
                       </button>
                       <button onClick={() => setHistorial(c)} className="text-[11px] text-muted font-medium whitespace-nowrap">
                         Historial

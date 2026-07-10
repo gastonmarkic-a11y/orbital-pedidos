@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
@@ -14,11 +15,12 @@ interface Cuota {
 export default function NuevoPedido() {
   const { vendedor } = useAuth()
   const toast = useToast()
+  const location = useLocation()
 
   const [stock, setStock] = useState<StockItem[]>([])
   const [busquedaCliente, setBusquedaCliente] = useState('')
   const [sugerencias, setSugerencias] = useState<Cliente[]>([])
-  const [cliente, setCliente] = useState<Cliente | null>(null)
+  const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
   const [busquedaStock, setBusquedaStock] = useState('')
   const [filtroModelo, setFiltroModelo] = useState('')
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
@@ -41,6 +43,16 @@ export default function NuevoPedido() {
   useEffect(() => {
     loadStock()
   }, [])
+
+  // Cliente preseleccionado desde Cartera / Agenda
+  useEffect(() => {
+    const c = location.state?.cliente as Cliente | undefined
+    if (c) {
+      setCliente(c)
+      if (c.email) setMail(c.email)
+      if (c.telefono) setWsp(c.telefono)
+    }
+  }, [location.state])
 
   // Búsqueda de cliente
   useEffect(() => {

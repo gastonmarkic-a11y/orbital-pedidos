@@ -12,9 +12,9 @@ const VENDEDORES_CAMPO = [
 ]
 
 export default function CargarActividad() {
-  const { vendedor } = useAuth()
+  const { vendedor, rolEfectivo } = useAuth()
   const location = useLocation()
-  const esAdmin = vendedor?.rol === 'admin'
+  const esAdmin = rolEfectivo === 'admin'
   const esProspeccion = vendedor?.codigo === 'Marketing'
 
   const [cartera, setCartera] = useState<Cliente[]>([])
