@@ -143,6 +143,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:Martin', label: 'Martín' },
   { value: 'vendedor:Marketing', label: 'Prospección' },
   { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
+  { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'deposito', label: 'Depósito' },
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
