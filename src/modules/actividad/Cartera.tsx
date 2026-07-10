@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
@@ -54,40 +55,40 @@ export default function Cartera() {
   useEffect(() => {
     if (!vendedor || !codigoActivo) return
     setLoading(true)
-    let q = supabase.from('clientes').select('*').not('origen', 'is', null)
-    q =
-      codigoActivo === 'Marketing'
-        ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-        : q.eq('vendedor_asignado', codigoActivo)
-    q.then(({ data }) => {
-      const rows = (data as Cliente[]) ?? []
+    async function cargar() {
+      // Carga paginada: trae TODA la cartera aunque supere las 1000 filas
+      const rows = await fetchPaged<Cliente>(() => {
+        let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
+        q =
+          codigoActivo === 'Marketing'
+            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+            : q.eq('vendedor_asignado', codigoActivo)
+        return q
+      })
       setClientes(rows)
-      const cods = rows.map((c) => c.cod)
-      if (cods.length) {
-        supabase
-          .from('actividad_diaria')
-          .select('cod_cliente, fecha, propuesta_enviada_id')
-          .in('cod_cliente', cods)
-          .order('fecha', { ascending: false })
-          .then(({ data: acts }) => {
-            const ult: Record<string, string> = {}
-            const prop: Record<string, string> = {}
-            const inicioMes = firstOfMonth()
-            for (const a of (acts as { cod_cliente: string | null; fecha: string; propuesta_enviada_id: number | null }[]) ?? []) {
-              if (!a.cod_cliente) continue
-              if (!ult[a.cod_cliente]) ult[a.cod_cliente] = a.fecha
-              if (a.propuesta_enviada_id && a.fecha >= inicioMes && !prop[a.cod_cliente])
-                prop[a.cod_cliente] = String(a.propuesta_enviada_id)
-            }
-            setUltimaAct(ult)
-            setPropuestaMes(prop)
-          })
-      } else {
-        setUltimaAct({})
-        setPropuestaMes({})
+      const codsSet = new Set(rows.map((c) => c.cod))
+      const acts = await fetchPaged<{ cod_cliente: string | null; fecha: string; propuesta_enviada_id: number | null }>(
+        () =>
+          supabase
+            .from('actividad_diaria')
+            .select('cod_cliente, fecha, propuesta_enviada_id')
+            .order('fecha', { ascending: false })
+            .order('id', { ascending: false })
+      )
+      const ult: Record<string, string> = {}
+      const prop: Record<string, string> = {}
+      const inicioMes = firstOfMonth()
+      for (const a of acts) {
+        if (!a.cod_cliente || !codsSet.has(a.cod_cliente)) continue
+        if (!ult[a.cod_cliente]) ult[a.cod_cliente] = a.fecha
+        if (a.propuesta_enviada_id && a.fecha >= inicioMes && !prop[a.cod_cliente])
+          prop[a.cod_cliente] = String(a.propuesta_enviada_id)
       }
+      setUltimaAct(ult)
+      setPropuestaMes(prop)
       setLoading(false)
-    })
+    }
+    cargar()
   }, [vendedor, codigoActivo])
 
   const conVentas = useMemo(

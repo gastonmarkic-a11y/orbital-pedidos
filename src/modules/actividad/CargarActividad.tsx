@@ -17,7 +17,6 @@ export default function CargarActividad() {
   const esAdmin = rolEfectivo === 'admin'
   const esProspeccion = vendedor?.codigo === 'Marketing'
 
-  const [cartera, setCartera] = useState<Cliente[]>([])
   const [resultados, setResultados] = useState<Cliente[]>([])
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [busqueda, setBusqueda] = useState('')
@@ -60,13 +59,6 @@ export default function CargarActividad() {
 
   useEffect(() => {
     if (!vendedor) return
-    if (!esAdmin) {
-      supabase
-        .from('clientes')
-        .select('*')
-        .eq('vendedor_asignado', vendedor.codigo)
-        .then(({ data }) => setCartera((data as Cliente[]) ?? []))
-    }
     supabase
       .from('propuestas_julio')
       .select('*')
@@ -76,30 +68,29 @@ export default function CargarActividad() {
   }, [vendedor, esAdmin])
 
   useEffect(() => {
-    if (!esAdmin) return
     const q = busqueda.trim()
     if (q.length < 2) {
       setResultados([])
       return
     }
     const t = setTimeout(() => {
-      supabase
+      let query = supabase
         .from('clientes')
         .select('*')
         .or(`nomcomerc.ilike.%${q}%,razon.ilike.%${q}%`)
         .limit(8)
-        .then(({ data }) => setResultados((data as Cliente[]) ?? []))
+      if (!esAdmin && vendedor) {
+        query =
+          vendedor.codigo === 'Marketing'
+            ? query.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+            : query.eq('vendedor_asignado', vendedor.codigo)
+      }
+      query.then(({ data }) => setResultados((data as Cliente[]) ?? []))
     }, 250)
     return () => clearTimeout(t)
-  }, [busqueda, esAdmin])
+  }, [busqueda, esAdmin, vendedor])
 
-  const sugerencias = esAdmin
-    ? resultados
-    : busqueda.trim()
-      ? cartera
-          .filter((c) => (c.nomcomerc || c.razon || '').toLowerCase().includes(busqueda.trim().toLowerCase()))
-          .slice(0, 8)
-      : []
+  const sugerencias = resultados
 
   const vozTema = clasificarVoz(vozNota)
   const esDerivable = cliente?.vendedor_asignado === 'Marketing' || cliente?.vendedor_asignado == null
