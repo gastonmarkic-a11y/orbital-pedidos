@@ -24,7 +24,7 @@ interface NavItem {
   label: string
 }
 
-function navFor(rol: Rol): NavItem[] {
+function navFor(rol: Rol, codigo?: string): NavItem[] {
   if (rol === 'deposito')
     return [
       { to: '/pedidos', label: '📦 A preparar' },
@@ -47,6 +47,7 @@ function navFor(rol: Rol): NavItem[] {
     { to: '/pedidos/nuevo', label: '🛒 Nuevo Pedido' },
     { to: '/pedidos', label: 'Mis Pedidos' },
   ]
+  if (rol === 'vendedor' && codigo === 'Corporativo') return [...base, { to: '/actividad-admin', label: '📊 Equipo' }]
   if (rol === 'admin')
     return [
       ...base,
@@ -165,10 +166,10 @@ function ThemeToggle() {
 }
 
 function Layout() {
-  const { vendedor, signOut, rolEfectivo, viewAs, setViewAs } = useAuth()
+  const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs } = useAuth()
   const esAdminReal = vendedor?.rol === 'admin'
   const rol = rolEfectivo
-  const items = navFor(rol)
+  const items = navFor(rol, codigoEfectivo)
   const esVendedorOAdmin = rol === 'vendedor' || rol === 'admin'
 
   return (
@@ -231,12 +232,10 @@ function Layout() {
           {(rol === 'admin' || rol === 'deposito') && (
             <Route path="/pedidos/stock" element={<StockAdmin />} />
           )}
-          {rol === 'admin' && (
-            <>
-              <Route path="/actividad-admin" element={<AdminActividad />} />
-              <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />
-            </>
+          {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
+            <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
+          {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>

@@ -26,7 +26,7 @@ export default function AdminActividad() {
     async function cargar() {
       const { data: vend } = await supabase.from('vendedores').select('*').eq('activo', true).neq('rol', 'admin')
       const vendedores = ((vend as Vendedor[]) ?? []).filter(
-        (v) => !['Corporativo', 'ProspeccionVenta'].includes(v.codigo) && v.rol === 'vendedor'
+        (v) => v.codigo !== 'Corporativo' && v.rol === 'vendedor'
       )
       const { data: objs } = await supabase.from('objetivos_mes').select('*').eq('mes_anio', mes)
       const { data: acts } = await supabase.from('actividad_diaria').select('*').gte('fecha', `${mes}-01`)
