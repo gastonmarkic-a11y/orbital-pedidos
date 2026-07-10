@@ -30,7 +30,7 @@ const TABS_VENDEDOR = [
   { codigo: 'Corporativo', label: 'Corporativo' },
 ]
 
-type Segmento = 'canje' | 'recuperar' | 'bienvenida'
+type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
 
 export default function Cartera() {
   const { vendedor, rolEfectivo } = useAuth()
@@ -90,7 +90,11 @@ export default function Cartera() {
     })
   }, [vendedor, codigoActivo])
 
-  const conVentas = useMemo(() => clientes.filter((c) => (c.unidades_2025 ?? 0) > 0), [clientes])
+  const conVentas = useMemo(
+    () => clientes.filter((c) => (c.unidades_2025 ?? 0) > 0 && c.clasificacion_recupero !== 'fidelizacion'),
+    [clientes]
+  )
+  const fidelizados = useMemo(() => clientes.filter((c) => c.clasificacion_recupero === 'fidelizacion'), [clientes])
   const aRecuperar = useMemo(
     () => clientes.filter((c) => c.clasificacion_recupero && ['2024', '2022_2023', '2021_o_antes'].includes(c.clasificacion_recupero)),
     [clientes]
@@ -101,7 +105,8 @@ export default function Cartera() {
     [conVentas]
   )
 
-  const segmentoRows = segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : bienvenida
+  const segmentoRows =
+    segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : segmento === 'fidelizacion' ? fidelizados : bienvenida
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -144,12 +149,13 @@ export default function Cartera() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
           { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
           { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500' },
           { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500' },
           { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500' },
+          { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500' },
         ].map((k) => (
           <div key={k.label} className="bg-white border border-black/10 rounded-xl p-3 relative overflow-hidden">
             <div className={`absolute top-0 left-0 right-0 h-0.5 ${k.color}`} />
@@ -165,6 +171,7 @@ export default function Cartera() {
             ['canje', `↩ Con canje (${conVentas.length})`],
             ['recuperar', `📋 A recuperar (${aRecuperar.length})`],
             ['bienvenida', `🔍 Bienvenida (${bienvenida.length})`],
+            ['fidelizacion', `⭐ Fidelizados (${fidelizados.length})`],
           ] as [Segmento, string][]
         ).map(([key, label]) => (
           <button

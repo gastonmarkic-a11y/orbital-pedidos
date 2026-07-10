@@ -36,6 +36,11 @@ export default function CargarActividad() {
   const [fechaVisita, setFechaVisita] = useState('')
   const [derivando, setDerivando] = useState(false)
   const [derivado, setDerivado] = useState(false)
+  const [editandoDatos, setEditandoDatos] = useState(false)
+  const [cContacto, setCContacto] = useState('')
+  const [cTelefono, setCTelefono] = useState('')
+  const [cEmail, setCEmail] = useState('')
+  const [guardandoDatos, setGuardandoDatos] = useState(false)
   const [ventaDirectaSaving, setVentaDirectaSaving] = useState(false)
   const [ventaDirectaOk, setVentaDirectaOk] = useState(false)
 
@@ -43,6 +48,15 @@ export default function CargarActividad() {
     const c = location.state?.cliente
     if (c) setCliente(c)
   }, [location.state])
+
+  useEffect(() => {
+    if (cliente) {
+      setCContacto(cliente.contacto ?? '')
+      setCTelefono(cliente.whatsapp ?? cliente.telefono ?? '')
+      setCEmail(cliente.email ?? '')
+      setEditandoDatos(false)
+    }
+  }, [cliente?.cod])
 
   useEffect(() => {
     if (!vendedor) return
@@ -103,6 +117,23 @@ export default function CargarActividad() {
     setMonto('')
     setDerivarA('')
     setFechaVisita('')
+  }
+
+  async function guardarDatosContacto() {
+    if (!cliente) return
+    setGuardandoDatos(true)
+    await supabase
+      .from('clientes')
+      .update({
+        contacto: cContacto.trim() || null,
+        whatsapp: cTelefono.trim() || null,
+        telefono: cTelefono.trim() || cliente.telefono,
+        email: cEmail.trim() || null,
+      })
+      .eq('cod', cliente.cod)
+    setCliente({ ...cliente, contacto: cContacto.trim() || null, whatsapp: cTelefono.trim() || null, email: cEmail.trim() || null })
+    setGuardandoDatos(false)
+    setEditandoDatos(false)
   }
 
   async function guardar(e: FormEvent) {
@@ -244,6 +275,61 @@ export default function CargarActividad() {
             {cliente.nota && (
               <div className="bg-[#f7f7fa] rounded-lg p-2 text-xs text-muted">📝 Nota anterior: {cliente.nota}</div>
             )}
+
+            <div className="bg-[#f7f7fa] rounded-lg p-2.5 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-muted uppercase tracking-wide text-[10px]">Datos de contacto</span>
+                {!editandoDatos && (
+                  <button type="button" onClick={() => setEditandoDatos(true)} className="text-brandDark font-medium">
+                    ✏️ Editar
+                  </button>
+                )}
+              </div>
+              {editandoDatos ? (
+                <div className="space-y-1.5">
+                  <input
+                    value={cContacto}
+                    onChange={(e) => setCContacto(e.target.value)}
+                    placeholder="Nombre de contacto"
+                    className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                  />
+                  <input
+                    value={cTelefono}
+                    onChange={(e) => setCTelefono(e.target.value)}
+                    placeholder="Teléfono / WhatsApp"
+                    className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                  />
+                  <input
+                    value={cEmail}
+                    onChange={(e) => setCEmail(e.target.value)}
+                    placeholder="Mail"
+                    type="email"
+                    className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={guardarDatosContacto}
+                      disabled={guardandoDatos}
+                      className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium disabled:opacity-50"
+                    >
+                      {guardandoDatos ? 'Guardando...' : 'Guardar datos'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditandoDatos(false)}
+                      className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted">
+                  👤 {cliente.contacto || '—'} · 📞 {cliente.whatsapp || cliente.telefono || '—'} · ✉️ {cliente.email || '—'}
+                </p>
+              )}
+            </div>
 
             <div>
               <p className="text-xs text-muted mb-2">¿Le enviaste alguna propuesta comercial?</p>
