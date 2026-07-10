@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
+import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
@@ -37,6 +38,7 @@ type ColOrden = 'comercio' | 'zona' | 'u2025' | 'canje' | 'ultima_compra' | 'cla
 export default function Cartera() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const esAdmin = rolEfectivo === 'admin'
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
@@ -202,6 +204,10 @@ export default function Cartera() {
       nota: ('⏳ Código de cliente pendiente de validación por Administración. ' + np.nota.trim()).trim(),
     })
     setNpSaving(false)
+    if (error) {
+      toast('No se pudo crear el prospecto: ' + error.message, 'error')
+      return
+    }
     if (!error) {
       setNuevoOpen(false)
       setNp({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
@@ -380,6 +386,12 @@ export default function Cartera() {
                         </span>
                       )}
                     </p>
+                    {(c.contacto || c.email) && (
+                      <p className="text-[10px] text-muted truncate max-w-[180px]" title={`${c.contacto ?? ''} ${c.email ?? ''}`}>
+                        👤 {c.contacto || '—'}
+                        {c.email ? ` · ✉️ ${c.email}` : ''}
+                      </p>
+                    )}
                     {c.nota && (
                       <p className="text-[10px] text-muted truncate max-w-[180px]" title={c.nota}>
                         📝 {c.nota}

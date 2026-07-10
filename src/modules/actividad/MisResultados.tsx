@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Actividad, ObjetivoMes } from '../../lib/types'
+import { Actividad, ObjetivoMes, Propuesta } from '../../lib/types'
 import { monthKey, habilesTranscurridos, habilesDelMes } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
 
+const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
+
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
+  const esProspeccion = ['Marketing', 'ProspeccionVenta'].includes(codigoEfectivo)
   const [objetivo, setObjetivo] = useState<ObjetivoMes | null>(null)
+  const [propuestasDef, setPropuestasDef] = useState<Propuesta[]>([])
   const [acts, setActs] = useState<Actividad[]>([])
   const [vencidos, setVencidos] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -16,27 +20,46 @@ export default function MisResultados() {
   useEffect(() => {
     if (!vendedor) return
     const mes = monthKey()
+    const objVendedor = esProspeccion ? 'Marketing' : codigoEfectivo
+    let actQuery = supabase.from('actividad_diaria').select('*').gte('fecha', `${mes}-01`)
+    actQuery = esProspeccion ? actQuery.in('vendedor', PROSPECCION) : actQuery.eq('vendedor', codigoEfectivo)
     Promise.all([
-      supabase.from('objetivos_mes').select('*').eq('vendedor', codigoEfectivo).eq('mes_anio', mes).maybeSingle(),
-      supabase.from('actividad_diaria').select('*').eq('vendedor', codigoEfectivo).gte('fecha', `${mes}-01`),
+      supabase.from('objetivos_mes').select('*').eq('vendedor', objVendedor).eq('mes_anio', mes).maybeSingle(),
+      actQuery,
       supabase
         .from('clientes')
         .select('cod', { count: 'exact', head: true })
         .eq('vendedor_asignado', codigoEfectivo)
         .lt('proxima_agenda_fecha', new Date().toISOString().slice(0, 10)),
-    ]).then(([obj, act, venc]) => {
+      supabase.from('propuestas_julio').select('*'),
+    ]).then(([obj, act, venc, props]) => {
       setObjetivo(obj.data as ObjetivoMes | null)
       setActs((act.data as Actividad[]) ?? [])
       setVencidos(venc.count ?? 0)
+      setPropuestasDef((props.data as Propuesta[]) ?? [])
       setLoading(false)
     })
   }, [vendedor, codigoEfectivo])
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando resultados...</p>
 
-  const contactos = new Set(acts.map((a) => a.cod_cliente).filter(Boolean)).size
-  const propuestas = acts.filter((a) => a.propuesta_enviada_id).length
-  const ventas = acts.filter((a) => (a.unidades_vendidas ?? 0) > 0).length
+  const propValidas = new Set(propuestasDef.filter((p) => /bienvenida|canje|preventa/i.test(p.nombre)).map((p) => p.id))
+  const contactos = esProspeccion
+    ? acts.filter((a) => a.propuesta_enviada_id && propValidas.has(a.propuesta_enviada_id)).length
+    : new Set(acts.map((a) => a.cod_cliente).filter(Boolean)).size
+  const propuestas = esProspeccion
+    ? acts.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Derivado a ')).length
+    : acts.filter((a) => a.propuesta_enviada_id).length
+  const ventas = esProspeccion
+    ? acts.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Venta directa cerrada')).length
+    : acts.filter((a) => (a.unidades_vendidas ?? 0) > 0).length
+  const etiquetas = esProspeccion
+    ? {
+        contactos: 'Propuestas válidas (Bienvenida / Canje / Preventa)',
+        propuestas: 'Reuniones coordinadas',
+        ventas: 'Cierres telefónicos (venta directa)',
+      }
+    : { contactos: 'Contactos trabajados', propuestas: 'Propuestas enviadas', ventas: 'Ventas cerradas' }
   const habilesT = habilesTranscurridos()
   const habilesM = habilesDelMes()
   const proyPropuestas = habilesM > 0 ? Math.round((propuestas / Math.max(habilesT, 1)) * habilesM) : 0
@@ -65,9 +88,17 @@ export default function MisResultados() {
       )}
 
       <div className="bg-white rounded-xl p-4 border border-black/10 space-y-3">
-        <ProgressBar label="Contactos trabajados" real={contactos} objetivo={objetivo?.objetivo_contactos ?? 0} />
-        <ProgressBar label="Propuestas enviadas" real={propuestas} objetivo={objetivo?.objetivo_propuestas ?? 0} />
-        <ProgressBar label="Ventas cerradas" real={ventas} objetivo={objetivo?.objetivo_ventas ?? 0} />
+        <ProgressBar
+          label={etiquetas.contactos}
+          real={contactos}
+          objetivo={esProspeccion ? (objetivo?.objetivo_propuestas ?? 0) : (objetivo?.objetivo_contactos ?? 0)}
+        />
+        <ProgressBar
+          label={etiquetas.propuestas}
+          real={propuestas}
+          objetivo={esProspeccion ? (objetivo?.objetivo_contactos ?? 0) : (objetivo?.objetivo_propuestas ?? 0)}
+        />
+        <ProgressBar label={etiquetas.ventas} real={ventas} objetivo={objetivo?.objetivo_ventas ?? 0} />
       </div>
 
       <div className="bg-white rounded-xl p-4 border border-black/10">

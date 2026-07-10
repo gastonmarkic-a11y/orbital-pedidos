@@ -1,70 +1,133 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Actividad, ObjetivoMes, Vendedor } from '../../lib/types'
+import { fetchPaged } from '../../lib/fetchAll'
+import { Actividad, ObjetivoMes, Propuesta, Vendedor } from '../../lib/types'
 import { monthKey } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
+import { useAuth } from '../../lib/auth'
 
 interface FilaVendedor {
-  vendedor: Vendedor
-  objetivo: ObjetivoMes | null
-  contactosTrabajados: number
-  propuestas: number
-  ventas: number
+  codigo: string
+  nombre: string
+  esProspeccion: boolean
+  metricas: { label: string; real: number; objetivo: number }[]
   vencidos: number
 }
 
+/** Códigos que forman el equipo de Prospección (Luna + Damián) */
+const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
+
 export default function AdminActividad() {
+  const { rolEfectivo } = useAuth()
   const [filas, setFilas] = useState<FilaVendedor[]>([])
-  const [temas, setTemas] = useState<{ label: string; count: number; ejemplo: string }[]>([])
+  const [temas, setTemas] = useState<{ label: string; count: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const mes = monthKey()
     const hoy = new Date().toISOString().slice(0, 10)
     async function cargar() {
-      const { data: vend } = await supabase.from('vendedores').select('*').eq('activo', true).neq('rol', 'admin')
-      const vendedores = ((vend as Vendedor[]) ?? []).filter(
-        (v) => v.codigo !== 'Corporativo' && v.rol === 'vendedor'
+      const [{ data: vend }, { data: objs }, { data: props }] = await Promise.all([
+        supabase.from('vendedores').select('*').eq('activo', true),
+        supabase.from('objetivos_mes').select('*').eq('mes_anio', mes),
+        supabase.from('propuestas_julio').select('*'),
+      ])
+      const acts = await fetchPaged<Actividad>(() =>
+        supabase.from('actividad_diaria').select('*').gte('fecha', `${mes}-01`).order('id')
       )
-      const { data: objs } = await supabase.from('objetivos_mes').select('*').eq('mes_anio', mes)
-      const { data: acts } = await supabase.from('actividad_diaria').select('*').gte('fecha', `${mes}-01`)
-      const { data: notas } = await supabase
-        .from('actividad_diaria')
-        .select('voz_cliente_nota')
-        .not('voz_cliente_nota', 'is', null)
+      const notas = await fetchPaged<{ voz_cliente_nota: string | null }>(() =>
+        supabase.from('actividad_diaria').select('voz_cliente_nota').not('voz_cliente_nota', 'is', null).order('id')
+      )
+      const objetivos = (objs as ObjetivoMes[]) ?? []
+      const propuestas = (props as Propuesta[]) ?? []
+      // Propuestas válidas para prospección: Bienvenida, Plan Canje o Preventa
+      const propValidas = new Set(
+        propuestas.filter((p) => /bienvenida|canje|preventa/i.test(p.nombre)).map((p) => p.id)
+      )
 
       const rows: FilaVendedor[] = []
-      for (const v of vendedores) {
-        const actos = ((acts as Actividad[]) ?? []).filter((a) => a.vendedor === v.codigo)
+
+      // Vendedores de campo (Adrián y Martín): objetivos de julio como estaban
+      const campo = ((vend as Vendedor[]) ?? []).filter(
+        (v) => v.rol === 'vendedor' && !PROSPECCION.includes(v.codigo) && v.codigo !== 'Corporativo'
+      )
+      for (const v of campo) {
+        const actos = acts.filter((a) => a.vendedor === v.codigo)
+        const obj = objetivos.find((o) => o.vendedor === v.codigo)
         const { count } = await supabase
           .from('clientes')
           .select('cod', { count: 'exact', head: true })
           .eq('vendedor_asignado', v.codigo)
           .lt('proxima_agenda_fecha', hoy)
         rows.push({
-          vendedor: v,
-          objetivo: ((objs as ObjetivoMes[]) ?? []).find((o) => o.vendedor === v.codigo) ?? null,
-          contactosTrabajados: new Set(actos.map((a) => a.cod_cliente).filter(Boolean)).size,
-          propuestas: actos.filter((a) => a.propuesta_enviada_id).length,
-          ventas: actos.filter((a) => (a.unidades_vendidas ?? 0) > 0).length,
+          codigo: v.codigo,
+          nombre: v.nombre,
+          esProspeccion: false,
           vencidos: count ?? 0,
+          metricas: [
+            {
+              label: 'Contactos trabajados',
+              real: new Set(actos.map((a) => a.cod_cliente).filter(Boolean)).size,
+              objetivo: obj?.objetivo_contactos ?? 0,
+            },
+            {
+              label: 'Propuestas enviadas',
+              real: actos.filter((a) => a.propuesta_enviada_id).length,
+              objetivo: obj?.objetivo_propuestas ?? 0,
+            },
+            {
+              label: 'Ventas cerradas',
+              real: actos.filter((a) => (a.unidades_vendidas ?? 0) > 0).length,
+              objetivo: obj?.objetivo_ventas ?? 0,
+            },
+          ],
         })
       }
+
+      // Prospección (Luna + Damián): objetivos propios
+      const actosProsp = acts.filter((a) => a.vendedor && PROSPECCION.includes(a.vendedor))
+      const objProsp = objetivos.find((o) => o.vendedor === 'Marketing')
+      const { count: vencProsp } = await supabase
+        .from('clientes')
+        .select('cod', { count: 'exact', head: true })
+        .eq('vendedor_asignado', 'Marketing')
+        .lt('proxima_agenda_fecha', hoy)
+      rows.push({
+        codigo: 'Marketing',
+        nombre: 'Prospección (Luna + Damián)',
+        esProspeccion: true,
+        vencidos: vencProsp ?? 0,
+        metricas: [
+          {
+            label: 'Propuestas válidas (Bienvenida / Canje / Preventa)',
+            real: actosProsp.filter((a) => a.propuesta_enviada_id && propValidas.has(a.propuesta_enviada_id)).length,
+            objetivo: objProsp?.objetivo_propuestas ?? 300,
+          },
+          {
+            label: 'Reuniones coordinadas (derivadas a vendedor)',
+            real: actosProsp.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Derivado a ')).length,
+            objetivo: objProsp?.objetivo_contactos ?? 24,
+          },
+          {
+            label: 'Cierres telefónicos (venta directa)',
+            real: actosProsp.filter((a) => (a.actividad_desarrollo ?? '').startsWith('Venta directa cerrada')).length,
+            objetivo: objProsp?.objetivo_ventas ?? 18,
+          },
+        ],
+      })
+
       setFilas(rows)
 
-      const porTema: Record<string, { count: number; ejemplo: string }> = {}
-      for (const n of (notas as { voz_cliente_nota: string | null }[]) ?? []) {
+      const porTema: Record<string, number> = {}
+      for (const n of notas) {
         const t = clasificarVoz(n.voz_cliente_nota)
-        if (t) {
-          if (!porTema[t.label]) porTema[t.label] = { count: 0, ejemplo: n.voz_cliente_nota ?? '' }
-          porTema[t.label].count++
-        }
+        if (t) porTema[t.label] = (porTema[t.label] ?? 0) + 1
       }
       setTemas(
         Object.entries(porTema)
-          .map(([label, d]) => ({ label, count: d.count, ejemplo: d.ejemplo }))
+          .map(([label, count]) => ({ label, count }))
           .sort((a, b) => b.count - a.count)
       )
       setLoading(false)
@@ -72,30 +135,35 @@ export default function AdminActividad() {
     cargar()
   }, [])
 
-  if (loading) return <p className="text-sm text-muted p-4">Cargando vista admin...</p>
+  if (loading) return <p className="text-sm text-muted p-4">Cargando tablero del equipo...</p>
 
   const maxTema = Math.max(...temas.map((t) => t.count), 1)
 
   return (
     <div className="space-y-3 text-ink">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">Vista Admin · {monthKey()}</h2>
-        <Link to="/actividad-admin/marketing" className="text-xs font-medium text-brandDark">
-          Gestionar piezas de marketing →
-        </Link>
+        <h2 className="text-base font-semibold">📊 Equipo · {monthKey()}</h2>
+        {rolEfectivo === 'admin' && (
+          <Link to="/actividad-admin/marketing" className="text-xs font-medium text-brandDark">
+            Gestionar piezas de marketing →
+          </Link>
+        )}
       </div>
 
       {filas.map((f) => (
-        <div key={f.vendedor.codigo} className="bg-white rounded-xl p-4 border border-black/10 space-y-3">
+        <div key={f.codigo} className="bg-white rounded-xl p-4 border border-black/10 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">{f.vendedor.nombre}</p>
+            <p className="text-sm font-semibold text-ink">
+              {f.esProspeccion ? '📞 ' : '🧳 '}
+              {f.nombre}
+            </p>
             {f.vencidos > 0 && (
               <span className="text-[10px] bg-red-50 text-red-700 rounded-full px-2 py-0.5">{f.vencidos} vencidos</span>
             )}
           </div>
-          <ProgressBar label="Contactos trabajados" real={f.contactosTrabajados} objetivo={f.objetivo?.objetivo_contactos ?? 0} />
-          <ProgressBar label="Propuestas enviadas" real={f.propuestas} objetivo={f.objetivo?.objetivo_propuestas ?? 0} />
-          <ProgressBar label="Ventas cerradas" real={f.ventas} objetivo={f.objetivo?.objetivo_ventas ?? 0} />
+          {f.metricas.map((m) => (
+            <ProgressBar key={m.label} label={m.label} real={m.real} objetivo={m.objetivo} />
+          ))}
         </div>
       ))}
 

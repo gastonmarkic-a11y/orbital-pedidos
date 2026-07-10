@@ -126,6 +126,12 @@ export default function AgendaDelDia() {
                           Cargar actividad →
                         </button>
                       </div>
+                      {(c.contacto || c.email || c.whatsapp || c.telefono) && (
+                        <p className="text-xs text-muted mt-1.5">
+                          👤 {c.contacto || '—'} · 📞 {c.whatsapp || c.telefono || '—'}
+                          {c.email ? ` · ✉️ ${c.email}` : ''}
+                        </p>
+                      )}
                       {c.proximo_paso && <p className="text-xs text-ink mt-2">➡ {c.proximo_paso}</p>}
                       {c.nota && <p className="text-xs text-muted mt-1">📝 {c.nota}</p>}
                     </div>

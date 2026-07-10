@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
+import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { clasificarVoz } from './voz'
 import HistorialModal from './HistorialModal'
@@ -16,6 +17,7 @@ export default function CargarActividad() {
   const location = useLocation()
   const esAdmin = rolEfectivo === 'admin'
   const esProspeccion = codigoEfectivo === 'Marketing'
+  const toast = useToast()
 
   const [resultados, setResultados] = useState<Cliente[]>([])
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
@@ -113,7 +115,7 @@ export default function CargarActividad() {
   async function guardarDatosContacto() {
     if (!cliente) return
     setGuardandoDatos(true)
-    await supabase
+    const { error } = await supabase
       .from('clientes')
       .update({
         contacto: cContacto.trim() || null,
@@ -122,6 +124,12 @@ export default function CargarActividad() {
         email: cEmail.trim() || null,
       })
       .eq('cod', cliente.cod)
+    if (error) {
+      toast('No se pudo guardar: ' + error.message, 'error')
+      setGuardandoDatos(false)
+      return
+    }
+    toast('✓ Datos de contacto guardados', 'success')
     setCliente({ ...cliente, contacto: cContacto.trim() || null, whatsapp: cTelefono.trim() || null, email: cEmail.trim() || null })
     setGuardandoDatos(false)
     setEditandoDatos(false)
