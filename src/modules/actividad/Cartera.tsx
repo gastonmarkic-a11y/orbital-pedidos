@@ -324,7 +324,99 @@ export default function Cartera() {
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-black/10">
+      {/* Vista celular: tarjetas con todos los datos, sin scroll lateral */}
+      <div className="md:hidden space-y-2">
+        {filas.map(({ c }) => {
+          const dias = daysSince(ultimaAct[c.cod] ?? null)
+          const canje = Math.floor((c.unidades_2025 ?? 0) * 0.2)
+          return (
+            <div key={c.cod} className="bg-white border border-black/10 rounded-xl p-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">
+                    {esFidelizado(c) && '⭐ '}
+                    {c.nomcomerc || c.razon}
+                  </p>
+                  <p className="text-[11px] text-faint">
+                    {c.cod} {c.origen && `· ${ORIGEN_LABELS[c.origen] ?? c.origen}`}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 inline-block w-2.5 h-2.5 rounded-full mt-1 ${c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
+                />
+              </div>
+              <p className="text-xs text-muted">
+                📍 {c.zona || '—'}
+                {c.localidad ? ` · ${c.localidad}` : ''}
+              </p>
+              <p className="text-xs text-muted">
+                👤 {c.contacto || '—'} {c.email ? `· ✉️ ${c.email}` : ''}
+              </p>
+              <p className="text-xs">
+                {c.whatsapp ? (
+                  <a
+                    href={`https://wa.me/${(c.whatsapp || '').replace(/\D/g, '').replace(/^(?!54)/, '54')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#2f6fdb] font-mono"
+                  >
+                    📞 {c.whatsapp}
+                  </a>
+                ) : (
+                  <span className="text-faint">📞 —</span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+                {(c.unidades_2025 ?? 0) > 0 && (
+                  <span>
+                    U.2025: <b className="text-ink">{c.unidades_2025}</b>
+                  </span>
+                )}
+                {canje > 0 && (
+                  <span>
+                    ↩ Canje: <b className="text-amber-600">{canje}</b>
+                  </span>
+                )}
+                {c.ultima_compra_fecha && <span>🛍 Últ. compra: {c.ultima_compra_fecha}</span>}
+                <span>
+                  {dias === null ? (
+                    <b className="text-red-600">Sin contactar</b>
+                  ) : dias === 0 ? (
+                    <b className="text-emerald-600">Contacto hoy</b>
+                  ) : (
+                    <b className={dias <= 7 ? 'text-emerald-600' : dias <= 21 ? 'text-amber-600' : 'text-red-600'}>
+                      Hace {dias}d
+                    </b>
+                  )}
+                </span>
+              </div>
+              {c.nota && <p className="text-[11px] text-muted">📝 {c.nota}</p>}
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => cargar(c)} className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium">
+                  Cargar actividad
+                </button>
+                <button
+                  onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
+                  className="flex-1 rounded-lg bg-emerald-600 text-white py-1.5 text-xs font-medium"
+                >
+                  🛒 Pedido
+                </button>
+                <button onClick={() => setHistorial(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted">
+                  Historial
+                </button>
+              </div>
+            </div>
+          )
+        })}
+        {filas.length === 0 && (
+          <p className="text-sm text-faint text-center py-8 bg-white rounded-xl border border-black/10">
+            {buscando ? 'Sin resultados en toda la cartera.' : 'No hay contactos en este segmento.'}
+          </p>
+        )}
+      </div>
+
+      {/* Vista computadora: tabla completa ordenable */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-black/10">
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead className="bg-[#f7f7fa]">
             <tr>
