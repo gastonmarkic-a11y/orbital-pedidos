@@ -158,7 +158,7 @@ export default function DashboardPedidos() {
 
   // Flujo de caja
   const cobros: { fecha: Date | null; monto: number; cliente: string | null; vencido: boolean }[] = []
-  for (const l of pedidos.filter((l) => ['listo', 'facturado', 'listo_despachar'].includes(l.estado ?? ''))) {
+  for (const l of pedidos.filter((l) => !l.cobrado)) {
     const n = imp(l)
     if (n <= 0) continue
     const base = l.fecha_entrega || l.fecha_factura || l.fecha || ''

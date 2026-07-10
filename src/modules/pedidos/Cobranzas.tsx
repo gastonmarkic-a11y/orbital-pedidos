@@ -5,8 +5,6 @@ import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { estadoLabel, importeDe } from './calc'
 
-const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
-
 export default function Cobranzas() {
   const toast = useToast()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -30,7 +28,8 @@ export default function Cobranzas() {
   }, [cargar])
 
   const filas = useMemo(() => {
-    let logs = pedidos.filter((l) => FACTURABLES.includes(l.estado ?? ''))
+    // Todos los pedidos entran al circuito de cobro desde que se cargan
+    let logs = [...pedidos]
     if (filtro === 'cobrado') logs = logs.filter((l) => l.cobrado)
     if (filtro === 'pendiente') logs = logs.filter((l) => !l.cobrado)
     const q = busqueda.toLowerCase().trim()

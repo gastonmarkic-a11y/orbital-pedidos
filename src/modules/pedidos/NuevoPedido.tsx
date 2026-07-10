@@ -34,6 +34,9 @@ export default function NuevoPedido() {
   const [mail, setMail] = useState('')
   const [obs, setObs] = useState('')
   const [confirmando, setConfirmando] = useState(false)
+  const [cdEditando, setCdEditando] = useState(false)
+  const [cd, setCd] = useState({ direccion: '', telefono: '', email: '', contacto: '', horario: '' })
+  const [cdSaving, setCdSaving] = useState(false)
 
   async function loadStock() {
     const { data } = await supabase.from('stock').select('*').order('modelo')
@@ -43,6 +46,20 @@ export default function NuevoPedido() {
   useEffect(() => {
     loadStock()
   }, [])
+
+  // Datos de entrega/contacto del cliente elegido
+  useEffect(() => {
+    if (cliente) {
+      setCd({
+        direccion: cliente.direccion ?? '',
+        telefono: cliente.telefono ?? cliente.whatsapp ?? '',
+        email: cliente.email ?? '',
+        contacto: cliente.contacto ?? '',
+        horario: (cliente as Cliente & { horario_entrega?: string | null }).horario_entrega ?? '',
+      })
+      setCdEditando(false)
+    }
+  }, [cliente?.cod])
 
   // Cliente preseleccionado desde Cartera / Agenda
   useEffect(() => {
@@ -153,6 +170,33 @@ export default function NuevoPedido() {
     return cuotas.map((c) => `${c.dias}d-${c.pct}%`).join(' / ')
   }
 
+  async function guardarDatosCliente() {
+    if (!cliente) return
+    setCdSaving(true)
+    await supabase
+      .from('clientes')
+      .update({
+        direccion: cd.direccion.trim() || null,
+        telefono: cd.telefono.trim() || null,
+        email: cd.email.trim() || null,
+        contacto: cd.contacto.trim() || null,
+        horario_entrega: cd.horario.trim() || null,
+      })
+      .eq('cod', cliente.cod)
+    setCliente({
+      ...cliente,
+      direccion: cd.direccion.trim() || null,
+      telefono: cd.telefono.trim() || null,
+      email: cd.email.trim() || null,
+      contacto: cd.contacto.trim() || null,
+    })
+    if (cd.email.trim()) setMail(cd.email.trim())
+    if (cd.telefono.trim()) setWsp(cd.telefono.trim())
+    setCdSaving(false)
+    setCdEditando(false)
+    toast('✓ Datos del cliente actualizados', 'success')
+  }
+
   async function confirmar() {
     if (!cliente) {
       toast('Ingresá o buscá el número de cliente primero', 'error')
@@ -254,18 +298,80 @@ export default function NuevoPedido() {
       <div className="bg-white rounded-xl p-4 border border-black/10 space-y-2">
         <p className="text-xs font-semibold text-muted uppercase tracking-wide">Cliente</p>
         {cliente ? (
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-medium">{cliente.razon}</p>
-              <p className="text-xs text-muted">
-                {cliente.cod} · {cliente.localidad ?? ''} {cliente.cuit ? `· CUIT ${cliente.cuit}` : ''} · Lista{' '}
-                {cliente.nro_lista ?? 5}
-              </p>
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">{cliente.razon}</p>
+                <p className="text-xs text-muted">
+                  {cliente.cod} · {cliente.localidad ?? ''} {cliente.cuit ? `· CUIT ${cliente.cuit}` : ''} · Lista{' '}
+                  {cliente.nro_lista ?? 5}
+                </p>
+              </div>
+              <button onClick={() => setCliente(null)} className="text-xs text-muted underline">
+                cambiar
+              </button>
             </div>
-            <button onClick={() => setCliente(null)} className="text-xs text-muted underline">
-              cambiar
-            </button>
-          </div>
+            <div className="bg-[#f7f7fa] rounded-lg p-2.5 text-xs mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-muted uppercase tracking-wide text-[10px]">
+                  Datos de entrega y contacto
+                </span>
+                {!cdEditando && (
+                  <button type="button" onClick={() => setCdEditando(true)} className="text-brandDark font-medium">
+                    ✏️ Editar
+                  </button>
+                )}
+              </div>
+              {cdEditando ? (
+                <div className="space-y-1.5">
+                  {(
+                    [
+                      ['direccion', 'Dirección de entrega'],
+                      ['telefono', 'Teléfono'],
+                      ['email', 'Mail'],
+                      ['contacto', 'Nombre de contacto'],
+                      ['horario', 'Horario de entrega (ej: Lun a Vie 9-13)'],
+                    ] as const
+                  ).map(([key, ph]) => (
+                    <input
+                      key={key}
+                      value={cd[key]}
+                      onChange={(e) => setCd({ ...cd, [key]: e.target.value })}
+                      placeholder={ph}
+                      className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                    />
+                  ))}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={guardarDatosCliente}
+                      disabled={cdSaving}
+                      className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium disabled:opacity-50"
+                    >
+                      {cdSaving ? 'Guardando...' : 'Guardar datos'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCdEditando(false)}
+                      className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-muted space-y-0.5">
+                  <p>📍 {cd.direccion || '— sin dirección —'}</p>
+                  <p>
+                    📞 {cd.telefono || '—'} · ✉️ {cd.email || '—'}
+                  </p>
+                  <p>
+                    👤 {cd.contacto || '—'} · 🕒 {cd.horario || 'sin horario de entrega'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <>
             <input
