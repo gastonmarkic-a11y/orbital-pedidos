@@ -35,6 +35,7 @@ export interface Cliente {
   unidades_2025: number | null
   clasificacion_recupero: string | null
   segmento_corporativo: string | null
+  horario_entrega: string | null
   nota: string | null
 }
 
@@ -144,4 +145,7 @@ export interface Pedido {
   nro_factura: string | null
   tipo_transporte: string | null
   nro_guia: string | null
+  contacto_entrega: string | null
+  direccion_entrega: string | null
+  horario_entrega: string | null
 }

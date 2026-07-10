@@ -265,10 +265,25 @@ export default function NuevoPedido() {
         wsp,
         mail,
         obs,
+        contacto_entrega: cd.contacto.trim() || null,
+        direccion_entrega: cd.direccion.trim() || null,
+        horario_entrega: cd.horario.trim() || null,
         items,
         total_units: totalUnidades,
         estado: 'pendiente',
       })
+
+      // Registrar los datos de entrega/contacto también en la ficha del cliente
+      await supabase
+        .from('clientes')
+        .update({
+          contacto: cd.contacto.trim() || null,
+          direccion: cd.direccion.trim() || null,
+          horario_entrega: cd.horario.trim() || null,
+          email: mail.trim() || null,
+          whatsapp: wsp.trim() || null,
+        })
+        .eq('cod', cliente.cod)
 
       await loadStock()
       setCart({})
@@ -656,6 +671,33 @@ export default function NuevoPedido() {
               </label>
             </div>
 
+            <label className="block text-xs text-muted">
+              Nombre de contacto
+              <input
+                value={cd.contacto}
+                onChange={(e) => setCd({ ...cd, contacto: e.target.value })}
+                placeholder="Quién recibe / decide"
+                className="w-full mt-1 border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Dirección de entrega
+              <input
+                value={cd.direccion}
+                onChange={(e) => setCd({ ...cd, direccion: e.target.value })}
+                placeholder="Calle, número, localidad"
+                className="w-full mt-1 border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Horario de entrega
+              <input
+                value={cd.horario}
+                onChange={(e) => setCd({ ...cd, horario: e.target.value })}
+                placeholder="Ej: Lun a Vie 9-13"
+                className="w-full mt-1 border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+              />
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="block text-xs text-muted">
                 WhatsApp

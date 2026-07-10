@@ -323,6 +323,13 @@ export default function Pedidos() {
                           {l.cond_entrega}
                         </div>
                       )}
+                      {(l.contacto_entrega || l.direccion_entrega || l.horario_entrega) && (
+                        <div className="col-span-2">
+                          <span className="text-faint uppercase text-[10px] font-semibold">Datos de entrega</span>
+                          <br />
+                          👤 {l.contacto_entrega || '—'} · 📍 {l.direccion_entrega || '—'} · 🕒 {l.horario_entrega || '—'}
+                        </div>
+                      )}
                       {l.cond_pago && (
                         <div className="col-span-2">
                           <span className="text-faint uppercase text-[10px] font-semibold">Pago</span>
@@ -489,6 +496,9 @@ export default function Pedidos() {
                               🏪 <b>{(l.cliente || '').replace(/^\d+ - /, '')}</b>
                             </p>
                             {l.cond_entrega && <p>🚚 {l.cond_entrega}</p>}
+                            {l.direccion_entrega && <p>📍 {l.direccion_entrega}</p>}
+                            {l.horario_entrega && <p>🕒 {l.horario_entrega}</p>}
+                            {l.contacto_entrega && <p>👤 {l.contacto_entrega}</p>}
                             {l.nro_remito && (
                               <p>
                                 📋 Remito: <b>{l.nro_remito}</b>

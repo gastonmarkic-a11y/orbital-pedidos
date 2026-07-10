@@ -33,7 +33,7 @@ const TABS_VENDEDOR = [
 ]
 
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
-type ColOrden = 'comercio' | 'zona' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
+type ColOrden = 'comercio' | 'contacto' | 'mail' | 'zona' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
 
 export default function Cartera() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
@@ -53,6 +53,9 @@ export default function Cartera() {
   const [corpFiltro, setCorpFiltro] = useState('')
   const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
+  const [editDatos, setEditDatos] = useState<Cliente | null>(null)
+  const [dm, setDm] = useState({ contacto: '', telefono: '', email: '', direccion: '', horario: '' })
+  const [dmSaving, setDmSaving] = useState(false)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
   const [npSaving, setNpSaving] = useState(false)
@@ -146,6 +149,8 @@ export default function Cartera() {
       ordenadas.sort((a, b) => {
         let r = 0
         if (col === 'comercio') r = (a.nomcomerc || a.razon || '').localeCompare(b.nomcomerc || b.razon || '')
+        else if (col === 'contacto') r = (a.contacto || 'zzz').localeCompare(b.contacto || 'zzz')
+        else if (col === 'mail') r = (a.email || 'zzz').localeCompare(b.email || 'zzz')
         else if (col === 'zona') r = (a.zona || a.localidad || '').localeCompare(b.zona || b.localidad || '')
         else if (col === 'u2025') r = (a.unidades_2025 ?? 0) - (b.unidades_2025 ?? 0)
         else if (col === 'canje') r = Math.floor((a.unidades_2025 ?? 0) * 0.2) - Math.floor((b.unidades_2025 ?? 0) * 0.2)
@@ -214,6 +219,39 @@ export default function Cartera() {
       setSegmento('bienvenida')
       setRecarga((r) => r + 1)
     }
+  }
+
+  function abrirDatos(c: Cliente) {
+    setEditDatos(c)
+    setDm({
+      contacto: c.contacto ?? '',
+      telefono: c.whatsapp ?? c.telefono ?? '',
+      email: c.email ?? '',
+      direccion: c.direccion ?? '',
+      horario: c.horario_entrega ?? '',
+    })
+  }
+
+  async function guardarDatos() {
+    if (!editDatos) return
+    setDmSaving(true)
+    const cambios = {
+      contacto: dm.contacto.trim() || null,
+      whatsapp: dm.telefono.trim() || null,
+      telefono: dm.telefono.trim() || editDatos.telefono,
+      email: dm.email.trim() || null,
+      direccion: dm.direccion.trim() || null,
+      horario_entrega: dm.horario.trim() || null,
+    }
+    const { error } = await supabase.from('clientes').update(cambios).eq('cod', editDatos.cod)
+    setDmSaving(false)
+    if (error) {
+      toast('No se pudo guardar: ' + error.message, 'error')
+      return
+    }
+    setClientes((prev) => prev.map((x) => (x.cod === editDatos.cod ? { ...x, ...cambios } : x)))
+    setEditDatos(null)
+    toast('✓ Datos guardados', 'success')
   }
 
   function cargar(c: Cliente) {
@@ -350,7 +388,10 @@ export default function Cartera() {
                 {c.localidad ? ` · ${c.localidad}` : ''}
               </p>
               <p className="text-xs text-muted">
-                👤 {c.contacto || '—'} {c.email ? `· ✉️ ${c.email}` : ''}
+                👤 {c.contacto || '—'} · ✉️ {c.email || '—'}{' '}
+                <button onClick={() => abrirDatos(c)} className="text-brandDark font-medium">
+                  ✏️
+                </button>
               </p>
               <p className="text-xs">
                 {c.whatsapp ? (
@@ -422,6 +463,8 @@ export default function Cartera() {
             <tr>
               <Th>Prio</Th>
               <Th col="comercio">Comercio</Th>
+              <Th col="contacto">Contacto</Th>
+              <Th col="mail">Mail</Th>
               <Th col="zona">Zona / Localidad</Th>
               <Th>WhatsApp</Th>
               {mostrarCanjeCols && (
@@ -478,16 +521,25 @@ export default function Cartera() {
                         </span>
                       )}
                     </p>
-                    {(c.contacto || c.email) && (
-                      <p className="text-[10px] text-muted truncate max-w-[180px]" title={`${c.contacto ?? ''} ${c.email ?? ''}`}>
-                        👤 {c.contacto || '—'}
-                        {c.email ? ` · ✉️ ${c.email}` : ''}
-                      </p>
-                    )}
                     {c.nota && (
                       <p className="text-[10px] text-muted truncate max-w-[180px]" title={c.nota}>
                         📝 {c.nota}
                       </p>
+                    )}
+                  </td>
+                  <td className="px-2.5 py-2 text-xs max-w-[130px]">
+                    <button onClick={() => abrirDatos(c)} className="text-left w-full" title="Editar datos de contacto">
+                      <span className={`block truncate ${c.contacto ? 'text-ink' : 'text-faint'}`}>{c.contacto || '— agregar'}</span>
+                      <span className="text-[10px] text-brandDark">✏️ editar</span>
+                    </button>
+                  </td>
+                  <td className="px-2.5 py-2 text-xs max-w-[150px]">
+                    {c.email ? (
+                      <a href={`mailto:${c.email}`} className="text-[#2f6fdb] truncate block" title={c.email}>
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-faint">—</span>
                     )}
                   </td>
                   <td className="px-2.5 py-2 text-muted text-xs">
@@ -575,7 +627,7 @@ export default function Cartera() {
             })}
             {filas.length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center text-sm text-faint py-8">
+                <td colSpan={11} className="text-center text-sm text-faint py-8">
                   {buscando ? 'Sin resultados en toda la cartera.' : 'No hay contactos en este segmento.'}
                 </td>
               </tr>
@@ -585,6 +637,47 @@ export default function Cartera() {
       </div>
 
       {historial && <HistorialModal cliente={historial} propuestas={propuestas} onClose={() => setHistorial(null)} />}
+
+      {editDatos && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditDatos(null)}>
+          <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-ink mb-0.5">✏️ Datos de contacto y entrega</p>
+            <p className="text-xs text-faint mb-3">{editDatos.nomcomerc || editDatos.razon}</p>
+            <div className="space-y-2">
+              {(
+                [
+                  ['contacto', 'Nombre de contacto'],
+                  ['telefono', 'Teléfono / WhatsApp'],
+                  ['email', 'Mail'],
+                  ['direccion', 'Dirección de entrega'],
+                  ['horario', 'Horario de entrega (ej: Lun a Vie 9-13)'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="block text-xs text-muted">
+                  {label}
+                  <input
+                    value={dm[key]}
+                    onChange={(e) => setDm({ ...dm, [key]: e.target.value })}
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-3">
+              <button onClick={() => setEditDatos(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarDatos}
+                disabled={dmSaving}
+                className="flex-1 rounded-lg bg-brand text-white py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {dmSaving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {nuevoOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setNuevoOpen(false)}>
