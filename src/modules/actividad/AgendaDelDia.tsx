@@ -42,6 +42,14 @@ export default function AgendaDelDia() {
     navigate('/cargar', { state: { cliente: c } })
   }
 
+  const hace7 = (() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return ymd(d)
+  })()
+  const vencidosRecientes = vencidos.filter((c) => (c.proxima_agenda_fecha ?? '') >= hace7)
+  const vencidosViejos = vencidos.filter((c) => (c.proxima_agenda_fecha ?? '') < hace7)
+
   const fechaLabel = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   const porFecha: Record<string, Cliente[]> = {}
@@ -78,10 +86,16 @@ export default function AgendaDelDia() {
         <p className="text-sm text-muted p-4">Cargando...</p>
       ) : (
         <>
-          {vencidos.length > 0 && (
+          {vencidosRecientes.length > 0 && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
-              ⚠ Tenés {vencidos.length} contactos con fecha de agenda vencida (de días anteriores) sin actividad
+              ⚠ Tenés {vencidosRecientes.length} contactos con agenda vencida en los últimos 7 días sin actividad
               nueva.
+            </div>
+          )}
+          {vencidosViejos.length > 0 && (
+            <div className="bg-[#f7f7fa] border border-black/10 text-muted text-xs rounded-lg p-3">
+              🗄 Además hay <b>{vencidosViejos.length}</b> agendas vencidas hace más de una semana (quedan como dato,
+              no se listan acá — las encontrás en Cartera ordenando por "Última actividad").
             </div>
           )}
           <div className="space-y-4">
@@ -126,11 +140,13 @@ export default function AgendaDelDia() {
               </p>
             )}
           </div>
-          {vencidos.length > 0 && (
+          {vencidosRecientes.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Vencidos (días anteriores)</p>
+              <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                Vencidos (últimos 7 días)
+              </p>
               <div className="space-y-2">
-                {vencidos.map((c) => (
+                {vencidosRecientes.map((c) => (
                   <div key={c.cod} className="bg-white border border-red-200 rounded-xl p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>

@@ -32,6 +32,7 @@ const TABS_VENDEDOR = [
 ]
 
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
+type ColOrden = 'comercio' | 'zona' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
 
 export default function Cartera() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
@@ -46,6 +47,8 @@ export default function Cartera() {
   const [loading, setLoading] = useState(true)
   const [segmento, setSegmento] = useState<Segmento>('canje')
   const [busqueda, setBusqueda] = useState('')
+  const [zonaFiltro, setZonaFiltro] = useState('')
+  const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
@@ -60,7 +63,6 @@ export default function Cartera() {
     if (!vendedor || !codigoActivo) return
     setLoading(true)
     async function cargar() {
-      // Carga paginada: trae TODA la cartera aunque supere las 1000 filas
       const rows = await fetchPaged<Cliente>(() => {
         let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
         q =
@@ -95,40 +97,88 @@ export default function Cartera() {
     cargar()
   }, [vendedor, codigoActivo, recarga])
 
+  const esFidelizado = (c: Cliente) => c.clasificacion_recupero === 'fidelizacion'
   const conVentas = useMemo(
-    () => clientes.filter((c) => (c.unidades_2025 ?? 0) > 0 && c.clasificacion_recupero !== 'fidelizacion'),
+    () => clientes.filter((c) => ((c.unidades_2025 ?? 0) > 0 || c.clasificacion_recupero === 'activo') && !esFidelizado(c)),
     [clientes]
   )
-  const fidelizados = useMemo(() => clientes.filter((c) => c.clasificacion_recupero === 'fidelizacion'), [clientes])
   const aRecuperar = useMemo(
     () => clientes.filter((c) => c.clasificacion_recupero && ['2024', '2022_2023', '2021_o_antes'].includes(c.clasificacion_recupero)),
     [clientes]
   )
   const bienvenida = useMemo(() => clientes.filter((c) => c.clasificacion_recupero === 'sin_historial'), [clientes])
-  const canjeTotal = useMemo(
-    () => conVentas.reduce((a, c) => a + Math.floor((c.unidades_2025 ?? 0) * 0.2), 0),
-    [conVentas]
-  )
+  const fidelizados = useMemo(() => clientes.filter(esFidelizado), [clientes])
+  const canjeTotal = useMemo(() => conVentas.reduce((a, c) => a + Math.floor((c.unidades_2025 ?? 0) * 0.2), 0), [conVentas])
+
+  const zonas = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of clientes) if (c.zona) set.add(c.zona)
+    return [...set].sort()
+  }, [clientes])
 
   const segmentoRows =
     segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : segmento === 'fidelizacion' ? fidelizados : bienvenida
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
-    const filtradas = q
-      ? segmentoRows.filter(
-          (c) =>
-            (c.nomcomerc || c.razon || '').toLowerCase().includes(q) ||
-            (c.zona || '').toLowerCase().includes(q) ||
-            (c.localidad || '').toLowerCase().includes(q) ||
-            (c.nota || '').toLowerCase().includes(q)
-        )
-      : segmentoRows
-    const maxCanje = Math.max(...filtradas.map((c) => Math.floor((c.unidades_2025 ?? 0) * 0.2)), 1)
-    return [...filtradas]
-      .sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
-      .map((c) => ({ c, maxCanje }))
-  }, [segmentoRows, busqueda, ultimaAct])
+    // Con búsqueda activa se busca en TODA la cartera, no solo en el segmento
+    let base = q ? clientes : segmentoRows
+    if (q)
+      base = base.filter(
+        (c) =>
+          (c.nomcomerc || c.razon || '').toLowerCase().includes(q) ||
+          (c.cod || '').toLowerCase().includes(q) ||
+          (c.zona || '').toLowerCase().includes(q) ||
+          (c.localidad || '').toLowerCase().includes(q) ||
+          (c.nota || '').toLowerCase().includes(q)
+      )
+    if (zonaFiltro) base = base.filter((c) => (c.zona || '') === zonaFiltro)
+
+    const maxCanje = Math.max(...base.map((c) => Math.floor((c.unidades_2025 ?? 0) * 0.2)), 1)
+    const ordenadas = [...base]
+
+    if (orden) {
+      const { col, dir } = orden
+      ordenadas.sort((a, b) => {
+        let r = 0
+        if (col === 'comercio') r = (a.nomcomerc || a.razon || '').localeCompare(b.nomcomerc || b.razon || '')
+        else if (col === 'zona') r = (a.zona || a.localidad || '').localeCompare(b.zona || b.localidad || '')
+        else if (col === 'u2025') r = (a.unidades_2025 ?? 0) - (b.unidades_2025 ?? 0)
+        else if (col === 'canje') r = Math.floor((a.unidades_2025 ?? 0) * 0.2) - Math.floor((b.unidades_2025 ?? 0) * 0.2)
+        else if (col === 'ultima_compra') r = (a.ultima_compra_fecha || '').localeCompare(b.ultima_compra_fecha || '')
+        else if (col === 'clasificacion') r = (a.clasificacion_recupero || '').localeCompare(b.clasificacion_recupero || '')
+        else if (col === 'actividad') r = (daysSince(ultimaAct[a.cod] ?? null) ?? 99999) - (daysSince(ultimaAct[b.cod] ?? null) ?? 99999)
+        return r * dir
+      })
+    } else {
+      // Orden por defecto: los más olvidados primero (sin contactar / hace más tiempo)
+      ordenadas.sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
+    }
+    return ordenadas.map((c) => ({ c, maxCanje }))
+  }, [segmentoRows, clientes, busqueda, zonaFiltro, orden, ultimaAct])
+
+  function toggleOrden(col: ColOrden) {
+    setOrden((prev) => (prev?.col === col ? (prev.dir === 1 ? { col, dir: -1 } : null) : { col, dir: 1 }))
+  }
+
+  function flecha(col: ColOrden) {
+    if (orden?.col !== col) return <span className="opacity-30">↕</span>
+    return orden.dir === 1 ? '▲' : '▼'
+  }
+
+  function Th({ col, children, right }: { col?: ColOrden; children: React.ReactNode; right?: boolean }) {
+    return (
+      <th className={`${right ? 'text-right' : 'text-left'} text-[10px] uppercase text-muted font-semibold px-2.5 py-2 whitespace-nowrap`}>
+        {col ? (
+          <button onClick={() => toggleOrden(col)} className="uppercase font-semibold hover:text-ink">
+            {children} {flecha(col)}
+          </button>
+        ) : (
+          children
+        )}
+      </th>
+    )
+  }
 
   async function guardarProspecto() {
     if (!np.nomcomerc.trim() && !np.razon.trim()) return
@@ -163,6 +213,10 @@ export default function Cartera() {
   }
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando cartera...</p>
+
+  const buscando = !!busqueda.trim()
+  const mostrarCanjeCols = !buscando && segmento === 'canje'
+  const mostrarRecuperarCols = !buscando && (segmento === 'recuperar' || segmento === 'fidelizacion')
 
   return (
     <div className="space-y-3 text-ink">
@@ -199,10 +253,7 @@ export default function Cartera() {
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
-        <button
-          onClick={() => setNuevoOpen(true)}
-          className="text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-600 text-white"
-        >
+        <button onClick={() => setNuevoOpen(true)} className="text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-600 text-white">
           + Nuevo prospecto
         </button>
         {(
@@ -217,7 +268,7 @@ export default function Cartera() {
             key={key}
             onClick={() => setSegmento(key)}
             className={`text-xs font-medium px-3 py-1.5 rounded-full border ${
-              segmento === key ? 'bg-brand border-brand text-white' : 'border-black/10 text-muted'
+              segmento === key && !buscando ? 'bg-brand border-brand text-white' : 'border-black/10 text-muted'
             }`}
           >
             {label}
@@ -225,35 +276,60 @@ export default function Cartera() {
         ))}
       </div>
 
-      <input
-        placeholder="Buscar por nombre, zona, localidad, nota..."
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        className="w-full bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:border-brand"
-      />
+      <div className="flex gap-2 flex-wrap">
+        <input
+          placeholder="Buscar en toda la cartera: nombre, código, zona, localidad, nota..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="flex-1 min-w-[200px] bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:border-brand"
+        />
+        <select
+          value={zonaFiltro}
+          onChange={(e) => setZonaFiltro(e.target.value)}
+          className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm text-muted max-w-[180px]"
+        >
+          <option value="">Todas las zonas</option>
+          {zonas.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {buscando && (
+        <p className="text-[11px] text-faint">
+          🔎 Buscando en toda la cartera ({filas.length} resultado{filas.length !== 1 ? 's' : ''}) — el segmento se ignora
+          mientras haya texto en el buscador.
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-black/10">
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead className="bg-[#f7f7fa]">
             <tr>
-              <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Prio</th>
-              <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Comercio</th>
-              <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Zona / Localidad</th>
-              <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">WhatsApp</th>
-              {segmento === 'canje' && (
+              <Th>Prio</Th>
+              <Th col="comercio">Comercio</Th>
+              <Th col="zona">Zona / Localidad</Th>
+              <Th>WhatsApp</Th>
+              {mostrarCanjeCols && (
                 <>
-                  <th className="text-right text-[10px] uppercase text-muted font-semibold px-2.5 py-2">U. 2025</th>
-                  <th className="text-right text-[10px] uppercase text-amber-600 font-semibold px-2.5 py-2">↩ Canje</th>
+                  <Th col="u2025" right>
+                    U. 2025
+                  </Th>
+                  <Th col="canje" right>
+                    ↩ Canje
+                  </Th>
                 </>
               )}
-              {segmento === 'recuperar' && (
+              {mostrarRecuperarCols && (
                 <>
-                  <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Última compra</th>
-                  <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Clasificación</th>
+                  <Th col="ultima_compra">Última compra</Th>
+                  <Th col="clasificacion">Clasificación</Th>
                 </>
               )}
-              <th className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">Última actividad</th>
-              <th className="px-2.5 py-2" />
+              <Th col="actividad">Última actividad</Th>
+              <Th> </Th>
             </tr>
           </thead>
           <tbody>
@@ -271,6 +347,7 @@ export default function Cartera() {
                   <td className="px-2.5 py-2 max-w-[180px]">
                     <div className="flex items-center gap-1.5">
                       <p className="font-medium text-ink truncate">{c.nomcomerc || c.razon}</p>
+                      {esFidelizado(c) && <span className="shrink-0 text-[10px]">⭐</span>}
                       {propuestaMes[c.cod] && (
                         <span
                           className="shrink-0 text-[9px] font-semibold bg-emerald-50 text-emerald-700 rounded-full px-1.5 py-0.5"
@@ -314,7 +391,7 @@ export default function Cartera() {
                       <span className="text-faint text-xs">—</span>
                     )}
                   </td>
-                  {segmento === 'canje' && (
+                  {mostrarCanjeCols && (
                     <>
                       <td className="px-2.5 py-2 text-right">{c.unidades_2025}</td>
                       <td className="px-2.5 py-2 text-right">
@@ -325,7 +402,7 @@ export default function Cartera() {
                       </td>
                     </>
                   )}
-                  {segmento === 'recuperar' && (
+                  {mostrarRecuperarCols && (
                     <>
                       <td className="px-2.5 py-2 text-xs text-muted">
                         {c.ultima_compra_fecha ?? '—'}
@@ -334,11 +411,15 @@ export default function Cartera() {
                         ) : null}
                       </td>
                       <td className="px-2.5 py-2 text-xs text-orange-600">
-                        {c.clasificacion_recupero === '2024'
-                          ? '2024'
-                          : c.clasificacion_recupero === '2022_2023'
-                            ? '2022-23'
-                            : '2021 o antes'}
+                        {c.clasificacion_recupero === 'fidelizacion'
+                          ? '⭐ Fidelizado'
+                          : c.clasificacion_recupero === '2024'
+                            ? '2024'
+                            : c.clasificacion_recupero === '2022_2023'
+                              ? '2022-23'
+                              : c.clasificacion_recupero === '2021_o_antes'
+                                ? '2021 o antes'
+                                : (c.clasificacion_recupero ?? '—')}
                       </td>
                     </>
                   )}
@@ -376,8 +457,8 @@ export default function Cartera() {
             })}
             {filas.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center text-sm text-faint py-8">
-                  No hay contactos en este segmento.
+                <td colSpan={9} className="text-center text-sm text-faint py-8">
+                  {buscando ? 'Sin resultados en toda la cartera.' : 'No hay contactos en este segmento.'}
                 </td>
               </tr>
             )}
@@ -395,8 +476,7 @@ export default function Cartera() {
           >
             <p className="text-sm font-semibold text-ink mb-1">+ Nuevo prospecto</p>
             <p className="text-xs text-faint mb-3">
-              Se crea con un código provisorio. Administración le asigna el código de cliente definitivo cuando lo
-              valida.
+              Se crea con un código provisorio. Administración le asigna el código de cliente definitivo cuando lo valida.
             </p>
             <div className="space-y-2">
               {(
