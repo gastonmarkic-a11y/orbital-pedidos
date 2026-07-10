@@ -8,10 +8,18 @@ const CATEGORIAS: Record<string, string> = {
   propuesta: '📄 Propuestas',
   imagen: '🖼️ Imágenes',
   video: '🎬 Videos',
-  catalogo: '📖 Catálogo',
+  catalogo: '📖 Catálogos',
   precios: '💲 Lista de precios',
 }
-const ORDEN = ['copy', 'guion', 'propuesta', 'imagen', 'video', 'catalogo', 'precios']
+const ORDEN_CAT = ['propuesta', 'copy', 'guion', 'catalogo', 'video', 'imagen', 'precios']
+
+const TEMAS: { key: string; icono: string; label: string; desc: string }[] = [
+  { key: 'bienvenida', icono: '🤝', label: 'Propuesta Bienvenida', desc: 'Todo para sumar ópticas nuevas: copy, guión, propuesta y video' },
+  { key: 'canje', icono: '↩', label: 'Plan Canje', desc: 'Material para clientes activos con stock parado' },
+  { key: 'preventa', icono: '🕶', label: 'Preventa Colección', desc: 'Copy, guión y catálogo de la preventa 2026' },
+  { key: 'recuperar', icono: '📋', label: 'Clientes a Recuperar', desc: 'Guías de diagnóstico y propuesta segmentada' },
+  { key: 'general', icono: '📚', label: 'Material general', desc: 'Listas de precios, catálogos, imágenes y videos' },
+]
 
 export default function Marketing() {
   const [piezas, setPiezas] = useState<PiezaMarketing[]>([])
@@ -55,43 +63,50 @@ export default function Marketing() {
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando piezas de marketing...</p>
 
-  const grupos = ORDEN.map((cat) => ({ categoria: cat, items: piezas.filter((p) => p.categoria === cat && p.activa) })).filter(
-    (g) => g.items.length > 0
-  )
+  const activas = piezas.filter((p) => p.activa)
+  const temaDe = (p: PiezaMarketing) => p.tema || 'general'
 
   // Paso 1: elegir el tema
   if (!tema) {
     return (
       <div className="space-y-4 text-ink">
         <h2 className="text-base font-semibold">Piezas de Marketing</h2>
-        <p className="text-xs text-muted">Elegí el tema para ver el material disponible.</p>
-        {grupos.length === 0 && (
-          <p className="text-sm text-faint text-center py-10">
-            Todavía no hay piezas cargadas. Pedile al admin que suba copys, propuestas, imágenes, videos, catálogo o
-            lista de precios.
-          </p>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {grupos.map((g) => (
-            <button
-              key={g.categoria}
-              onClick={() => setTema(g.categoria)}
-              className="bg-white border border-black/10 rounded-2xl p-5 text-left hover:border-brand/50 transition-colors"
-            >
-              <p className="text-2xl mb-2">{CATEGORIAS[g.categoria].split(' ')[0]}</p>
-              <p className="text-sm font-semibold">{CATEGORIAS[g.categoria].split(' ').slice(1).join(' ')}</p>
-              <p className="text-xs text-faint mt-1">
-                {g.items.length} pieza{g.items.length !== 1 ? 's' : ''}
-              </p>
-            </button>
-          ))}
+        <p className="text-xs text-muted">Elegí el tema y vas a ver todo el material relacionado, listo para usar.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {TEMAS.map((t) => {
+            const n = activas.filter((p) => temaDe(p) === t.key).length
+            if (n === 0) return null
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTema(t.key)}
+                className="bg-white border border-black/10 rounded-2xl p-4 text-left hover:border-brand/50 transition-colors flex items-start gap-3"
+              >
+                <span className="text-3xl">{t.icono}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{t.label}</span>
+                  <span className="block text-xs text-muted mt-0.5">{t.desc}</span>
+                  <span className="block text-[11px] text-brandDark font-medium mt-1">
+                    {n} pieza{n !== 1 ? 's' : ''} →
+                  </span>
+                </span>
+              </button>
+            )
+          })}
         </div>
+        {activas.length === 0 && (
+          <p className="text-sm text-faint text-center py-10">Todavía no hay piezas cargadas. Pedile al admin que suba material.</p>
+        )}
       </div>
     )
   }
 
-  // Paso 2: material del tema elegido
-  const grupoActivo = grupos.filter((g) => g.categoria === tema)
+  // Paso 2: material del tema, agrupado por tipo
+  const temaInfo = TEMAS.find((t) => t.key === tema)
+  const delTema = activas.filter((p) => temaDe(p) === tema)
+  const grupos = ORDEN_CAT.map((cat) => ({ categoria: cat, items: delTema.filter((p) => p.categoria === cat) })).filter(
+    (g) => g.items.length > 0
+  )
 
   return (
     <div className="space-y-5 text-ink">
@@ -99,10 +114,13 @@ export default function Marketing() {
         <button onClick={() => setTema(null)} className="text-sm text-brandDark font-medium">
           ← Temas
         </button>
-        <h2 className="text-base font-semibold">{CATEGORIAS[tema]}</h2>
+        <h2 className="text-base font-semibold">
+          {temaInfo?.icono} {temaInfo?.label}
+        </h2>
       </div>
-      {grupoActivo.map((g) => (
+      {grupos.map((g) => (
         <div key={g.categoria} className="space-y-2">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">{CATEGORIAS[g.categoria]}</p>
           <div className="space-y-2">
             {g.items.map((p) => (
               <div key={p.id} className="bg-white border border-black/10 rounded-xl p-3">

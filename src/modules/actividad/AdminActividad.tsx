@@ -88,6 +88,9 @@ export default function AdminActividad() {
   const { rolEfectivo } = useAuth()
   const [filas, setFilas] = useState<FilaVendedor[]>([])
   const [temas, setTemas] = useState<{ label: string; count: number }[]>([])
+  const [propStats, setPropStats] = useState<
+    { nombre: string; enviadas: number; clientes: number; conversiones: number; tasa: number }[]
+  >([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -180,6 +183,34 @@ export default function AdminActividad() {
           ],
         })
       }
+
+      // Apertura por propuesta: enviadas, clientes únicos y conversiones a venta
+      const ventasPorCliente: Record<string, string[]> = {}
+      for (const a of acts) {
+        if (a.cod_cliente && (a.unidades_vendidas ?? 0) > 0) {
+          ;(ventasPorCliente[a.cod_cliente] = ventasPorCliente[a.cod_cliente] || []).push(a.fecha)
+        }
+      }
+      const stats = propuestas
+        .map((prop) => {
+          const envios = acts.filter((a) => a.propuesta_enviada_id === prop.id)
+          const clientesUnicos = new Set(envios.map((a) => a.cod_cliente).filter(Boolean))
+          let conversiones = 0
+          for (const cod of clientesUnicos) {
+            const fechaEnvio = envios.filter((e) => e.cod_cliente === cod).map((e) => e.fecha).sort()[0]
+            if ((ventasPorCliente[cod as string] ?? []).some((f) => f >= fechaEnvio)) conversiones++
+          }
+          return {
+            nombre: prop.nombre,
+            enviadas: envios.length,
+            clientes: clientesUnicos.size,
+            conversiones,
+            tasa: clientesUnicos.size > 0 ? Math.round((conversiones / clientesUnicos.size) * 100) : 0,
+          }
+        })
+        .filter((x) => x.enviadas > 0)
+        .sort((a, b) => b.tasa - a.tasa || b.enviadas - a.enviadas)
+      setPropStats(stats)
 
       setFilas(rows)
 
@@ -275,6 +306,48 @@ export default function AdminActividad() {
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Ventas y cierres este mes</p>
           <BarrasComparativas data={barVentas} unidad="ventas" />
         </div>
+      </div>
+
+      {/* Apertura por propuesta comercial */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <p className="text-sm font-semibold text-ink mb-1">📨 Propuestas comerciales — cuál funciona mejor</p>
+        <p className="text-[11px] text-faint mb-3">
+          Envíos del mes, clientes alcanzados y cuántos terminaron comprando después de recibirla.
+        </p>
+        {propStats.length === 0 ? (
+          <p className="text-sm text-faint">Todavía no se enviaron propuestas este mes.</p>
+        ) : (
+          <div className="space-y-3">
+            {propStats.map((p) => (
+              <div key={p.nombre}>
+                <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                  <span className="font-medium text-ink truncate">{p.nombre}</span>
+                  <span className="text-muted shrink-0">
+                    {p.enviadas} envíos · {p.clientes} clientes ·{' '}
+                    <b className={p.tasa >= 20 ? 'text-emerald-600' : p.tasa > 0 ? 'text-amber-600' : 'text-faint'}>
+                      {p.conversiones} ventas ({p.tasa}%)
+                    </b>
+                  </span>
+                </div>
+                <div className="h-3 bg-black/5 rounded-full overflow-hidden flex">
+                  <div
+                    className="h-full bg-emerald-500"
+                    style={{ width: `${p.clientes > 0 ? (p.conversiones / p.clientes) * 100 : 0}%` }}
+                    title="Convirtieron en venta"
+                  />
+                  <div
+                    className="h-full bg-brand/40"
+                    style={{ width: `${p.clientes > 0 ? ((p.clientes - p.conversiones) / p.clientes) * 100 : 0}%` }}
+                    title="Recibieron la propuesta, sin venta aún"
+                  />
+                </div>
+              </div>
+            ))}
+            <p className="text-[10px] text-faint">
+              ■ verde: clientes que compraron después de recibirla · ■ violeta: la recibieron y todavía no compraron
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Voz del cliente en barras */}

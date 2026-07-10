@@ -80,6 +80,7 @@ export interface ObjetivoMes {
 export interface PiezaMarketing {
   id: number
   categoria: string
+  tema: string | null
   titulo: string
   descripcion: string | null
   contenido_texto: string | null

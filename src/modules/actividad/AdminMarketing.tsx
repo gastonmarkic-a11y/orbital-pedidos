@@ -23,6 +23,7 @@ export default function AdminMarketing() {
   const [ok, setOk] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [categoria, setCategoria] = useState('catalogo')
+  const [tema, setTema] = useState('general')
   const [titulo, setTitulo] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [texto, setTexto] = useState('')
@@ -64,6 +65,7 @@ export default function AdminMarketing() {
     const orden = piezas.filter((p) => p.categoria === categoria).length + 1
     const { error: insErr } = await supabase.from('piezas_marketing').insert({
       categoria,
+      tema,
       titulo: titulo.trim(),
       descripcion: descripcion.trim() || null,
       contenido_texto: texto.trim() || null,
@@ -123,6 +125,20 @@ export default function AdminMarketing() {
                 {c.label}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="block text-xs text-muted">
+          Tema (propuesta a la que pertenece)
+          <select
+            value={tema}
+            onChange={(e) => setTema(e.target.value)}
+            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+          >
+            <option value="bienvenida">🤝 Propuesta Bienvenida</option>
+            <option value="canje">↩ Plan Canje</option>
+            <option value="preventa">🕶 Preventa Colección</option>
+            <option value="recuperar">📋 Clientes a Recuperar</option>
+            <option value="general">📚 Material general</option>
           </select>
         </label>
         <label className="block text-xs text-muted">
