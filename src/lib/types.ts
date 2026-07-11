@@ -82,6 +82,8 @@ export interface PiezaMarketing {
   id: number
   categoria: string
   tema: string | null
+  url_publica: string | null
+  url_corta: string | null
   titulo: string
   descripcion: string | null
   contenido_texto: string | null

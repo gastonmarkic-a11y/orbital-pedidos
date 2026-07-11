@@ -14,6 +14,7 @@ import AdminMarketing from './modules/actividad/AdminMarketing'
 
 import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Pedidos from './modules/pedidos/Pedidos'
+import Envios from './modules/envios/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
@@ -44,6 +45,7 @@ function navFor(rol: Rol, codigo?: string): NavItem[] {
     { to: '/cargar', label: 'Cargar Actividad' },
     { to: '/resultados', label: 'Mis Resultados' },
     { to: '/marketing', label: 'Marketing' },
+    { to: '/envios', label: '📤 Envíos' },
     { to: '/pedidos/nuevo', label: '🛒 Nuevo Pedido' },
     { to: '/pedidos', label: 'Mis Pedidos' },
   ]
@@ -220,6 +222,7 @@ function Layout() {
               <Route path="/resultados" element={<MisResultados />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
+              <Route path="/envios" element={<Envios />} />
             </>
           )}
           <Route path="/pedidos" element={<Pedidos />} />
