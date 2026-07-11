@@ -50,6 +50,7 @@ export default function Envios() {
   const toast = useToast()
 
   const [miTelefono, setMiTelefono] = useState<string | null>(null)
+  const [miNombre, setMiNombre] = useState('')
   const [telInput, setTelInput] = useState('')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [acts, setActs] = useState<ActProp[]>([])
@@ -75,7 +76,7 @@ export default function Envios() {
     setLoading(true)
     async function cargar() {
       const [{ data: me }, { data: props }, { data: pzs }, { data: envs }] = await Promise.all([
-        supabase.from('vendedores').select('telefono_remitente').eq('codigo', codigoEfectivo).maybeSingle(),
+        supabase.from('vendedores').select('telefono_remitente, nombre').eq('codigo', codigoEfectivo).maybeSingle(),
         supabase.from('propuestas_julio').select('*').eq('activa', true).order('orden'),
         supabase.from('piezas_marketing').select('*').eq('activa', true).order('orden'),
         supabase
@@ -84,7 +85,9 @@ export default function Envios() {
           .eq('vendedor', codigoEfectivo)
           .gte('created_at', new Date().toISOString().slice(0, 10)),
       ])
-      setMiTelefono((me as { telefono_remitente: string | null } | null)?.telefono_remitente ?? null)
+      const yo = me as { telefono_remitente: string | null; nombre: string | null } | null
+      setMiTelefono(yo?.telefono_remitente ?? null)
+      setMiNombre(yo?.nombre ?? vendedor?.nombre ?? '')
       setPropuestas((props as Propuesta[]) ?? [])
       setPiezas((pzs as PiezaMarketing[]) ?? [])
       setEnvios((envs as EnvioRow[]) ?? [])
@@ -176,7 +179,7 @@ export default function Envios() {
 
   function armarMensaje(c: Cliente, prop: Propuesta, piezasSel: PiezaMarketing[]) {
     const contacto = c.contacto ? ` ${c.contacto.split(' ')[0]}` : ''
-    const remitente = vendedor?.nombre?.split(' ')[0] ?? 'el equipo'
+    const remitente = (miNombre || vendedor?.nombre || 'el equipo').split(' ')[0]
     const link = piezasSel.find((p) => p.url_publica)?.url_corta || piezasSel.find((p) => p.url_publica)?.url_publica
     const lineas = [
       `Hola${contacto}! Soy ${remitente} de Orbital Eyewear.`,
