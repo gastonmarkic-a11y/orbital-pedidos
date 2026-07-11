@@ -181,12 +181,22 @@ export default function Envios() {
     const contacto = c.contacto ? ` ${c.contacto.split(' ')[0]}` : ''
     const remitente = (miNombre || vendedor?.nombre || 'el equipo').split(' ')[0]
     const link = piezasSel.find((p) => p.url_publica)?.url_corta || piezasSel.find((p) => p.url_publica)?.url_publica
-    const lineas = [
-      `Hola${contacto}! Soy ${remitente} de Orbital Eyewear.`,
+    // Si hay un COPY cargado para el tema de esta propuesta, ese es el mensaje
+    // (se edita desde Admin → Gestionar piezas de marketing)
+    const copyPieza = piezas.find(
+      (x) => x.tema === temaDePropuesta(prop.nombre) && x.categoria === 'copy' && x.contenido_texto
+    )
+    const saludo = `Hola${contacto}! Soy ${remitente} de Orbital Eyewear.`
+    if (copyPieza?.contenido_texto) {
+      return [saludo, link ? `📎 ${link}` : null, '', copyPieza.contenido_texto.trim()]
+        .filter((x) => x !== null)
+        .join('\n')
+    }
+    return [
+      saludo,
       link ? `Te comparto ${prop.nombre}: ${link}` : `Te quería contar sobre ${prop.nombre}.`,
       `¿Lo vemos juntos esta semana?`,
-    ]
-    return lineas.join('\n')
+    ].join('\n')
   }
 
   function abrirPreparacion(c: Cliente) {

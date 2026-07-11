@@ -29,6 +29,7 @@ export default function AdminMarketing() {
   const [texto, setTexto] = useState('')
   const [link, setLink] = useState('')
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [editandoId, setEditandoId] = useState<number | null>(null)
 
   function recargar() {
     supabase
@@ -62,22 +63,38 @@ export default function AdminMarketing() {
     } else if (link.trim()) {
       url = link.trim()
     }
-    const orden = piezas.filter((p) => p.categoria === categoria).length + 1
-    const { error: insErr } = await supabase.from('piezas_marketing').insert({
-      categoria,
-      tema,
-      titulo: titulo.trim(),
-      descripcion: descripcion.trim() || null,
-      contenido_texto: texto.trim() || null,
-      url,
-      orden,
-    })
+    let insErr = null
+    if (editandoId) {
+      const cambios: Record<string, unknown> = {
+        categoria,
+        tema,
+        titulo: titulo.trim(),
+        descripcion: descripcion.trim() || null,
+        contenido_texto: texto.trim() || null,
+      }
+      if (url) cambios.url = url
+      const { error } = await supabase.from('piezas_marketing').update(cambios).eq('id', editandoId)
+      insErr = error
+    } else {
+      const orden = piezas.filter((p) => p.categoria === categoria).length + 1
+      const { error } = await supabase.from('piezas_marketing').insert({
+        categoria,
+        tema,
+        titulo: titulo.trim(),
+        descripcion: descripcion.trim() || null,
+        contenido_texto: texto.trim() || null,
+        url,
+        orden,
+      })
+      insErr = error
+    }
     setGuardando(false)
     if (insErr) {
       setError(`No se pudo guardar: ${insErr.message}`)
       return
     }
     setOk(true)
+    setEditandoId(null)
     setTitulo('')
     setDescripcion('')
     setTexto('')
@@ -85,6 +102,26 @@ export default function AdminMarketing() {
     setArchivo(null)
     recargar()
     setTimeout(() => setOk(false), 3000)
+  }
+
+  function editar(p: PiezaMarketing) {
+    setEditandoId(p.id)
+    setCategoria(p.categoria)
+    setTema(p.tema ?? 'general')
+    setTitulo(p.titulo)
+    setDescripcion(p.descripcion ?? '')
+    setTexto(p.contenido_texto ?? '')
+    setLink(p.url && !p.url.startsWith('storage:') ? p.url : '')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null)
+    setTitulo('')
+    setDescripcion('')
+    setTexto('')
+    setLink('')
+    setArchivo(null)
   }
 
   async function toggle(p: PiezaMarketing) {
@@ -112,7 +149,14 @@ export default function AdminMarketing() {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{error}</div>}
 
       <form onSubmit={agregar} className="space-y-3 bg-white rounded-xl p-4 border border-black/10">
-        <p className="text-sm font-semibold text-ink">Agregar nueva pieza</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-ink">{editandoId ? `✏️ Editando pieza #${editandoId}` : 'Agregar nueva pieza'}</p>
+          {editandoId && (
+            <button type="button" onClick={cancelarEdicion} className="text-xs text-muted underline">
+              cancelar edición
+            </button>
+          )}
+        </div>
         <label className="block text-xs text-muted">
           Categoría
           <select
@@ -191,7 +235,7 @@ export default function AdminMarketing() {
           disabled={guardando}
           className="w-full rounded-lg bg-brand text-white py-2 text-sm font-medium disabled:opacity-50"
         >
-          {guardando ? 'Guardando...' : 'Agregar pieza'}
+          {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Agregar pieza'}
         </button>
       </form>
 
@@ -206,6 +250,9 @@ export default function AdminMarketing() {
               <p className="text-xs text-faint">{CATEGORIAS.find((c) => c.value === p.categoria)?.label ?? p.categoria}</p>
             </div>
             <div className="flex gap-3 shrink-0">
+              <button onClick={() => editar(p)} className="text-xs font-medium text-brandDark">
+                ✏️ Editar
+              </button>
               <button onClick={() => toggle(p)} className="text-xs font-medium text-brandDark">
                 {p.activa ? 'Ocultar' : 'Mostrar'}
               </button>
