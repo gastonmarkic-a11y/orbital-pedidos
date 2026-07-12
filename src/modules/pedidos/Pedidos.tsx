@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
@@ -213,11 +214,18 @@ export default function Pedidos() {
 
   return (
     <div className="space-y-3 text-ink">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">{titulo}</h2>
-        <button onClick={cargar} className="text-xs text-brandDark font-medium">
-          ⟳ Actualizar
-        </button>
+        <div className="flex items-center gap-3">
+          {(esVendedor || esAdmin) && (
+            <Link to="/pedidos/nuevo" className="text-xs font-semibold bg-emerald-600 text-white rounded-lg px-3 py-1.5">
+              + Nuevo Pedido
+            </Link>
+          )}
+          <button onClick={cargar} className="text-xs text-brandDark font-medium">
+            ⟳ Actualizar
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">

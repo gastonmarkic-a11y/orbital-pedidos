@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../lib/auth'
+import { useToast } from '../../lib/toast'
 import { PiezaMarketing } from '../../lib/types'
 
 const CATEGORIAS: Record<string, string> = {
@@ -22,7 +24,15 @@ const TEMAS: { key: string; icono: string; label: string; desc: string }[] = [
 ]
 
 export default function Marketing() {
+  const { vendedor } = useAuth()
+  const toast = useToast()
+  const puedeEditar = vendedor?.rol === 'admin'
   const [piezas, setPiezas] = useState<PiezaMarketing[]>([])
+  const [editando, setEditando] = useState<PiezaMarketing | null>(null)
+  const [edTitulo, setEdTitulo] = useState('')
+  const [edDesc, setEdDesc] = useState('')
+  const [edTexto, setEdTexto] = useState('')
+  const [edGuardando, setEdGuardando] = useState(false)
   const [loading, setLoading] = useState(true)
   const [copiado, setCopiado] = useState<number | null>(null)
   const [abriendo, setAbriendo] = useState<number | null>(null)
@@ -38,6 +48,37 @@ export default function Marketing() {
         setLoading(false)
       })
   }, [])
+
+  function abrirEdicion(p: PiezaMarketing) {
+    setEditando(p)
+    setEdTitulo(p.titulo)
+    setEdDesc(p.descripcion ?? '')
+    setEdTexto(p.contenido_texto ?? '')
+  }
+
+  async function guardarEdicion() {
+    if (!editando) return
+    const esCopy = editando.categoria === 'copy'
+    if (esCopy && edTexto.trim().length > 400) {
+      toast(`Los copys no pueden superar 400 caracteres (WhatsApp corta el mensaje). Este tiene ${edTexto.trim().length}.`, 'error')
+      return
+    }
+    setEdGuardando(true)
+    const cambios = {
+      titulo: edTitulo.trim() || editando.titulo,
+      descripcion: edDesc.trim() || null,
+      contenido_texto: edTexto.trim() || null,
+    }
+    const { error } = await supabase.from('piezas_marketing').update(cambios).eq('id', editando.id)
+    setEdGuardando(false)
+    if (error) {
+      toast('No se pudo guardar: ' + error.message, 'error')
+      return
+    }
+    setPiezas((prev) => prev.map((x) => (x.id === editando.id ? { ...x, ...cambios } : x)))
+    setEditando(null)
+    toast('✓ Pieza actualizada — los próximos envíos usan este texto', 'success')
+  }
 
   async function copiar(id: number, texto: string) {
     await navigator.clipboard.writeText(texto)
@@ -132,6 +173,11 @@ export default function Marketing() {
                   </p>
                 )}
                 <div className="flex gap-3 mt-2">
+                  {puedeEditar && (
+                    <button onClick={() => abrirEdicion(p)} className="text-xs font-medium text-amber-600">
+                      ✏️ Editar
+                    </button>
+                  )}
                   {p.contenido_texto && (
                     <button onClick={() => copiar(p.id, p.contenido_texto!)} className="text-xs font-medium text-brandDark">
                       {copiado === p.id ? '✓ Copiado' : 'Copiar texto'}
@@ -152,6 +198,68 @@ export default function Marketing() {
           </div>
         </div>
       ))}
+      {editando && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditando(null)}>
+          <div
+            className="bg-white rounded-2xl border border-black/10 w-full max-w-lg p-4 max-h-[90vh] overflow-y-auto space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-ink">✏️ Editar pieza</p>
+              <button onClick={() => setEditando(null)} className="text-sm text-muted">
+                ✕
+              </button>
+            </div>
+            <label className="block text-xs text-muted">
+              Título
+              <input
+                value={edTitulo}
+                onChange={(e) => setEdTitulo(e.target.value)}
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Descripción
+              <input
+                value={edDesc}
+                onChange={(e) => setEdDesc(e.target.value)}
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Texto {editando.categoria === 'copy' ? '(este es el mensaje pre-armado de los envíos de esta propuesta)' : ''}
+              <textarea
+                value={edTexto}
+                onChange={(e) => setEdTexto(e.target.value)}
+                rows={8}
+                className={`w-full mt-1 bg-white border rounded-lg px-3 py-2 text-sm text-ink ${
+                  editando.categoria === 'copy' && edTexto.trim().length > 400 ? 'border-red-400' : 'border-black/10'
+                }`}
+              />
+              {editando.categoria === 'copy' && (
+                <span
+                  className={`text-[10px] ${edTexto.trim().length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}
+                >
+                  {edTexto.trim().length} / 400 caracteres
+                  {edTexto.trim().length > 400 ? ' — demasiado largo para WhatsApp, acortalo' : ''}
+                </span>
+              )}
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setEditando(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarEdicion}
+                disabled={edGuardando || (editando.categoria === 'copy' && edTexto.trim().length > 400)}
+                className="flex-1 rounded-lg bg-brand text-white py-2 text-sm font-semibold disabled:opacity-40"
+              >
+                {edGuardando ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -25,41 +25,59 @@ interface NavItem {
   label: string
 }
 
-function navFor(rol: Rol, codigo?: string): NavItem[] {
+interface NavConfig {
+  principales: NavItem[]
+  secundarios: NavItem[] // visibles en escritorio, dentro de "Más" en celular
+  menu: NavItem[] // siempre dentro del menú (Gestión)
+}
+
+function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'deposito')
-    return [
-      { to: '/pedidos', label: '📦 A preparar' },
-      { to: '/pedidos/stock', label: 'Stock' },
-    ]
-  if (rol === 'logistica') return [{ to: '/pedidos', label: '🚚 Entregas' }]
+    return {
+      principales: [
+        { to: '/pedidos', label: '📦 A preparar' },
+        { to: '/pedidos/stock', label: 'Stock' },
+      ],
+      secundarios: [],
+      menu: [],
+    }
+  if (rol === 'logistica')
+    return { principales: [{ to: '/pedidos', label: '🚚 Entregas' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
-    return [
-      { to: '/pedidos', label: '📋 Facturación' },
-      { to: '/pedidos/cobranzas', label: '📞 Cobranzas' },
-      { to: '/pedidos/dashboard', label: '📊 Dashboard' },
-      { to: '/pedidos/clientes', label: '👥 Clientes' },
-    ]
-  const base: NavItem[] = [
-    { to: '/hoy', label: 'Agenda del Día' },
-    { to: '/cartera', label: 'Cartera' },
-    { to: '/cargar', label: 'Cargar Actividad' },
-    { to: '/resultados', label: 'Mis Resultados' },
-    { to: '/marketing', label: 'Marketing' },
+    return {
+      principales: [
+        { to: '/pedidos', label: '📋 Facturación' },
+        { to: '/pedidos/cobranzas', label: '📞 Cobranzas' },
+      ],
+      secundarios: [
+        { to: '/pedidos/dashboard', label: '📊 Dashboard' },
+        { to: '/pedidos/clientes', label: '👥 Clientes' },
+      ],
+      menu: [],
+    }
+  const principales: NavItem[] = [
+    { to: '/hoy', label: '🗓 Agenda' },
+    { to: '/cartera', label: '👥 Cartera' },
     { to: '/envios', label: '📤 Envíos' },
-    { to: '/pedidos/nuevo', label: '🛒 Nuevo Pedido' },
-    { to: '/pedidos', label: 'Mis Pedidos' },
+    { to: '/pedidos', label: '🛒 Pedidos' },
   ]
-  if (rol === 'vendedor' && codigo === 'Corporativo') return [...base, { to: '/actividad-admin', label: '📊 Equipo' }]
-  if (rol === 'admin')
-    return [
-      ...base,
+  const secundarios: NavItem[] = [
+    { to: '/resultados', label: '📈 Resultados' },
+    { to: '/marketing', label: '📣 Marketing' },
+  ]
+  const menu: NavItem[] = []
+  if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: '📊 Equipo' })
+  if (rol === 'admin') {
+    secundarios.push({ to: '/pedidos/stock', label: '📦 Stock' })
+    menu.push(
       { to: '/pedidos/dashboard', label: '📊 Dashboard' },
       { to: '/pedidos/cobranzas', label: '📞 Cobranzas' },
-      { to: '/pedidos/stock', label: 'Stock' },
       { to: '/pedidos/clientes', label: '👥 Clientes' },
-      { to: '/actividad-admin', label: 'Admin' },
-    ]
-  return base
+      { to: '/actividad-admin', label: '👀 Equipo' },
+      { to: '/actividad-admin/marketing', label: '🎨 Piezas de marketing' }
+    )
+  }
+  return { principales, secundarios, menu }
 }
 
 function homeFor(rol: Rol): string {
@@ -172,7 +190,9 @@ function Layout() {
   const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs } = useAuth()
   const esAdminReal = vendedor?.rol === 'admin'
   const rol = rolEfectivo
-  const items = navFor(rol, codigoEfectivo)
+  const nav = navConfig(rol, codigoEfectivo)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const hayMenu = nav.menu.length > 0 || nav.secundarios.length > 0
   const esVendedorOAdmin = rol === 'vendedor' || rol === 'admin'
 
   return (
@@ -243,21 +263,75 @@ function Layout() {
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-black/10 flex max-w-6xl mx-auto w-full left-0 right-0 overflow-x-auto">
-        {items.map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            end={it.to === '/pedidos'}
-            className={({ isActive }) =>
-              `flex-1 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${
-                isActive ? 'text-brandDark' : 'text-muted'
-              }`
-            }
-          >
-            {it.label}
-          </NavLink>
-        ))}
+      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-black/10 max-w-6xl mx-auto w-full left-0 right-0 z-20">
+        {menuOpen && (
+          <div className="absolute bottom-full right-2 mb-2 bg-white border border-black/10 rounded-xl shadow-lg p-2 w-56">
+            {nav.secundarios.map((it) => (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                onClick={() => setMenuOpen(false)}
+                className={({ isActive }) =>
+                  `md:hidden block px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-brand/5' : 'text-ink'}`
+                }
+              >
+                {it.label}
+              </NavLink>
+            ))}
+            {nav.menu.length > 0 && nav.secundarios.length > 0 && (
+              <p className="md:hidden text-[10px] text-faint uppercase tracking-wide px-3 pt-2 pb-1 border-t border-black/5 mt-1">
+                Gestión
+              </p>
+            )}
+            {nav.menu.map((it) => (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                onClick={() => setMenuOpen(false)}
+                className={({ isActive }) =>
+                  `block px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-brand/5' : 'text-ink'}`
+                }
+              >
+                {it.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+        <div className="flex overflow-x-auto">
+          {nav.principales.map((it) => (
+            <NavLink
+              key={it.to}
+              to={it.to}
+              end={it.to === '/pedidos'}
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `flex-1 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${isActive ? 'text-brandDark' : 'text-muted'}`
+              }
+            >
+              {it.label}
+            </NavLink>
+          ))}
+          {nav.secundarios.map((it) => (
+            <NavLink
+              key={it.to}
+              to={it.to}
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `hidden md:block flex-1 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${isActive ? 'text-brandDark' : 'text-muted'}`
+              }
+            >
+              {it.label}
+            </NavLink>
+          ))}
+          {hayMenu && (
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className={`flex-1 md:flex-none md:px-5 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${menuOpen ? 'text-brandDark' : 'text-muted'}`}
+            >
+              {nav.menu.length > 0 ? '☰ Gestión' : '☰ Más'}
+            </button>
+          )}
+        </div>
       </nav>
     </div>
   )
