@@ -5,12 +5,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: '#7048e8',
-        brandDark: '#6741d9',
-        ink: '#1a1a24',
-        muted: '#6b6b85',
-        faint: '#9797ad',
-        gold: '#c8a96e',
+        brand: '#15151A',
+        brandDark: '#8F6A34',
+        ink: '#17171C',
+        muted: '#6E6A61',
+        faint: '#9B968B',
+        gold: '#C8A96E',
+        goldSoft: '#EBDFC9',
+      },
+      fontFamily: {
+        sans: ['Manrope', 'system-ui', 'sans-serif'],
       },
     },
   },

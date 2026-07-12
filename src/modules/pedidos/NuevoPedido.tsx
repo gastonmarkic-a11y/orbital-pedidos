@@ -326,7 +326,7 @@ export default function NuevoPedido() {
                 cambiar
               </button>
             </div>
-            <div className="bg-[#f7f7fa] rounded-lg p-2.5 text-xs mt-2">
+            <div className="bg-[#F1EDE4] rounded-lg p-2.5 text-xs mt-2">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-muted uppercase tracking-wide text-[10px]">
                   Datos de entrega y contacto
@@ -446,7 +446,7 @@ export default function NuevoPedido() {
                   <div key={modelo} className="border border-black/10 rounded-lg overflow-hidden">
                     <button
                       onClick={() => toggleModelo(modelo)}
-                      className="w-full flex items-center justify-between px-3 py-2 bg-[#f7f7fa] text-sm"
+                      className="w-full flex items-center justify-between px-3 py-2 bg-[#F1EDE4] text-sm"
                     >
                       <span className="flex items-center gap-2">
                         <span>{abierto ? '▾' : '▸'}</span>

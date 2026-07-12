@@ -459,7 +459,7 @@ export default function Cartera() {
       {/* Vista computadora: tabla completa ordenable */}
       <div className="hidden md:block overflow-x-auto rounded-xl border border-black/10">
         <table className="w-full min-w-[720px] border-collapse text-sm">
-          <thead className="bg-[#f7f7fa]">
+          <thead className="bg-[#F1EDE4]">
             <tr>
               <Th>Prio</Th>
               <Th col="comercio">Comercio</Th>
@@ -493,7 +493,7 @@ export default function Cartera() {
               const canje = Math.floor((c.unidades_2025 ?? 0) * 0.2)
               const canjePct = Math.round((canje / maxCanje) * 100)
               return (
-                <tr key={c.cod} className="border-t border-black/10 hover:bg-[#f7f7fa]">
+                <tr key={c.cod} className="border-t border-black/10 hover:bg-[#F1EDE4]">
                   <td className="px-2.5 py-2">
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}

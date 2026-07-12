@@ -498,7 +498,7 @@ export default function Pedidos() {
 
                       {esLogistica && estado === 'listo_despachar' && (
                         <>
-                          <div className="bg-[#f5f5f5] rounded-lg p-2.5 text-xs space-y-1">
+                          <div className="bg-[#F1EDE4] rounded-lg p-2.5 text-xs space-y-1">
                             <p className="font-bold">📦 Datos de entrega</p>
                             <p>
                               🏪 <b>{(l.cliente || '').replace(/^\d+ - /, '')}</b>

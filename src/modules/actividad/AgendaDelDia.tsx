@@ -124,7 +124,7 @@ export default function AgendaDelDia() {
             </div>
           )}
           {vencidosViejos.length > 0 && (
-            <div className="bg-[#f7f7fa] border border-black/10 text-muted text-xs rounded-lg p-3">
+            <div className="bg-[#F1EDE4] border border-black/10 text-muted text-xs rounded-lg p-3">
               🗄 Además hay <b>{vencidosViejos.length}</b> agendas vencidas hace más de una semana (quedan como dato,
               no se listan acá — las encontrás en Cartera ordenando por "Última actividad").
             </div>
@@ -158,7 +158,7 @@ export default function AgendaDelDia() {
                         </button>
                       </div>
                       {editCod === c.cod ? (
-                        <div className="mt-2 space-y-1.5 bg-[#f7f7fa] rounded-lg p-2">
+                        <div className="mt-2 space-y-1.5 bg-[#F1EDE4] rounded-lg p-2">
                           <input
                             value={ed.contacto}
                             onChange={(e) => setEd({ ...ed, contacto: e.target.value })}

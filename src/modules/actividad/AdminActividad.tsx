@@ -24,10 +24,10 @@ interface FilaVendedor {
   ventas: number
 }
 
-const COLORES_PERSONA = ['#7048e8', '#2a9d5c', '#e07020', '#1a7abf', '#c0392b', '#c8a96e']
+const COLORES_PERSONA = ['#C8A96E', '#15151A', '#8F6A34', '#1a7abf', '#c0392b', '#6E6A61']
 
 function colorAvance(pct: number) {
-  return pct >= 100 ? '#10b981' : pct >= 60 ? '#7048e8' : pct >= 30 ? '#f59e0b' : '#ef4444'
+  return pct >= 100 ? '#10b981' : pct >= 60 ? '#C8A96E' : pct >= 30 ? '#f59e0b' : '#ef4444'
 }
 
 function Donut({ real, objetivo, label }: Metrica) {

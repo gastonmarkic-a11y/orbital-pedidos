@@ -199,7 +199,7 @@ export default function StockAdmin() {
 
       <div className="overflow-x-auto rounded-xl border border-black/10 bg-white">
         <table className="w-full min-w-[680px] text-sm border-collapse">
-          <thead className="bg-[#f7f7fa]">
+          <thead className="bg-[#F1EDE4]">
             <tr>
               {['Código', 'Modelo', 'Descripción', 'Precio', 'Stock', 'Ajustar', ''].map((h) => (
                 <th key={h} className="text-left text-[10px] uppercase text-muted font-semibold px-2.5 py-2">

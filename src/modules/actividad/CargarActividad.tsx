@@ -272,10 +272,10 @@ export default function CargarActividad() {
             </div>
 
             {cliente.nota && (
-              <div className="bg-[#f7f7fa] rounded-lg p-2 text-xs text-muted">📝 Nota anterior: {cliente.nota}</div>
+              <div className="bg-[#F1EDE4] rounded-lg p-2 text-xs text-muted">📝 Nota anterior: {cliente.nota}</div>
             )}
 
-            <div className="bg-[#f7f7fa] rounded-lg p-2.5 text-xs">
+            <div className="bg-[#F1EDE4] rounded-lg p-2.5 text-xs">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-muted uppercase tracking-wide text-[10px]">Datos de contacto</span>
                 {!editandoDatos && (

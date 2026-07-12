@@ -168,7 +168,7 @@ export default function Marketing() {
                 <p className="text-sm font-medium text-ink">{p.titulo}</p>
                 {p.descripcion && <p className="text-xs text-muted mt-0.5">{p.descripcion}</p>}
                 {p.contenido_texto && (
-                  <p className="text-xs text-ink bg-[#f7f7fa] rounded-lg p-2 mt-2 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                  <p className="text-xs text-ink bg-[#F1EDE4] rounded-lg p-2 mt-2 whitespace-pre-wrap max-h-64 overflow-y-auto">
                     {p.contenido_texto}
                   </p>
                 )}

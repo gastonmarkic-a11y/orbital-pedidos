@@ -306,7 +306,7 @@ export default function DashboardPedidos() {
                       return (
                         <div
                           key={l.id}
-                          className={`rounded-md p-1.5 text-[10px] border-l-2 ${l.estado === 'observado' ? 'bg-red-50' : 'bg-[#f9f9f9]'}`}
+                          className={`rounded-md p-1.5 text-[10px] border-l-2 ${l.estado === 'observado' ? 'bg-red-50' : 'bg-[#F1EDE4]'}`}
                           style={{ borderColor: color }}
                         >
                           <p className="font-bold truncate">{clienteCorto(l.cliente)}</p>

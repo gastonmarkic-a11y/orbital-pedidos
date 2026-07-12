@@ -1,4 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
+import {
+  CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package,
+  PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/auth'
 import { ToastProvider } from './lib/toast'
@@ -25,6 +30,27 @@ interface NavItem {
   label: string
 }
 
+const NAV_ICONS: Record<string, LucideIcon> = {
+  '/hoy': CalendarDays,
+  '/cartera': Users,
+  '/envios': Send,
+  '/pedidos': ShoppingCart,
+  '/resultados': TrendingUp,
+  '/marketing': Megaphone,
+  '/pedidos/stock': Package,
+  '/pedidos/dashboard': PieChart,
+  '/pedidos/cobranzas': Wallet,
+  '/pedidos/clientes': BookUser,
+  '/actividad-admin': Eye,
+  '/actividad-admin/marketing': Palette,
+}
+
+function iconoDe(to: string, label: string) {
+  if (label.includes('Entregas')) return Truck
+  if (label.includes('Facturación') || label.includes('preparar')) return ReceiptText
+  return NAV_ICONS[to] ?? Users
+}
+
 interface NavConfig {
   principales: NavItem[]
   secundarios: NavItem[] // visibles en escritorio, dentro de "Más" en celular
@@ -35,46 +61,46 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'deposito')
     return {
       principales: [
-        { to: '/pedidos', label: '📦 A preparar' },
+        { to: '/pedidos', label: 'A preparar' },
         { to: '/pedidos/stock', label: 'Stock' },
       ],
       secundarios: [],
       menu: [],
     }
   if (rol === 'logistica')
-    return { principales: [{ to: '/pedidos', label: '🚚 Entregas' }], secundarios: [], menu: [] }
+    return { principales: [{ to: '/pedidos', label: 'Entregas' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
-        { to: '/pedidos', label: '📋 Facturación' },
-        { to: '/pedidos/cobranzas', label: '📞 Cobranzas' },
+        { to: '/pedidos', label: 'Facturación' },
+        { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       ],
       secundarios: [
-        { to: '/pedidos/dashboard', label: '📊 Dashboard' },
-        { to: '/pedidos/clientes', label: '👥 Clientes' },
+        { to: '/pedidos/dashboard', label: 'Dashboard' },
+        { to: '/pedidos/clientes', label: 'Clientes' },
       ],
       menu: [],
     }
   const principales: NavItem[] = [
-    { to: '/hoy', label: '🗓 Agenda' },
-    { to: '/cartera', label: '👥 Cartera' },
-    { to: '/envios', label: '📤 Envíos' },
-    { to: '/pedidos', label: '🛒 Pedidos' },
+    { to: '/hoy', label: 'Agenda' },
+    { to: '/cartera', label: 'Cartera' },
+    { to: '/envios', label: 'Envíos' },
+    { to: '/pedidos', label: 'Pedidos' },
   ]
   const secundarios: NavItem[] = [
-    { to: '/resultados', label: '📈 Resultados' },
-    { to: '/marketing', label: '📣 Marketing' },
+    { to: '/resultados', label: 'Resultados' },
+    { to: '/marketing', label: 'Marketing' },
   ]
   const menu: NavItem[] = []
-  if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: '📊 Equipo' })
+  if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' })
   if (rol === 'admin') {
-    secundarios.push({ to: '/pedidos/stock', label: '📦 Stock' })
+    secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
-      { to: '/pedidos/dashboard', label: '📊 Dashboard' },
-      { to: '/pedidos/cobranzas', label: '📞 Cobranzas' },
-      { to: '/pedidos/clientes', label: '👥 Clientes' },
-      { to: '/actividad-admin', label: '👀 Equipo' },
-      { to: '/actividad-admin/marketing', label: '🎨 Piezas de marketing' }
+      { to: '/pedidos/dashboard', label: 'Dashboard' },
+      { to: '/pedidos/cobranzas', label: 'Cobranzas' },
+      { to: '/pedidos/clientes', label: 'Clientes' },
+      { to: '/actividad-admin', label: 'Equipo' },
+      { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
   }
   return { principales, secundarios, menu }
@@ -103,12 +129,14 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f4f4f7] px-4">
-      <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-6">
-        <h1 className="text-xl font-semibold text-ink mb-1">Orbital Suite</h1>
-        <p className="text-sm text-muted mb-6">
-          Pedidos + Actividad Comercial. Ingresá con tu mail para acceder.
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-[#F6F4EF] px-4">
+      <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8">
+        <div className="flex items-center gap-2.5 mb-2">
+          <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" style={{ height: 24 }} />
+          <span className="text-[10px] font-bold tracking-[0.3em] text-gold uppercase mt-1">Suite</span>
+        </div>
+        <div className="h-px bg-gradient-to-r from-gold/60 to-transparent mb-4" />
+        <p className="text-sm text-muted mb-6">Pedidos y actividad comercial en un solo lugar. Ingresá con tu mail.</p>
         {sent ? (
           <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
             Te enviamos un link de acceso a <b>{email}</b>. Abrilo desde este mismo dispositivo.
@@ -142,14 +170,14 @@ function Protected({ children }: { children: ReactNode }) {
   const { session, vendedor, loading } = useAuth()
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted bg-[#f4f4f7]">
+      <div className="min-h-screen flex items-center justify-center text-sm text-muted bg-[#F6F4EF]">
         Cargando...
       </div>
     )
   if (!session) return <Login />
   if (!vendedor)
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted bg-[#f4f4f7] px-6 text-center">
+      <div className="min-h-screen flex items-center justify-center text-sm text-muted bg-[#F6F4EF] px-6 text-center">
         Tu mail todavía no está vinculado a ningún usuario. Pedile al admin que cargue tu mail en la tabla de
         vendedores.
       </div>
@@ -196,11 +224,14 @@ function Layout() {
   const esVendedorOAdmin = rol === 'vendedor' || rol === 'admin'
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f4f4f7]">
+    <div className="min-h-screen flex flex-col bg-[#F6F4EF]">
       <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink">Orbital Suite</p>
-          <p className="text-xs text-muted truncate">
+          <div className="flex items-center gap-2">
+            <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" />
+            <span className="text-[9px] font-bold tracking-[0.28em] text-gold uppercase mt-0.5">Suite</span>
+          </div>
+          <p className="text-xs text-muted truncate mt-0.5">
             {vendedor?.nombre ?? '—'}
             {viewAs && (
               <span className="text-brandDark">
@@ -283,52 +314,71 @@ function Layout() {
                 Gestión
               </p>
             )}
-            {nav.menu.map((it) => (
+            {nav.menu.map((it) => {
+              const Icono = iconoDe(it.to, it.label)
+              return (
+                <NavLink
+                  key={it.to}
+                  to={it.to}
+                  onClick={() => setMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-gold/10' : 'text-ink'}`
+                  }
+                >
+                  <Icono size={16} strokeWidth={1.75} />
+                  {it.label}
+                </NavLink>
+              )
+            })}
+          </div>
+        )}
+        <div className="flex overflow-x-auto">
+          {nav.principales.map((it) => {
+            const Icono = iconoDe(it.to, it.label)
+            return (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                end={it.to === '/pedidos'}
+                onClick={() => setMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 ${
+                    isActive ? 'text-ink border-gold' : 'text-faint border-transparent'
+                  }`
+                }
+              >
+                <Icono size={19} strokeWidth={1.75} />
+                {it.label}
+              </NavLink>
+            )
+          })}
+          {nav.secundarios.map((it) => {
+            const Icono = iconoDe(it.to, it.label)
+            return (
               <NavLink
                 key={it.to}
                 to={it.to}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `block px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-brand/5' : 'text-ink'}`
+                  `hidden md:flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 ${
+                    isActive ? 'text-ink border-gold' : 'text-faint border-transparent'
+                  }`
                 }
               >
+                <Icono size={19} strokeWidth={1.75} />
                 {it.label}
               </NavLink>
-            ))}
-          </div>
-        )}
-        <div className="flex overflow-x-auto">
-          {nav.principales.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.to === '/pedidos'}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `flex-1 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${isActive ? 'text-brandDark' : 'text-muted'}`
-              }
-            >
-              {it.label}
-            </NavLink>
-          ))}
-          {nav.secundarios.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `hidden md:block flex-1 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${isActive ? 'text-brandDark' : 'text-muted'}`
-              }
-            >
-              {it.label}
-            </NavLink>
-          ))}
+            )
+          })}
           {hayMenu && (
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex-1 md:flex-none md:px-5 text-center py-3 text-xs font-medium whitespace-nowrap px-2 ${menuOpen ? 'text-brandDark' : 'text-muted'}`}
+              className={`flex-1 md:flex-none md:px-6 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 border-transparent ${
+                menuOpen ? 'text-ink' : 'text-faint'
+              }`}
             >
-              {nav.menu.length > 0 ? '☰ Gestión' : '☰ Más'}
+              <MenuIcon size={19} strokeWidth={1.75} />
+              {nav.menu.length > 0 ? 'Gestión' : 'Más'}
             </button>
           )}
         </div>

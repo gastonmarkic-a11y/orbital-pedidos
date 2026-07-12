@@ -4,14 +4,7 @@
   "description": "Pedidos + Actividad Comercial de Orbital Eyewear",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f4f7",
-  "theme_color": "#7048e8",
-  "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
-  ]
+  "background_color": "#F6F4EF",
+  "theme_color": "#15151A",
+  "icons": [{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
 }

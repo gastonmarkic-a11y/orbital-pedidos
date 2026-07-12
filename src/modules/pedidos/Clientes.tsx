@@ -149,7 +149,7 @@ export default function Clientes() {
                 <tr
                   key={c.cod}
                   onClick={() => setDetalle(c)}
-                  className={`cursor-pointer border-t border-black/5 hover:bg-[#f7f7fa] ${i % 2 === 0 ? 'bg-[#fafafa]' : ''}`}
+                  className={`cursor-pointer border-t border-black/5 hover:bg-[#F1EDE4] ${i % 2 === 0 ? 'bg-[#F6F4EF]' : ''}`}
                 >
                   <td className="px-3 py-2 font-mono text-xs text-muted">{c.cod}</td>
                   <td className="px-3 py-2 font-semibold">{c.razon || ''}</td>

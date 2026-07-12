@@ -1,6 +1,6 @@
 export default function ProgressBar({ label, real, objetivo }: { label: string; real: number; objetivo: number }) {
   const pct = objetivo > 0 ? Math.min(100, Math.round((real / objetivo) * 100)) : 0
-  const color = pct >= 100 ? '#10b981' : pct >= 60 ? '#7048e8' : pct >= 30 ? '#f59e0b' : '#ef4444'
+  const color = pct >= 100 ? '#10b981' : pct >= 60 ? '#C8A96E' : pct >= 30 ? '#f59e0b' : '#ef4444'
   return (
     <div>
       <div className="flex justify-between text-xs text-muted mb-1">
