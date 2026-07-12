@@ -45,9 +45,15 @@ export default function AdminMarketing() {
 
   useEffect(recargar, [])
 
+  const esCopyLargo = categoria === 'copy' && texto.trim().length > 400
+
   async function agregar(e: FormEvent) {
     e.preventDefault()
     if (!titulo.trim()) return
+    if (esCopyLargo) {
+      setError(`Los copys no pueden superar los 400 caracteres (WhatsApp corta el mensaje). Este tiene ${texto.trim().length}.`)
+      return
+    }
     setGuardando(true)
     setError(null)
     let url: string | null = null
@@ -208,8 +214,13 @@ export default function AdminMarketing() {
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             rows={4}
-            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+            className={`w-full mt-1 bg-white border rounded-lg px-3 py-2 text-sm text-ink ${esCopyLargo ? 'border-red-400' : 'border-black/10'}`}
           />
+          {categoria === 'copy' && (
+            <span className={`text-[10px] ${esCopyLargo ? 'text-red-600 font-semibold' : 'text-faint'}`}>
+              {texto.trim().length} / 400 caracteres{esCopyLargo ? ' — demasiado largo para WhatsApp, acortalo' : ''}
+            </span>
+          )}
         </label>
         <label className="block text-xs text-muted">
           Archivo (PDF, imagen, video — hasta 50MB)
@@ -232,7 +243,7 @@ export default function AdminMarketing() {
         )}
         <button
           type="submit"
-          disabled={guardando}
+          disabled={guardando || esCopyLargo}
           className="w-full rounded-lg bg-brand text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Agregar pieza'}
