@@ -150,4 +150,5 @@ export interface Pedido {
   contacto_entrega: string | null
   direccion_entrega: string | null
   horario_entrega: string | null
+  picking: string[] | null
 }

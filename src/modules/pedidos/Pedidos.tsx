@@ -191,6 +191,32 @@ export default function Pedidos() {
     }
   }
 
+  async function togglePick(l: Pedido, codigo: string) {
+    const actual = l.picking ?? []
+    const nuevo = actual.includes(codigo) ? actual.filter((c) => c !== codigo) : [...actual, codigo]
+    setPedidos((prev) => prev.map((x) => (x.id === l.id ? { ...x, picking: nuevo } : x)))
+    const { error } = await supabase.from('pedidos').update({ picking: nuevo }).eq('id', l.id)
+    if (error) {
+      toast('No se pudo guardar el armado: ' + error.message, 'error')
+      setPedidos((prev) => prev.map((x) => (x.id === l.id ? { ...x, picking: actual } : x)))
+    }
+  }
+
+  function exportarDetalle() {
+    let csv = 'Pedido;Fecha;Cliente;Estado;SKU;Modelo;Color;Cantidad\n'
+    for (const l of filtrados) {
+      for (const i of l.items ?? []) {
+        csv += `${l.id};"${l.fecha ?? ''}";"${(l.cliente ?? '').replace(/"/g, "'")}";"${estadoLabel(l.estado)}";"${i.codigo}";"${i.modelo}";"${(i.descripcion ?? '').replace(/"/g, "'")}";${i.cantidad}\n`
+      }
+    }
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `pedidos_detalle_${filtroEstado || 'todos'}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    toast(`✓ Exportados ${filtrados.length} pedidos con su detalle`, 'success')
+  }
+
   function toggleAbierto(id: number) {
     setAbiertos((prev) => {
       const next = new Set(prev)
@@ -221,6 +247,11 @@ export default function Pedidos() {
             <Link to="/pedidos/nuevo" className="text-xs font-semibold bg-emerald-600 text-white rounded-lg px-3 py-1.5">
               + Nuevo Pedido
             </Link>
+          )}
+          {(esDeposito || esAdmin || esAdministracion) && (
+            <button onClick={exportarDetalle} className="text-xs font-medium border border-black/10 rounded-lg px-3 py-1.5 text-muted">
+              ⬇ Exportar detalle
+            </button>
           )}
           <button onClick={cargar} className="text-xs text-brandDark font-medium">
             ⟳ Actualizar
@@ -345,6 +376,13 @@ export default function Pedidos() {
                           {l.cond_pago}
                         </div>
                       )}
+                      {(esDeposito || esAdmin || esAdministracion) && (
+                        <div>
+                          <span className="text-faint uppercase text-[10px] font-semibold">Blanco / Negro</span>
+                          <br />
+                          <b>{l.blanco_pct ?? 100}%</b> blanco{(l.negro_pct ?? 0) > 0 ? <> · <b>{l.negro_pct}%</b> negro</> : ''}
+                        </div>
+                      )}
                       {imp.bruto > 0 && (
                         <div>
                           <span className="text-faint uppercase text-[10px] font-semibold">Importe bruto</span>
@@ -368,16 +406,36 @@ export default function Pedidos() {
                       )}
                     </div>
 
+                    {(esDeposito || esAdmin) && estado === 'en_preparacion' && (
+                      <p className="text-[11px] font-semibold text-muted mb-1">
+                        🛒 Armado en góndola: {(l.picking ?? []).length} / {(l.items ?? []).length} artículos tomados
+                      </p>
+                    )}
                     {(l.items ?? []).map((i) => {
                       const s = stock.find((x) => x.codigo === i.codigo)
                       const precio = s?.precio ?? 0
+                      const picked = (l.picking ?? []).includes(i.codigo)
+                      const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion'
                       return (
-                        <div key={i.codigo} className="flex justify-between text-xs py-1">
-                          <span>
-                            <b>{i.modelo}</b> {i.descripcion || ''}
+                        <div key={i.codigo} className={`flex justify-between items-center gap-2 text-xs py-1 ${picked && conPicking ? 'opacity-60' : ''}`}>
+                          <span className="flex items-center gap-2 min-w-0">
+                            {conPicking && (
+                              <input
+                                type="checkbox"
+                                checked={picked}
+                                onChange={() => togglePick(l, i.codigo)}
+                                className="w-4 h-4 shrink-0"
+                                title="Tomado de góndola"
+                              />
+                            )}
+                            <span className={`min-w-0 ${picked && conPicking ? 'line-through' : ''}`}>
+                              <b>{i.modelo}</b> {i.descripcion || ''}
+                              <span className="block text-[10px] font-mono text-faint">{i.codigo}</span>
+                            </span>
                           </span>
-                          <span>
-                            {i.cantidad} uds{precio > 0 ? ' · ' + formatPrecio(precio * i.cantidad) : ''}
+                          <span className="shrink-0">
+                            <b>{i.cantidad} uds</b>
+                            {precio > 0 ? ' · ' + formatPrecio(precio * i.cantidad) : ''}
                           </span>
                         </div>
                       )
