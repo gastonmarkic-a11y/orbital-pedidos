@@ -301,8 +301,11 @@ export default function Cartera() {
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
-        <button onClick={() => setNuevoOpen(true)} className="text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-600 text-white">
-          + Nuevo prospecto
+        <button
+          onClick={() => setRecarga((r) => r + 1)}
+          className="text-xs font-medium px-3 py-1.5 rounded-full border border-black/10 text-muted"
+        >
+          ⟳ Actualizar
         </button>
         {(
           [

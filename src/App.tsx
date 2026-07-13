@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
 import {
-  CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package,
+  CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -20,6 +20,7 @@ import AdminMarketing from './modules/actividad/AdminMarketing'
 import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Pedidos from './modules/pedidos/Pedidos'
 import Envios from './modules/envios/Envios'
+import GestionClientes from './modules/actividad/GestionClientes'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
@@ -43,6 +44,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/pedidos/clientes': BookUser,
   '/actividad-admin': Eye,
   '/actividad-admin/marketing': Palette,
+  '/gestion-clientes': UserPlus,
 }
 
 function iconoDe(to: string, label: string) {
@@ -88,6 +90,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/pedidos', label: 'Pedidos' },
   ]
   const secundarios: NavItem[] = [
+    { to: '/gestion-clientes', label: 'Mis clientes' },
     { to: '/resultados', label: 'Resultados' },
     { to: '/marketing', label: 'Marketing' },
   ]
@@ -274,6 +277,7 @@ function Layout() {
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
               <Route path="/envios" element={<Envios />} />
+              <Route path="/gestion-clientes" element={<GestionClientes />} />
             </>
           )}
           <Route path="/pedidos" element={<Pedidos />} />
