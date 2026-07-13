@@ -264,6 +264,7 @@ export default function Envios() {
       setGuardando(false)
       return
     }
+    const canalTxt = prepCanal === 'wa_me' ? 'WhatsApp' : 'mail'
     await supabase.from('actividad_diaria').insert({
       vendedor: codigoEfectivo,
       cod_cliente: prep.cod,
@@ -272,9 +273,18 @@ export default function Envios() {
       telefono: prep.whatsapp || prep.telefono,
       localidad: prep.localidad,
       email: prep.email,
-      actividad_desarrollo: `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${prepCanal === 'wa_me' ? 'WhatsApp' : 'mail'})`,
+      actividad_desarrollo: `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`,
+      actividad_futura: `Seguimiento del envío de ${prop?.nombre ?? 'la propuesta'}`,
       propuesta_enviada_id: prepProp,
     })
+    // Actualizar la ficha del cliente: lo último hablado / enviado queda visible en Cartera y Agenda
+    await supabase
+      .from('clientes')
+      .update({
+        nota: `📤 ${new Date().toLocaleDateString('es-AR')} — se envió "${prop?.nombre ?? ''}" por ${canalTxt}. Seguimiento pendiente.`,
+        proximo_paso: `Seguir el envío de ${prop?.nombre ?? 'la propuesta'} (${canalTxt})`,
+      })
+      .eq('cod', prep.cod)
     setGuardando(false)
     setPrep(null)
     setRecarga((r) => r + 1)
