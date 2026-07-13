@@ -54,7 +54,7 @@ export default function Cartera() {
   const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
   const [editDatos, setEditDatos] = useState<Cliente | null>(null)
-  const [dm, setDm] = useState({ contacto: '', telefono: '', email: '', direccion: '', horario: '' })
+  const [dm, setDm] = useState({ nombre: '', contacto: '', telefono: '', email: '', direccion: '', horario: '' })
   const [dmSaving, setDmSaving] = useState(false)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
@@ -224,6 +224,7 @@ export default function Cartera() {
   function abrirDatos(c: Cliente) {
     setEditDatos(c)
     setDm({
+      nombre: c.nomcomerc ?? c.razon ?? '',
       contacto: c.contacto ?? '',
       telefono: c.whatsapp ?? c.telefono ?? '',
       email: c.email ?? '',
@@ -236,6 +237,7 @@ export default function Cartera() {
     if (!editDatos) return
     setDmSaving(true)
     const cambios = {
+      nomcomerc: dm.nombre.trim() || editDatos.nomcomerc,
       contacto: dm.contacto.trim() || null,
       whatsapp: dm.telefono.trim() || null,
       telefono: dm.telefono.trim() || editDatos.telefono,
@@ -559,7 +561,10 @@ export default function Cartera() {
                       </a>
                     ) : (
                       <span className="text-faint text-xs">—</span>
-                    )}
+                    )}{' '}
+                    <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark" title="Editar WhatsApp">
+                      ✏️
+                    </button>
                   </td>
                   {mostrarCanjeCols && (
                     <>
@@ -646,6 +651,7 @@ export default function Cartera() {
             <div className="space-y-2">
               {(
                 [
+                  ['nombre', 'Nombre del comercio'],
                   ['contacto', 'Nombre de contacto'],
                   ['telefono', 'Teléfono / WhatsApp'],
                   ['email', 'Mail'],

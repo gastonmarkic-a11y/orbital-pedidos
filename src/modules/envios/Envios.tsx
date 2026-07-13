@@ -265,7 +265,7 @@ export default function Envios() {
       return
     }
     const canalTxt = prepCanal === 'wa_me' ? 'WhatsApp' : 'mail'
-    await supabase.from('actividad_diaria').insert({
+    const { error: errAct } = await supabase.from('actividad_diaria').insert({
       vendedor: codigoEfectivo,
       cod_cliente: prep.cod,
       nombre_comercio: prep.nomcomerc,
@@ -277,18 +277,23 @@ export default function Envios() {
       actividad_futura: `Seguimiento del envío de ${prop?.nombre ?? 'la propuesta'}`,
       propuesta_enviada_id: prepProp,
     })
+    if (errAct) {
+      toast('El envío se guardó pero la actividad falló: ' + errAct.message, 'error')
+    }
     // Actualizar la ficha del cliente: lo último hablado / enviado queda visible en Cartera y Agenda
-    await supabase
+    const { error: errCli } = await supabase
       .from('clientes')
       .update({
         nota: `📤 ${new Date().toLocaleDateString('es-AR')} — se envió "${prop?.nombre ?? ''}" por ${canalTxt}. Seguimiento pendiente.`,
         proximo_paso: `Seguir el envío de ${prop?.nombre ?? 'la propuesta'} (${canalTxt})`,
       })
       .eq('cod', prep.cod)
+    if (errCli) toast('No se pudo actualizar la ficha del cliente: ' + errCli.message, 'error')
     setGuardando(false)
     setPrep(null)
     setRecarga((r) => r + 1)
-    toast(`✓ Envío registrado — ${prep.nomcomerc || prep.razon} entra en cooldown ${COOLDOWN_DIAS} días`, 'success')
+    if (!errAct && !errCli)
+      toast(`✓ Envío registrado — ${prep.nomcomerc || prep.razon} entra en cooldown ${COOLDOWN_DIAS} días`, 'success')
   }
 
   async function guardarTelefono() {
