@@ -71,9 +71,10 @@ export default function Cartera() {
     async function cargar() {
       const rows = await fetchPaged<Cliente>(() => {
         let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
+        // Prospección compartida: Luna (Marketing) y Damián (ProspeccionVenta) ven la misma cartera
         q =
-          codigoActivo === 'Marketing'
-            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+          codigoActivo === 'Marketing' || codigoActivo === 'ProspeccionVenta'
+            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.eq.ProspeccionVenta,vendedor_asignado.is.null')
             : q.eq('vendedor_asignado', codigoActivo)
         return q
       })
