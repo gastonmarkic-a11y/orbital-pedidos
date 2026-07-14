@@ -132,6 +132,7 @@ export const COND_ENTREGA = [
   'Solamente retira y paga luego',
   'Retira comisionista y trae pago',
   'Retira comisionista y el cte paga luego',
+  'Retira el vendedor',
   'Se envía moto y paga contraentrega',
   'Paga el cte y luego se manda por moto',
   'Se envía moto y luego el cte paga',
