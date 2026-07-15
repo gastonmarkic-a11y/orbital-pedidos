@@ -17,6 +17,15 @@ const ORIGEN_LABELS: Record<string, string> = {
   con_nota: '📋 Con nota',
 }
 
+// Nombre visible del operador que hizo cada contacto (para no pisarse en prospección)
+const NOMBRE_OPERADOR: Record<string, string> = {
+  Marketing: 'Luna',
+  ProspeccionVenta: 'Damián',
+  Adrian: 'Adrián',
+  Martin: 'Martín',
+  Corporativo: 'Corporativo',
+}
+
 const PRIO_COLORS: Record<string, string> = {
   cierre: 'bg-red-500',
   alta: 'bg-red-500',
@@ -43,8 +52,12 @@ export default function Cartera() {
   const esAdmin = rolEfectivo === 'admin'
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
+  // Operador de prospección (Luna=Marketing, Damián=ProspeccionVenta) logueado directamente
+  const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'ProspeccionVenta')
+  const [modoCartera, setModoCartera] = useState<'prospectos' | 'venta_directa'>('prospectos')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
+  const [ultimaActPor, setUltimaActPor] = useState<Record<string, string>>({})
   const [propuestaMes, setPropuestaMes] = useState<Record<string, string>>({})
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [loading, setLoading] = useState(true)
@@ -72,37 +85,50 @@ export default function Cartera() {
     async function cargar() {
       const rows = await fetchPaged<Cliente>(() => {
         let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
-        q =
-          codigoActivo === 'Marketing'
-            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-            : q.eq('vendedor_asignado', codigoActivo)
+        if (esProspOperador) {
+          // Luna y Damián comparten la misma cartera: Prospectos (leads) o Venta directa (vendidos)
+          q =
+            modoCartera === 'venta_directa'
+              ? q.eq('vendedor_asignado', 'ProspeccionVenta')
+              : q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+        } else {
+          q =
+            codigoActivo === 'Marketing'
+              ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+              : q.eq('vendedor_asignado', codigoActivo)
+        }
         return q
       })
       setClientes(rows)
       const codsSet = new Set(rows.map((c) => c.cod))
-      const acts = await fetchPaged<{ cod_cliente: string | null; fecha: string; propuesta_enviada_id: number | null }>(
+      const acts = await fetchPaged<{ cod_cliente: string | null; fecha: string; vendedor: string | null; propuesta_enviada_id: number | null }>(
         () =>
           supabase
             .from('actividad_diaria')
-            .select('cod_cliente, fecha, propuesta_enviada_id')
+            .select('cod_cliente, fecha, vendedor, propuesta_enviada_id')
             .order('fecha', { ascending: false })
             .order('id', { ascending: false })
       )
       const ult: Record<string, string> = {}
+      const ultPor: Record<string, string> = {}
       const prop: Record<string, string> = {}
       const inicioMes = firstOfMonth()
       for (const a of acts) {
         if (!a.cod_cliente || !codsSet.has(a.cod_cliente)) continue
-        if (!ult[a.cod_cliente]) ult[a.cod_cliente] = a.fecha
+        if (!ult[a.cod_cliente]) {
+          ult[a.cod_cliente] = a.fecha
+          if (a.vendedor) ultPor[a.cod_cliente] = a.vendedor
+        }
         if (a.propuesta_enviada_id && a.fecha >= inicioMes && !prop[a.cod_cliente])
           prop[a.cod_cliente] = String(a.propuesta_enviada_id)
       }
       setUltimaAct(ult)
+      setUltimaActPor(ultPor)
       setPropuestaMes(prop)
       setLoading(false)
     }
     cargar()
-  }, [vendedor, codigoActivo, recarga])
+  }, [vendedor, codigoActivo, recarga, esProspOperador, modoCartera])
 
   const esFidelizado = (c: Cliente) => c.clasificacion_recupero === 'fidelizacion'
   const conVentas = useMemo(
@@ -285,6 +311,27 @@ export default function Cartera() {
         </div>
       )}
 
+      {esProspOperador && (
+        <div className="flex gap-1 bg-black/5 rounded-lg p-1 w-fit">
+          {(
+            [
+              ['prospectos', '🔍 Prospectos'],
+              ['venta_directa', '💰 Venta directa'],
+            ] as ['prospectos' | 'venta_directa', string][]
+          ).map(([modo, label]) => (
+            <button
+              key={modo}
+              onClick={() => setModoCartera(modo)}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md ${
+                modoCartera === modo ? 'bg-white shadow-sm text-brandDark' : 'text-muted'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
           { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
@@ -425,6 +472,9 @@ export default function Cartera() {
                     </b>
                   )}
                 </span>
+                {ultimaActPor[c.cod] && dias !== null && (
+                  <span className="text-brandDark">por {NOMBRE_OPERADOR[ultimaActPor[c.cod]] ?? ultimaActPor[c.cod]}</span>
+                )}
               </div>
               {c.nota && <p className="text-[11px] text-muted">📝 {c.nota}</p>}
               <div className="flex gap-2 pt-1">
@@ -593,6 +643,9 @@ export default function Cartera() {
                       <span className="text-amber-600">Hace {dias}d</span>
                     ) : (
                       <span className="text-red-600 font-medium">Hace {dias}d</span>
+                    )}
+                    {ultimaActPor[c.cod] && dias !== null && (
+                      <div className="text-[10px] text-brandDark">por {NOMBRE_OPERADOR[ultimaActPor[c.cod]] ?? ultimaActPor[c.cod]}</div>
                     )}
                   </td>
                   <td className="px-2.5 py-2">

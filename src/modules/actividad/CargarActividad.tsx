@@ -17,7 +17,7 @@ export default function CargarActividad() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const location = useLocation()
   const esAdmin = rolEfectivo === 'admin'
-  const esProspeccion = codigoEfectivo === 'Marketing'
+  const esProspeccion = codigoEfectivo === 'Marketing' || codigoEfectivo === 'ProspeccionVenta'
   const toast = useToast()
 
   const [resultados, setResultados] = useState<Cliente[]>([])
@@ -83,10 +83,10 @@ export default function CargarActividad() {
         .or(`nomcomerc.ilike.%${q}%,razon.ilike.%${q}%`)
         .limit(8)
       if (!esAdmin && vendedor) {
-        query =
-          codigoEfectivo === 'Marketing'
-            ? query.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-            : query.eq('vendedor_asignado', codigoEfectivo)
+        // Prospección (Luna/Damián) puede buscar prospectos y sus clientes de venta directa
+        query = esProspeccion
+          ? query.or('vendedor_asignado.eq.Marketing,vendedor_asignado.eq.ProspeccionVenta,vendedor_asignado.is.null')
+          : query.eq('vendedor_asignado', codigoEfectivo)
       }
       query.then(({ data }) => setResultados((data as Cliente[]) ?? []))
     }, 250)
@@ -143,7 +143,8 @@ export default function CargarActividad() {
     const propNombre = propuestas.find((p) => String(p.id) === propuestaId)?.nombre
     const desarrollo = propNombre ? `Propuesta enviada: ${propNombre}` : huboVenta ? 'Venta' : 'Seguimiento / nota'
     await supabase.from('actividad_diaria').insert({
-      vendedor: cliente.vendedor_asignado || codigoEfectivo,
+      // Se atribuye al operador logueado (Luna/Damián/vendedor) para saber quién hizo el contacto
+      vendedor: codigoEfectivo || cliente.vendedor_asignado,
       cod_cliente: cliente.cod,
       nombre_comercio: cliente.nomcomerc,
       contacto: cliente.contacto,

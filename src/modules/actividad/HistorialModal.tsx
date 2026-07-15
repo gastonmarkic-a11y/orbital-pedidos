@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Actividad, Cliente, Propuesta } from '../../lib/types'
 
+const NOMBRE_OPERADOR: Record<string, string> = {
+  Marketing: 'Luna',
+  ProspeccionVenta: 'Damián',
+  Adrian: 'Adrián',
+  Martin: 'Martín',
+  Corporativo: 'Corporativo',
+}
+
 export default function HistorialModal({
   cliente,
   propuestas,
@@ -57,7 +65,7 @@ export default function HistorialModal({
                       month: 'short',
                       year: 'numeric',
                     })}{' '}
-                    · {a.vendedor}
+                    · <span className="text-brandDark font-semibold">{a.vendedor ? NOMBRE_OPERADOR[a.vendedor] ?? a.vendedor : '—'}</span>
                   </p>
                   <p className="text-sm text-ink">{a.actividad_desarrollo}</p>
                   {prop && (
