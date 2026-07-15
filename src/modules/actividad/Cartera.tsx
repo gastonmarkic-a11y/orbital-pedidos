@@ -21,7 +21,8 @@ const ORIGEN_LABELS: Record<string, string> = {
 // Nombre visible del operador que hizo cada contacto (para no pisarse en prospección)
 const NOMBRE_OPERADOR: Record<string, string> = {
   Marketing: 'Luna',
-  ProspeccionVenta: 'Damián',
+  Damian: 'Damián',
+  ProspeccionVenta: 'Damián', // histórico: contactos viejos de Damián antes de mudar su código
   Adrian: 'Adrián',
   Martin: 'Martín',
   Corporativo: 'Corporativo',
@@ -39,7 +40,7 @@ const TABS_VENDEDOR = [
   { codigo: 'Adrian', label: 'Adrián' },
   { codigo: 'Martin', label: 'Martín' },
   { codigo: 'Marketing', label: 'Prospección' },
-  { codigo: 'ProspeccionVenta', label: 'Prosp. venta directa' },
+  { codigo: 'ProspeccionVenta', label: 'Venta directa' },
   { codigo: 'Corporativo', label: 'Corporativo' },
 ]
 
@@ -54,7 +55,7 @@ export default function Cartera() {
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
   // Operador de prospección (Luna=Marketing, Damián=ProspeccionVenta) logueado directamente
-  const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'ProspeccionVenta')
+  const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian')
   const [modoCartera, setModoCartera] = useState<'prospectos' | 'venta_directa'>('prospectos')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})

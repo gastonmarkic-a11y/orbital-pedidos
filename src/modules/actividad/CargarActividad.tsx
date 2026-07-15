@@ -17,7 +17,7 @@ export default function CargarActividad() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const location = useLocation()
   const esAdmin = rolEfectivo === 'admin'
-  const esProspeccion = codigoEfectivo === 'Marketing' || codigoEfectivo === 'ProspeccionVenta'
+  const esProspeccion = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
   const toast = useToast()
 
   const [resultados, setResultados] = useState<Cliente[]>([])

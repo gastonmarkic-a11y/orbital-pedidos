@@ -4,6 +4,7 @@ import { Actividad, Cliente, Propuesta } from '../../lib/types'
 
 const NOMBRE_OPERADOR: Record<string, string> = {
   Marketing: 'Luna',
+  Damian: 'Damián',
   ProspeccionVenta: 'Damián',
   Adrian: 'Adrián',
   Martin: 'Martín',
