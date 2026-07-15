@@ -8,6 +8,7 @@ import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
+import { telefonosCliente } from '../../lib/telefono'
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -43,7 +44,7 @@ const TABS_VENDEDOR = [
 ]
 
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
-type ColOrden = 'comercio' | 'contacto' | 'mail' | 'zona' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
+type ColOrden = 'comercio' | 'contacto' | 'mail' | 'zona' | 'whatsapp' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
 
 export default function Cartera() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
@@ -179,6 +180,11 @@ export default function Cartera() {
         else if (col === 'contacto') r = (a.contacto || 'zzz').localeCompare(b.contacto || 'zzz')
         else if (col === 'mail') r = (a.email || 'zzz').localeCompare(b.email || 'zzz')
         else if (col === 'zona') r = (a.zona || a.localidad || '').localeCompare(b.zona || b.localidad || '')
+        else if (col === 'whatsapp') {
+          const na = telefonosCliente(a.whatsapp, a.telefono)[0]?.nacional || ''
+          const nb = telefonosCliente(b.whatsapp, b.telefono)[0]?.nacional || ''
+          r = (na || 'zzz').localeCompare(nb || 'zzz')
+        }
         else if (col === 'u2025') r = (a.unidades_2025 ?? 0) - (b.unidades_2025 ?? 0)
         else if (col === 'canje') r = Math.floor((a.unidades_2025 ?? 0) * 0.2) - Math.floor((b.unidades_2025 ?? 0) * 0.2)
         else if (col === 'ultima_compra') r = (a.ultima_compra_fecha || '').localeCompare(b.ultima_compra_fecha || '')
@@ -511,7 +517,7 @@ export default function Cartera() {
               <Th col="contacto">Contacto</Th>
               <Th col="mail">Mail</Th>
               <Th col="zona">Zona / Localidad</Th>
-              <Th>WhatsApp</Th>
+              <Th col="whatsapp">WhatsApp</Th>
               {mostrarCanjeCols && (
                 <>
                   <Th col="u2025" right>
@@ -594,7 +600,7 @@ export default function Cartera() {
                   </td>
                   <td className="px-2.5 py-2">
                     <div className="flex items-start gap-1">
-                      <TelefonoAcciones whatsapp={c.whatsapp} telefono={c.telefono} />
+                      <TelefonoAcciones whatsapp={c.whatsapp} telefono={c.telefono} compact />
                       <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark shrink-0" title="Editar teléfono">
                         ✏️
                       </button>

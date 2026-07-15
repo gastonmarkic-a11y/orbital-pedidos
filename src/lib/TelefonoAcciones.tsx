@@ -17,8 +17,29 @@ export default function TelefonoAcciones({
   const nums = telefonosCliente(whatsapp, telefono)
   if (nums.length === 0) return <span className="text-faint">—</span>
 
+  if (compact) {
+    // Solo iconos: número + botón llamar + botón WhatsApp, sin etiquetas de texto
+    return (
+      <div className="flex flex-wrap gap-x-2 gap-y-1">
+        {nums.map((n) => (
+          <div key={n.nacional} className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[11px] tabular-nums text-ink whitespace-nowrap">
+              {n.tipo === 'celular' ? '📱' : '☎️'} {n.nacional}
+            </span>
+            <a href={n.telHref} className="text-brandDark hover:opacity-70" title={`Llamar ${n.nacional}`}>
+              📞
+            </a>
+            <a href={n.waHref} target="_blank" rel="noreferrer" className="text-emerald-700 hover:opacity-70" title={`WhatsApp ${n.nacional}`}>
+              💬
+            </a>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className={compact ? 'flex flex-wrap gap-1.5' : 'flex flex-col gap-1.5'}>
+    <div className="flex flex-col gap-1.5">
       {nums.map((n) => (
         <div key={n.nacional} className="flex items-center gap-1.5">
           <span className="text-[11px] tabular-nums text-ink">
