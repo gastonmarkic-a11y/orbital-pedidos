@@ -7,6 +7,7 @@ import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, parseFP, qtyClass } from './calc'
+import { aNacional } from '../../lib/telefono'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -130,6 +131,40 @@ export default function Pedidos() {
       setModalFactura(null)
       toast(`📄 Factura ${nroFactura.trim()} registrada`, 'success')
     }
+  }
+
+  // Envía la factura al cliente por WhatsApp o Mail (el operador confirma el envío) y lo deja registrado
+  async function enviarFactura(p: Pedido, canal: 'wa' | 'mail') {
+    const nombreCliente = (p.cliente || '').replace(/^\d+ - /, '').trim()
+    const msg = `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te enviamos la factura ${p.nro_factura ?? ''} de tu pedido en Orbital Eyewear${p.importe_neto ? ` por ${formatPrecio(p.importe_neto)}` : ''}. Cualquier duda quedamos a disposición. ¡Gracias!`
+    if (canal === 'wa') {
+      const tel = aNacional(p.wsp || '')
+      if (tel.length < 10) {
+        toast('El cliente no tiene un WhatsApp válido cargado en el pedido', 'error')
+        return
+      }
+      window.open(`https://wa.me/549${tel}?text=${encodeURIComponent(msg)}`, '_blank', 'noreferrer')
+    } else {
+      if (!p.mail) {
+        toast('El cliente no tiene mail cargado en el pedido', 'error')
+        return
+      }
+      window.open(`mailto:${p.mail}?subject=${encodeURIComponent(`Factura ${p.nro_factura ?? ''} — Orbital Eyewear`)}&body=${encodeURIComponent(msg)}`, '_blank')
+    }
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        factura_enviada_at: new Date().toISOString(),
+        factura_enviada_canal: canal === 'wa' ? 'WhatsApp' : 'Mail',
+        factura_enviada_por: codigoEfectivo || vendedor?.codigo || '',
+      })
+      .eq('id', p.id)
+    if (error) {
+      toast('Se abrió el mensaje pero no se pudo registrar el envío', 'error')
+      return
+    }
+    toast(`✓ Factura enviada por ${canal === 'wa' ? 'WhatsApp' : 'Mail'} y registrada`, 'success')
+    cargar()
   }
 
   async function confirmarDespacho() {
@@ -545,6 +580,29 @@ export default function Pedidos() {
                               📄 Factura: <b>{l.nro_factura}</b>
                             </p>
                           )}
+                          {l.factura_enviada_at ? (
+                            <p className="text-[11px] text-emerald-700">
+                              ✓ Factura enviada por {l.factura_enviada_canal} ·{' '}
+                              {new Date(l.factura_enviada_at).toLocaleDateString('es-AR')}
+                              {l.factura_enviada_por ? ` · ${l.factura_enviada_por}` : ''}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-muted">Enviar factura al cliente (adjuntá el PDF antes de mandar):</p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => enviarFactura(l, 'wa')}
+                              className="flex-1 rounded-lg border border-emerald-500/40 text-emerald-700 py-2 text-xs font-medium"
+                            >
+                              💬 WhatsApp
+                            </button>
+                            <button
+                              onClick={() => enviarFactura(l, 'mail')}
+                              className="flex-1 rounded-lg border border-black/10 text-brandDark py-2 text-xs font-medium"
+                            >
+                              📧 Mail
+                            </button>
+                          </div>
                           <button
                             onClick={() => cambiarEstado(l.id, 'listo_despachar').then((ok) => ok && toast('📦 Habilitado para despacho', 'success'))}
                             className="w-full rounded-lg bg-[#7b2ff7] text-white py-2 text-xs font-bold"

@@ -151,4 +151,7 @@ export interface Pedido {
   direccion_entrega: string | null
   horario_entrega: string | null
   picking: string[] | null
+  factura_enviada_at: string | null
+  factura_enviada_canal: string | null
+  factura_enviada_por: string | null
 }
