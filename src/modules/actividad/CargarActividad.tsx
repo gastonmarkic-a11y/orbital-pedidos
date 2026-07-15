@@ -6,6 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { clasificarVoz } from './voz'
 import HistorialModal from './HistorialModal'
+import TelefonoAcciones from '../../lib/TelefonoAcciones'
 
 const VENDEDORES_CAMPO = [
   { codigo: 'Adrian', label: 'Adrián' },
@@ -329,9 +330,12 @@ export default function CargarActividad() {
                   </div>
                 </div>
               ) : (
-                <p className="text-muted">
-                  👤 {cliente.contacto || '—'} · 📞 {cliente.whatsapp || cliente.telefono || '—'} · ✉️ {cliente.email || '—'}
-                </p>
+                <div className="space-y-1.5 text-muted">
+                  <p>
+                    👤 {cliente.contacto || '—'} · ✉️ {cliente.email || '—'}
+                  </p>
+                  <TelefonoAcciones whatsapp={cliente.whatsapp} telefono={cliente.telefono} />
+                </div>
               )}
             </div>
 
