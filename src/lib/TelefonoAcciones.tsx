@@ -20,9 +20,9 @@ export default function TelefonoAcciones({
   return (
     <div className={compact ? 'flex flex-wrap gap-1.5' : 'flex flex-col gap-1.5'}>
       {nums.map((n) => (
-        <div key={n.digits} className="flex items-center gap-1.5">
+        <div key={n.nacional} className="flex items-center gap-1.5">
           <span className="text-[11px] tabular-nums text-ink">
-            {n.tipo === 'celular' ? '📱' : '☎️'} {n.digits}
+            {n.tipo === 'celular' ? '📱' : '☎️'} {n.nacional}
           </span>
           <a
             href={n.telHref}

@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { daysSince } from '../../lib/dates'
+import { aNacional } from '../../lib/telefono'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
@@ -38,11 +39,10 @@ function temaDePropuesta(nombre: string): string {
 
 function telWhatsApp(raw: string | null): string | null {
   if (!raw) return null
-  let t = raw.replace(/\D/g, '')
-  if (!t) return null
-  if (!t.startsWith('54')) t = '54' + t
-  if (t.startsWith('54') && !t.startsWith('549')) t = '549' + t.slice(2)
-  return t
+  // Toma el primer número del campo (puede haber varios separados por " / ")
+  const primero = raw.split(/\s*[/,;|]+\s*/)[0] || raw
+  const nac = aNacional(primero)
+  return nac.length >= 10 ? '549' + nac : null
 }
 
 export default function Envios() {

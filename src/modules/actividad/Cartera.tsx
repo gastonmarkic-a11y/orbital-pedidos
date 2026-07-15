@@ -7,6 +7,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
+import TelefonoAcciones from '../../lib/TelefonoAcciones'
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -417,20 +418,9 @@ export default function Cartera() {
                   ✏️
                 </button>
               </p>
-              <p className="text-xs">
-                {c.whatsapp ? (
-                  <a
-                    href={`https://wa.me/${(c.whatsapp || '').replace(/\D/g, '').replace(/^(?!54)/, '54')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[#2f6fdb] font-mono"
-                  >
-                    📞 {c.whatsapp}
-                  </a>
-                ) : (
-                  <span className="text-faint">📞 —</span>
-                )}
-              </p>
+              <div className="text-xs">
+                <TelefonoAcciones whatsapp={c.whatsapp} telefono={c.telefono} compact />
+              </div>
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
                 {(c.unidades_2025 ?? 0) > 0 && (
                   <span>
@@ -572,21 +562,12 @@ export default function Cartera() {
                     <span className="text-[10px] text-faint">{c.localidad}</span>
                   </td>
                   <td className="px-2.5 py-2">
-                    {c.whatsapp ? (
-                      <a
-                        href={`https://wa.me/${(c.whatsapp || '').replace(/\D/g, '').replace(/^(?!54)/, '54')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#2f6fdb] text-xs font-mono"
-                      >
-                        {c.whatsapp}
-                      </a>
-                    ) : (
-                      <span className="text-faint text-xs">—</span>
-                    )}{' '}
-                    <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark" title="Editar WhatsApp">
-                      ✏️
-                    </button>
+                    <div className="flex items-start gap-1">
+                      <TelefonoAcciones whatsapp={c.whatsapp} telefono={c.telefono} />
+                      <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark shrink-0" title="Editar teléfono">
+                        ✏️
+                      </button>
+                    </div>
                   </td>
                   {mostrarCanjeCols && (
                     <>
