@@ -142,13 +142,8 @@ export default function CargarActividad() {
     setGuardando(true)
     const propNombre = propuestas.find((p) => String(p.id) === propuestaId)?.nombre
     const desarrollo = propNombre ? `Propuesta enviada: ${propNombre}` : huboVenta ? 'Venta' : 'Seguimiento / nota'
-    // En prospección la actividad se atribuye al operador logueado (Luna/Damián), no al vendedor asignado del cliente
-    const vendedorActividad =
-      codigoEfectivo === 'Marketing' || codigoEfectivo === 'ProspeccionVenta'
-        ? codigoEfectivo
-        : cliente.vendedor_asignado || codigoEfectivo
     await supabase.from('actividad_diaria').insert({
-      vendedor: vendedorActividad,
+      vendedor: cliente.vendedor_asignado || codigoEfectivo,
       cod_cliente: cliente.cod,
       nombre_comercio: cliente.nomcomerc,
       contacto: cliente.contacto,
@@ -163,14 +158,14 @@ export default function CargarActividad() {
       unidades_vendidas: huboVenta && unidades ? Number(unidades) : null,
       monto_vendido: huboVenta && monto ? Number(monto) : null,
     })
-    const updateCliente: Record<string, unknown> = {
-      proximo_paso: proximoPaso || null,
-      proxima_agenda_fecha: fechaAgenda || null,
-      nota: proximoPaso || cliente.nota,
-    }
-    // Al registrar una venta, el cliente pasa a fidelización → aparece en "Prospección directa"
-    if (huboVenta) updateCliente.clasificacion_recupero = 'fidelizacion'
-    await supabase.from('clientes').update(updateCliente).eq('cod', cliente.cod)
+    await supabase
+      .from('clientes')
+      .update({
+        proximo_paso: proximoPaso || null,
+        proxima_agenda_fecha: fechaAgenda || null,
+        nota: proximoPaso || cliente.nota,
+      })
+      .eq('cod', cliente.cod)
     setGuardando(false)
     setGuardado(true)
     limpiar()

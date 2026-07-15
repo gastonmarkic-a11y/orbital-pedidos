@@ -43,7 +43,6 @@ export default function Cartera() {
   const esAdmin = rolEfectivo === 'admin'
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
-  const esProspeccion = codigoActivo === 'Marketing' || codigoActivo === 'ProspeccionVenta'
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
   const [propuestaMes, setPropuestaMes] = useState<Record<string, string>>({})
@@ -73,10 +72,9 @@ export default function Cartera() {
     async function cargar() {
       const rows = await fetchPaged<Cliente>(() => {
         let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
-        // Prospección compartida: Luna (Marketing) y Damián (ProspeccionVenta) ven la misma cartera
         q =
-          codigoActivo === 'Marketing' || codigoActivo === 'ProspeccionVenta'
-            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.eq.ProspeccionVenta,vendedor_asignado.is.null')
+          codigoActivo === 'Marketing'
+            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
             : q.eq('vendedor_asignado', codigoActivo)
         return q
       })
@@ -105,11 +103,6 @@ export default function Cartera() {
     }
     cargar()
   }, [vendedor, codigoActivo, recarga])
-
-  // En prospección no existen los segmentos Canje ni Fidelizados como opción normal → arrancar en "A recuperar"
-  useEffect(() => {
-    if (esProspeccion && (segmento === 'canje' || segmento === 'fidelizacion')) setSegmento('recuperar')
-  }, [esProspeccion])
 
   const esFidelizado = (c: Cliente) => c.clasificacion_recupero === 'fidelizacion'
   const conVentas = useMemo(
@@ -292,21 +285,14 @@ export default function Cartera() {
         </div>
       )}
 
-      <div className={`grid grid-cols-2 ${esProspeccion ? 'md:grid-cols-3' : 'md:grid-cols-5'} gap-2`}>
-        {(esProspeccion
-          ? [
-              { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
-              { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500' },
-              { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500' },
-            ]
-          : [
-              { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
-              { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500' },
-              { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500' },
-              { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500' },
-              { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500' },
-            ]
-        ).map((k) => (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {[
+          { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
+          { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500' },
+          { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500' },
+          { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500' },
+          { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500' },
+        ].map((k) => (
           <div key={k.label} className="bg-white border border-black/10 rounded-xl p-3 relative overflow-hidden">
             <div className={`absolute top-0 left-0 right-0 h-0.5 ${k.color}`} />
             <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1">{k.label}</p>
@@ -322,18 +308,13 @@ export default function Cartera() {
         >
           ⟳ Actualizar
         </button>
-        {(esProspeccion
-          ? ([
-              ['recuperar', `📋 A recuperar (${aRecuperar.length})`],
-              ['bienvenida', `🔍 Bienvenida (${bienvenida.length})`],
-              ['fidelizacion', `⭐ Prospección directa (${fidelizados.length})`],
-            ] as [Segmento, string][])
-          : ([
-              ['canje', `↩ Con canje (${conVentas.length})`],
-              ['recuperar', `📋 A recuperar (${aRecuperar.length})`],
-              ['bienvenida', `🔍 Bienvenida (${bienvenida.length})`],
-              ['fidelizacion', `⭐ Fidelizados (${fidelizados.length})`],
-            ] as [Segmento, string][])
+        {(
+          [
+            ['canje', `↩ Con canje (${conVentas.length})`],
+            ['recuperar', `📋 A recuperar (${aRecuperar.length})`],
+            ['bienvenida', `🔍 Bienvenida (${bienvenida.length})`],
+            ['fidelizacion', `⭐ Fidelizados (${fidelizados.length})`],
+          ] as [Segmento, string][]
         ).map(([key, label]) => (
           <button
             key={key}
