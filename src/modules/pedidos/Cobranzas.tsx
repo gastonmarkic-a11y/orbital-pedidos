@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
+import { fetchPaged } from '../../lib/fetchAll'
 import { estadoLabel, importeDe } from './calc'
 
 export default function Cobranzas() {
@@ -14,12 +15,12 @@ export default function Cobranzas() {
   const [filtro, setFiltro] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: peds }, { data: st }] = await Promise.all([
+    const [{ data: peds }, st] = await Promise.all([
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
-      supabase.from('stock').select('*'),
+      fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
     ])
     setPedidos((peds as Pedido[]) ?? [])
-    setStock((st as StockItem[]) ?? [])
+    setStock(st)
     setLoading(false)
   }, [])
 

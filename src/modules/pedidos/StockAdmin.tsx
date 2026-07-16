@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
+import { fetchPaged } from '../../lib/fetchAll'
 import { qtyClass } from './calc'
 
 const PAGE_SIZE = 50
@@ -19,8 +20,8 @@ export default function StockAdmin() {
   const [masivoStatus, setMasivoStatus] = useState<string | null>(null)
 
   async function cargar() {
-    const { data } = await supabase.from('stock').select('*').order('modelo')
-    setStock((data as StockItem[]) ?? [])
+    const data = await fetchPaged<StockItem>(() => supabase.from('stock').select('*').order('modelo'))
+    setStock(data)
     setLoading(false)
   }
 

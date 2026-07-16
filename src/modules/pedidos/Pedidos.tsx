@@ -8,6 +8,7 @@ import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, parseFP, qtyClass } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
+import { fetchPaged } from '../../lib/fetchAll'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -53,12 +54,12 @@ export default function Pedidos() {
   const [editBusqueda, setEditBusqueda] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: peds }, { data: st }] = await Promise.all([
+    const [{ data: peds }, st] = await Promise.all([
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
-      supabase.from('stock').select('*'),
+      fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
     ])
     setPedidos((peds as Pedido[]) ?? [])
-    setStock((st as StockItem[]) ?? [])
+    setStock(st)
     setLoading(false)
   }, [])
 

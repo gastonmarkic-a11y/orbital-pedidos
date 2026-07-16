@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
+import { fetchPaged } from '../../lib/fetchAll'
 import { COND_ENTREGA, qtyClass } from './calc'
 
 interface Cuota {
@@ -39,8 +40,8 @@ export default function NuevoPedido() {
   const [cdSaving, setCdSaving] = useState(false)
 
   async function loadStock() {
-    const { data } = await supabase.from('stock').select('*').order('modelo')
-    setStock((data as StockItem[]) ?? [])
+    const data = await fetchPaged<StockItem>(() => supabase.from('stock').select('*').order('modelo'))
+    setStock(data)
   }
 
   useEffect(() => {
@@ -217,8 +218,7 @@ export default function NuevoPedido() {
     setConfirmando(true)
     try {
       // Verificar stock actual
-      const { data: freshData } = await supabase.from('stock').select('*')
-      const fresh = (freshData as StockItem[]) ?? []
+      const fresh = await fetchPaged<StockItem>(() => supabase.from('stock').select('*'))
       for (const k of cartKeys) {
         const p = fresh.find((x) => x.codigo === k)
         if (!p || p.cantidad < cart[k]) {

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio, clienteCorto } from '../../lib/format'
 import { addDias, diasDesde, formatFecha, parsePedidoFecha } from '../../lib/dates'
+import { fetchPaged } from '../../lib/fetchAll'
 import { estadoLabel, ESTADO_COLORS, importeDe, parseFP } from './calc'
 
 const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
@@ -16,10 +17,10 @@ export default function DashboardPedidos() {
   useEffect(() => {
     Promise.all([
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
-      supabase.from('stock').select('*'),
+      fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
     ]).then(([p, s]) => {
       setPedidos((p.data as Pedido[]) ?? [])
-      setStock((s.data as StockItem[]) ?? [])
+      setStock(s)
       setLoading(false)
     })
   }, [])
