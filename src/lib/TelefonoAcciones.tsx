@@ -1,9 +1,9 @@
-import { telefonosCliente } from './telefono'
+import { telefonosCliente, abrirWhatsApp } from './telefono'
 
 /**
  * Muestra los teléfonos de un cliente como acciones: cada número con botón para
- * llamar (tel:) y abrir WhatsApp (wa.me). Detecta celular (📱) vs línea (☎️) y
- * separa varios números en filas independientes.
+ * llamar (tel:) y abrir WhatsApp (app de escritorio o web). Muestra 📱 los cargados
+ * como WhatsApp y ☎️ los de línea, y separa varios números en filas independientes.
  */
 export default function TelefonoAcciones({
   whatsapp,
@@ -29,9 +29,14 @@ export default function TelefonoAcciones({
             <a href={n.telHref} className="text-brandDark hover:opacity-70" title={`Llamar ${n.nacional}`}>
               📞
             </a>
-            <a href={n.waHref} target="_blank" rel="noreferrer" className="text-emerald-700 hover:opacity-70" title={`WhatsApp ${n.nacional}`}>
+            <button
+              type="button"
+              onClick={() => abrirWhatsApp(n.wa)}
+              className="text-emerald-700 hover:opacity-70"
+              title={`WhatsApp ${n.nacional}`}
+            >
               💬
-            </a>
+            </button>
           </div>
         ))}
       </div>
@@ -52,15 +57,14 @@ export default function TelefonoAcciones({
           >
             📞 Llamar
           </a>
-          <a
-            href={n.waHref}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => abrirWhatsApp(n.wa)}
             className="text-[10px] font-medium rounded-full border border-emerald-500/30 px-2 py-0.5 text-emerald-700 hover:bg-emerald-50"
             title="Abrir WhatsApp"
           >
             💬 WhatsApp
-          </a>
+          </button>
         </div>
       ))}
     </div>

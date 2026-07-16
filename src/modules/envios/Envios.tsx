@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { daysSince } from '../../lib/dates'
-import { aNacional } from '../../lib/telefono'
+import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
@@ -232,7 +232,7 @@ export default function Envios() {
         toast('Este cliente no tiene teléfono cargado', 'error')
         return
       }
-      window.open(`https://wa.me/${tel}?text=${encodeURIComponent(prepMensaje)}`, '_blank', 'noreferrer')
+      abrirWhatsApp(tel, prepMensaje)
     } else {
       if (!prep.email) {
         toast('Este cliente no tiene mail cargado', 'error')

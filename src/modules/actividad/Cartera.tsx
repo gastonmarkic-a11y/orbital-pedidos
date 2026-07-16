@@ -70,7 +70,7 @@ export default function Cartera() {
   const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
   const [editDatos, setEditDatos] = useState<Cliente | null>(null)
-  const [dm, setDm] = useState({ nombre: '', contacto: '', telefono: '', email: '', direccion: '', horario: '' })
+  const [dm, setDm] = useState({ nombre: '', contacto: '', whatsapp: '', telefono: '', email: '', direccion: '', horario: '' })
   const [dmSaving, setDmSaving] = useState(false)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
@@ -260,7 +260,8 @@ export default function Cartera() {
     setDm({
       nombre: c.nomcomerc ?? c.razon ?? '',
       contacto: c.contacto ?? '',
-      telefono: c.whatsapp ?? c.telefono ?? '',
+      whatsapp: c.whatsapp ?? '',
+      telefono: c.telefono ?? '',
       email: c.email ?? '',
       direccion: c.direccion ?? '',
       horario: c.horario_entrega ?? '',
@@ -273,8 +274,8 @@ export default function Cartera() {
     const cambios = {
       nomcomerc: dm.nombre.trim() || editDatos.nomcomerc,
       contacto: dm.contacto.trim() || null,
-      whatsapp: dm.telefono.trim() || null,
-      telefono: dm.telefono.trim() || editDatos.telefono,
+      whatsapp: dm.whatsapp.trim() || null,
+      telefono: dm.telefono.trim() || null,
       email: dm.email.trim() || null,
       direccion: dm.direccion.trim() || null,
       horario_entrega: dm.horario.trim() || null,
@@ -697,7 +698,8 @@ export default function Cartera() {
                 [
                   ['nombre', 'Nombre del comercio'],
                   ['contacto', 'Nombre de contacto'],
-                  ['telefono', 'Teléfono / WhatsApp'],
+                  ['whatsapp', '📱 WhatsApp (celular)'],
+                  ['telefono', '☎️ Teléfono de línea'],
                   ['email', 'Mail'],
                   ['direccion', 'Dirección de entrega'],
                   ['horario', 'Horario de entrega (ej: Lun a Vie 9-13)'],

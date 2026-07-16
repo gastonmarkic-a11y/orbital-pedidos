@@ -7,7 +7,7 @@ import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, parseFP, qtyClass } from './calc'
-import { aNacional } from '../../lib/telefono'
+import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -143,13 +143,13 @@ export default function Pedidos() {
         toast('El cliente no tiene un WhatsApp válido cargado en el pedido', 'error')
         return
       }
-      window.open(`https://wa.me/549${tel}?text=${encodeURIComponent(msg)}`, '_blank', 'noreferrer')
+      abrirWhatsApp('549' + tel, msg)
     } else {
       if (!p.mail) {
         toast('El cliente no tiene mail cargado en el pedido', 'error')
         return
       }
-      window.open(`mailto:${p.mail}?subject=${encodeURIComponent(`Factura ${p.nro_factura ?? ''} — Orbital Eyewear`)}&body=${encodeURIComponent(msg)}`, '_blank')
+      abrirMail(p.mail, `Factura ${p.nro_factura ?? ''} — Orbital Eyewear`, msg)
     }
     const { error } = await supabase
       .from('pedidos')

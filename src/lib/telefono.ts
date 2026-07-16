@@ -85,6 +85,35 @@ export function parseTelefonos(raw: string | null | undefined, asumirCelular = f
   return out
 }
 
+/**
+ * Abre WhatsApp: intenta la app instalada (whatsapp://) y, si no abre, cae a WhatsApp Web.
+ * Detecta que la app abrió porque la ventana pierde foco; si sigue en foco, abre la web.
+ */
+export function abrirWhatsApp(wa: string, texto?: string) {
+  if (!wa) return
+  const t = texto ? encodeURIComponent(texto) : ''
+  const appUrl = `whatsapp://send?phone=${wa}${t ? `&text=${t}` : ''}`
+  const webUrl = `https://wa.me/${wa}${t ? `?text=${t}` : ''}`
+  let abrioApp = false
+  const marcar = () => {
+    abrioApp = true
+  }
+  window.addEventListener('blur', marcar, { once: true })
+  document.addEventListener('visibilitychange', marcar, { once: true })
+  window.location.href = appUrl
+  window.setTimeout(() => {
+    window.removeEventListener('blur', marcar)
+    document.removeEventListener('visibilitychange', marcar)
+    if (!abrioApp) window.open(webUrl, '_blank', 'noreferrer')
+  }, 1500)
+}
+
+/** Abre el cliente de mail con un borrador (mailto). location.href es más confiable que window.open. */
+export function abrirMail(email: string, asunto: string, cuerpo: string) {
+  if (!email) return
+  window.location.href = `mailto:${email}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+}
+
 /** Todos los números de un cliente (WhatsApp primero, luego teléfono), sin duplicar. */
 export function telefonosCliente(whatsapp: string | null | undefined, telefono: string | null | undefined): NumeroTel[] {
   const nums = [...parseTelefonos(whatsapp, true), ...parseTelefonos(telefono, false)]

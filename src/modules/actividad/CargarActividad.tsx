@@ -40,6 +40,7 @@ export default function CargarActividad() {
   const [derivado, setDerivado] = useState(false)
   const [editandoDatos, setEditandoDatos] = useState(false)
   const [cContacto, setCContacto] = useState('')
+  const [cWhatsapp, setCWhatsapp] = useState('')
   const [cTelefono, setCTelefono] = useState('')
   const [cEmail, setCEmail] = useState('')
   const [guardandoDatos, setGuardandoDatos] = useState(false)
@@ -54,7 +55,8 @@ export default function CargarActividad() {
   useEffect(() => {
     if (cliente) {
       setCContacto(cliente.contacto ?? '')
-      setCTelefono(cliente.whatsapp ?? cliente.telefono ?? '')
+      setCWhatsapp(cliente.whatsapp ?? '')
+      setCTelefono(cliente.telefono ?? '')
       setCEmail(cliente.email ?? '')
       setEditandoDatos(false)
     }
@@ -120,8 +122,8 @@ export default function CargarActividad() {
       .from('clientes')
       .update({
         contacto: cContacto.trim() || null,
-        whatsapp: cTelefono.trim() || null,
-        telefono: cTelefono.trim() || cliente.telefono,
+        whatsapp: cWhatsapp.trim() || null,
+        telefono: cTelefono.trim() || null,
         email: cEmail.trim() || null,
       })
       .eq('cod', cliente.cod)
@@ -131,7 +133,7 @@ export default function CargarActividad() {
       return
     }
     toast('✓ Datos de contacto guardados', 'success')
-    setCliente({ ...cliente, contacto: cContacto.trim() || null, whatsapp: cTelefono.trim() || null, email: cEmail.trim() || null })
+    setCliente({ ...cliente, contacto: cContacto.trim() || null, whatsapp: cWhatsapp.trim() || null, telefono: cTelefono.trim() || null, email: cEmail.trim() || null })
     setGuardandoDatos(false)
     setEditandoDatos(false)
   }
@@ -295,9 +297,15 @@ export default function CargarActividad() {
                     className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
                   />
                   <input
+                    value={cWhatsapp}
+                    onChange={(e) => setCWhatsapp(e.target.value)}
+                    placeholder="📱 WhatsApp (celular)"
+                    className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
+                  />
+                  <input
                     value={cTelefono}
                     onChange={(e) => setCTelefono(e.target.value)}
-                    placeholder="Teléfono / WhatsApp"
+                    placeholder="☎️ Teléfono de línea"
                     className="w-full bg-white border border-black/10 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-faint"
                   />
                   <input
