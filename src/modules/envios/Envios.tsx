@@ -94,8 +94,9 @@ export default function Envios() {
 
       const rows = await fetchPaged<Cliente>(() => {
         let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
+        // Prospección (Luna=Marketing, Damián=Damian) envía a los prospectos compartidos
         q =
-          codigoEfectivo === 'Marketing'
+          codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
             ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
             : q.eq('vendedor_asignado', codigoEfectivo)
         return q

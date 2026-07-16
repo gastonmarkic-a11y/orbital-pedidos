@@ -103,7 +103,7 @@ export default function GestionClientes() {
         .or(`nomcomerc.ilike.%${q}%,razon.ilike.%${q}%,cod.ilike.%${q}%`)
         .limit(8)
       query =
-        codigoEfectivo === 'Marketing'
+        codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
           ? query.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
           : query.eq('vendedor_asignado', codigoEfectivo)
       query.then(({ data }) => setMios((data as Cliente[]) ?? []))
