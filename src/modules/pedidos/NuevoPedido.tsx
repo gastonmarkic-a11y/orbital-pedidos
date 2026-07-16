@@ -24,6 +24,9 @@ export default function NuevoPedido() {
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
   const [busquedaStock, setBusquedaStock] = useState('')
   const [filtroModelo, setFiltroModelo] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroClasif, setFiltroClasif] = useState('')
+  const [filtroTratam, setFiltroTratam] = useState('')
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [cart, setCart] = useState<Record<string, number>>({})
   const [condEntrega, setCondEntrega] = useState('')
@@ -108,7 +111,7 @@ export default function NuevoPedido() {
     if (c.telefono) setWsp(c.telefono)
   }
 
-  // Stock agrupado
+  // Stock agrupado — filtros combinables (búsqueda + modelo + tipo + clasificación + tratamiento)
   const stockFiltrado = useMemo(() => {
     const q = busquedaStock.toLowerCase().trim()
     return stock.filter((p) => {
@@ -118,11 +121,21 @@ export default function NuevoPedido() {
         p.modelo.toLowerCase().includes(q) ||
         (p.descripcion || '').toLowerCase().includes(q)
       const matchM = !filtroModelo || p.modelo === filtroModelo
-      return matchQ && matchM && p.cantidad > 0
+      const matchTipo = !filtroTipo || (p.tipo || '') === filtroTipo
+      const matchClasif = !filtroClasif || (p.clasificacion || '') === filtroClasif
+      const matchTratam = !filtroTratam || (p.tratamiento || '') === filtroTratam
+      return matchQ && matchM && matchTipo && matchClasif && matchTratam && p.cantidad > 0
     })
-  }, [stock, busquedaStock, filtroModelo])
+  }, [stock, busquedaStock, filtroModelo, filtroTipo, filtroClasif, filtroTratam])
 
-  const modelos = useMemo(() => [...new Set(stock.map((p) => p.modelo))].sort(), [stock])
+  // Opciones de los filtros: solo de artículos con stock, y respetando los otros filtros ya elegidos (combinables)
+  const conStock = useMemo(() => stock.filter((p) => p.cantidad > 0), [stock])
+  const opciones = (campo: 'modelo' | 'tipo' | 'clasificacion' | 'tratamiento') =>
+    [...new Set(conStock.map((p) => (p[campo] || '').trim()).filter(Boolean))].sort()
+  const modelos = useMemo(() => opciones('modelo'), [conStock])
+  const tipos = useMemo(() => opciones('tipo'), [conStock])
+  const clasificaciones = useMemo(() => opciones('clasificacion'), [conStock])
+  const tratamientos = useMemo(() => opciones('tratamiento'), [conStock])
   const grupos = useMemo(() => {
     const g: Record<string, StockItem[]> = {}
     for (const p of stockFiltrado) (g[p.modelo] = g[p.modelo] || []).push(p)
@@ -414,26 +427,50 @@ export default function NuevoPedido() {
         {/* STOCK */}
         <div className="bg-white rounded-xl p-4 border border-black/10 space-y-2">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide">Stock disponible</p>
-          <div className="flex gap-2">
-            <input
-              placeholder="Buscar artículo..."
-              value={busquedaStock}
-              onChange={(e) => setBusquedaStock(e.target.value)}
-              className="flex-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
-            />
-            <select
-              value={filtroModelo}
-              onChange={(e) => setFiltroModelo(e.target.value)}
-              className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm max-w-[140px]"
-            >
-              <option value="">Todos los modelos</option>
-              {modelos.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+          <input
+            placeholder="Buscar por código, modelo o descripción..."
+            value={busquedaStock}
+            onChange={(e) => setBusquedaStock(e.target.value)}
+            className="w-full bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ['Modelo', filtroModelo, setFiltroModelo, modelos],
+                ['Tipo', filtroTipo, setFiltroTipo, tipos],
+                ['Clasificación', filtroClasif, setFiltroClasif, clasificaciones],
+                ['Tratamiento', filtroTratam, setFiltroTratam, tratamientos],
+              ] as [string, string, (v: string) => void, string[]][]
+            ).map(([label, val, set, opts]) => (
+              <select
+                key={label}
+                value={val}
+                onChange={(e) => set(e.target.value)}
+                className={`bg-white border rounded-lg px-2 py-2 text-sm ${val ? 'border-brand text-brandDark font-medium' : 'border-black/10'}`}
+              >
+                <option value="">{label}: todos</option>
+                {opts.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            ))}
           </div>
+          {(filtroModelo || filtroTipo || filtroClasif || filtroTratam || busquedaStock) && (
+            <button
+              onClick={() => {
+                setBusquedaStock('')
+                setFiltroModelo('')
+                setFiltroTipo('')
+                setFiltroClasif('')
+                setFiltroTratam('')
+              }}
+              className="text-[11px] text-brandDark font-medium"
+            >
+              ✕ Limpiar filtros ({stockFiltrado.length} artículos)
+            </button>
+          )}
           <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
             {Object.keys(grupos)
               .sort()

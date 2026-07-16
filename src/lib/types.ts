@@ -99,6 +99,9 @@ export interface StockItem {
   estuche: string | null
   cantidad: number
   precio: number | null
+  clasificacion: string | null
+  tipo: string | null
+  tratamiento: string | null
 }
 
 export interface PedidoItem {
