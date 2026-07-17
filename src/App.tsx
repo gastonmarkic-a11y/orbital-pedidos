@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon,
@@ -219,6 +219,9 @@ function ThemeToggle() {
 
 function Layout() {
   const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs } = useAuth()
+  const location = useLocation()
+  // En escritorio, Cartera usa todo el ancho del monitor para ver todos los datos sin scroll
+  const anchoAmplio = location.pathname === '/cartera'
   const esAdminReal = vendedor?.rol === 'admin'
   const rol = rolEfectivo
   const nav = navConfig(rol, codigoEfectivo)
@@ -265,7 +268,7 @@ function Layout() {
           </button>
         </div>
       </header>
-      <main className="flex-1 pb-20 max-w-6xl w-full mx-auto px-3 pt-3">
+      <main className={`flex-1 pb-20 w-full mx-auto px-3 pt-3 ${anchoAmplio ? 'max-w-[1600px]' : 'max-w-6xl'}`}>
         <Routes>
           <Route index element={<Navigate to={homeFor(rol)} replace />} />
           {esVendedorOAdmin && (
