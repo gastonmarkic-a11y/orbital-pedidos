@@ -693,7 +693,7 @@ export default function Pedidos() {
                         </button>
                       )}
 
-                      {(esVendedor || esAdmin) && (estado === 'pendiente' || estado === 'en_preparacion') && (
+                      {(esVendedor || esAdmin) && ['pendiente', 'en_preparacion', 'observado'].includes(estado) && (
                         <button
                           onClick={() => eliminarPedido(l)}
                           className="w-full rounded-lg border border-red-300 text-red-600 py-1.5 text-xs font-semibold"
