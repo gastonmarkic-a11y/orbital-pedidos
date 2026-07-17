@@ -231,7 +231,7 @@ function ThemeToggle() {
 }
 
 function Layout() {
-  const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs } = useAuth()
+  const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs, cuentas, setCuenta } = useAuth()
   const location = useLocation()
   // En escritorio, Cartera usa todo el ancho del monitor para ver todos los datos sin scroll
   const anchoAmplio = location.pathname === '/cartera'
@@ -261,6 +261,20 @@ function Layout() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {cuentas.length > 1 && (
+            <select
+              value={vendedor?.codigo ?? ''}
+              onChange={(e) => setCuenta(e.target.value)}
+              title="Cambiar entre tus roles"
+              className="text-xs bg-white border border-brand/30 rounded-lg px-2 py-1.5 text-brandDark font-medium max-w-[150px]"
+            >
+              {cuentas.map((c) => (
+                <option key={c.codigo} value={c.codigo}>
+                  🔀 {c.nombre}
+                </option>
+              ))}
+            </select>
+          )}
           {esAdminReal && (
             <select
               value={viewAs ?? 'admin'}

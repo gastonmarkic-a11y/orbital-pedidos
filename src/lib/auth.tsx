@@ -13,6 +13,10 @@ interface AuthCtx {
   codigoEfectivo: string
   viewAs: string | null
   setViewAs: (r: string | null) => void
+  /** Cuentas que comparten el mismo login (mismo mail, distintos roles) */
+  cuentas: Vendedor[]
+  /** Cambiar la cuenta activa entre las que comparten el login */
+  setCuenta: (codigo: string) => void
   signInWithEmail: (email: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
@@ -22,8 +26,16 @@ const Ctx = createContext<AuthCtx | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [vendedor, setVendedor] = useState<Vendedor | null>(null)
+  const [cuentas, setCuentas] = useState<Vendedor[]>([])
   const [loading, setLoading] = useState(true)
   const [viewAs, setViewAs] = useState<string | null>(null)
+
+  // Elige la cuenta activa entre varias que comparten el login (recuerda la última elección)
+  function elegirActiva(lista: Vendedor[]): Vendedor | null {
+    if (lista.length === 0) return null
+    const guardada = localStorage.getItem('orbital_cuenta')
+    return lista.find((v) => v.codigo === guardada) ?? lista[0]
+  }
 
   async function loadVendedor(userId: string) {
     try {
@@ -31,22 +43,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* rpc opcional */
     }
-    const { data: v } = await supabase.from('vendedores').select('*').eq('user_id', userId).maybeSingle()
-    if (v) {
-      setVendedor(v as Vendedor)
-      return
+    // Puede haber más de una cuenta con el mismo mail (ej: Logística + Producción)
+    const { data: vs } = await supabase.from('vendedores').select('*').eq('user_id', userId).order('id')
+    let lista = (vs as Vendedor[]) ?? []
+    if (lista.length === 0) {
+      const { data: login } = await supabase
+        .from('vendedor_logins')
+        .select('codigo')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (login) {
+        const { data: v2 } = await supabase.from('vendedores').select('*').eq('codigo', login.codigo).maybeSingle()
+        if (v2) lista = [v2 as Vendedor]
+      }
     }
-    const { data: login } = await supabase
-      .from('vendedor_logins')
-      .select('codigo')
-      .eq('user_id', userId)
-      .maybeSingle()
-    if (login) {
-      const { data: v2 } = await supabase.from('vendedores').select('*').eq('codigo', login.codigo).maybeSingle()
-      setVendedor((v2 as Vendedor) ?? null)
-      return
-    }
-    setVendedor(null)
+    setCuentas(lista)
+    setVendedor(elegirActiva(lista))
+  }
+
+  function setCuenta(codigo: string) {
+    const v = cuentas.find((x) => x.codigo === codigo)
+    if (!v) return
+    setVendedor(v)
+    setViewAs(null)
+    localStorage.setItem('orbital_cuenta', codigo)
   }
 
   useEffect(() => {
@@ -89,7 +109,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ session, vendedor, loading, rolEfectivo, codigoEfectivo, viewAs, setViewAs, signInWithEmail, signOut }}
+      value={{
+        session,
+        vendedor,
+        loading,
+        rolEfectivo,
+        codigoEfectivo,
+        viewAs,
+        setViewAs,
+        cuentas,
+        setCuenta,
+        signInWithEmail,
+        signOut,
+      }}
     >
       {children}
     </Ctx.Provider>
