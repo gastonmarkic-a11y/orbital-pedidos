@@ -44,6 +44,14 @@ const TABS_VENDEDOR = [
   { codigo: 'Corporativo', label: 'Corporativo' },
 ]
 
+// Destinos a los que un prospectador puede derivar un cliente
+const DERIVAR_OPTS = [
+  { codigo: 'Adrian', label: 'Adrián' },
+  { codigo: 'Martin', label: 'Martín' },
+  { codigo: 'Corporativo', label: 'Corporativo' },
+  { codigo: 'ProspeccionVenta', label: '💰 Venta directa' },
+]
+
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
 type ColOrden = 'comercio' | 'contacto' | 'mail' | 'zona' | 'whatsapp' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
 
@@ -75,7 +83,15 @@ export default function Cartera() {
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
   const [npSaving, setNpSaving] = useState(false)
+  const [borrar, setBorrar] = useState<Cliente | null>(null)
+  const [borrando, setBorrando] = useState(false)
+  const [derivar, setDerivar] = useState<Cliente | null>(null)
+  const [derivando, setDerivando] = useState(false)
   const [recarga, setRecarga] = useState(0)
+
+  // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
+  const mostrarPedido = !esProspOperador || modoCartera === 'venta_directa'
+  const mostrarDerivar = esProspOperador && modoCartera === 'prospectos'
 
   useEffect(() => {
     supabase.from('propuestas_julio').select('*').then(({ data }) => setPropuestas((data as Propuesta[]) ?? []))
@@ -291,8 +307,38 @@ export default function Cartera() {
     toast('✓ Datos guardados', 'success')
   }
 
-  function cargar(c: Cliente) {
-    navigate('/cargar', { state: { cliente: c } })
+  function enviar(c: Cliente) {
+    navigate('/envios', { state: { cliente: c } })
+  }
+
+  async function eliminarContacto() {
+    if (!borrar) return
+    setBorrando(true)
+    const { error } = await supabase.from('clientes').delete().eq('cod', borrar.cod)
+    setBorrando(false)
+    if (error) {
+      toast('No se pudo eliminar: ' + error.message, 'error')
+      return
+    }
+    setClientes((prev) => prev.filter((x) => x.cod !== borrar.cod))
+    setBorrar(null)
+    toast('🗑 Contacto eliminado de la cartera', 'success')
+  }
+
+  async function derivarA(codigoDest: string) {
+    if (!derivar) return
+    setDerivando(true)
+    const { error } = await supabase.from('clientes').update({ vendedor_asignado: codigoDest }).eq('cod', derivar.cod)
+    setDerivando(false)
+    if (error) {
+      toast('No se pudo derivar: ' + error.message, 'error')
+      return
+    }
+    // Ya no pertenece a esta vista de prospección: lo sacamos de la lista
+    setClientes((prev) => prev.filter((x) => x.cod !== derivar.cod))
+    const destLabel = DERIVAR_OPTS.find((d) => d.codigo === codigoDest)?.label ?? codigoDest
+    setDerivar(null)
+    toast(`✓ ${derivar.nomcomerc || derivar.razon} derivado a ${destLabel}`, 'success')
   }
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando cartera...</p>
@@ -485,18 +531,32 @@ export default function Cartera() {
                 )}
               </div>
               {c.nota && <p className="text-[11px] text-muted">📝 {c.nota}</p>}
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => cargar(c)} className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium">
-                  Cargar actividad
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button onClick={() => enviar(c)} className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium">
+                  📤 Enviar
                 </button>
-                <button
-                  onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
-                  className="flex-1 rounded-lg bg-emerald-600 text-white py-1.5 text-xs font-medium"
-                >
-                  🛒 Pedido
-                </button>
+                {mostrarDerivar && (
+                  <button onClick={() => setDerivar(c)} className="flex-1 rounded-lg bg-[#8F6A34] text-white py-1.5 text-xs font-medium">
+                    ↗ Derivar
+                  </button>
+                )}
+                {mostrarPedido && (
+                  <button
+                    onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
+                    className="flex-1 rounded-lg bg-emerald-600 text-white py-1.5 text-xs font-medium"
+                  >
+                    🛒 Pedido
+                  </button>
+                )}
                 <button onClick={() => setHistorial(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted">
                   Historial
+                </button>
+                <button
+                  onClick={() => setBorrar(c)}
+                  className="rounded-lg border border-red-200 text-red-600 px-3 py-1.5 text-xs"
+                  title="Eliminar contacto"
+                >
+                  🗑
                 </button>
               </div>
             </div>
@@ -658,17 +718,27 @@ export default function Cartera() {
                   </td>
                   <td className="px-2.5 py-2">
                     <div className="flex flex-col items-start gap-1">
-                      <button onClick={() => cargar(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
-                        Cargar →
+                      <button onClick={() => enviar(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
+                        📤 Enviar →
                       </button>
-                      <button
-                        onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
-                        className="text-[11px] text-emerald-600 font-medium whitespace-nowrap"
-                      >
-                        🛒 Pedido →
-                      </button>
+                      {mostrarDerivar && (
+                        <button onClick={() => setDerivar(c)} className="text-[11px] text-[#8F6A34] font-medium whitespace-nowrap">
+                          ↗ Derivar →
+                        </button>
+                      )}
+                      {mostrarPedido && (
+                        <button
+                          onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
+                          className="text-[11px] text-emerald-600 font-medium whitespace-nowrap"
+                        >
+                          🛒 Pedido →
+                        </button>
+                      )}
                       <button onClick={() => setHistorial(c)} className="text-[11px] text-muted font-medium whitespace-nowrap">
                         Historial
+                      </button>
+                      <button onClick={() => setBorrar(c)} className="text-[11px] text-red-600 font-medium whitespace-nowrap">
+                        🗑 Eliminar
                       </button>
                     </div>
                   </td>
@@ -776,6 +846,56 @@ export default function Cartera() {
                 {npSaving ? 'Guardando...' : '+ Crear prospecto'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {borrar && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setBorrar(null)}>
+          <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-ink mb-1">🗑 Eliminar contacto</p>
+            <p className="text-xs text-muted mb-3">
+              ¿Seguro que querés eliminar <b>{borrar.nomcomerc || borrar.razon}</b> ({borrar.cod}) de la cartera? Usalo cuando
+              el cliente ya no está o cerró. El historial de actividad y pedidos se conserva.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setBorrar(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                Cancelar
+              </button>
+              <button
+                onClick={eliminarContacto}
+                disabled={borrando}
+                className="flex-1 rounded-lg bg-red-600 text-white py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {borrando ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {derivar && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setDerivar(null)}>
+          <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-ink mb-1">↗ Derivar cliente</p>
+            <p className="text-xs text-muted mb-3">
+              <b>{derivar.nomcomerc || derivar.razon}</b> pasa a manos de:
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {DERIVAR_OPTS.map((d) => (
+                <button
+                  key={d.codigo}
+                  onClick={() => derivarA(d.codigo)}
+                  disabled={derivando}
+                  className="rounded-lg border border-black/10 py-2.5 text-sm font-medium text-ink hover:border-brand/50 disabled:opacity-50"
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setDerivar(null)} className="w-full mt-3 rounded-lg border border-black/10 py-2 text-sm text-muted">
+              Cancelar
+            </button>
           </div>
         </div>
       )}

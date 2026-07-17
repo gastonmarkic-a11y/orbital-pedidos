@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
@@ -6,6 +7,8 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { daysSince } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
+
+type Canal = 'wa_me' | 'mailto' | 'llamada' | 'recordatorio'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
@@ -56,6 +59,8 @@ function telWhatsApp(raw: string | null): string | null {
 export default function Envios() {
   const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
+  const location = useLocation()
+  const clienteDirecto = (location.state as { cliente?: Cliente } | null)?.cliente ?? null
 
   const [miTelefono, setMiTelefono] = useState<string | null>(null)
   const [miNombre, setMiNombre] = useState('')
@@ -75,7 +80,8 @@ export default function Envios() {
   const [prepProp, setPrepProp] = useState<number>(0)
   const [prepMensaje, setPrepMensaje] = useState('')
   const [prepPiezas, setPrepPiezas] = useState<Set<number>>(new Set())
-  const [prepCanal, setPrepCanal] = useState<'wa_me' | 'mailto' | 'llamada'>('wa_me')
+  const [prepCanal, setPrepCanal] = useState<Canal>('wa_me')
+  const [prepFecha, setPrepFecha] = useState('') // recordatorio: fecha de la próxima agenda
   const [prepAbierto, setPrepAbierto] = useState(false) // ya abrió el canal, falta confirmar
   const [guardando, setGuardando] = useState(false)
 
@@ -124,6 +130,15 @@ export default function Envios() {
     cargar()
   }, [vendedor, codigoEfectivo, recarga])
 
+  // Si llegaste desde Cartera/Agenda con un cliente puntual, abrí su preparación directamente
+  useEffect(() => {
+    if (clienteDirecto && !loading) {
+      abrirPreparacion(clienteDirecto)
+      window.history.replaceState({}, '') // evita reabrir al volver
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteDirecto?.cod, loading])
+
   // Última propuesta por cliente (global, cruza remitentes) y por tipo
   const ultimaPropuesta = useMemo(() => {
     const m: Record<string, string> = {}
@@ -162,22 +177,29 @@ export default function Envios() {
     return d !== null && d < MISMO_TIPO_DIAS
   }
 
+  const buscandoEnvio = busqueda.trim().length > 0
   const listosHoy = useMemo(() => {
-    let base = clientes.filter((c) => !c.cod.startsWith('TMP-'))
-    base = base.filter((c) => !enCooldown(c))
-    base = base.filter((c) => {
-      const sug = propuestaSugerida(c)
-      return sug && !tipoRepetido(c, sug.id)
-    })
-    if (filtroProp) base = base.filter((c) => propuestaSugerida(c)?.id === filtroProp)
     const q = busqueda.trim().toLowerCase()
-    if (q)
+    let base = clientes.filter((c) => !c.cod.startsWith('TMP-'))
+    if (q) {
+      // Con búsqueda activa mostramos TODA la cartera que coincida, aunque estén en cooldown,
+      // para poder alcanzar a cualquier cliente puntual (ej: uno contactado hace pocos días).
       base = base.filter(
         (c) =>
           (c.nomcomerc || c.razon || '').toLowerCase().includes(q) ||
+          (c.cod || '').toLowerCase().includes(q) ||
           (c.zona || '').toLowerCase().includes(q) ||
           (c.localidad || '').toLowerCase().includes(q)
       )
+    } else {
+      // Cola normal del día: sin cooldown, con propuesta sugerida y sin repetir tipo reciente
+      base = base.filter((c) => !enCooldown(c))
+      base = base.filter((c) => {
+        const sug = propuestaSugerida(c)
+        return sug && !tipoRepetido(c, sug.id)
+      })
+      if (filtroProp) base = base.filter((c) => propuestaSugerida(c)?.id === filtroProp)
+    }
     // Los más olvidados primero
     base.sort((a, b) => (daysSince(ultimaPropuesta[b.cod] ?? null) ?? 99999) - (daysSince(ultimaPropuesta[a.cod] ?? null) ?? 99999))
     return base
@@ -216,8 +238,14 @@ export default function Envios() {
   }
 
   // Cambia el canal y ajusta el texto: guión para llamada, mensaje/copy para WhatsApp/mail
-  function elegirCanal(canal: 'wa_me' | 'mailto' | 'llamada') {
+  function elegirCanal(canal: Canal) {
     setPrepCanal(canal)
+    setPrepAbierto(false)
+    if (canal === 'recordatorio') {
+      if (!prepFecha) setPrepFecha(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+      setPrepMensaje('')
+      return
+    }
     const prop = propuestas.find((x) => x.id === prepProp)
     if (!prop || !prep) return
     if (canal === 'llamada') setPrepMensaje(guionDelTema(prop.nombre))
@@ -225,16 +253,16 @@ export default function Envios() {
   }
 
   function abrirPreparacion(c: Cliente) {
-    const sug = propuestaSugerida(c)
-    if (!sug) return
-    const tema = temaDePropuesta(sug.nombre)
-    const delTema = piezas.filter((p) => p.tema === tema && p.url_publica)
+    const sug = propuestaSugerida(c) ?? propuestas[0] ?? null
+    const delTema = sug ? piezas.filter((p) => p.tema === temaDePropuesta(sug.nombre) && p.url_publica) : []
     const pre = new Set(delTema.slice(0, 1).map((p) => p.id))
+    const tel = telWhatsApp(c.whatsapp || c.telefono)
     setPrep(c)
-    setPrepProp(sug.id)
+    setPrepProp(sug?.id ?? 0)
     setPrepPiezas(pre)
-    setPrepCanal(telWhatsApp(c.whatsapp || c.telefono) ? 'wa_me' : 'mailto')
-    setPrepMensaje(armarMensaje(c, sug, delTema.slice(0, 1)))
+    setPrepCanal(tel ? 'wa_me' : c.email ? 'mailto' : 'recordatorio')
+    setPrepFecha(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+    setPrepMensaje(sug ? armarMensaje(c, sug, delTema.slice(0, 1)) : '')
     setPrepAbierto(false)
   }
 
@@ -334,6 +362,49 @@ export default function Envios() {
     setRecarga((r) => r + 1)
     if (!errAct && !errCli)
       toast(`✓ Envío registrado — ${prep.nomcomerc || prep.razon} entra en cooldown ${COOLDOWN_DIAS} días`, 'success')
+  }
+
+  async function confirmarRecordatorio() {
+    if (!prep || !vendedor) return
+    const desc = prepMensaje.trim()
+    if (!desc) {
+      toast('Escribí una descripción para el recordatorio', 'error')
+      return
+    }
+    if (!prepFecha) {
+      toast('Elegí la fecha del recordatorio', 'error')
+      return
+    }
+    setGuardando(true)
+    const fechaTxt = new Date(prepFecha + 'T00:00:00').toLocaleDateString('es-AR')
+    const { error: errAct } = await supabase.from('actividad_diaria').insert({
+      vendedor: codigoEfectivo,
+      cod_cliente: prep.cod,
+      nombre_comercio: prep.nomcomerc,
+      contacto: prep.contacto,
+      telefono: prep.whatsapp || prep.telefono,
+      localidad: prep.localidad,
+      email: prep.email,
+      actividad_desarrollo: `🔔 Recordatorio agendado: ${desc}`,
+      actividad_futura: desc,
+      proximo_paso_fecha: prepFecha,
+    })
+    const { error: errCli } = await supabase
+      .from('clientes')
+      .update({
+        nota: `🔔 ${new Date().toLocaleDateString('es-AR')} — Recordatorio para el ${fechaTxt}: ${desc}`,
+        proximo_paso: desc,
+        proxima_agenda_fecha: prepFecha,
+      })
+      .eq('cod', prep.cod)
+    setGuardando(false)
+    if (errAct || errCli) {
+      toast('No se pudo agendar el recordatorio: ' + (errAct?.message || errCli?.message), 'error')
+      return
+    }
+    setPrep(null)
+    setRecarga((r) => r + 1)
+    toast(`✓ Recordatorio agendado para el ${fechaTxt}`, 'success')
   }
 
   async function guardarTelefono() {
@@ -447,26 +518,45 @@ export default function Envios() {
       />
 
       {/* Cola de listos hoy */}
+      {buscandoEnvio && (
+        <p className="text-[11px] text-faint">
+          🔎 Buscando en toda la cartera ({listosHoy.length} resultado{listosHoy.length !== 1 ? 's' : ''}) — incluye clientes en
+          cooldown, para que puedas alcanzar a cualquiera.
+        </p>
+      )}
+
       <div className="space-y-2">
         {listosHoy.slice(0, 50).map((c) => {
           const sug = propuestaSugerida(c)
           const dias = daysSince(ultimaPropuesta[c.cod] ?? null)
           const tel = telWhatsApp(c.whatsapp || c.telefono)
+          const coold = enCooldown(c)
           return (
             <div key={c.cod} className="bg-white border border-black/10 rounded-xl p-3 flex items-start justify-between gap-3 flex-wrap">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold truncate">{c.nomcomerc || c.razon}</p>
+                <p className="text-sm font-semibold truncate">
+                  {c.nomcomerc || c.razon}
+                  {buscandoEnvio && coold && (
+                    <span className="ml-2 text-[10px] font-semibold bg-amber-50 text-amber-700 rounded-full px-2 py-0.5">
+                      ⏳ en cooldown
+                    </span>
+                  )}
+                </p>
                 <p className="text-[11px] text-faint">
                   {c.cod} · {c.zona || c.localidad || '—'} · {tel ? `📱 ${tel}` : c.email ? `✉️ ${c.email}` : '⚠ sin contacto'}
                 </p>
                 <p className="text-xs text-muted mt-0.5">
-                  Sugerida: <b className="text-brandDark">{sug?.nombre}</b> ·{' '}
+                  {sug ? (
+                    <>
+                      Sugerida: <b className="text-brandDark">{sug.nombre}</b> ·{' '}
+                    </>
+                  ) : null}
                   {dias === null ? 'nunca recibió propuesta' : `última propuesta hace ${dias}d`}
                 </p>
               </div>
               <button
                 onClick={() => abrirPreparacion(c)}
-                disabled={topeAlcanzado || (!tel && !c.email)}
+                disabled={topeAlcanzado}
                 className="rounded-lg bg-brand text-white px-4 py-2 text-xs font-semibold disabled:opacity-40 shrink-0"
               >
                 Preparar envío →
@@ -476,11 +566,13 @@ export default function Envios() {
         })}
         {listosHoy.length === 0 && (
           <p className="text-sm text-faint text-center py-8 bg-white rounded-xl border border-black/10">
-            No hay clientes habilitados hoy con estos filtros — los que recibieron propuestas están en cooldown.
+            {buscandoEnvio
+              ? 'Sin resultados en la cartera con ese texto.'
+              : 'No hay clientes habilitados hoy con estos filtros — los que recibieron propuestas están en cooldown. Buscá por nombre para alcanzar a cualquiera.'}
           </p>
         )}
         {listosHoy.length > 50 && (
-          <p className="text-[11px] text-faint text-center">Mostrando los primeros 50 de {listosHoy.length} habilitados.</p>
+          <p className="text-[11px] text-faint text-center">Mostrando los primeros 50 de {listosHoy.length}.</p>
         )}
       </div>
 
@@ -534,22 +626,24 @@ export default function Envios() {
               </button>
             </div>
 
-            <label className="block text-xs text-muted">
-              Propuesta
-              <select
-                value={prepProp}
-                onChange={(e) => cambiarPropuesta(Number(e.target.value))}
-                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
-              >
-                {propuestas.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {prepCanal !== 'recordatorio' && (
+              <label className="block text-xs text-muted">
+                Propuesta
+                <select
+                  value={prepProp}
+                  onChange={(e) => cambiarPropuesta(Number(e.target.value))}
+                  className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+                >
+                  {propuestas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
-            {piezasDelTema.length > 0 && (
+            {prepCanal !== 'recordatorio' && piezasDelTema.length > 0 && (
               <div>
                 <p className="text-xs text-muted mb-1">Material a incluir (viaja como link público, no vence)</p>
                 <div className="space-y-1">
@@ -574,48 +668,78 @@ export default function Envios() {
               </div>
             )}
 
+            {prepCanal === 'recordatorio' && (
+              <label className="block text-xs text-muted">
+                📅 Fecha del recordatorio (aparece en la Agenda ese día)
+                <input
+                  type="date"
+                  value={prepFecha}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setPrepFecha(e.target.value)}
+                  className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+
             <label className="block text-xs text-muted">
               {prepCanal === 'llamada'
                 ? '🎙️ Guión de la llamada (lo leés mientras hablás)'
-                : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
+                : prepCanal === 'recordatorio'
+                  ? '📝 Qué hay que hacer (ej: el dueño no estaba, volver a llamar)'
+                  : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
               <textarea
                 value={prepMensaje}
                 onChange={(e) => setPrepMensaje(e.target.value)}
-                rows={prepCanal === 'llamada' ? 8 : 5}
-                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+                rows={prepCanal === 'llamada' ? 8 : prepCanal === 'recordatorio' ? 3 : 5}
+                placeholder={prepCanal === 'recordatorio' ? 'Ej: el dueño no estaba, llamar mañana a la mañana' : undefined}
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
               />
-              {prepCanal !== 'llamada' && (
+              {prepCanal !== 'llamada' && prepCanal !== 'recordatorio' && (
                 <span className={`text-[10px] ${prepMensaje.length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}>
                   {prepMensaje.length} caracteres {prepMensaje.length > 400 ? '— demasiado largo para WhatsApp, acortalo' : ''}
                 </span>
               )}
             </label>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => elegirCanal('llamada')}
                 disabled={aNacional(prep.whatsapp || prep.telefono || '').length < 10}
-                className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'llamada' ? 'bg-amber-500 text-white border-amber-500' : 'border-black/10 text-muted'} disabled:opacity-30`}
+                className={`rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'llamada' ? 'bg-amber-500 text-white border-amber-500' : 'border-black/10 text-muted'} disabled:opacity-30`}
               >
                 📞 Llamar
               </button>
               <button
                 onClick={() => elegirCanal('wa_me')}
                 disabled={!telWhatsApp(prep.whatsapp || prep.telefono)}
-                className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'wa_me' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-black/10 text-muted'} disabled:opacity-30`}
+                className={`rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'wa_me' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-black/10 text-muted'} disabled:opacity-30`}
               >
                 📱 WhatsApp
               </button>
               <button
                 onClick={() => elegirCanal('mailto')}
                 disabled={!prep.email}
-                className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'mailto' ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted'} disabled:opacity-30`}
+                className={`rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'mailto' ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted'} disabled:opacity-30`}
               >
                 ✉️ Mail
               </button>
+              <button
+                onClick={() => elegirCanal('recordatorio')}
+                className={`rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'recordatorio' ? 'bg-violet-600 text-white border-violet-600' : 'border-black/10 text-muted'}`}
+              >
+                ⏰ Recordatorio
+              </button>
             </div>
 
-            {!prepAbierto ? (
+            {prepCanal === 'recordatorio' ? (
+              <button
+                onClick={confirmarRecordatorio}
+                disabled={guardando}
+                className="w-full rounded-lg bg-violet-600 text-white py-2.5 text-sm font-semibold disabled:opacity-50"
+              >
+                {guardando ? 'Agendando...' : '⏰ Agendar recordatorio en la agenda'}
+              </button>
+            ) : !prepAbierto ? (
               <button onClick={abrirCanal} className="w-full rounded-lg bg-brand text-white py-2.5 text-sm font-semibold">
                 {prepCanal === 'llamada'
                   ? '📞 Llamar al cliente'

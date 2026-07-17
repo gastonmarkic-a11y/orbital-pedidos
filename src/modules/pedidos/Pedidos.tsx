@@ -96,6 +96,41 @@ export default function Pedidos() {
     return true
   }
 
+  // Eliminar un pedido cargado por error (solo pendiente / en preparación). Devuelve el stock
+  // y anula la actividad de venta que generó el trigger, para que no cuente como venta.
+  async function eliminarPedido(p: Pedido) {
+    if (
+      !window.confirm(
+        `¿Eliminar el pedido de ${p.cliente}? Se devuelven ${p.total_units ?? 0} unidades al stock. Esta acción no se puede deshacer.`
+      )
+    )
+      return
+    try {
+      for (const item of p.items ?? []) {
+        const s = stock.find((x) => x.codigo === item.codigo)
+        if (s) {
+          await supabase.from('stock').update({ cantidad: s.cantidad + item.cantidad }).eq('codigo', item.codigo)
+          s.cantidad += item.cantidad
+        }
+      }
+      await supabase
+        .from('actividad_diaria')
+        .update({ unidades_vendidas: 0, monto_vendido: 0, actividad_desarrollo: `Pedido #${p.id} ANULADO (cargado por error)` })
+        .eq('cod_cliente', p.cod_cliente)
+        .like('actividad_desarrollo', `Pedido cargado #${p.id} —%`)
+      const { error } = await supabase.from('pedidos').delete().eq('id', p.id)
+      if (error) {
+        toast('No se pudo eliminar el pedido: ' + error.message, 'error')
+        return
+      }
+      await cargar()
+      toast(`🗑 Pedido eliminado — ${p.total_units ?? 0} unidades devueltas al stock`, 'success')
+    } catch (e) {
+      console.error(e)
+      toast('Error al eliminar el pedido', 'error')
+    }
+  }
+
   async function observar(p: Pedido) {
     const nota = window.prompt('Describí el problema o ajuste necesario:')
     if (nota === null || nota.trim() === '') return
@@ -655,6 +690,15 @@ export default function Pedidos() {
                           className="w-full rounded-lg border border-black/10 text-muted py-1.5 text-xs font-medium"
                         >
                           ↩ Volver a Pendiente
+                        </button>
+                      )}
+
+                      {(esVendedor || esAdmin) && (estado === 'pendiente' || estado === 'en_preparacion') && (
+                        <button
+                          onClick={() => eliminarPedido(l)}
+                          className="w-full rounded-lg border border-red-300 text-red-600 py-1.5 text-xs font-semibold"
+                        >
+                          🗑 Eliminar pedido y devolver stock
                         </button>
                       )}
                     </div>

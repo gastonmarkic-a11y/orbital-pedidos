@@ -70,7 +70,7 @@ export default function AgendaDelDia() {
   }, [vendedor, esAdmin, modo, codigoEfectivo])
 
   function cargar(c: Cliente) {
-    navigate('/cargar', { state: { cliente: c } })
+    navigate('/envios', { state: { cliente: c } })
   }
 
   const hace7 = (() => {
@@ -154,7 +154,7 @@ export default function AgendaDelDia() {
                           </p>
                         </div>
                         <button onClick={() => cargar(c)} className="text-xs font-medium text-brandDark whitespace-nowrap">
-                          Cargar actividad →
+                          📤 Enviar →
                         </button>
                       </div>
                       {editCod === c.cod ? (
