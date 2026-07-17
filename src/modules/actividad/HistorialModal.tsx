@@ -11,6 +11,17 @@ const NOMBRE_OPERADOR: Record<string, string> = {
   Corporativo: 'Corporativo',
 }
 
+// Ícono del canal/tipo de cada contacto, para el gráfico de secuencia
+function iconoDe(desarrollo: string | null): { icono: string; label: string } {
+  const d = (desarrollo || '').toLowerCase()
+  if (d.includes('llamada')) return { icono: '📞', label: 'Llamada' }
+  if (d.includes('whatsapp')) return { icono: '💬', label: 'WhatsApp' }
+  if (d.includes('mail') || d.includes('correo')) return { icono: '✉️', label: 'Mail' }
+  if (d.includes('venta')) return { icono: '🛒', label: 'Venta' }
+  if (d.includes('visita') || d.includes('derivad')) return { icono: '🏪', label: 'Visita' }
+  return { icono: '📝', label: 'Nota' }
+}
+
 export default function HistorialModal({
   cliente,
   propuestas,
@@ -50,6 +61,31 @@ export default function HistorialModal({
             Cerrar ✕
           </button>
         </div>
+        {/* Gráfico de secuencia de contactos (viejo → nuevo) */}
+        {!loading && rows.length > 0 && (
+          <div className="border-b border-black/10 px-4 py-3 bg-[#F7F5F0]">
+            <p className="text-[10px] uppercase text-faint font-semibold mb-2">🔗 Secuencia de contactos</p>
+            <div className="flex items-center gap-0.5 overflow-x-auto pb-1">
+              {[...rows].reverse().map((a, i, arr) => {
+                const ic = iconoDe(a.actividad_desarrollo)
+                return (
+                  <div key={a.id} className="flex items-center shrink-0">
+                    <div
+                      className="flex flex-col items-center px-0.5"
+                      title={`${ic.label} · ${a.actividad_desarrollo ?? ''}`}
+                    >
+                      <span className="text-lg leading-none">{ic.icono}</span>
+                      <span className="text-[9px] text-faint mt-0.5">
+                        {new Date(a.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                    {i < arr.length - 1 && <span className="text-faint text-xs">→</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <div className="p-4 space-y-3">
           {loading ? (
             <p className="text-sm text-muted">Cargando...</p>

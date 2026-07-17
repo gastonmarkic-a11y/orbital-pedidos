@@ -11,6 +11,14 @@ const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
 const TOPE_DIARIO = 25
 
+// Motor de secuencia de multicontactos: qué acción sigue según el canal del contacto actual
+const SIGUIENTE_PASO: Record<string, { texto: string; dias: number }> = {
+  wa_me: { texto: '📞 Llamar para explicar la propuesta', dias: 2 },
+  mailto: { texto: '📞 Llamar para explicar la propuesta', dias: 2 },
+  llamada: { texto: '📤 Enviar la propuesta detallada + coordinar visita', dias: 2 },
+}
+const CANAL_TXT: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'mail', llamada: 'llamada telefónica' }
+
 interface ActProp {
   cod_cliente: string | null
   fecha: string
@@ -67,7 +75,7 @@ export default function Envios() {
   const [prepProp, setPrepProp] = useState<number>(0)
   const [prepMensaje, setPrepMensaje] = useState('')
   const [prepPiezas, setPrepPiezas] = useState<Set<number>>(new Set())
-  const [prepCanal, setPrepCanal] = useState<'wa_me' | 'mailto'>('wa_me')
+  const [prepCanal, setPrepCanal] = useState<'wa_me' | 'mailto' | 'llamada'>('wa_me')
   const [prepAbierto, setPrepAbierto] = useState(false) // ya abrió el canal, falta confirmar
   const [guardando, setGuardando] = useState(false)
 
@@ -200,6 +208,22 @@ export default function Envios() {
     ].join('\n')
   }
 
+  // Guión telefónico del tema de la propuesta (para el canal Llamar)
+  function guionDelTema(propNombre: string): string {
+    const tema = temaDePropuesta(propNombre)
+    const g = piezas.find((x) => x.tema === tema && x.categoria === 'guion' && x.contenido_texto)
+    return g?.contenido_texto?.trim() || `Presentá ${propNombre} al cliente y coordiná el próximo paso.`
+  }
+
+  // Cambia el canal y ajusta el texto: guión para llamada, mensaje/copy para WhatsApp/mail
+  function elegirCanal(canal: 'wa_me' | 'mailto' | 'llamada') {
+    setPrepCanal(canal)
+    const prop = propuestas.find((x) => x.id === prepProp)
+    if (!prop || !prep) return
+    if (canal === 'llamada') setPrepMensaje(guionDelTema(prop.nombre))
+    else setPrepMensaje(armarMensaje(prep, prop, piezas.filter((x) => prepPiezas.has(x.id))))
+  }
+
   function abrirPreparacion(c: Cliente) {
     const sug = propuestaSugerida(c)
     if (!sug) return
@@ -227,7 +251,14 @@ export default function Envios() {
 
   function abrirCanal() {
     if (!prep) return
-    if (prepCanal === 'wa_me') {
+    if (prepCanal === 'llamada') {
+      const nac = aNacional(prep.whatsapp || prep.telefono || '')
+      if (nac.length < 10) {
+        toast('Este cliente no tiene teléfono cargado', 'error')
+        return
+      }
+      window.location.href = 'tel:+54' + nac
+    } else if (prepCanal === 'wa_me') {
       const tel = telWhatsApp(prep.whatsapp || prep.telefono)
       if (!tel) {
         toast('Este cliente no tiene teléfono cargado', 'error')
@@ -265,7 +296,13 @@ export default function Envios() {
       setGuardando(false)
       return
     }
-    const canalTxt = prepCanal === 'wa_me' ? 'WhatsApp' : 'mail'
+    const canalTxt = CANAL_TXT[prepCanal] ?? prepCanal
+    const sig = SIGUIENTE_PASO[prepCanal] ?? { texto: 'Seguimiento', dias: 2 }
+    const fechaSig = new Date(Date.now() + sig.dias * 86400000).toISOString().slice(0, 10)
+    const desarrollo =
+      prepCanal === 'llamada'
+        ? `Llamada telefónica: ${prop?.nombre ?? ''}`
+        : `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`
     const { error: errAct } = await supabase.from('actividad_diaria').insert({
       vendedor: codigoEfectivo,
       cod_cliente: prep.cod,
@@ -274,8 +311,9 @@ export default function Envios() {
       telefono: prep.whatsapp || prep.telefono,
       localidad: prep.localidad,
       email: prep.email,
-      actividad_desarrollo: `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`,
-      actividad_futura: `Seguimiento del envío de ${prop?.nombre ?? 'la propuesta'}`,
+      actividad_desarrollo: desarrollo,
+      actividad_futura: sig.texto,
+      proximo_paso_fecha: fechaSig,
       propuesta_enviada_id: prepProp,
     })
     if (errAct) {
@@ -285,8 +323,9 @@ export default function Envios() {
     const { error: errCli } = await supabase
       .from('clientes')
       .update({
-        nota: `📤 ${new Date().toLocaleDateString('es-AR')} — se envió "${prop?.nombre ?? ''}" por ${canalTxt}. Seguimiento pendiente.`,
-        proximo_paso: `Seguir el envío de ${prop?.nombre ?? 'la propuesta'} (${canalTxt})`,
+        nota: `${prepCanal === 'llamada' ? '📞' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${prepCanal === 'llamada' ? 'llamada' : 'se envió'} "${prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.`,
+        proximo_paso: sig.texto,
+        proxima_agenda_fecha: fechaSig,
       })
       .eq('cod', prep.cod)
     if (errCli) toast('No se pudo actualizar la ficha del cliente: ' + errCli.message, 'error')
@@ -536,28 +575,39 @@ export default function Envios() {
             )}
 
             <label className="block text-xs text-muted">
-              Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)
+              {prepCanal === 'llamada'
+                ? '🎙️ Guión de la llamada (lo leés mientras hablás)'
+                : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
               <textarea
                 value={prepMensaje}
                 onChange={(e) => setPrepMensaje(e.target.value)}
-                rows={5}
+                rows={prepCanal === 'llamada' ? 8 : 5}
                 className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
               />
-              <span className={`text-[10px] ${prepMensaje.length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}>
-                {prepMensaje.length} caracteres {prepMensaje.length > 400 ? '— demasiado largo para WhatsApp, acortalo' : ''}
-              </span>
+              {prepCanal !== 'llamada' && (
+                <span className={`text-[10px] ${prepMensaje.length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}>
+                  {prepMensaje.length} caracteres {prepMensaje.length > 400 ? '— demasiado largo para WhatsApp, acortalo' : ''}
+                </span>
+              )}
             </label>
 
             <div className="flex gap-2">
               <button
-                onClick={() => setPrepCanal('wa_me')}
+                onClick={() => elegirCanal('llamada')}
+                disabled={aNacional(prep.whatsapp || prep.telefono || '').length < 10}
+                className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'llamada' ? 'bg-amber-500 text-white border-amber-500' : 'border-black/10 text-muted'} disabled:opacity-30`}
+              >
+                📞 Llamar
+              </button>
+              <button
+                onClick={() => elegirCanal('wa_me')}
                 disabled={!telWhatsApp(prep.whatsapp || prep.telefono)}
                 className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'wa_me' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-black/10 text-muted'} disabled:opacity-30`}
               >
                 📱 WhatsApp
               </button>
               <button
-                onClick={() => setPrepCanal('mailto')}
+                onClick={() => elegirCanal('mailto')}
                 disabled={!prep.email}
                 className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'mailto' ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted'} disabled:opacity-30`}
               >
@@ -567,26 +617,30 @@ export default function Envios() {
 
             {!prepAbierto ? (
               <button onClick={abrirCanal} className="w-full rounded-lg bg-brand text-white py-2.5 text-sm font-semibold">
-                {prepCanal === 'wa_me' ? 'Abrir WhatsApp con el mensaje' : 'Abrir mail con el mensaje'}
+                {prepCanal === 'llamada'
+                  ? '📞 Llamar al cliente'
+                  : prepCanal === 'wa_me'
+                    ? 'Abrir WhatsApp con el mensaje'
+                    : 'Abrir mail con el mensaje'}
               </button>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-muted text-center">
-                  ¿Se envió? Queda registrado como actividad y el cliente entra en cooldown {COOLDOWN_DIAS} días.
+                  {prepCanal === 'llamada' ? '¿Hiciste la llamada?' : '¿Se envió?'} Queda registrado como actividad y se agenda el próximo paso automáticamente.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPrep(null)}
                     className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted"
                   >
-                    No se envió
+                    {prepCanal === 'llamada' ? 'No se hizo' : 'No se envió'}
                   </button>
                   <button
                     onClick={confirmarEnvio}
                     disabled={guardando}
                     className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold disabled:opacity-50"
                   >
-                    {guardando ? 'Registrando...' : 'Enviado ✓'}
+                    {guardando ? 'Registrando...' : prepCanal === 'llamada' ? 'Llamada hecha ✓' : 'Enviado ✓'}
                   </button>
                 </div>
               </div>
