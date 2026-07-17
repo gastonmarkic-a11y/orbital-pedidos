@@ -487,7 +487,10 @@ export default function NuevoPedido() {
                     >
                       <span className="flex items-center gap-2">
                         <span>{abierto ? '▾' : '▸'}</span>
-                        <span className="font-semibold">{modelo}</span>
+                        <span className="font-semibold">
+                          {items.some((p) => p.es_caliente) && '🔥 '}
+                          {modelo}
+                        </span>
                         <span className="text-xs text-faint">
                           {items.length} color{items.length !== 1 ? 'es' : ''}
                         </span>
@@ -507,7 +510,12 @@ export default function NuevoPedido() {
                           return (
                             <div key={p.codigo} className="flex items-center justify-between px-3 py-2 gap-2">
                               <div className="min-w-0">
-                                <p className="text-sm truncate">{p.descripcion || '—'}</p>
+                                <p className="text-sm truncate">
+                                  {p.es_caliente && (
+                                    <span title="Producto caliente — mucha demanda">🔥 </span>
+                                  )}
+                                  {p.descripcion || '—'}
+                                </p>
                                 <p className="text-[10px] text-faint font-mono">{p.codigo}</p>
                                 {(p.precio ?? 0) > 0 && (
                                   <p className="text-xs text-gold font-semibold">{formatPrecio(p.precio)}</p>

@@ -102,6 +102,8 @@ export interface StockItem {
   clasificacion: string | null
   tipo: string | null
   tratamiento: string | null
+  demanda: number | null
+  es_caliente: boolean | null
 }
 
 export interface PedidoItem {
