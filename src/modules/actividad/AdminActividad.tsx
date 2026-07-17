@@ -22,12 +22,37 @@ interface FilaVendedor {
   vencidos: number
   totalActividades: number
   ventas: number
+  envios: number
+}
+
+interface CanalStat {
+  key: 'llamada' | 'whatsapp' | 'mail'
+  label: string
+  icono: string
+  count: number
+  color: string
+}
+
+interface SeqBucket {
+  label: string
+  clientes: number
+  conversiones: number
+  tasa: number
 }
 
 const COLORES_PERSONA = ['#C8A96E', '#15151A', '#8F6A34', '#1a7abf', '#c0392b', '#6E6A61']
 
 function colorAvance(pct: number) {
   return pct >= 100 ? '#10b981' : pct >= 60 ? '#C8A96E' : pct >= 30 ? '#f59e0b' : '#ef4444'
+}
+
+// Canal del contacto, deducido del texto de la actividad (mismo criterio que el Historial)
+function canalDe(desarrollo: string | null): 'llamada' | 'whatsapp' | 'mail' | null {
+  const d = (desarrollo || '').toLowerCase()
+  if (d.includes('llamada')) return 'llamada'
+  if (d.includes('whatsapp')) return 'whatsapp'
+  if (d.includes('mail') || d.includes('correo')) return 'mail'
+  return null
 }
 
 function Donut({ real, objetivo, label }: Metrica) {
@@ -91,6 +116,9 @@ export default function AdminActividad() {
   const [propStats, setPropStats] = useState<
     { nombre: string; enviadas: number; clientes: number; conversiones: number; tasa: number }[]
   >([])
+  const [canales, setCanales] = useState<CanalStat[]>([])
+  const [secuencia, setSecuencia] = useState<SeqBucket[]>([])
+  const [promedioVenta, setPromedioVenta] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -139,6 +167,7 @@ export default function AdminActividad() {
           vencidos: await vencidosDe(v.codigo),
           totalActividades: actos.length,
           ventas: actos.filter((a) => (a.unidades_vendidas ?? 0) > 0).length,
+          envios: actos.filter((a) => a.propuesta_enviada_id).length,
           metricas: [
             {
               label: 'Contactos trabajados',
@@ -168,6 +197,7 @@ export default function AdminActividad() {
           vencidos: await vencidosDe(p.vencidosDe),
           totalActividades: actos.length,
           ventas: cierres,
+          envios: actos.filter((a) => a.propuesta_enviada_id).length,
           metricas: [
             {
               label: 'Propuestas válidas (Bienv./Canje/Preventa)',
@@ -214,6 +244,58 @@ export default function AdminActividad() {
 
       setFilas(rows)
 
+      // Envíos del mes por canal (parseado del texto de la actividad)
+      const cuentaCanal: Record<string, number> = { llamada: 0, whatsapp: 0, mail: 0 }
+      for (const a of acts) {
+        if (!a.propuesta_enviada_id) continue
+        const c = canalDe(a.actividad_desarrollo)
+        if (c) cuentaCanal[c]++
+      }
+      setCanales([
+        { key: 'llamada', label: 'Llamadas', icono: '📞', count: cuentaCanal.llamada, color: '#f59e0b' },
+        { key: 'whatsapp', label: 'WhatsApp', icono: '💬', count: cuentaCanal.whatsapp, color: '#10b981' },
+        { key: 'mail', label: 'Mail', icono: '✉️', count: cuentaCanal.mail, color: '#1a7abf' },
+      ])
+
+      // Secuencia de multicontactos: toques por cliente (histórico) y su conversión
+      const seq = await fetchPaged<{ cod_cliente: string | null; unidades_vendidas: number | null }>(() =>
+        supabase
+          .from('actividad_diaria')
+          .select('cod_cliente, unidades_vendidas')
+          .not('cod_cliente', 'is', null)
+          .order('id')
+      )
+      const toques: Record<string, number> = {}
+      const compro: Record<string, boolean> = {}
+      for (const a of seq) {
+        const k = a.cod_cliente as string
+        toques[k] = (toques[k] ?? 0) + 1
+        if ((a.unidades_vendidas ?? 0) > 0) compro[k] = true
+      }
+      const bucketsDef: { label: string; test: (n: number) => boolean }[] = [
+        { label: '1 contacto', test: (n) => n === 1 },
+        { label: '2 contactos', test: (n) => n === 2 },
+        { label: '3 contactos', test: (n) => n === 3 },
+        { label: '4+ contactos', test: (n) => n >= 4 },
+      ]
+      const buckets: SeqBucket[] = bucketsDef.map((b) => {
+        const cods = Object.keys(toques).filter((k) => b.test(toques[k]))
+        const conversiones = cods.filter((k) => compro[k]).length
+        return {
+          label: b.label,
+          clientes: cods.length,
+          conversiones,
+          tasa: cods.length > 0 ? Math.round((conversiones / cods.length) * 100) : 0,
+        }
+      })
+      setSecuencia(buckets)
+      const codsCompraron = Object.keys(compro)
+      const promedio =
+        codsCompraron.length > 0
+          ? codsCompraron.reduce((a, k) => a + (toques[k] ?? 0), 0) / codsCompraron.length
+          : 0
+      setPromedioVenta(Math.round(promedio * 10) / 10)
+
       const porTema: Record<string, number> = {}
       for (const n of notas) {
         const t = clasificarVoz(n.voz_cliente_nota)
@@ -233,7 +315,11 @@ export default function AdminActividad() {
 
   const barActividad = filas.map((f) => ({ label: f.nombre, value: f.totalActividades, color: f.color }))
   const barVentas = filas.map((f) => ({ label: f.nombre, value: f.ventas, color: f.color }))
+  const barEnvios = filas.map((f) => ({ label: f.nombre, value: f.envios, color: f.color }))
   const maxTema = Math.max(...temas.map((t) => t.count), 1)
+  const totalEnvios = canales.reduce((a, c) => a + c.count, 0)
+  const maxCanal = Math.max(...canales.map((c) => c.count), 1)
+  const maxSeqCli = Math.max(...secuencia.map((s) => s.clientes), 1)
 
   // Reseña automática del mes
   const habilesT = habilesTranscurridos()
@@ -245,6 +331,11 @@ export default function AdminActividad() {
     reseña.push(`${masActivo.nombre} lidera en actividad con ${masActivo.totalActividades} registros.`)
   const masVentas = [...filas].sort((a, b) => b.ventas - a.ventas)[0]
   if (masVentas && masVentas.ventas > 0) reseña.push(`${masVentas.nombre} encabeza las ventas/cierres con ${masVentas.ventas}.`)
+  if (totalEnvios > 0) {
+    const canalTop = [...canales].sort((a, b) => b.count - a.count)[0]
+    reseña.push(`${totalEnvios} envíos este mes; el canal más usado es ${canalTop.icono} ${canalTop.label.toLowerCase()}.`)
+  }
+  if (promedioVenta > 0) reseña.push(`Hacen falta ~${promedioVenta} contactos en promedio para cerrar una venta.`)
   for (const f of filas) {
     const atrasadas = f.metricas.filter((m) => m.objetivo > 0 && Math.round((m.real / m.objetivo) * 100) < pctMes - 20)
     if (atrasadas.length)
@@ -297,15 +388,88 @@ export default function AdminActividad() {
       ))}
 
       {/* Comparativas en barras */}
-      <div className="grid md:grid-cols-2 gap-3">
+      <div className="grid md:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl p-4 border border-black/10">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Actividades registradas este mes</p>
           <BarrasComparativas data={barActividad} unidad="actividades" />
         </div>
         <div className="bg-white rounded-xl p-4 border border-black/10">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Envíos de propuestas este mes</p>
+          <BarrasComparativas data={barEnvios} unidad="envíos" />
+        </div>
+        <div className="bg-white rounded-xl p-4 border border-black/10">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Ventas y cierres este mes</p>
           <BarrasComparativas data={barVentas} unidad="ventas" />
         </div>
+      </div>
+
+      {/* Multicontacto: envíos por canal + secuencia de contactos */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <p className="text-sm font-semibold text-ink mb-1">🔗 Motor de multicontacto</p>
+        <p className="text-[11px] text-faint mb-3">
+          Por dónde salen los contactos y cuántos toques hacen falta para que un cliente compre.
+        </p>
+
+        {/* Envíos por canal este mes */}
+        <p className="text-[10px] uppercase text-faint font-semibold mb-2">
+          Envíos del equipo este mes por canal · {totalEnvios} en total
+        </p>
+        {totalEnvios === 0 ? (
+          <p className="text-sm text-faint mb-4">Todavía no se registraron envíos este mes.</p>
+        ) : (
+          <div className="space-y-2 mb-5">
+            {canales.map((c) => (
+              <div key={c.key} className="flex items-center gap-2 text-xs">
+                <span className="w-24 truncate text-muted shrink-0">
+                  {c.icono} {c.label}
+                </span>
+                <div className="flex-1 h-3.5 bg-black/5 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${Math.round((c.count / maxCanal) * 100)}%`, background: c.color }} />
+                </div>
+                <span className="w-20 text-right font-semibold text-ink shrink-0">
+                  {c.count}{' '}
+                  <span className="text-faint font-normal">({totalEnvios > 0 ? Math.round((c.count / totalEnvios) * 100) : 0}%)</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Secuencia: conversión según cantidad de toques */}
+        <p className="text-[10px] uppercase text-faint font-semibold mb-2">
+          Secuencia de contactos — cuántos toques hacen falta para vender
+        </p>
+        {secuencia.every((s) => s.clientes === 0) ? (
+          <p className="text-sm text-faint">Todavía no hay historial de contactos suficiente.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {secuencia.map((s) => (
+              <div key={s.label}>
+                <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                  <span className="font-medium text-ink">{s.label}</span>
+                  <span className="text-muted shrink-0">
+                    {s.clientes} clientes ·{' '}
+                    <b className={s.tasa >= 30 ? 'text-emerald-600' : s.tasa > 0 ? 'text-amber-600' : 'text-faint'}>
+                      {s.conversiones} compraron ({s.tasa}%)
+                    </b>
+                  </span>
+                </div>
+                <div className="h-3 bg-black/5 rounded-full overflow-hidden flex" title={`${s.clientes} clientes con ${s.label}`}>
+                  <div className="h-full bg-emerald-500" style={{ width: `${(s.conversiones / maxSeqCli) * 100}%` }} />
+                  <div className="h-full bg-brand/30" style={{ width: `${((s.clientes - s.conversiones) / maxSeqCli) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+            <p className="text-sm text-ink bg-[#F7F5F0] rounded-lg p-3 mt-1">
+              📈 En promedio, un cliente que terminó comprando recibió{' '}
+              <b className="text-brandDark">{promedioVenta} contactos</b>. La constancia en la secuencia es la que convierte
+              — no aflojar después del primer intento.
+            </p>
+            <p className="text-[10px] text-faint">
+              ■ verde: clientes que compraron · ■ violeta: contactados en esa cantidad, sin compra aún
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Apertura por propuesta comercial */}
