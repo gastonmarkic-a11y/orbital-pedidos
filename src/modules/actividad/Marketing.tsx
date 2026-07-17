@@ -23,6 +23,18 @@ const TEMAS: { key: string; icono: string; label: string; desc: string }[] = [
   { key: 'general', icono: '📚', label: 'Material general', desc: 'Listas de precios, catálogos, imágenes y videos' },
 ]
 
+// Metadata de una carpeta: conocida (con ícono/desc) o creada por el admin (📁 genérica)
+function metaTema(key: string): { key: string; icono: string; label: string; desc: string } {
+  const conocido = TEMAS.find((t) => t.key === key)
+  if (conocido) return conocido
+  return {
+    key,
+    icono: '📁',
+    label: key.charAt(0).toUpperCase() + key.slice(1).replace(/[-_]/g, ' '),
+    desc: 'Carpeta de material del equipo',
+  }
+}
+
 export default function Marketing() {
   const { vendedor } = useAuth()
   const toast = useToast()
@@ -107,20 +119,27 @@ export default function Marketing() {
   const activas = piezas.filter((p) => p.activa)
   const temaDe = (p: PiezaMarketing) => p.tema || 'general'
 
+  // Carpetas presentes: primero las conocidas (en su orden), después las creadas por el admin
+  const conocidasPresentes = TEMAS.map((t) => t.key).filter((k) => activas.some((p) => temaDe(p) === k))
+  const customPresentes = [...new Set(activas.map(temaDe))]
+    .filter((k) => !TEMAS.some((t) => t.key === k))
+    .sort()
+  const carpetas = [...conocidasPresentes, ...customPresentes]
+
   // Paso 1: elegir el tema
   if (!tema) {
     return (
       <div className="space-y-4 text-ink">
         <h2 className="text-base font-semibold">Piezas de Marketing</h2>
-        <p className="text-xs text-muted">Elegí el tema y vas a ver todo el material relacionado, listo para usar.</p>
+        <p className="text-xs text-muted">Elegí la carpeta y vas a ver todo el material relacionado, listo para usar.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {TEMAS.map((t) => {
-            const n = activas.filter((p) => temaDe(p) === t.key).length
-            if (n === 0) return null
+          {carpetas.map((key) => {
+            const t = metaTema(key)
+            const n = activas.filter((p) => temaDe(p) === key).length
             return (
               <button
-                key={t.key}
-                onClick={() => setTema(t.key)}
+                key={key}
+                onClick={() => setTema(key)}
                 className="bg-white border border-black/10 rounded-2xl p-4 text-left hover:border-brand/50 transition-colors flex items-start gap-3"
               >
                 <span className="text-3xl">{t.icono}</span>
@@ -143,7 +162,7 @@ export default function Marketing() {
   }
 
   // Paso 2: material del tema, agrupado por tipo
-  const temaInfo = TEMAS.find((t) => t.key === tema)
+  const temaInfo = metaTema(tema)
   const delTema = activas.filter((p) => temaDe(p) === tema)
   const grupos = ORDEN_CAT.map((cat) => ({ categoria: cat, items: delTema.filter((p) => p.categoria === cat) })).filter(
     (g) => g.items.length > 0

@@ -12,6 +12,9 @@ const CATEGORIAS = [
   { value: 'precios', label: '💲 Lista de precios' },
 ]
 
+// Temas que se enganchan con el motor de envíos (propuestas). El resto son carpetas libres.
+const TEMAS_CONOCIDOS = ['bienvenida', 'canje', 'preventa', 'recuperar', 'general']
+
 function sanitize(name: string) {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
 }
@@ -46,6 +49,7 @@ export default function AdminMarketing() {
   useEffect(recargar, [])
 
   const esCopyLargo = categoria === 'copy' && texto.trim().length > 400
+  const temasSugeridos = [...new Set([...TEMAS_CONOCIDOS, ...piezas.map((p) => p.tema).filter(Boolean) as string[]])]
 
   async function agregar(e: FormEvent) {
     e.preventDefault()
@@ -73,7 +77,7 @@ export default function AdminMarketing() {
     if (editandoId) {
       const cambios: Record<string, unknown> = {
         categoria,
-        tema,
+        tema: tema.trim() || 'general',
         titulo: titulo.trim(),
         descripcion: descripcion.trim() || null,
         contenido_texto: texto.trim() || null,
@@ -85,7 +89,7 @@ export default function AdminMarketing() {
       const orden = piezas.filter((p) => p.categoria === categoria).length + 1
       const { error } = await supabase.from('piezas_marketing').insert({
         categoria,
-        tema,
+        tema: tema.trim() || 'general',
         titulo: titulo.trim(),
         descripcion: descripcion.trim() || null,
         contenido_texto: texto.trim() || null,
@@ -178,18 +182,23 @@ export default function AdminMarketing() {
           </select>
         </label>
         <label className="block text-xs text-muted">
-          Tema (propuesta a la que pertenece)
-          <select
+          Carpeta / tema (elegí una existente o escribí una nueva para crearla)
+          <input
             value={tema}
-            onChange={(e) => setTema(e.target.value)}
-            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
-          >
-            <option value="bienvenida">🤝 Propuesta Bienvenida</option>
-            <option value="canje">↩ Plan Canje</option>
-            <option value="preventa">🕶 Preventa Colección</option>
-            <option value="recuperar">📋 Clientes a Recuperar</option>
-            <option value="general">📚 Material general</option>
-          </select>
+            onChange={(e) => setTema(e.target.value.toLowerCase())}
+            list="temas-list"
+            placeholder="ej: bienvenida, canje, catalogos-2026, dia-del-padre..."
+            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint"
+          />
+          <datalist id="temas-list">
+            {temasSugeridos.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+          <span className="text-[10px] text-faint">
+            Las carpetas <b>bienvenida / canje / preventa / recuperar</b> se enganchan solas con los envíos de esa propuesta.
+            Cualquier otra queda como carpeta de material para el equipo.
+          </span>
         </label>
         <label className="block text-xs text-muted">
           Título
