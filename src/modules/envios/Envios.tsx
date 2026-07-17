@@ -21,6 +21,10 @@ const SIGUIENTE_PASO: Record<string, { texto: string; dias: number }> = {
   llamada: { texto: '📤 Enviar la propuesta detallada + coordinar visita', dias: 2 },
 }
 const CANAL_TXT: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'mail', llamada: 'llamada telefónica' }
+// Etiqueta corta del canal para la lista de enviados
+const CANAL_LABEL: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'Mail', llamada: '📞 Llamada' }
+// Nombre visible del operador de prospección (dos usuarios comparten cartera)
+const OPERADOR_NOMBRE: Record<string, string> = { Marketing: 'Luna', Damian: 'Damián', ProspeccionVenta: 'Damián' }
 
 interface ActProp {
   cod_cliente: string | null
@@ -429,6 +433,8 @@ export default function Envios() {
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando envíos...</p>
 
+  const esProsp = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
+  const nombreOperador = OPERADOR_NOMBRE[codigoEfectivo] ?? miNombre ?? codigoEfectivo
   const propDe = (id: number) => propuestas.find((p) => p.id === id)
   const clienteDe = (cod: string) => clientes.find((c) => c.cod === cod)
   const propPrep = propDe(prepProp)
@@ -436,7 +442,21 @@ export default function Envios() {
 
   return (
     <div className="space-y-4 text-ink">
-      <h2 className="text-base font-semibold">📤 Envíos de Propuestas</h2>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-base font-semibold">📤 Envíos de Propuestas</h2>
+        {esProsp && (
+          <span className="text-xs font-medium text-brandDark bg-brand/10 rounded-full px-3 py-1">
+            👤 {nombreOperador} · tope 25 diario individual
+          </span>
+        )}
+      </div>
+
+      {esProsp && (
+        <p className="text-[11px] text-faint">
+          Luna y Damián comparten la misma cartera, pero cada uno tiene su propio tope de 25 envíos por día. Este panel
+          cuenta solo los tuyos ({nombreOperador}).
+        </p>
+      )}
 
       {!miTelefono && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -579,7 +599,9 @@ export default function Envios() {
       {/* Enviados hoy */}
       {envios.length > 0 && (
         <div className="bg-white rounded-xl border border-black/10 p-4 space-y-2">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Enviados hoy</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Enviados hoy{esProsp ? ` · ${nombreOperador}` : ''}
+          </p>
           {envios
             .filter((e) => e.estado !== 'descartado')
             .map((e) => {
@@ -589,7 +611,7 @@ export default function Envios() {
                   <div className="min-w-0">
                     <p className="font-medium truncate">{c?.nomcomerc || c?.razon || e.cod_cliente}</p>
                     <p className="text-[11px] text-faint">
-                      {propDe(e.propuesta_id)?.nombre} · {e.canal === 'wa_me' ? 'WhatsApp' : 'Mail'}
+                      {propDe(e.propuesta_id)?.nombre} · {CANAL_LABEL[e.canal] ?? e.canal}
                     </p>
                   </div>
                   <select

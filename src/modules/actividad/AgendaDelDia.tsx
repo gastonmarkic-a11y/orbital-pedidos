@@ -202,8 +202,13 @@ export default function AgendaDelDia() {
                           </button>
                         </p>
                       )}
-                      {c.proximo_paso && <p className="text-xs text-ink mt-2">➡ {c.proximo_paso}</p>}
-                      {c.nota && <p className="text-xs text-muted mt-1">📝 {c.nota}</p>}
+                      {c.proximo_paso && (
+                        <div className="mt-2 bg-brand/5 border border-brand/20 rounded-lg px-2.5 py-1.5">
+                          <p className="text-[10px] uppercase font-semibold text-brandDark tracking-wide">🎯 Próxima acción</p>
+                          <p className="text-sm text-ink font-medium">{c.proximo_paso}</p>
+                        </div>
+                      )}
+                      {c.nota && <p className="text-[11px] text-muted mt-1.5">📝 {c.nota}</p>}
                     </div>
                   ))}
                 </div>
@@ -230,9 +235,15 @@ export default function AgendaDelDia() {
                         <p className="text-xs text-red-600">Agendado para {c.proxima_agenda_fecha}</p>
                       </div>
                       <button onClick={() => cargar(c)} className="text-xs font-medium text-brandDark whitespace-nowrap">
-                        Cargar actividad →
+                        📤 Enviar →
                       </button>
                     </div>
+                    {c.proximo_paso && (
+                      <div className="mt-2 bg-brand/5 border border-brand/20 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] uppercase font-semibold text-brandDark tracking-wide">🎯 Próxima acción</p>
+                        <p className="text-sm text-ink font-medium">{c.proximo_paso}</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
