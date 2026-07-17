@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
-  PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon,
+  PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -25,6 +25,7 @@ import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
 import Clientes from './modules/pedidos/Clientes'
+import Produccion from './modules/pedidos/Produccion'
 
 interface NavItem {
   to: string
@@ -45,6 +46,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/actividad-admin': Eye,
   '/actividad-admin/marketing': Palette,
   '/gestion-clientes': UserPlus,
+  '/produccion': Factory,
 }
 
 function iconoDe(to: string, label: string) {
@@ -60,10 +62,17 @@ interface NavConfig {
 }
 
 function navConfig(rol: Rol, codigo?: string): NavConfig {
+  if (rol === 'produccion')
+    return {
+      principales: [{ to: '/produccion', label: 'Producción' }],
+      secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
+      menu: [],
+    }
   if (rol === 'deposito')
     return {
       principales: [
         { to: '/pedidos', label: 'A preparar' },
+        { to: '/produccion', label: 'Ingresos' },
         { to: '/pedidos/stock', label: 'Stock' },
       ],
       secundarios: [],
@@ -102,6 +111,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
+      { to: '/produccion', label: 'Producción / Ingresos' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
@@ -110,6 +120,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
 }
 
 function homeFor(rol: Rol): string {
+  if (rol === 'produccion') return '/produccion'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion') return '/pedidos'
   return '/hoy'
 }
@@ -197,6 +208,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'deposito', label: 'Depósito' },
+  { value: 'produccion', label: 'Producción' },
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
 ]
@@ -292,8 +304,11 @@ function Layout() {
               <Route path="/pedidos/clientes" element={<Clientes />} />
             </>
           )}
-          {(rol === 'admin' || rol === 'deposito') && (
+          {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
             <Route path="/pedidos/stock" element={<StockAdmin />} />
+          )}
+          {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
+            <Route path="/produccion" element={<Produccion />} />
           )}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />

@@ -1,4 +1,19 @@
-export type Rol = 'vendedor' | 'admin' | 'deposito' | 'logistica' | 'administracion'
+export type Rol = 'vendedor' | 'admin' | 'deposito' | 'logistica' | 'administracion' | 'produccion'
+
+export interface StockIngreso {
+  id: number
+  codigo: string
+  modelo: string | null
+  descripcion: string | null
+  cantidad: number
+  precio: number | null
+  estado: 'proyectado' | 'confirmado' | 'anulado'
+  creado_por: string | null
+  created_at: string | null
+  confirmado_por: string | null
+  confirmado_at: string | null
+  nota: string | null
+}
 
 export interface Vendedor {
   id: number
