@@ -108,9 +108,11 @@ export default function Pedidos() {
     try {
       for (const item of p.items ?? []) {
         const s = stock.find((x) => x.codigo === item.codigo)
-        if (s) {
-          await supabase.from('stock').update({ cantidad: s.cantidad + item.cantidad }).eq('codigo', item.codigo)
-          s.cantidad += item.cantidad
+        // Solo se devuelve lo que se había descontado: lo pendiente nunca salió del stock
+        const devolver = item.cantidad - (item.pendiente ?? 0)
+        if (s && devolver > 0) {
+          await supabase.from('stock').update({ cantidad: s.cantidad + devolver }).eq('codigo', item.codigo)
+          s.cantidad += devolver
         }
       }
       await supabase
@@ -129,6 +131,61 @@ export default function Pedidos() {
       console.error(e)
       toast('Error al eliminar el pedido', 'error')
     }
+  }
+
+  // Depósito decide qué hacer con un pedido que tiene unidades en producción
+  async function decidirEntrega(p: Pedido, parcial: boolean) {
+    const { error } = await supabase
+      .from('pedidos')
+      .update({ entrega_parcial: parcial, esperando_stock: !parcial })
+      .eq('id', p.id)
+    if (error) {
+      toast('No se pudo guardar la decisión: ' + error.message, 'error')
+      return
+    }
+    await cargar()
+    toast(
+      parcial ? '📦 Se entrega lo disponible; el resto queda pendiente' : '⏸ El pedido espera a estar completo',
+      'success'
+    )
+  }
+
+  // Toma del stock actual lo que haga falta para cubrir las unidades pendientes del pedido
+  async function cubrirPendientes(p: Pedido) {
+    const items: PedidoItem[] = JSON.parse(JSON.stringify(p.items ?? []))
+    let cubierto = 0
+    for (const it of items) {
+      const pend = it.pendiente ?? 0
+      if (pend <= 0) continue
+      const s = stock.find((x) => x.codigo === it.codigo)
+      if (!s || s.cantidad <= 0) continue
+      const toma = Math.min(pend, s.cantidad)
+      await supabase
+        .from('stock')
+        .update({ cantidad: s.cantidad - toma, updated_at: new Date().toISOString() })
+        .eq('codigo', it.codigo)
+      s.cantidad -= toma
+      it.pendiente = pend - toma
+      cubierto += toma
+    }
+    if (cubierto === 0) {
+      toast('Todavía no ingresó stock para cubrir los pendientes de este pedido', 'error')
+      return
+    }
+    const quedan = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
+    const { error } = await supabase
+      .from('pedidos')
+      .update({ items, esperando_stock: quedan > 0 ? p.esperando_stock : false })
+      .eq('id', p.id)
+    if (error) {
+      toast('Se descontó el stock pero no se pudo actualizar el pedido: ' + error.message, 'error')
+      return
+    }
+    await cargar()
+    toast(
+      `✓ ${cubierto} u. cubiertas${quedan > 0 ? ` · quedan ${quedan} pendientes` : ' · pedido completo'}`,
+      'success'
+    )
   }
 
   async function observar(p: Pedido) {
@@ -234,24 +291,32 @@ export default function Pedidos() {
     }
     const totalUnits = editItems.reduce((a, b) => a + b.cantidad, 0)
     try {
-      // Devolver stock de los items originales y descontar los nuevos
+      // Devolver el stock que se había descontado de los items originales (lo pendiente no salió)
       for (const oldItem of modalEditar.items ?? []) {
         const s = stock.find((x) => x.codigo === oldItem.codigo)
-        if (s) {
-          await supabase.from('stock').update({ cantidad: s.cantidad + oldItem.cantidad }).eq('codigo', oldItem.codigo)
-          s.cantidad += oldItem.cantidad
+        const devolver = oldItem.cantidad - (oldItem.pendiente ?? 0)
+        if (s && devolver > 0) {
+          await supabase.from('stock').update({ cantidad: s.cantidad + devolver }).eq('codigo', oldItem.codigo)
+          s.cantidad += devolver
         }
       }
-      for (const newItem of editItems) {
-        const s = stock.find((x) => x.codigo === newItem.codigo)
-        if (s) {
-          await supabase.from('stock').update({ cantidad: s.cantidad - newItem.cantidad }).eq('codigo', newItem.codigo)
-          s.cantidad -= newItem.cantidad
+      // Descontar los nuevos: lo que haya físicamente; el resto queda pendiente de producción
+      const itemsFinal: PedidoItem[] = editItems.map((it) => {
+        const disponible = stock.find((x) => x.codigo === it.codigo)?.cantidad ?? 0
+        const pendiente = Math.max(0, it.cantidad - disponible)
+        return pendiente > 0 ? { ...it, pendiente } : { ...it, pendiente: 0 }
+      })
+      for (const it of itemsFinal) {
+        const s = stock.find((x) => x.codigo === it.codigo)
+        const aDescontar = it.cantidad - (it.pendiente ?? 0)
+        if (s && aDescontar > 0) {
+          await supabase.from('stock').update({ cantidad: s.cantidad - aDescontar }).eq('codigo', it.codigo)
+          s.cantidad -= aDescontar
         }
       }
       await supabase
         .from('pedidos')
-        .update({ estado: 'pendiente', items: editItems, total_units: totalUnits, obs_deposito: null })
+        .update({ estado: 'pendiente', items: itemsFinal, total_units: totalUnits, obs_deposito: null })
         .eq('id', modalEditar.id)
       setModalEditar(null)
       await cargar()
@@ -377,6 +442,7 @@ export default function Pedidos() {
             const impNeto = imp.neto || l.importe_neto || 0
             const abierto = abiertos.has(l.id)
             const color = ESTADO_COLORS[estado] ?? '#999'
+            const pendienteTotal = (l.items ?? []).reduce((a, i) => a + (i.pendiente ?? 0), 0)
             return (
               <div key={l.id} className="bg-white rounded-xl border border-black/10 overflow-hidden">
                 <button onClick={() => toggleAbierto(l.id)} className="w-full text-left px-3 py-2.5">
@@ -388,11 +454,31 @@ export default function Pedidos() {
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span
-                        className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 text-white"
-                        style={{ background: color }}
-                      >
-                        {estadoLabel(estado)}
+                      <span className="flex items-center gap-1">
+                        {pendienteTotal > 0 && (
+                          <span
+                            className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-violet-100 text-violet-700"
+                            title={`${pendienteTotal} unidades en producción`}
+                          >
+                            🏭 {pendienteTotal}
+                          </span>
+                        )}
+                        {l.esperando_stock && (
+                          <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">
+                            ⏸ espera
+                          </span>
+                        )}
+                        {l.entrega_parcial && (
+                          <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-sky-100 text-sky-700">
+                            📦 parcial
+                          </span>
+                        )}
+                        <span
+                          className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 text-white"
+                          style={{ background: color }}
+                        >
+                          {estadoLabel(estado)}
+                        </span>
                       </span>
                       <span className="text-xs font-semibold">
                         {l.total_units ?? 0} uds{' '}
@@ -504,15 +590,69 @@ export default function Pedidos() {
                               <span className="block text-[10px] font-mono text-faint">{i.codigo}</span>
                             </span>
                           </span>
-                          <span className="shrink-0">
+                          <span className="shrink-0 text-right">
                             <b>{i.cantidad} uds</b>
                             {precio > 0 ? ' · ' + formatPrecio(precio * i.cantidad) : ''}
+                            {(i.pendiente ?? 0) > 0 && (
+                              <span className="block text-[10px] text-violet-700 font-medium">
+                                {i.cantidad - (i.pendiente ?? 0)} listas · 🏭 {i.pendiente} en producción
+                              </span>
+                            )}
                           </span>
                         </div>
                       )
                     })}
 
                     <div className="mt-3 pt-2 border-t border-black/5 space-y-1.5">
+                      {pendienteTotal > 0 && (
+                        <div className="bg-violet-50 border border-violet-200 rounded-lg p-2.5 space-y-2">
+                          <p className="text-xs text-violet-900">
+                            🏭 <b>{pendienteTotal} unidades</b> de este pedido están en producción y todavía no ingresaron
+                            a depósito.
+                          </p>
+                          {(esDeposito || esAdmin) && (
+                            <>
+                              {!l.entrega_parcial && !l.esperando_stock ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => decidirEntrega(l, true)}
+                                    className="flex-1 rounded-lg bg-sky-600 text-white py-2 text-xs font-bold"
+                                  >
+                                    📦 Entregar lo disponible
+                                  </button>
+                                  <button
+                                    onClick={() => decidirEntrega(l, false)}
+                                    className="flex-1 rounded-lg bg-amber-500 text-white py-2 text-xs font-bold"
+                                  >
+                                    ⏸ Esperar completo
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] text-violet-900">
+                                    {l.entrega_parcial
+                                      ? '📦 Se entrega lo disponible; el resto queda pendiente.'
+                                      : '⏸ Esperando a que ingrese la producción.'}
+                                  </span>
+                                  <button
+                                    onClick={() => decidirEntrega(l, !l.entrega_parcial)}
+                                    className="text-[11px] text-brandDark font-medium underline shrink-0"
+                                  >
+                                    cambiar
+                                  </button>
+                                </div>
+                              )}
+                              <button
+                                onClick={() => cubrirPendientes(l)}
+                                className="w-full rounded-lg border border-violet-300 text-violet-700 py-1.5 text-xs font-semibold"
+                              >
+                                ↻ Cubrir pendientes con el stock actual
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       {(esDeposito || esAdmin) && estado === 'pendiente' && (
                         <button
                           onClick={() => cambiarEstado(l.id, 'en_preparacion').then((ok) => ok && toast('🔧 En preparación', 'success'))}

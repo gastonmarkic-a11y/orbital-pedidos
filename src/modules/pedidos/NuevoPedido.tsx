@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
-import { Cliente, StockItem } from '../../lib/types'
+import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
 import { COND_ENTREGA, qtyClass } from './calc'
@@ -19,6 +19,8 @@ export default function NuevoPedido() {
   const location = useLocation()
 
   const [stock, setStock] = useState<StockItem[]>([])
+  // Unidades en producción por SKU (stock_ingresos pendientes de que Depósito confirme)
+  const [proyectado, setProyectado] = useState<Record<string, number>>({})
   const [busquedaCliente, setBusquedaCliente] = useState('')
   const [sugerencias, setSugerencias] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
@@ -44,8 +46,45 @@ export default function NuevoPedido() {
 
   async function loadStock() {
     const data = await fetchPaged<StockItem>(() => supabase.from('stock').select('*').order('modelo'))
-    setStock(data)
+    const ing = await fetchPaged<{
+      codigo: string
+      cantidad: number
+      modelo: string | null
+      descripcion: string | null
+      precio: number | null
+    }>(() =>
+      supabase.from('stock_ingresos').select('codigo, cantidad, modelo, descripcion, precio').eq('estado', 'proyectado').order('id')
+    )
+    const m: Record<string, number> = {}
+    for (const i of ing) m[i.codigo] = (m[i.codigo] ?? 0) + i.cantidad
+    setProyectado(m)
+    // Artículos que todavía no existen en depósito y solo están en producción: se pueden vender a futuro
+    const existentes = new Set(data.map((s) => s.codigo))
+    const vistos = new Set<string>()
+    const virtuales: StockItem[] = []
+    for (const i of ing) {
+      if (existentes.has(i.codigo) || vistos.has(i.codigo)) continue
+      vistos.add(i.codigo)
+      virtuales.push({
+        codigo: i.codigo,
+        modelo: i.modelo || i.codigo,
+        descripcion: i.descripcion,
+        estuche: null,
+        cantidad: 0,
+        precio: i.precio ?? 0,
+        clasificacion: null,
+        tipo: null,
+        tratamiento: null,
+        demanda: 0,
+        es_caliente: false,
+      })
+    }
+    setStock([...data, ...virtuales].sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '')))
   }
+
+  /** Máximo que se puede pedir de un SKU: lo que hay en depósito + lo que está en producción */
+  const proyDe = (codigo: string) => proyectado[codigo] ?? 0
+  const maxPedible = (p: { codigo: string; cantidad: number }) => p.cantidad + proyDe(p.codigo)
 
   useEffect(() => {
     loadStock()
@@ -124,12 +163,17 @@ export default function NuevoPedido() {
       const matchTipo = !filtroTipo || (p.tipo || '') === filtroTipo
       const matchClasif = !filtroClasif || (p.clasificacion || '') === filtroClasif
       const matchTratam = !filtroTratam || (p.tratamiento || '') === filtroTratam
-      return matchQ && matchM && matchTipo && matchClasif && matchTratam && p.cantidad > 0
+      // Se muestran los que tienen stock real o unidades en producción (proyectado)
+      const hayAlgo = p.cantidad > 0 || (proyectado[p.codigo] ?? 0) > 0
+      return matchQ && matchM && matchTipo && matchClasif && matchTratam && hayAlgo
     })
-  }, [stock, busquedaStock, filtroModelo, filtroTipo, filtroClasif, filtroTratam])
+  }, [stock, busquedaStock, filtroModelo, filtroTipo, filtroClasif, filtroTratam, proyectado])
 
-  // Opciones de los filtros: solo de artículos con stock, y respetando los otros filtros ya elegidos (combinables)
-  const conStock = useMemo(() => stock.filter((p) => p.cantidad > 0), [stock])
+  // Opciones de los filtros: solo de artículos con stock o proyectado, respetando los otros filtros (combinables)
+  const conStock = useMemo(
+    () => stock.filter((p) => p.cantidad > 0 || (proyectado[p.codigo] ?? 0) > 0),
+    [stock, proyectado]
+  )
   const opciones = (campo: 'modelo' | 'tipo' | 'clasificacion' | 'tratamiento') =>
     [...new Set(conStock.map((p) => (p[campo] || '').trim()).filter(Boolean))].sort()
   const modelos = useMemo(() => opciones('modelo'), [conStock])
@@ -155,8 +199,8 @@ export default function NuevoPedido() {
     const p = stock.find((x) => x.codigo === codigo)
     if (!p) return
     const inCart = cart[codigo] || 0
-    if (inCart >= p.cantidad) {
-      toast('Sin stock suficiente', 'error')
+    if (inCart >= maxPedible(p)) {
+      toast('Sin stock ni proyectado suficiente', 'error')
       return
     }
     setCart({ ...cart, [codigo]: inCart + 1 })
@@ -169,8 +213,8 @@ export default function NuevoPedido() {
     if (nuevo <= 0) {
       const { [codigo]: _omit, ...rest } = cart
       setCart(rest)
-    } else if (nuevo > p.cantidad) {
-      toast('Sin stock suficiente', 'error')
+    } else if (nuevo > maxPedible(p)) {
+      toast('Sin stock ni proyectado suficiente', 'error')
     } else {
       setCart({ ...cart, [codigo]: nuevo })
     }
@@ -178,6 +222,8 @@ export default function NuevoPedido() {
 
   const cartKeys = Object.keys(cart).filter((k) => cart[k] > 0)
   const totalUnidades = cartKeys.reduce((a, k) => a + cart[k], 0)
+  const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
+  const pendientesCarrito = cartKeys.reduce((a, k) => a + pendienteDe(k), 0)
   const totalCuotas = cuotas.reduce((a, c) => a + (c.pct || 0), 0)
 
   function getCuotasLabel() {
@@ -230,34 +276,52 @@ export default function NuevoPedido() {
     }
     setConfirmando(true)
     try {
-      // Verificar stock actual
+      // Verificar stock actual: se puede pedir hasta lo disponible + lo que está en producción
       const fresh = await fetchPaged<StockItem>(() => supabase.from('stock').select('*'))
+      const freshDe = (k: string) => fresh.find((x) => x.codigo === k)
       for (const k of cartKeys) {
-        const p = fresh.find((x) => x.codigo === k)
-        if (!p || p.cantidad < cart[k]) {
-          toast(`Sin stock suficiente de ${p ? p.modelo : k}. Stock actual: ${p ? p.cantidad : 0}`, 'error')
-          setStock(fresh)
+        const disponible = freshDe(k)?.cantidad ?? 0
+        if (cart[k] > disponible + proyDe(k)) {
+          const info = stock.find((x) => x.codigo === k)
+          toast(
+            `Sin stock suficiente de ${info?.modelo ?? k}. Disponible: ${disponible} · proyectado: ${proyDe(k)}`,
+            'error'
+          )
           setConfirmando(false)
           return
         }
       }
 
-      const items = cartKeys.map((k) => {
-        const p = fresh.find((x) => x.codigo === k)!
-        return { codigo: k, modelo: p.modelo, descripcion: p.descripcion, cantidad: cart[k] }
+      // Lo que exceda el stock físico queda como "pendiente" (se cubre con el proyectado cuando ingrese)
+      const items: PedidoItem[] = cartKeys.map((k) => {
+        const p = freshDe(k)
+        const info = stock.find((x) => x.codigo === k)
+        const disponible = p?.cantidad ?? 0
+        const pendiente = Math.max(0, cart[k] - disponible)
+        return {
+          codigo: k,
+          modelo: p?.modelo ?? info?.modelo ?? k,
+          descripcion: p?.descripcion ?? info?.descripcion ?? null,
+          cantidad: cart[k],
+          ...(pendiente > 0 ? { pendiente } : {}),
+        }
       })
+      const totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
 
       const negroPct = 100 - blancoPct
       let pagoLabel = getCuotasLabel() + (blancoPct < 100 ? ` | Blanco:${blancoPct}% Negro:${negroPct}%` : '')
       if (dtoFinanciero && parseFloat(dtoFinanciero) > 0) pagoLabel += ` | Dto. financiero: ${dtoFinanciero}%`
       if (dtoComercial && parseFloat(dtoComercial) > 0) pagoLabel += ` | Dto. comercial: ${dtoComercial}%`
 
-      // Descontar stock
+      // Descontar del stock solo las unidades que había físicamente (lo pendiente no se descuenta)
       for (const item of items) {
-        const p = fresh.find((x) => x.codigo === item.codigo)!
+        const p = freshDe(item.codigo)
+        if (!p) continue
+        const aDescontar = item.cantidad - (item.pendiente ?? 0)
+        if (aDescontar <= 0) continue
         await supabase
           .from('stock')
-          .update({ cantidad: p.cantidad - item.cantidad, updated_at: new Date().toISOString() })
+          .update({ cantidad: p.cantidad - aDescontar, updated_at: new Date().toISOString() })
           .eq('codigo', item.codigo)
       }
 
@@ -309,7 +373,12 @@ export default function NuevoPedido() {
       setWsp('')
       setMail('')
       setObs('')
-      toast(`✓ Pedido confirmado — ${totalUnidades} unidades para ${cliente.razon}`, 'success')
+      toast(
+        totalPendiente > 0
+          ? `✓ Pedido confirmado — ${totalUnidades} u. para ${cliente.razon} · ${totalPendiente} u. quedan pendientes de producción`
+          : `✓ Pedido confirmado — ${totalUnidades} unidades para ${cliente.razon}`,
+        'success'
+      )
     } catch (e) {
       console.error(e)
       toast('Error al confirmar el pedido. Probá de nuevo.', 'error')
@@ -479,6 +548,7 @@ export default function NuevoPedido() {
                 const abierto = busquedaStock.trim() ? true : expandidos.has(modelo)
                 const disponible = items.reduce((s, p) => s + Math.max(0, p.cantidad - (cart[p.codigo] || 0)), 0)
                 const enCarrito = items.reduce((s, p) => s + (cart[p.codigo] || 0), 0)
+                const proyGrupo = items.reduce((s, p) => s + proyDe(p.codigo), 0)
                 return (
                   <div key={modelo} className="border border-black/10 rounded-lg overflow-hidden">
                     <button
@@ -497,6 +567,14 @@ export default function NuevoPedido() {
                       </span>
                       <span className="flex items-center gap-2">
                         {enCarrito > 0 && <span className="text-xs text-brandDark font-medium">{enCarrito} en pedido</span>}
+                        {proyGrupo > 0 && (
+                          <span
+                            className="text-xs font-semibold rounded-full px-2 py-0.5 bg-violet-100 text-violet-700"
+                            title="Unidades en producción (proyectado)"
+                          >
+                            🏭 {proyGrupo}
+                          </span>
+                        )}
                         <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${qtyClass(disponible)}`}>
                           {disponible}
                         </span>
@@ -507,6 +585,8 @@ export default function NuevoPedido() {
                         {items.map((p) => {
                           const inCart = cart[p.codigo] || 0
                           const disp = p.cantidad - inCart
+                          const proy = proyDe(p.codigo)
+                          const restante = maxPedible(p) - inCart
                           return (
                             <div key={p.codigo} className="flex items-center justify-between px-3 py-2 gap-2">
                               <div className="min-w-0">
@@ -522,8 +602,16 @@ export default function NuevoPedido() {
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${qtyClass(disp)}`}>
-                                  {disp}
+                                {proy > 0 && (
+                                  <span
+                                    className="text-xs font-semibold rounded-full px-2 py-0.5 bg-violet-100 text-violet-700"
+                                    title="En producción — se entrega cuando ingrese a depósito"
+                                  >
+                                    🏭 {proy}
+                                  </span>
+                                )}
+                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${qtyClass(Math.max(0, disp))}`}>
+                                  {Math.max(0, disp)}
                                 </span>
                                 {inCart > 0 ? (
                                   <span className="flex items-center gap-1">
@@ -533,10 +621,15 @@ export default function NuevoPedido() {
                                     >
                                       −
                                     </button>
-                                    <span className="w-6 text-center text-sm font-semibold">{inCart}</span>
+                                    <span
+                                      className={`w-6 text-center text-sm font-semibold ${disp < 0 ? 'text-violet-700' : ''}`}
+                                      title={disp < 0 ? `${-disp} u. contra producción` : undefined}
+                                    >
+                                      {inCart}
+                                    </span>
                                     <button
                                       onClick={() => changeQty(p.codigo, 1)}
-                                      disabled={disp <= 0}
+                                      disabled={restante <= 0}
                                       className="w-7 h-7 rounded border border-black/10 text-sm disabled:opacity-30"
                                     >
                                       +
@@ -545,7 +638,7 @@ export default function NuevoPedido() {
                                 ) : (
                                   <button
                                     onClick={() => addToCart(p.codigo)}
-                                    disabled={disp <= 0}
+                                    disabled={restante <= 0}
                                     className="text-xs font-medium bg-brand text-white rounded-lg px-2.5 py-1.5 disabled:opacity-30"
                                   >
                                     + Agregar
@@ -586,6 +679,11 @@ export default function NuevoPedido() {
                   <div key={k} className="flex items-center justify-between gap-2 text-sm">
                     <div className="min-w-0">
                       <b>{p.modelo}</b> <span className="text-muted text-xs">{p.descripcion || p.codigo}</span>
+                      {pendienteDe(k) > 0 && (
+                        <span className="block text-[10px] text-violet-700 font-medium">
+                          🏭 {pendienteDe(k)} u. contra producción (se entregan cuando ingresen)
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => changeQty(k, -1)} className="w-6 h-6 rounded border border-black/10 text-xs">
@@ -772,6 +870,12 @@ export default function NuevoPedido() {
               />
             </label>
 
+            {pendientesCarrito > 0 && (
+              <div className="bg-violet-50 border border-violet-200 text-violet-800 rounded-lg p-2.5 text-xs">
+                🏭 <b>{pendientesCarrito} unidades</b> de este pedido están en producción y todavía no ingresaron a
+                depósito. Depósito va a decidir si entrega lo disponible ahora o espera el pedido completo.
+              </div>
+            )}
             <button
               onClick={confirmar}
               disabled={confirmando || cartKeys.length === 0}

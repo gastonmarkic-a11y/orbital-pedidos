@@ -126,6 +126,8 @@ export interface PedidoItem {
   modelo: string
   descripcion: string | null
   cantidad: number
+  /** Unidades que no había en stock al cargar el pedido: se cubren con stock proyectado */
+  pendiente?: number
 }
 
 export type EstadoPedido =
@@ -174,4 +176,8 @@ export interface Pedido {
   factura_enviada_at: string | null
   factura_enviada_canal: string | null
   factura_enviada_por: string | null
+  /** Depósito decidió entregar lo disponible y dejar el resto pendiente */
+  entrega_parcial: boolean | null
+  /** Depósito decidió esperar a que ingrese el proyectado antes de armar */
+  esperando_stock: boolean | null
 }
