@@ -104,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       codigoEfectivo = viewAs.split(':')[1]
     } else {
       rolEfectivo = viewAs as Rol
+      // El rol 'tienda' filtra sus pedidos por vendedor='Tienda'. Al ver como tienda,
+      // el admin debe adoptar ese código; si no, la lista filtraría por el código del
+      // admin y mostraría sus propios pedidos en vez de los de la tienda.
+      if (rolEfectivo === 'tienda') codigoEfectivo = 'Tienda'
     }
   }
 
