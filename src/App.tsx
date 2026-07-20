@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
+  BarChart3,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -27,6 +28,7 @@ import StockAdmin from './modules/pedidos/StockAdmin'
 import Clientes from './modules/pedidos/Clientes'
 import Produccion from './modules/pedidos/Produccion'
 import Tienda from './modules/pedidos/Tienda'
+import Publicidad from './modules/publicidad/Publicidad'
 
 interface NavItem {
   to: string
@@ -49,6 +51,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/gestion-clientes': UserPlus,
   '/produccion': Factory,
   '/tienda': Store,
+  '/publicidad': BarChart3,
 }
 
 function iconoDe(to: string, label: string) {
@@ -124,6 +127,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción / Ingresos' },
       { to: '/tienda', label: 'Tienda Shopify' },
+      { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
@@ -338,6 +342,7 @@ function Layout() {
             <Route path="/produccion" element={<Produccion />} />
           )}
           {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
+          {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
