@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
-  PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory,
+  PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -26,6 +26,7 @@ import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
 import Clientes from './modules/pedidos/Clientes'
 import Produccion from './modules/pedidos/Produccion'
+import Tienda from './modules/pedidos/Tienda'
 
 interface NavItem {
   to: string
@@ -47,6 +48,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/actividad-admin/marketing': Palette,
   '/gestion-clientes': UserPlus,
   '/produccion': Factory,
+  '/tienda': Store,
 }
 
 function iconoDe(to: string, label: string) {
@@ -70,7 +72,10 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     }
   if (rol === 'tienda')
     return {
-      principales: [{ to: '/pedidos', label: 'Pedidos tienda' }],
+      principales: [
+        { to: '/pedidos', label: 'Pedidos tienda' },
+        { to: '/tienda', label: 'Shopify' },
+      ],
       secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
       menu: [],
     }
@@ -118,6 +123,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción / Ingresos' },
+      { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
@@ -331,6 +337,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
             <Route path="/produccion" element={<Produccion />} />
           )}
+          {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
