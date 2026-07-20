@@ -31,6 +31,7 @@ export default function Pedidos() {
   const esLogistica = rol === 'logistica'
   const esAdministracion = rol === 'administracion'
   const esVendedor = rol === 'vendedor'
+  const esTienda = rol === 'tienda'
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
@@ -71,7 +72,7 @@ export default function Pedidos() {
 
   const filtrados = useMemo(() => {
     let logs = [...pedidos]
-    if (esVendedor) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
+    if (esVendedor || esTienda) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
     if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (esAdministracion) logs = logs.filter((l) => ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
@@ -84,7 +85,7 @@ export default function Pedidos() {
           (l.items || []).some((i) => (i.modelo || '').toLowerCase().includes(q))
       )
     return logs
-  }, [pedidos, esVendedor, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
+  }, [pedidos, esVendedor, esTienda, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
 
   async function cambiarEstado(id: number, estado: EstadoPedido, extra: Record<string, unknown> = {}) {
     const { error } = await supabase.from('pedidos').update({ estado, ...extra }).eq('id', id)
@@ -362,7 +363,9 @@ export default function Pedidos() {
     })
   }
 
-  const titulo = esDeposito
+  const titulo = esTienda
+    ? '🛍 Pedidos de la tienda'
+    : esDeposito
     ? '📦 Pedidos a preparar'
     : esLogistica
       ? '🚚 Entregas pendientes'

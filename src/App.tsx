@@ -68,6 +68,12 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
       menu: [],
     }
+  if (rol === 'tienda')
+    return {
+      principales: [{ to: '/pedidos', label: 'Pedidos tienda' }],
+      secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
+      menu: [],
+    }
   if (rol === 'deposito')
     return {
       principales: [
@@ -121,7 +127,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
 
 function homeFor(rol: Rol): string {
   if (rol === 'produccion') return '/produccion'
-  if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion') return '/pedidos'
+  if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   return '/hoy'
 }
 
@@ -209,6 +215,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'deposito', label: 'Depósito' },
   { value: 'produccion', label: 'Producción' },
+  { value: 'tienda', label: 'Tienda online' },
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
 ]
@@ -318,7 +325,7 @@ function Layout() {
               <Route path="/pedidos/clientes" element={<Clientes />} />
             </>
           )}
-          {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
+          {(rol === 'admin' || rol === 'deposito' || rol === 'produccion' || rol === 'tienda') && (
             <Route path="/pedidos/stock" element={<StockAdmin />} />
           )}
           {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
