@@ -19,6 +19,7 @@ function iconoDe(desarrollo: string | null): { icono: string; label: string } {
   if (d.includes('mail') || d.includes('correo')) return { icono: '✉️', label: 'Mail' }
   if (d.includes('venta')) return { icono: '🛒', label: 'Venta' }
   if (d.includes('visita') || d.includes('derivad')) return { icono: '🏪', label: 'Visita' }
+  if (d.includes('reuni')) return { icono: '📅', label: 'Reunión' }
   return { icono: '📝', label: 'Nota' }
 }
 

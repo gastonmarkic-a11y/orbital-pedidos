@@ -8,7 +8,7 @@ import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { daysSince, siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 
-type Canal = 'wa_me' | 'mailto' | 'llamada' | 'recordatorio'
+type Canal = 'wa_me' | 'mailto' | 'llamada' | 'recordatorio' | 'reunion'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
@@ -20,9 +20,9 @@ const SIGUIENTE_PASO: Record<string, { texto: string; dias: number }> = {
   mailto: { texto: '📞 Llamar para explicar la propuesta', dias: 2 },
   llamada: { texto: '📤 Enviar la propuesta detallada + coordinar visita', dias: 2 },
 }
-const CANAL_TXT: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'mail', llamada: 'llamada telefónica' }
+const CANAL_TXT: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'mail', llamada: 'llamada telefónica', reunion: 'reunión' }
 // Etiqueta corta del canal para la lista de enviados
-const CANAL_LABEL: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'Mail', llamada: '📞 Llamada' }
+const CANAL_LABEL: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'Mail', llamada: '📞 Llamada', reunion: '📅 Reunión' }
 // Nombre visible del operador de prospección (dos usuarios comparten cartera)
 const OPERADOR_NOMBRE: Record<string, string> = { Marketing: 'Luna', Damian: 'Damián', ProspeccionVenta: 'Damián' }
 
@@ -86,7 +86,8 @@ export default function Envios() {
   const [prepMensaje, setPrepMensaje] = useState('')
   const [prepPiezas, setPrepPiezas] = useState<Set<number>>(new Set())
   const [prepCanal, setPrepCanal] = useState<Canal>('wa_me')
-  const [prepFecha, setPrepFecha] = useState('') // recordatorio: fecha de la próxima agenda
+  const [prepFecha, setPrepFecha] = useState('') // recordatorio/reunión: fecha de la próxima agenda
+  const [prepHora, setPrepHora] = useState('') // reunión: hora, opcional
   const [prepAbierto, setPrepAbierto] = useState(false) // ya abrió el canal, falta confirmar
   const [guardando, setGuardando] = useState(false)
 
@@ -259,8 +260,9 @@ export default function Envios() {
   function elegirCanal(canal: Canal) {
     setPrepCanal(canal)
     setPrepAbierto(false)
-    if (canal === 'recordatorio') {
+    if (canal === 'recordatorio' || canal === 'reunion') {
       if (!prepFecha) setPrepFecha(proximoHabil(1))
+      if (canal === 'reunion' && !prepHora) setPrepHora('10:00')
       setPrepMensaje('')
       return
     }
@@ -423,6 +425,50 @@ export default function Envios() {
     setPrep(null)
     setRecarga((r) => r + 1)
     toast(`✓ Recordatorio agendado para el ${fechaTxt}`, 'success')
+  }
+
+  async function confirmarReunion() {
+    if (!prep || !vendedor) return
+    const desc = prepMensaje.trim()
+    if (!desc) {
+      toast('Escribí el motivo de la reunión', 'error')
+      return
+    }
+    if (!prepFecha) {
+      toast('Elegí la fecha de la reunión', 'error')
+      return
+    }
+    setGuardando(true)
+    const fechaTxt = new Date(prepFecha + 'T00:00:00').toLocaleDateString('es-AR')
+    const horaTxt = prepHora ? ` ${prepHora}hs` : ''
+    const { error: errAct } = await supabase.from('actividad_diaria').insert({
+      vendedor: codigoEfectivo,
+      cod_cliente: prep.cod,
+      nombre_comercio: prep.nomcomerc,
+      contacto: prep.contacto,
+      telefono: prep.whatsapp || prep.telefono,
+      localidad: prep.localidad,
+      email: prep.email,
+      actividad_desarrollo: `📅 Reunión agendada: ${desc}`,
+      actividad_futura: `Reunión${horaTxt}: ${desc}`,
+      proximo_paso_fecha: prepFecha,
+    })
+    const { error: errCli } = await supabase
+      .from('clientes')
+      .update({
+        nota: `📅 ${new Date().toLocaleDateString('es-AR')} — Reunión el ${fechaTxt}${horaTxt}: ${desc}`,
+        proximo_paso: `Reunión${horaTxt}: ${desc}`,
+        proxima_agenda_fecha: prepFecha,
+      })
+      .eq('cod', prep.cod)
+    setGuardando(false)
+    if (errAct || errCli) {
+      toast('No se pudo agendar la reunión: ' + (errAct?.message || errCli?.message), 'error')
+      return
+    }
+    setPrep(null)
+    setRecarga((r) => r + 1)
+    toast(`✓ Reunión agendada para el ${fechaTxt}${horaTxt}`, 'success')
   }
 
   async function guardarTelefono() {
@@ -662,7 +708,7 @@ export default function Envios() {
               </button>
             </div>
 
-            {prepCanal !== 'recordatorio' && (
+            {prepCanal !== 'recordatorio' && prepCanal !== 'reunion' && (
               <label className="block text-xs text-muted">
                 Propuesta
                 <select
@@ -679,7 +725,7 @@ export default function Envios() {
               </label>
             )}
 
-            {prepCanal !== 'recordatorio' && piezasDelTema.length > 0 && (
+            {prepCanal !== 'recordatorio' && prepCanal !== 'reunion' && piezasDelTema.length > 0 && (
               <div>
                 <p className="text-xs text-muted mb-1">Material a incluir (viaja como link público, no vence)</p>
                 <div className="space-y-1">
@@ -704,17 +750,30 @@ export default function Envios() {
               </div>
             )}
 
-            {prepCanal === 'recordatorio' && (
-              <label className="block text-xs text-muted">
-                📅 Fecha del recordatorio (aparece en la Agenda ese día)
-                <input
-                  type="date"
-                  value={prepFecha}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => setPrepFecha(e.target.value)}
-                  className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
-                />
-              </label>
+            {(prepCanal === 'recordatorio' || prepCanal === 'reunion') && (
+              <div className={prepCanal === 'reunion' ? 'grid grid-cols-2 gap-2' : ''}>
+                <label className="block text-xs text-muted">
+                  📅 {prepCanal === 'reunion' ? 'Fecha de la reunión' : 'Fecha del recordatorio'} (aparece en la Agenda ese día)
+                  <input
+                    type="date"
+                    value={prepFecha}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setPrepFecha(e.target.value)}
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+                  />
+                </label>
+                {prepCanal === 'reunion' && (
+                  <label className="block text-xs text-muted">
+                    🕒 Hora (opcional)
+                    <input
+                      type="time"
+                      value={prepHora}
+                      onChange={(e) => setPrepHora(e.target.value)}
+                      className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </label>
+                )}
+              </div>
             )}
 
             <label className="block text-xs text-muted">
@@ -722,15 +781,23 @@ export default function Envios() {
                 ? '🎙️ Guión de la llamada (lo leés mientras hablás)'
                 : prepCanal === 'recordatorio'
                   ? '📝 Qué hay que hacer (ej: el dueño no estaba, volver a llamar)'
-                  : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
+                  : prepCanal === 'reunion'
+                    ? '📝 Motivo de la reunión (ej: presentar la colección nueva, cierre de acuerdo)'
+                    : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
               <textarea
                 value={prepMensaje}
                 onChange={(e) => setPrepMensaje(e.target.value)}
-                rows={prepCanal === 'llamada' ? 8 : prepCanal === 'recordatorio' ? 3 : 5}
-                placeholder={prepCanal === 'recordatorio' ? 'Ej: el dueño no estaba, llamar mañana a la mañana' : undefined}
+                rows={prepCanal === 'llamada' ? 8 : prepCanal === 'recordatorio' || prepCanal === 'reunion' ? 3 : 5}
+                placeholder={
+                  prepCanal === 'recordatorio'
+                    ? 'Ej: el dueño no estaba, llamar mañana a la mañana'
+                    : prepCanal === 'reunion'
+                      ? 'Ej: presentar la colección nueva en el local'
+                      : undefined
+                }
                 className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
               />
-              {prepCanal !== 'llamada' && prepCanal !== 'recordatorio' && (
+              {prepCanal !== 'llamada' && prepCanal !== 'recordatorio' && prepCanal !== 'reunion' && (
                 <span className={`text-[10px] ${prepMensaje.length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}>
                   {prepMensaje.length} caracteres {prepMensaje.length > 400 ? '— demasiado largo para WhatsApp, acortalo' : ''}
                 </span>
@@ -765,6 +832,12 @@ export default function Envios() {
               >
                 ⏰ Recordatorio
               </button>
+              <button
+                onClick={() => elegirCanal('reunion')}
+                className={`col-span-2 rounded-lg py-2 text-xs font-semibold border ${prepCanal === 'reunion' ? 'bg-sky-600 text-white border-sky-600' : 'border-black/10 text-muted'}`}
+              >
+                📅 Reunión
+              </button>
             </div>
 
             {prepCanal === 'recordatorio' ? (
@@ -774,6 +847,14 @@ export default function Envios() {
                 className="w-full rounded-lg bg-violet-600 text-white py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 {guardando ? 'Agendando...' : '⏰ Agendar recordatorio en la agenda'}
+              </button>
+            ) : prepCanal === 'reunion' ? (
+              <button
+                onClick={confirmarReunion}
+                disabled={guardando}
+                className="w-full rounded-lg bg-sky-600 text-white py-2.5 text-sm font-semibold disabled:opacity-50"
+              >
+                {guardando ? 'Agendando...' : '📅 Agendar reunión en la agenda'}
               </button>
             ) : !prepAbierto ? (
               <button onClick={abrirCanal} className="w-full rounded-lg bg-brand text-white py-2.5 text-sm font-semibold">

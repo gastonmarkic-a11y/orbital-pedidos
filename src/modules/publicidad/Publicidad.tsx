@@ -4,6 +4,7 @@ import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
 import RoasChart from './RoasChart'
 import BibliotecasAnuncios from './BibliotecasAnuncios'
+import RankingProductos from './RankingProductos'
 
 // Panel de Inteligencia Publicitaria — FASE 1: SOLO LECTURA.
 // Nada de lo que se ve acá modifica una campaña en Meta. El "ecualizador" recalcula
@@ -326,6 +327,9 @@ export default function Publicidad() {
 
       {/* ---- Histórico ---- */}
       <RoasChart dias={dias} roasObjetivo={cfg?.roas_objetivo} breakEven={cfg?.break_even_roas} />
+
+      {/* ---- Ganadores y perdedores ---- */}
+      <RankingProductos />
 
       {/* ---- Ecualizador ---- */}
       {cfg && (
