@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
+import RoasChart from './RoasChart'
+import BibliotecasAnuncios from './BibliotecasAnuncios'
 
 // Panel de Inteligencia Publicitaria — FASE 1: SOLO LECTURA.
 // Nada de lo que se ve acá modifica una campaña en Meta. El "ecualizador" recalcula
@@ -82,7 +84,7 @@ export default function Publicidad() {
   async function cargar() {
     const [ri, rd, rc, rm] = await Promise.all([
       supabase.from('meta_insights').select('*').order('fecha', { ascending: false }),
-      supabase.from('roas_diario').select('*').order('fecha', { ascending: false }).limit(30),
+      supabase.from('roas_diario').select('*').order('fecha', { ascending: false }).limit(90),
       supabase.from('campanas_config').select('*'),
       supabase.from('motor_config').select('*').eq('id', 'principal').maybeSingle(),
     ])
@@ -286,12 +288,12 @@ export default function Publicidad() {
 
       {/* ---- El número que Meta no te da ---- */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div className="bg-white border border-black/10 rounded-2xl p-4">
+        <div className="bg-white border border-black/10 rounded-xl p-4">
           <div className="text-2xl font-semibold">{fmt(totales.roasReal)}</div>
           <div className="text-xs text-muted mt-0.5">ROAS real</div>
           <div className="text-[10px] text-faint mt-1">ventas de tu base ÷ gasto B2C</div>
         </div>
-        <div className="bg-white border border-black/10 rounded-2xl p-4">
+        <div className="bg-white border border-black/10 rounded-xl p-4">
           <div className="text-2xl font-semibold text-amber-600">{fmt(totales.roasMeta)}</div>
           <div className="text-xs text-muted mt-0.5">ROAS según Meta</div>
           <div className="text-[10px] text-faint mt-1">
@@ -300,14 +302,14 @@ export default function Publicidad() {
               : '—'}
           </div>
         </div>
-        <div className="bg-white border border-black/10 rounded-2xl p-4">
+        <div className="bg-white border border-black/10 rounded-xl p-4">
           <div className="text-2xl font-semibold">{formatPrecio(totales.spendB2C)}</div>
           <div className="text-xs text-muted mt-0.5">Gasto B2C</div>
           <div className="text-[10px] text-faint mt-1">
             {totales.spendB2B > 0 ? `+ ${formatPrecio(totales.spendB2B)} en B2B` : 'sin gasto B2B en el período'}
           </div>
         </div>
-        <div className="bg-white border border-black/10 rounded-2xl p-4">
+        <div className="bg-white border border-black/10 rounded-xl p-4">
           <div className="text-2xl font-semibold">{formatPrecio(totales.ventas)}</div>
           <div className="text-xs text-muted mt-0.5">Ventas reales</div>
           <div className="text-[10px] text-faint mt-1">{totales.pedidos} pedidos en la tienda</div>
@@ -322,9 +324,12 @@ export default function Publicidad() {
         </div>
       )}
 
+      {/* ---- Histórico ---- */}
+      <RoasChart dias={dias} roasObjetivo={cfg?.roas_objetivo} breakEven={cfg?.break_even_roas} />
+
       {/* ---- Ecualizador ---- */}
       {cfg && (
-        <div className="bg-white border border-black/10 rounded-2xl p-4 space-y-4">
+        <div className="bg-white border border-black/10 rounded-xl p-4 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 className="text-sm font-semibold">🎛 Ecualizador del motor</h2>
@@ -444,7 +449,7 @@ export default function Publicidad() {
             </thead>
             <tbody>
               {posiciones.map((p) => (
-                <tr key={p.id} className="border-t border-black/5 align-top">
+                <tr key={p.id} className="border-t border-black/5 align-top hover:bg-[#F1EDE4]/50 transition-colors">
                   <td className="px-3 py-2">
                     <div className="font-medium">{p.nombre}</div>
                     <div className="text-[10px] text-faint">{p.ads.size} anuncios</div>
@@ -522,7 +527,10 @@ export default function Publicidad() {
                 const gap = real !== null && meta !== null && real > 0 ? ((meta - real) / real) * 100 : null
                 const sinVentas = d.pedidos_shopify === 0
                 return (
-                  <tr key={d.fecha} className={`border-t border-black/5 ${sinVentas ? 'opacity-50' : ''}`}>
+                  <tr
+                    key={d.fecha}
+                    className={`border-t border-black/5 transition-colors hover:bg-[#F1EDE4]/50 ${sinVentas ? 'opacity-50' : ''}`}
+                  >
                     <td className="px-3 py-2 whitespace-nowrap">
                       {diaCorto(d.fecha)}
                       {sinVentas && <span className="text-[10px] text-faint ml-1">(en curso)</span>}
@@ -554,6 +562,9 @@ export default function Publicidad() {
           cargadas todavía) van en gris y no cuentan para los totales.
         </p>
       </div>
+
+      {/* ---- Bibliotecas de anuncios ---- */}
+      <BibliotecasAnuncios />
     </div>
   )
 }
