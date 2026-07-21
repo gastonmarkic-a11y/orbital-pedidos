@@ -5,7 +5,7 @@ import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
-import { daysSince } from '../../lib/dates'
+import { daysSince, siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 
 type Canal = 'wa_me' | 'mailto' | 'llamada' | 'recordatorio'
@@ -78,6 +78,7 @@ export default function Envios() {
   const [filtroProp, setFiltroProp] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [recarga, setRecarga] = useState(0)
+  const [feriados, setFeriados] = useState<Set<string>>(new Set())
 
   // Modal de preparación
   const [prep, setPrep] = useState<Cliente | null>(null)
@@ -133,6 +134,19 @@ export default function Envios() {
     }
     cargar()
   }, [vendedor, codigoEfectivo, recarga])
+
+  useEffect(() => {
+    supabase
+      .from('feriados')
+      .select('fecha')
+      .then(({ data }) => setFeriados(new Set((data ?? []).map((f: { fecha: string }) => f.fecha))))
+  }, [])
+
+  // Próximo día hábil a partir de hoy + `dias`, saltando sábados/domingos/feriados
+  function proximoHabil(dias: number): string {
+    const base = new Date(Date.now() + dias * 86400000)
+    return ymd(siguienteDiaHabil(base, feriados))
+  }
 
   // Si llegaste desde Cartera/Agenda con un cliente puntual, abrí su preparación directamente
   useEffect(() => {
@@ -246,7 +260,7 @@ export default function Envios() {
     setPrepCanal(canal)
     setPrepAbierto(false)
     if (canal === 'recordatorio') {
-      if (!prepFecha) setPrepFecha(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+      if (!prepFecha) setPrepFecha(proximoHabil(1))
       setPrepMensaje('')
       return
     }
@@ -265,7 +279,7 @@ export default function Envios() {
     setPrepProp(sug?.id ?? 0)
     setPrepPiezas(pre)
     setPrepCanal(tel ? 'wa_me' : c.email ? 'mailto' : 'recordatorio')
-    setPrepFecha(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+    setPrepFecha(proximoHabil(1))
     setPrepMensaje(sug ? armarMensaje(c, sug, delTema.slice(0, 1)) : '')
     setPrepAbierto(false)
   }
@@ -330,7 +344,7 @@ export default function Envios() {
     }
     const canalTxt = CANAL_TXT[prepCanal] ?? prepCanal
     const sig = SIGUIENTE_PASO[prepCanal] ?? { texto: 'Seguimiento', dias: 2 }
-    const fechaSig = new Date(Date.now() + sig.dias * 86400000).toISOString().slice(0, 10)
+    const fechaSig = proximoHabil(sig.dias)
     const desarrollo =
       prepCanal === 'llamada'
         ? `Llamada telefónica: ${prop?.nombre ?? ''}`

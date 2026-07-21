@@ -97,3 +97,25 @@ export function formatFecha(d: Date | null): string {
   if (!d) return '—'
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
+
+/** true si la fecha es sábado, domingo o feriado (feriados = set de 'YYYY-MM-DD') */
+export function esNoHabil(d: Date, feriados: Set<string>): boolean {
+  const dow = d.getDay()
+  if (dow === 0 || dow === 6) return true
+  return feriados.has(ymd(d))
+}
+
+/**
+ * Devuelve la misma fecha si es día hábil; si cae sábado, domingo o feriado,
+ * la corre hacia adelante hasta el próximo día hábil. Usada para auto-agendar
+ * el próximo contacto sin que quede en un día que nadie trabaja.
+ */
+export function siguienteDiaHabil(d: Date, feriados: Set<string>): Date {
+  const r = new Date(d)
+  let guarda = 0
+  while (esNoHabil(r, feriados) && guarda < 30) {
+    r.setDate(r.getDate() + 1)
+    guarda++
+  }
+  return r
+}
