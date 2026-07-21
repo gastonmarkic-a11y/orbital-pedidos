@@ -10,7 +10,9 @@ const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
 
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
-  const esProspeccion = ['Marketing', 'ProspeccionVenta'].includes(codigoEfectivo)
+  // Luna (Marketing) y Damián comparten pool y objetivo de equipo; sin incluir a Damián acá
+  // su "Mis Resultados" mostraba objetivo/actividad/vencidos en cero (bug 2026-07-20).
+  const esProspeccion = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
   const [objetivo, setObjetivo] = useState<ObjetivoMes | null>(null)
   const [propuestasDef, setPropuestasDef] = useState<Propuesta[]>([])
   const [acts, setActs] = useState<Actividad[]>([])
@@ -26,11 +28,10 @@ export default function MisResultados() {
     Promise.all([
       supabase.from('objetivos_mes').select('*').eq('vendedor', objVendedor).eq('mes_anio', mes).maybeSingle(),
       actQuery,
-      supabase
-        .from('clientes')
-        .select('cod', { count: 'exact', head: true })
-        .eq('vendedor_asignado', codigoEfectivo)
-        .lt('proxima_agenda_fecha', new Date().toISOString().slice(0, 10)),
+      (esProspeccion
+        ? supabase.from('clientes').select('cod', { count: 'exact', head: true }).or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+        : supabase.from('clientes').select('cod', { count: 'exact', head: true }).eq('vendedor_asignado', codigoEfectivo)
+      ).lt('proxima_agenda_fecha', new Date().toISOString().slice(0, 10)),
       supabase.from('propuestas_julio').select('*'),
     ]).then(([obj, act, venc, props]) => {
       setObjetivo(obj.data as ObjetivoMes | null)

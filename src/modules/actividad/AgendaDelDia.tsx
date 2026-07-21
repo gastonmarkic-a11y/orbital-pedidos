@@ -55,7 +55,15 @@ export default function AgendaDelDia() {
 
     function base() {
       let q = supabase.from('clientes').select('*')
-      if (!esAdmin) q = q.eq('vendedor_asignado', codigo)
+      if (!esAdmin) {
+        // Prospección (Luna=Marketing, Damián=Damian) comparte el mismo pool: los clientes
+        // quedan con vendedor_asignado='Marketing' (o null), no con el código de cada uno.
+        // Sin esta excepción Damián no ve nunca nada agendado (bug detectado 2026-07-20).
+        q =
+          codigo === 'Marketing' || codigo === 'Damian'
+            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+            : q.eq('vendedor_asignado', codigo)
+      }
       return q
     }
 
