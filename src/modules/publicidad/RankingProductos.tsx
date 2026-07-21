@@ -15,6 +15,11 @@ interface PedidoLite {
   items: PedidoItemLite[] | null
 }
 
+interface InsightLite {
+  fecha: string
+  clicks: number
+}
+
 interface ModeloAgg {
   codigo: string
   modelo: string
@@ -34,7 +39,7 @@ const TIMEFRAMES = [
   { label: 'Todo', dias: 0 },
 ] as const
 
-export default function RankingProductos() {
+export default function RankingProductos({ insights }: { insights: InsightLite[] }) {
   const [pedidos, setPedidos] = useState<PedidoLite[]>([])
   const [loading, setLoading] = useState(true)
   const [rango, setRango] = useState<number>(90)
@@ -51,13 +56,19 @@ export default function RankingProductos() {
     })
   }, [])
 
+  const corte = useMemo(
+    () => (rango > 0 ? new Date(Date.now() - rango * 86400000).toISOString().slice(0, 10) : null),
+    [rango],
+  )
+
   const porCanal = useMemo(() => {
-    const corte = rango > 0 ? new Date(Date.now() - rango * 86400000).toISOString().slice(0, 10) : null
     return CANALES.map((canal) => {
       const agg = new Map<string, ModeloAgg>()
+      let totalPedidos = 0
       for (const p of pedidos) {
         if (p.cod_cliente !== canal.cod) continue
         if (corte && (p.fecha ?? '') < corte) continue
+        totalPedidos++
         for (const it of p.items ?? []) {
           const cur = agg.get(it.codigo) ?? {
             codigo: it.codigo,
@@ -74,9 +85,22 @@ export default function RankingProductos() {
       const lista = [...agg.values()].sort((a, b) => b.unidades - a.unidades)
       const top = lista.slice(0, 5)
       const bottom = lista.slice(Math.max(5, lista.length - 5)).reverse()
-      return { canal, top, bottom, totalModelos: lista.length, totalUnidades: lista.reduce((a, m) => a + m.unidades, 0) }
+      return {
+        canal,
+        top,
+        bottom,
+        totalModelos: lista.length,
+        totalUnidades: lista.reduce((a, m) => a + m.unidades, 0),
+        totalPedidos,
+      }
     })
-  }, [pedidos, rango])
+  }, [pedidos, corte])
+
+  const clicksPeriodo = useMemo(() => {
+    return insights.reduce((a, i) => (!corte || i.fecha >= corte ? a + (Number(i.clicks) || 0) : a), 0)
+  }, [insights, corte])
+
+  const pedidosTotal = porCanal.reduce((a, c) => a + c.totalPedidos, 0)
 
   if (loading) return null
 
@@ -108,6 +132,16 @@ export default function RankingProductos() {
           ))}
         </div>
       </div>
+
+      {clicksPeriodo > 0 && (
+        <div className="border border-black/10 rounded-lg bg-[#F1EDE4] px-3 py-2 text-[11px] text-muted">
+          <b className="text-ink">Contexto del período:</b> {clicksPeriodo.toLocaleString('es-AR')} clicks en anuncios
+          de Meta (toda la cuenta, aprox. de "visitas") → {(pedidosTotal).toLocaleString('es-AR')} pedidos reales en
+          Línea+Outlet
+          {clicksPeriodo > 0 && <> ({((pedidosTotal / clicksPeriodo) * 100).toFixed(1)}% conversión aprox.)</>}. No es
+          por producto — Shopify no guarda qué anuncio originó cada venta puntual.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {porCanal.map(({ canal, top, bottom, totalModelos }) => (

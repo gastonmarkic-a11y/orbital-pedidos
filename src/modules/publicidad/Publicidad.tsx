@@ -5,6 +5,8 @@ import { formatPrecio } from '../../lib/format'
 import RoasChart from './RoasChart'
 import BibliotecasAnuncios from './BibliotecasAnuncios'
 import RankingProductos from './RankingProductos'
+import GastoVentasChart from './GastoVentasChart'
+import VisitasConversionesChart from './VisitasConversionesChart'
 
 // Panel de Inteligencia Publicitaria — FASE 1: SOLO LECTURA.
 // Nada de lo que se ve acá modifica una campaña en Meta. El "ecualizador" recalcula
@@ -328,8 +330,14 @@ export default function Publicidad() {
       {/* ---- Histórico ---- */}
       <RoasChart dias={dias} roasObjetivo={cfg?.roas_objetivo} breakEven={cfg?.break_even_roas} />
 
+      {/* ---- Gasto vs Ventas ---- */}
+      <GastoVentasChart dias={dias} />
+
+      {/* ---- Visitas, conversiones e inversión ---- */}
+      <VisitasConversionesChart insights={insights} />
+
       {/* ---- Ganadores y perdedores ---- */}
-      <RankingProductos />
+      <RankingProductos insights={insights} />
 
       {/* ---- Ecualizador ---- */}
       {cfg && (
