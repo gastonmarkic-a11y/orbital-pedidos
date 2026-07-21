@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orbital · Harness de prueba del bot</title>
+<style>
+  :root {
+    --bg: #F6F4EF; --card: #ffffff; --ink: #17171C; --muted: #6E6A61; --faint: #9B968B;
+    --gold: #C8A96E; --goldsoft: #EBDFC9; --brand: #15151A; --border: #00000014;
+    --b2b: #1a7abf; --b2c: #059669; --escala: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .dev-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: #fff3cd; color: #8a6d3b; border: 1px solid #f0d98c; border-radius: 999px; padding: 3px 10px; }
+  .panel { background: var(--card); border: 1px solid #0000001a; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .seg-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .seg-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-right: 4px; }
+  .seg-btn { border: 1px solid #00000022; background: #fff; color: var(--muted); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .12s ease; font-family: inherit; }
+  .seg-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .seg-hint { font-size: 11px; color: var(--faint); margin-top: 8px; }
+  #chat { height: 46vh; min-height: 300px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 82%; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: #F1EDE4; color: var(--ink); border-bottom-left-radius: 4px; }
+  .tag { display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; border-radius: 999px; padding: 2px 7px; margin-top: 6px; }
+  .tag.menu { background: #e8e8f0; color: #555; }
+  .tag.regla { background: #e3f0fb; color: var(--b2b); }
+  .tag.curada { background: #e6f6ee; color: var(--b2c); }
+  .tag.humano { background: #fbe3e3; color: var(--escala); }
+  .tag.dato { background: #fdf0d9; color: #8a6d3b; }
+  .meta-note { font-size: 10px; color: var(--faint); margin-top: 4px; }
+  .menu-list { align-self: flex-start; max-width: 90%; background: #fff; border: 1px solid #0000001a; border-radius: 12px; overflow: hidden; margin-top: 2px; }
+  .menu-head { background: var(--goldsoft); padding: 8px 12px; font-size: 12px; font-weight: 700; }
+  .menu-sec-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px 2px; }
+  .menu-row { padding: 8px 12px; border-top: 1px solid #00000010; cursor: pointer; }
+  .menu-row:hover { background: #F1EDE4; }
+  .menu-row .t { font-size: 13px; font-weight: 600; }
+  .menu-row .d { font-size: 11px; color: var(--muted); }
+  .composer { display: flex; gap: 8px; margin-top: 10px; }
+  .composer input { flex: 1; border: 1px solid #00000022; border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; }
+  .composer input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px #c8a96e44; }
+  .composer button { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .quick button { font-size: 11px; border: 1px solid #00000022; background: #fff; color: var(--muted); border-radius: 999px; padding: 5px 10px; cursor: pointer; font-family: inherit; }
+  .quick button:hover { background: #F1EDE4; }
+  .footer-note { font-size: 11px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  code { background: #0000000d; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>🤖 Harness de prueba · Bot Orbital</h1>
+      <div class="sub">Simula la cascada real del webhook (menú → reglas → respuesta curada → escalamiento) sin tocar WhatsApp.</div>
+    </div>
+    <span class="dev-badge">Modo prueba · no envía nada</span>
+  </header>
+
+  <div class="panel">
+    <div class="seg-row">
+      <span class="seg-label">Segmento simulado</span>
+      <button class="seg-btn" data-seg="b2b_activo">🏢 B2B activo</button>
+      <button class="seg-btn" data-seg="b2b_inactivo">🏢 B2B inactivo</button>
+      <button class="seg-btn active" data-seg="b2c">🛍 B2C (consumidor)</button>
+    </div>
+    <div class="seg-hint">
+      En producción el segmento lo resuelve <code>wa_resolver_segmento(telefono)</code> buscando el número en <code>clientes</code>.
+      Acá lo elegís a mano para probar el guardrail: <b>un B2C nunca debe ver contenido B2B</b>.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div id="chat"></div>
+    <div class="composer">
+      <input id="input" type="text" placeholder="Escribí como si fueras el cliente… (ej: hola, precios, quiero devolver un anteojo)" autocomplete="off" />
+      <button id="send">Enviar</button>
+    </div>
+    <div class="quick" id="quick"></div>
+  </div>
+
+  <div class="footer-note">
+    Cada respuesta del bot muestra con qué <b>escalón</b> se resolvió: <span class="tag menu">menú</span>
+    <span class="tag regla">regla/curada</span> <span class="tag curada">curada</span>
+    <span class="tag dato">dato</span> <span class="tag humano">→ humano</span>.
+    La lógica (regex, menús, respuestas) está copiada 1:1 del webhook real. Los escalones <code>vector</code>/<code>rag</code> (LLM) todavía no existen — ese es el próximo paso.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Lógica portada 1:1 del edge function wa-webhook (reglas.ts, menu.ts, index.ts)
+// + respuestas curadas reales de base_conocimiento. Corre en el browser.
+// ============================================================================
+
+const INTENCIONES_DATOS = new Set(["precios", "stock", "estado_pedido"]);
+const PIDE_HUMANO = new Set(["hablar_humano"]);
+const MSG_TRANSICION = "Dejame que te pase con alguien del equipo, en un rato te escriben.";
+const MSG_NO_ENTENDI = "No te entendí del todo. Te dejo el menú para que elijas 👇";
+
+// --- reglas.ts: clasificación de intención por regex ---
+const REGLAS = [
+  ["saludo", /^\s*(hola|holis|buenas|buen d[ií]a|buenas tardes|buenas noches|hey|q onda|que onda|buenos d[ií]as)\b/i],
+  ["estado_pedido", /\b(mi pedido|estado (de|del)? ?pedido|d[oó]nde est[aá].*pedido|seguimiento|track|cu[aá]ndo (llega|sale) mi)\b/i],
+  ["preventa", /\bpreventa|colecci[oó]n 2026\b/i],
+  ["propuestas_comerciales", /\b(plan canje|canje|propuesta|bienvenida|recuperar|preventa colecci)\b/i],
+  ["como_ser_cliente", /\b(ser cliente|vender orbital|revend|distribu|mayorista|abrir (una )?cuenta|quiero vender|tener orbital en mi)\b/i],
+  ["condiciones_generales", /\b(condicion|forma de pago|formas de pago|financ|cuotas|pago a|plazo de pago)\b/i],
+  ["zona_vendedor", /\b(vendedor|qui[eé]n me atiende|representante|asesor de zona|mi zona)\b/i],
+  ["precios", /\b(precio|precios|cu[aá]nto (sale|cuesta|vale|salen|cuestan)|lista de precio|valores|cotiza)\b/i],
+  ["stock", /\b(stock|disponib|hay .*(negro|marr[oó]n|carey|modelo)|ten[eé]s .*(negro|marr[oó]n))\b/i],
+  ["tecnologia_lentes", /\b(blue ?cut|blue ?light|luz azul|uv ?400|uv400|vsl|infrarrojo|polariz|filtro|420 ?nm)\b/i],
+  ["catalogo_modelos", /\b(modelo|modelos|ascari|civic|casa blanca|5th|quinta avenida|cat[aá]logo|anteojos|lentes de sol|armazon|xylon)\b/i],
+  ["cuidado_producto", /\b(limpi|c[oó]mo cuid|cuidado|se raya|rayar|pa[ñn]o|estuche)\b/i],
+  ["garantia", /\bgarant[ií]a\b/i],
+  ["donde_comprar", /\b(d[oó]nde (compro|consigo|venden|encuentro)|comprar orbital|[oó]ptica (cerca|m[aá]s cercana)|d[oó]nde los venden)\b/i],
+  ["redes_contacto", /\b(instagram|redes|ig\b|face|mail|correo|tel[eé]fono|web|p[aá]gina|contacto)\b/i],
+  ["horarios", /\b(horario|horarios|atienden|abren|abiertos|hasta qu[eé] hora)\b/i],
+  ["direccion", /\b(direcci|d[oó]nde queda|d[oó]nde est[aá]n|ubicaci|showroom|local)\b/i],
+];
+function clasificarTexto(texto) {
+  const t = texto.trim();
+  for (const [intencion, re] of REGLAS) if (re.test(t)) return intencion;
+  return null;
+}
+
+// --- reglas.ts: detección de escalamiento a humano ---
+const ESCALA = [
+  ["cobranza", /\b(cobranza|deuda|saldo (pendiente|deudor)|pagar (la )?factura|vencimiento|impago|refinanci)\b/i],
+  ["devolucion", /\b(devoluci[oó]n|devolver|quiero devolver|cambio por otro|nota de cr[eé]dito)\b/i],
+  ["reclamo", /\b(rotur|se rompi|roto|falla|fallado|fallada|defect|no funciona|vino mal|lleg[oó] mal|error.*factur|factura(do)? mal|reclamo|queja)\b/i],
+  ["garantia_gestion", /\bgarant[ií]a\b.*\b(romp|roto|falla|gestion|reclam|hacer valer|cubre esto)\b/i],
+  ["precio_especial", /\b(precio especial|descuento especial|fuera de lista|mejor precio|condici[oó]n especial|bonific)\b/i],
+  ["pedido_humano", /\b(hablar con (alguien|una persona|un humano|un vendedor|un asesor|el equipo)|persona real|atenci[oó]n humana|un asesor real|no un bot|dejar de ser bot)\b/i],
+];
+function detectarEscalamiento(texto) {
+  const t = texto.trim();
+  for (const [motivo, re] of ESCALA) if (re.test(t)) return motivo;
+  return null;
+}
+
+function decidirEscalamiento(texto, intencion, segmento) {
+  if (intencion && PIDE_HUMANO.has(intencion)) return "pedido_humano";
+  if (texto) { const m = detectarEscalamiento(texto); if (m) return m; }
+  if (segmento === "b2b_activo" && intencion && INTENCIONES_DATOS.has(intencion)) return "consulta_datos_b2b";
+  return null;
+}
+
+function redirectDatos(intencion, segmento) {
+  if (segmento === "b2b_inactivo")
+    return "La lista de precios y el stock te los pasa directamente el vendedor de tu zona. Contame de dónde sos y te digo quién te atiende.";
+  if (intencion === "precios")
+    return "Orbital se vende a través de ópticas, así que no manejamos precio de venta directa. Escribinos tu localidad y te decimos qué óptica cerca tuyo tiene la colección.";
+  return "Eso lo maneja cada óptica que trabaja con Orbital. Decime tu localidad y te oriento sobre dónde encontrar los modelos.";
+}
+
+// --- base_conocimiento (respuestas curadas reales, con Luna/Damián en zona_vendedor) ---
+const KB = [
+  { intencion: "catalogo_modelos", seg: ["b2b_activo","b2b_inactivo","b2c"], prioridad: 100, respuesta: "La colección 2026 son cuatro modelos:\n\n• ASCARI\n• CIVIC CENTER\n• CASA BLANCA\n• 5TH AVENUE\n\nTodos con armazón XYLON® y lentes con tecnología VSL™ HD Real. ¿Querés que te cuente de alguno en particular?" },
+  { intencion: "como_ser_cliente", seg: ["b2c"], prioridad: 90, respuesta: "¡Buenísimo que quieras trabajar con Orbital! Contame el nombre de tu óptica y de dónde sos, y en un rato te contacta alguien del equipo para darte todos los detalles." },
+  { intencion: "como_ser_cliente", seg: ["b2b_activo","b2b_inactivo"], prioridad: 100, respuesta: "Sumar Orbital a tu óptica es simple: trabajamos con ópticas independientes en todo el país. Decime de dónde sos y qué óptica tenés, y tu vendedor de zona te arma la propuesta de ingreso con todo lo que necesitás para arrancar." },
+  { intencion: "condiciones_generales", seg: ["b2b_activo","b2b_inactivo"], prioridad: 100, respuesta: "Manejamos distintas condiciones de pago y entrega según el volumen y la zona. Lo mejor es que tu vendedor te arme la propuesta que más te convenga. ¿Querés que te pase con él?" },
+  { intencion: "cuidado_producto", seg: ["b2b_activo","b2b_inactivo","b2c"], prioridad: 100, respuesta: "Fácil: limpialos con el paño de microfibra que viene en el estuche, siempre con la lente apenas húmeda. Nada de remeras ni papel, que rayan. Y cuando no los uses, guardalos en el estuche. Así te duran como el primer día." },
+  { intencion: "donde_comprar", seg: ["b2c"], prioridad: 100, respuesta: "Orbital se vende en ópticas de todo el país. Pasame tu localidad y te digo qué óptica cerca tuyo tiene la colección 2026." },
+  { intencion: "garantia", seg: ["b2b_activo","b2b_inactivo","b2c"], prioridad: 100, respuesta: "Todos los Orbital tienen garantía por defectos de fabricación. Si algo viene fallado de fábrica, lo cambiamos. Si se te rompió o querés gestionar una garantía puntual, decímelo y te paso con alguien del equipo." },
+  { intencion: "preventa", seg: ["b2b_activo"], prioridad: 100, respuesta: "La Preventa Colección 2026 te deja asegurar los nuevos modelos antes que salgan a la venta general, con condiciones especiales. Te paso con tu vendedor para que te reserve el pedido. ¿Avanzamos?" },
+  { intencion: "propuestas_comerciales", seg: ["b2b_activo","b2b_inactivo"], prioridad: 100, respuesta: "Tenemos cinco propuestas según tu momento:\n\n• Bienvenida — para arrancar con la marca\n• Preventa Colección 2026 — asegurás la nueva colección\n• Plan Canje — entregás stock viejo y renovás\n• Propuesta Especial — condiciones a medida\n• Propuesta para Recuperar — para volver a trabajar juntos\n\n¿Sobre cuál querés que te cuente más?" },
+  { intencion: "redes_contacto", seg: ["b2b_activo","b2b_inactivo","b2c"], prioridad: 100, respuesta: "Sí, seguinos en Instagram: @orbital.eyewear. Ahí subimos la colección, novedades y todo lo nuevo de la marca." },
+  { intencion: "tecnologia_lentes", seg: ["b2b_activo","b2b_inactivo","b2c"], prioridad: 100, respuesta: "Los Orbital vienen con lentes VSL™ HD Real, que suman:\n\n• UV400 (bloqueo total de rayos UV)\n• Blue Light Cut a 420nm (filtra la luz azul de pantallas)\n• Filtro infrarrojo\n\nArmazón XYLON®, liviano y resistente. Visión nítida y ojos protegidos." },
+  { intencion: "zona_vendedor", seg: ["b2b_activo","b2b_inactivo"], prioridad: 100, respuesta: "Pasame tu localidad o provincia y te digo quién te atiende del equipo (Luna o Damián) para que se ponga en contacto con vos." },
+];
+// GUARDRAIL: filtro por segmento (equivalente al WHERE .contains(segmentos_permitidos,[seg]))
+function buscarRespuestaCurada(intencion, segmento) {
+  const filas = KB.filter(k => k.intencion === intencion && k.seg.includes(segmento))
+                  .sort((a,b) => a.prioridad - b.prioridad);
+  return filas.length ? filas[0].respuesta : null;
+}
+
+// --- menu.ts: menús interactivos por segmento ---
+const PRODUCTO = { title: "Producto", rows: [
+  { id: "catalogo_modelos", title: "Modelos 2026", description: "ASCARI · CIVIC CENTER · CASA BLANCA · 5TH AVENUE" },
+  { id: "tecnologia_lentes", title: "Tecnología de lentes", description: "VSL HD, UV400, Blue Cut 420nm" },
+  { id: "garantia", title: "Garantía", description: "Cómo funciona" },
+  { id: "cuidado_producto", title: "Cuidado y limpieza", description: "Para que duren" },
+]};
+const AYUDA_ROW = { id: "hablar_humano", title: "Hablar con el equipo", description: "Te pasamos con una persona" };
+const REDES_ROW = { id: "redes_contacto", title: "Instagram y contacto", description: "@orbital.eyewear" };
+
+function construirMenu(segmento) {
+  if (segmento === "b2b_activo") return { header: "Orbital Eyewear", cuerpo: "Hola, ¿en qué te damos una mano hoy?", secciones: [
+    { title: "Tu cuenta", rows: [
+      { id: "precios", title: "Precios", description: "Lista mayorista" },
+      { id: "stock", title: "Stock", description: "Disponibilidad por modelo" },
+      { id: "estado_pedido", title: "Estado de pedido", description: "Seguí tu pedido" }]},
+    { title: "Comercial", rows: [
+      { id: "propuestas_comerciales", title: "Propuestas", description: "Canje, preventa y más" },
+      { id: "zona_vendedor", title: "Mi vendedor", description: "Quién te atiende" },
+      { id: "condiciones_generales", title: "Condiciones", description: "Pagos y entregas" }]},
+    { title: "Producto", rows: [
+      { id: "catalogo_modelos", title: "Modelos 2026", description: "Colección" },
+      { id: "tecnologia_lentes", title: "Tecnología", description: "VSL, UV400, Blue Cut" }]},
+    { title: "Ayuda", rows: [AYUDA_ROW] }]};
+  if (segmento === "b2b_inactivo") return { header: "Orbital Eyewear", cuerpo: "Hola, ¿en qué te damos una mano?", secciones: [
+    PRODUCTO,
+    { title: "Trabajar con Orbital", rows: [
+      { id: "como_ser_cliente", title: "Vender Orbital", description: "Sumá la marca a tu óptica" },
+      { id: "condiciones_generales", title: "Condiciones", description: "Pagos y entregas" },
+      { id: "propuestas_comerciales", title: "Propuestas", description: "Canje, preventa y más" },
+      { id: "zona_vendedor", title: "Mi vendedor", description: "Quién te atiende" }]},
+    { title: "Más", rows: [REDES_ROW, AYUDA_ROW] }]};
+  return { header: "Orbital Eyewear", cuerpo: "¡Hola! Bienvenido a Orbital. ¿Qué te gustaría ver?", secciones: [
+    PRODUCTO,
+    { title: "Comprar", rows: [
+      { id: "donde_comprar", title: "Dónde comprar", description: "Ópticas que tienen Orbital" }, REDES_ROW]},
+    { title: "Ayuda", rows: [AYUDA_ROW] }]};
+}
+
+// --- Cascada principal (index.ts::procesarMensaje) ---
+// Devuelve una lista de "acciones" a renderizar: texto o menú, con su escalón.
+function procesar(texto, replyId, segmento) {
+  const intencion = replyId ?? (texto ? clasificarTexto(texto) : null);
+  const out = [];
+
+  const motivo = decidirEscalamiento(texto, intencion, segmento);
+  if (motivo) { out.push({ tipo: "texto", texto: MSG_TRANSICION, escalon: "humano", nota: "motivo de escalamiento: " + motivo }); return out; }
+
+  if (intencion && INTENCIONES_DATOS.has(intencion)) {
+    out.push({ tipo: "texto", texto: redirectDatos(intencion, segmento), escalon: "dato", nota: "intención: " + intencion });
+    return out;
+  }
+  if (!intencion || intencion === "saludo") {
+    out.push({ tipo: "menu", menu: construirMenu(segmento), escalon: "menu", nota: intencion ? "intención: saludo" : "sin intención detectada" });
+    return out;
+  }
+  const respuesta = buscarRespuestaCurada(intencion, segmento);
+  if (respuesta) {
+    const escalon = replyId ? "menu" : "curada";
+    out.push({ tipo: "texto", texto: respuesta, escalon: "curada", nota: "intención: " + intencion + (replyId ? " (desde menú)" : " (regla)") });
+    return out;
+  }
+  // Guardrail visible: había intención pero no hay contenido para este segmento
+  out.push({ tipo: "menu", menu: construirMenu(segmento), escalon: "menu",
+             nota: "🔒 intención '" + intencion + "' no habilitada para " + segmento + " → menú" });
+  return out;
+}
+
+// ============================================================================
+// UI
+// ============================================================================
+let segmento = "b2c";
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+
+const TAG_LABEL = { menu: "menú", regla: "regla", curada: "curada", humano: "→ humano", dato: "dato" };
+
+function scrollBottom() { chat.scrollTop = chat.scrollHeight; }
+
+function addUser(texto) {
+  const d = document.createElement("div");
+  d.className = "msg user"; d.textContent = texto;
+  chat.appendChild(d); scrollBottom();
+}
+function addBotTexto(texto, escalon, nota) {
+  const d = document.createElement("div");
+  d.className = "msg bot";
+  d.textContent = texto;
+  const tag = document.createElement("span");
+  tag.className = "tag " + escalon; tag.textContent = TAG_LABEL[escalon] || escalon;
+  d.appendChild(document.createElement("br")); d.appendChild(tag);
+  if (nota) { const n = document.createElement("div"); n.className = "meta-note"; n.textContent = nota; d.appendChild(n); }
+  chat.appendChild(d); scrollBottom();
+}
+function addBotMenu(menu, escalon, nota) {
+  const wrap = document.createElement("div");
+  wrap.className = "menu-list";
+  const head = document.createElement("div"); head.className = "menu-head";
+  head.textContent = "📋 " + menu.header + " — " + menu.cuerpo; wrap.appendChild(head);
+  for (const sec of menu.secciones) {
+    const st = document.createElement("div"); st.className = "menu-sec-title"; st.textContent = sec.title; wrap.appendChild(st);
+    for (const row of sec.rows) {
+      const r = document.createElement("div"); r.className = "menu-row";
+      r.innerHTML = '<div class="t">' + row.title + '</div><div class="d">' + (row.description||"") + '</div>';
+      r.onclick = () => { addUser("▸ " + row.title); responder(null, row.id); };
+      wrap.appendChild(r);
+    }
+  }
+  chat.appendChild(wrap);
+  if (nota || escalon) {
+    const n = document.createElement("div"); n.className = "meta-note";
+    n.style.alignSelf = "flex-start";
+    n.textContent = (TAG_LABEL[escalon]||escalon) + (nota ? " · " + nota : "");
+    chat.appendChild(n);
+  }
+  scrollBottom();
+}
+
+function responder(texto, replyId) {
+  const acciones = procesar(texto, replyId, segmento);
+  for (const a of acciones) {
+    if (a.tipo === "texto") addBotTexto(a.texto, a.escalon, a.nota);
+    else addBotMenu(a.menu, a.escalon, a.nota);
+  }
+}
+
+function enviar() {
+  const t = input.value.trim();
+  if (!t) return;
+  addUser(t); input.value = "";
+  responder(t, null);
+}
+
+document.getElementById("send").onclick = enviar;
+input.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
+
+document.querySelectorAll(".seg-btn").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll(".seg-btn").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    segmento = b.dataset.seg;
+    const info = document.createElement("div");
+    info.className = "meta-note"; info.style.alignSelf = "center"; info.style.margin = "4px 0";
+    info.textContent = "— segmento cambiado a " + segmento + " —";
+    chat.appendChild(info); scrollBottom();
+  };
+});
+
+// Pruebas rápidas
+const QUICK = [
+  "hola", "precios", "qué modelos tienen", "cómo cuido los anteojos",
+  "quiero devolver un anteojo roto", "quiero hablar con una persona",
+  "quiero vender Orbital en mi óptica", "dónde compro", "condiciones de pago",
+];
+const quickBox = document.getElementById("quick");
+QUICK.forEach(q => {
+  const b = document.createElement("button"); b.textContent = q;
+  b.onclick = () => { addUser(q); responder(q, null); };
+  quickBox.appendChild(b);
+});
+
+// Mensaje inicial
+responder("hola", null);
+</script>
+</body>
+</html>
