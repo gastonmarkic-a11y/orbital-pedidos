@@ -19,9 +19,11 @@ export function calcImporte(
   nroLista?: number | null
 ): { bruto: number; neto: number } {
   let bruto = 0
+  let esShopify = false
   for (const item of items ?? []) {
     if (item.precio !== undefined && item.precio !== null) {
       // Precio real ya pagado por el cliente (pedidos de Shopify) — no se reescala por lista de Orbital.
+      esShopify = true
       bruto += item.precio * item.cantidad
       continue
     }
@@ -29,6 +31,11 @@ export function calcImporte(
     const precioBase = s ? s.precio || 0 : 0
     const precio = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
     bruto += precio * item.cantidad
+  }
+  if (esShopify) {
+    // El precio de Shopify ya incluye IVA (venta 100% blanco): el neto es el bruto sin ese 21%,
+    // no bruto menos descuento comercial/financiero (esos no aplican a una venta ya cerrada).
+    return { bruto: Math.round(bruto), neto: Math.round(bruto / 1.21) }
   }
   const dc = parseFloat(dtoCom || '') || 0
   const df = parseFloat(dtoFin || '') || 0
