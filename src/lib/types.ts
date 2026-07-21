@@ -128,6 +128,10 @@ export interface PedidoItem {
   cantidad: number
   /** Unidades que no había en stock al cargar el pedido: se cubren con stock proyectado */
   pendiente?: number
+  /** Precio real ya pagado por unidad (pedidos de Shopify) — si está presente, manda sobre la lista de Orbital */
+  precio?: number
+  sku_shopify?: string | null
+  seccion?: 'linea' | 'outlet'
 }
 
 export type EstadoPedido =

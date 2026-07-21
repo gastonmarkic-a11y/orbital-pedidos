@@ -20,6 +20,11 @@ export function calcImporte(
 ): { bruto: number; neto: number } {
   let bruto = 0
   for (const item of items ?? []) {
+    if (item.precio !== undefined && item.precio !== null) {
+      // Precio real ya pagado por el cliente (pedidos de Shopify) — no se reescala por lista de Orbital.
+      bruto += item.precio * item.cantidad
+      continue
+    }
     const s = stock.find((x) => x.codigo === item.codigo)
     const precioBase = s ? s.precio || 0 : 0
     const precio = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
