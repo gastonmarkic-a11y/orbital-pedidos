@@ -3,10 +3,10 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
 import RoasChart from './RoasChart'
-import BibliotecasAnuncios from './BibliotecasAnuncios'
 import RankingProductos from './RankingProductos'
 import GastoVentasChart from './GastoVentasChart'
 import VisitasConversionesChart from './VisitasConversionesChart'
+import OrigenVentas from './OrigenVentas'
 
 // Panel de Inteligencia Publicitaria — FASE 1: SOLO LECTURA.
 // Nada de lo que se ve acá modifica una campaña en Meta. El "ecualizador" recalcula
@@ -339,6 +339,9 @@ export default function Publicidad() {
       {/* ---- Ganadores y perdedores ---- */}
       <RankingProductos insights={insights} />
 
+      {/* ---- Origen de las ventas ---- */}
+      <OrigenVentas />
+
       {/* ---- Ecualizador ---- */}
       {cfg && (
         <div className="bg-white border border-black/10 rounded-xl p-4 space-y-4">
@@ -574,9 +577,6 @@ export default function Publicidad() {
           cargadas todavía) van en gris y no cuentan para los totales.
         </p>
       </div>
-
-      {/* ---- Bibliotecas de anuncios ---- */}
-      <BibliotecasAnuncios />
     </div>
   )
 }
