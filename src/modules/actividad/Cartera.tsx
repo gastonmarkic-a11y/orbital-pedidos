@@ -7,6 +7,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
+import PreparacionEnvio from '../envios/PreparacionEnvio'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
 
@@ -104,6 +105,7 @@ export default function Cartera() {
   const [derivar, setDerivar] = useState<Cliente | null>(null)
   const [derivando, setDerivando] = useState(false)
   const [avisoReserva, setAvisoReserva] = useState<Cliente | null>(null)
+  const [enviarA, setEnviarA] = useState<Cliente | null>(null)
   const [recarga, setRecarga] = useState(0)
 
   // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
@@ -345,12 +347,13 @@ export default function Cartera() {
   }
 
   // Si otro operador lo viene trabajando y la reserva sigue vigente, avisa antes de pisar.
+  // Enviar es la acción más importante de la cartera: se abre como popup, sin salir de acá.
   function enviar(c: Cliente) {
     if (reservaDe(c.cod).ajena) {
       setAvisoReserva(c)
       return
     }
-    navigate('/envios', { state: { cliente: c } })
+    setEnviarA(c)
   }
 
   async function eliminarContacto() {
@@ -834,6 +837,14 @@ export default function Cartera() {
 
       {historial && <HistorialModal cliente={historial} propuestas={propuestas} onClose={() => setHistorial(null)} />}
 
+      {enviarA && (
+        <PreparacionEnvio
+          cliente={enviarA}
+          onClose={() => setEnviarA(null)}
+          onListo={() => setRecarga((r) => r + 1)}
+        />
+      )}
+
       {editDatos && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditDatos(null)}>
           <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
@@ -998,7 +1009,7 @@ export default function Cartera() {
                   onClick={() => {
                     const c = avisoReserva
                     setAvisoReserva(null)
-                    navigate('/envios', { state: { cliente: c } })
+                    setEnviarA(c)
                   }}
                   className="flex-1 rounded-lg bg-amber-500 text-white py-2 text-sm font-semibold"
                 >

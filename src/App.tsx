@@ -106,10 +106,11 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       ],
       menu: [],
     }
+  // Envíos ya no está en el menú: se abre como popup desde Cartera (la ruta sigue viva
+  // por si hace falta volver a la vista completa con la cola del día).
   const principales: NavItem[] = [
     { to: '/hoy', label: 'Agenda' },
     { to: '/cartera', label: 'Cartera' },
-    { to: '/envios', label: 'Envíos' },
     { to: '/pedidos', label: 'Pedidos' },
   ]
   const secundarios: NavItem[] = [
