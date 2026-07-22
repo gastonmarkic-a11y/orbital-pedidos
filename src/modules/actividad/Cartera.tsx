@@ -7,7 +7,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
-import PreparacionEnvio from '../envios/PreparacionEnvio'
+import PreparacionEnvio, { leerEnvioPendiente } from '../envios/PreparacionEnvio'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
 
@@ -106,6 +106,8 @@ export default function Cartera() {
   const [derivando, setDerivando] = useState(false)
   const [avisoReserva, setAvisoReserva] = useState<Cliente | null>(null)
   const [enviarA, setEnviarA] = useState<Cliente | null>(null)
+  // Filtro por quién viene trabajando cada contacto (multi-selección). Vacío = sin filtrar.
+  const [filtroTrabaja, setFiltroTrabaja] = useState<Set<string>>(new Set())
   const [recarga, setRecarga] = useState(0)
 
   // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
@@ -113,12 +115,17 @@ export default function Cartera() {
   // Derivar disponible para todos los roles (vendedores, prospección y corporativo)
   const mostrarDerivar = true
 
+  // La reserva y los colores solo tienen sentido en el pool compartido de prospección
+  // (Luna y Damián sobre la misma cartera). En la cartera propia de un vendedor no
+  // aporta nada ver de qué color es cada fila.
+  const carteraCompartida = esProspOperador && modoCartera === 'prospectos'
+
   // Reserva: quién viene trabajando el contacto y si sigue vigente (15 días).
   // Se calcula de la última actividad real, no de una marca aparte, así nunca queda desfasado.
   function reservaDe(cod: string) {
     const por = ultimaActPor[cod] ?? null
     const dias = daysSince(ultimaAct[cod] ?? null)
-    const vigente = por !== null && dias !== null && dias < RESERVA_DIAS
+    const vigente = carteraCompartida && por !== null && dias !== null && dias < RESERVA_DIAS
     const mia = por === codigoEfectivo || (por === 'ProspeccionVenta' && codigoEfectivo === 'Damian')
     return {
       por,
@@ -187,6 +194,17 @@ export default function Cartera() {
     cargar()
   }, [vendedor, codigoActivo, recarga, esProspOperador, modoCartera])
 
+  // Si el celular recargó la página al volver de WhatsApp/mail, reabrimos el popup
+  // en el mismo contacto para poder confirmar la acción sin rehacer todo.
+  useEffect(() => {
+    if (loading || enviarA || clientes.length === 0) return
+    const pend = leerEnvioPendiente()
+    if (!pend) return
+    const c = clientes.find((x) => x.cod === pend.cod)
+    if (c) setEnviarA(c)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, clientes])
+
   const esFidelizado = (c: Cliente) => c.clasificacion_recupero === 'fidelizacion'
   const conVentas = useMemo(
     () => clientes.filter((c) => ((c.unidades_2025 ?? 0) > 0 || c.clasificacion_recupero === 'activo') && !esFidelizado(c)),
@@ -224,6 +242,12 @@ export default function Cartera() {
       )
     if (zonaFiltro) base = base.filter((c) => (c.zona || '') === zonaFiltro)
     if (corpFiltro && codigoActivo === 'Corporativo') base = base.filter((c) => (c.segmento_corporativo || '') === corpFiltro)
+    // Filtro por quién lo viene trabajando: 'libre' = sin contactar o con la reserva vencida
+    if (filtroTrabaja.size > 0)
+      base = base.filter((c) => {
+        const r = reservaDe(c.cod)
+        return filtroTrabaja.has(r.vigente && r.por ? r.por : 'libre')
+      })
 
     const maxCanje = Math.max(...base.map((c) => Math.floor((c.unidades_2025 ?? 0) * 0.2)), 1)
     const ordenadas = [...base]
@@ -253,7 +277,8 @@ export default function Cartera() {
       ordenadas.sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
     }
     return ordenadas.map((c) => ({ c, maxCanje }))
-  }, [segmentoRows, clientes, busqueda, zonaFiltro, corpFiltro, codigoActivo, orden, ultimaAct])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentoRows, clientes, busqueda, zonaFiltro, corpFiltro, codigoActivo, orden, ultimaAct, ultimaActPor, filtroTrabaja])
 
   function toggleOrden(col: ColOrden) {
     setOrden((prev) => (prev?.col === col ? (prev.dir === 1 ? { col, dir: -1 } : null) : { col, dir: 1 }))
@@ -514,25 +539,46 @@ export default function Cartera() {
         </p>
       )}
 
-      {/* Quién está trabajando cada contacto: la barra de color de cada fila */}
-      <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted">
-        <span className="font-semibold uppercase tracking-wide text-[10px]">Trabajando ahora</span>
-        {[
-          ['Marketing', 'Luna'],
-          ['Damian', 'Damián'],
-          ['Adrian', 'Adrián'],
-          ['Martin', 'Martín'],
-        ].map(([cod, nombre]) => (
-          <span key={cod} className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: COLOR_OPERADOR[cod].barra }} />
-            {nombre}
-          </span>
-        ))}
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-sm" style={{ background: COLOR_LIBRE }} />
-          Libre (sin contactar o +{RESERVA_DIAS}d)
-        </span>
-      </div>
+      {/* Solo en el pool compartido: filtro por quién viene trabajando cada contacto.
+          La leyenda de colores es el filtro: se puede marcar más de uno. */}
+      {carteraCompartida && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted">
+          <span className="font-semibold uppercase tracking-wide text-[10px]">Trabajando ahora</span>
+          {(
+            [
+              ['Marketing', 'Luna', COLOR_OPERADOR.Marketing.barra],
+              ['Damian', 'Damián', COLOR_OPERADOR.Damian.barra],
+              ['libre', `Libre (sin contactar o +${RESERVA_DIAS}d)`, COLOR_LIBRE],
+            ] as [string, string, string][]
+          ).map(([key, nombre, color]) => {
+            const activo = filtroTrabaja.has(key)
+            return (
+              <button
+                key={key}
+                onClick={() =>
+                  setFiltroTrabaja((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }
+                className={`flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors ${
+                  activo ? 'border-brand bg-brand text-white' : 'border-black/10 hover:bg-[#F1EDE4]'
+                }`}
+              >
+                <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
+                {nombre}
+              </button>
+            )
+          })}
+          {filtroTrabaja.size > 0 && (
+            <button onClick={() => setFiltroTrabaja(new Set())} className="text-brandDark font-medium underline">
+              limpiar filtro
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Vista celular: tarjetas con todos los datos, sin scroll lateral */}
       <div className="md:hidden space-y-2">
@@ -798,11 +844,11 @@ export default function Cartera() {
                   <td className="px-2.5 py-2">
                     <div className="flex flex-col items-start gap-1">
                       <button onClick={() => enviar(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
-                        📤 Enviar →
+                        Enviar
                       </button>
                       {mostrarDerivar && (
                         <button onClick={() => setDerivar(c)} className="text-[11px] text-[#8F6A34] font-medium whitespace-nowrap">
-                          ↗ Derivar →
+                          Derivar
                         </button>
                       )}
                       {mostrarPedido && (
@@ -810,14 +856,14 @@ export default function Cartera() {
                           onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
                           className="text-[11px] text-emerald-600 font-medium whitespace-nowrap"
                         >
-                          🛒 Pedido →
+                          Pedido
                         </button>
                       )}
                       <button onClick={() => setHistorial(c)} className="text-[11px] text-muted font-medium whitespace-nowrap">
                         Historial
                       </button>
                       <button onClick={() => setBorrar(c)} className="text-[11px] text-red-600 font-medium whitespace-nowrap">
-                        🗑 Eliminar
+                        Eliminar
                       </button>
                     </div>
                   </td>

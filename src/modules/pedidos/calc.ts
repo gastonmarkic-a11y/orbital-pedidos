@@ -139,6 +139,7 @@ export function importeDe(p: Pedido, stock: StockItem[]): number {
 }
 
 export const COND_ENTREGA = [
+  'Retira el cliente en fábrica y paga contra entrega',
   'Retira el cte y paga contraentrega',
   'Paga y luego retira',
   'Solamente retira y paga luego',

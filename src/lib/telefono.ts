@@ -86,18 +86,39 @@ export function parseTelefonos(raw: string | null | undefined, asumirCelular = f
 }
 
 /**
- * Abre WhatsApp directamente en la app instalada (WhatsApp Desktop en PC, o la app en el celular)
- * mediante el protocolo whatsapp://. No abre la pestaña de WhatsApp Web.
+ * Abre WhatsApp intentando primero la app instalada (protocolo whatsapp://) y, si no
+ * responde, cae a WhatsApp Web en el mismo navegador.
+ *
+ * Nota: una página web NO puede elegir con qué navegador se abre un link (Chrome vs Edge);
+ * eso lo decide el sistema operativo. Lo que sí podemos garantizar es que si no está la
+ * app de escritorio, el contacto igual se abra en el navegador en uso en vez de no pasar nada.
  */
 export function abrirWhatsApp(wa: string, texto?: string) {
   if (!wa) return
   const t = texto ? `&text=${encodeURIComponent(texto)}` : ''
+  const web = `https://web.whatsapp.com/send?phone=${wa}${t}`
+
+  // Si el protocolo lo toma la app, el navegador pierde el foco / la pestaña se oculta.
+  // Si seguimos visibles pasado el tiempo de gracia, es que no hay app instalada.
+  let cayoEnApp = false
+  const marcarApp = () => {
+    if (document.visibilityState === 'hidden') cayoEnApp = true
+  }
+  document.addEventListener('visibilitychange', marcarApp)
+  window.addEventListener('blur', marcarApp)
+
   const a = document.createElement('a')
   a.href = `whatsapp://send?phone=${wa}${t}`
   a.rel = 'noreferrer'
   document.body.appendChild(a)
   a.click()
   a.remove()
+
+  window.setTimeout(() => {
+    document.removeEventListener('visibilitychange', marcarApp)
+    window.removeEventListener('blur', marcarApp)
+    if (!cayoEnApp && document.visibilityState === 'visible') window.open(web, '_blank', 'noopener')
+  }, 1200)
 }
 
 /** Abre el cliente de mail con un borrador (mailto). location.href es más confiable que window.open. */

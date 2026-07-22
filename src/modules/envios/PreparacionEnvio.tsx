@@ -45,6 +45,52 @@ export function telWhatsApp(raw: string | null): string | null {
   return nac.length >= 10 ? '549' + nac : null
 }
 
+// Al abrir WhatsApp/mail el celular sale de la app y al volver el navegador suele recargar
+// la página, perdiendo el estado de React: el contacto quedaba sin confirmar y había que
+// empezar de nuevo. Guardamos la acción en curso para poder retomarla exactamente donde quedó.
+const CLAVE_PENDIENTE = 'orbital_envio_pendiente'
+
+export interface EnvioPendiente {
+  cod: string
+  canal: Canal
+  mensaje: string
+  propId: number
+  piezas: number[]
+  ts: number
+}
+
+export function leerEnvioPendiente(): EnvioPendiente | null {
+  try {
+    const raw = localStorage.getItem(CLAVE_PENDIENTE)
+    if (!raw) return null
+    const p = JSON.parse(raw) as EnvioPendiente
+    // Se descarta solo si es de otro día, para no revivir algo viejo por error
+    if (Date.now() - p.ts > 12 * 3600 * 1000) {
+      localStorage.removeItem(CLAVE_PENDIENTE)
+      return null
+    }
+    return p
+  } catch {
+    return null
+  }
+}
+
+function guardarEnvioPendiente(p: EnvioPendiente) {
+  try {
+    localStorage.setItem(CLAVE_PENDIENTE, JSON.stringify(p))
+  } catch {
+    /* sin storage disponible: se sigue igual, solo se pierde la restauración */
+  }
+}
+
+export function limpiarEnvioPendiente() {
+  try {
+    localStorage.removeItem(CLAVE_PENDIENTE)
+  } catch {
+    /* ignora */
+  }
+}
+
 export default function PreparacionEnvio({
   cliente,
   onClose,
@@ -96,6 +142,21 @@ export default function PreparacionEnvio({
       setPiezas(listaPiezas)
       setFeriados(setFer)
 
+      setPrepFecha(ymd(siguienteDiaHabil(new Date(Date.now() + 86400000), setFer)))
+
+      // Si volvimos de WhatsApp/mail y el navegador recargó, retomamos donde quedó
+      // en vez de arrancar de cero (el contacto ya se hizo, falta confirmarlo).
+      const pend = leerEnvioPendiente()
+      if (pend && pend.cod === cliente.cod) {
+        setPrepProp(pend.propId)
+        setPrepPiezas(new Set(pend.piezas))
+        setPrepCanal(pend.canal)
+        setPrepMensaje(pend.mensaje)
+        setPrepAbierto(true)
+        setCargando(false)
+        return
+      }
+
       // Preselección (equivale al viejo abrirPreparacion)
       const sug = propuestaSugeridaDe(cliente, listaProps)
       const delTema = sug ? listaPiezas.filter((p) => p.tema === temaDePropuesta(sug.nombre) && p.url_publica) : []
@@ -104,7 +165,6 @@ export default function PreparacionEnvio({
       setPrepProp(sug?.id ?? 0)
       setPrepPiezas(new Set(pre.map((p) => p.id)))
       setPrepCanal(tel ? 'wa_me' : cliente.email ? 'mailto' : 'recordatorio')
-      setPrepFecha(ymd(siguienteDiaHabil(new Date(Date.now() + 86400000), setFer)))
       setPrepMensaje(sug ? armarMensajeCon(cliente, sug, pre, listaPiezas, yo?.nombre ?? vendedor?.nombre ?? '') : '')
       setCargando(false)
     }
@@ -135,7 +195,13 @@ export default function PreparacionEnvio({
   ) {
     const contacto = c.contacto ? ` ${c.contacto.split(' ')[0]}` : ''
     const remitente = (nombreRemitente || 'el equipo').split(' ')[0]
-    const link = piezasSel.find((p) => p.url_publica)?.url_corta || piezasSel.find((p) => p.url_publica)?.url_publica
+    // Todos los materiales elegidos, no solo el primero: se puede mandar catálogo +
+    // lista de precios + propuesta en un mismo mensaje.
+    const links = piezasSel
+      .map((p) => ({ titulo: p.titulo, url: p.url_corta || p.url_publica }))
+      .filter((x): x is { titulo: string; url: string } => !!x.url)
+    const bloqueLinks =
+      links.length === 1 ? `📎 ${links[0].url}` : links.map((l) => `📎 ${l.titulo}: ${l.url}`).join('\n')
     // Si hay un COPY cargado para el tema de esta propuesta, ese es el mensaje
     // (se edita desde Admin → Gestionar piezas de marketing)
     const copyPieza = todasPiezas.find(
@@ -143,13 +209,13 @@ export default function PreparacionEnvio({
     )
     const saludo = `Hola${contacto}! Soy ${remitente} de Orbital Eyewear.`
     if (copyPieza?.contenido_texto) {
-      return [saludo, link ? `📎 ${link}` : null, '', copyPieza.contenido_texto.trim()]
+      return [saludo, links.length ? bloqueLinks : null, '', copyPieza.contenido_texto.trim()]
         .filter((x) => x !== null)
         .join('\n')
     }
     return [
       saludo,
-      link ? `Te comparto ${prop.nombre}: ${link}` : `Te quería contar sobre ${prop.nombre}.`,
+      links.length ? `Te comparto ${prop.nombre}:\n${bloqueLinks}` : `Te quería contar sobre ${prop.nombre}.`,
       `¿Lo vemos juntos esta semana?`,
     ].join('\n')
   }
@@ -219,11 +285,26 @@ export default function PreparacionEnvio({
         prop?.nombre ?? 'Propuesta Orbital',
       )}&body=${encodeURIComponent(prepMensaje)}`
     }
+    // Se persiste antes de salir de la app: si el navegador recarga al volver, se retoma acá
+    guardarEnvioPendiente({
+      cod: cliente.cod,
+      canal: prepCanal,
+      mensaje: prepMensaje,
+      propId: prepProp,
+      piezas: [...prepPiezas],
+      ts: Date.now(),
+    })
     setPrepAbierto(true)
   }
 
   function terminar() {
+    limpiarEnvioPendiente()
     onListo?.()
+    onClose()
+  }
+
+  function cerrar() {
+    limpiarEnvioPendiente()
     onClose()
   }
 
@@ -380,8 +461,44 @@ export default function PreparacionEnvio({
     : []
   const esAgenda = prepCanal === 'recordatorio' || prepCanal === 'reunion'
 
+  // Todo el material disponible, agrupado por carpeta (categoría), para poder mandar
+  // catálogo + lista de precios + info general y no solo lo del tema de la propuesta.
+  const CARPETAS: { key: string; label: string }[] = [
+    { key: 'propuesta', label: '📄 Propuestas' },
+    { key: 'catalogo', label: '📚 Catálogos' },
+    { key: 'precios', label: '💲 Listas de precios' },
+    { key: 'copy', label: '✍️ Textos' },
+    { key: 'imagen', label: '🖼 Imágenes' },
+    { key: 'video', label: '🎬 Videos' },
+    { key: 'guion', label: '🎙 Guiones' },
+  ]
+  const piezasEnviables = piezas.filter((p) => p.url_publica || p.url_corta)
+  const carpetasConMaterial = CARPETAS.map((c) => ({
+    ...c,
+    items: piezasEnviables.filter((p) => p.categoria === c.key),
+  })).filter((c) => c.items.length > 0)
+
+  function togglePieza(id: number) {
+    const next = new Set(prepPiezas)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setPrepPiezas(next)
+    if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
+  }
+
+  function toggleCarpeta(ids: number[]) {
+    const next = new Set(prepPiezas)
+    const todosPuestos = ids.every((id) => next.has(id))
+    for (const id of ids) {
+      if (todosPuestos) next.delete(id)
+      else next.add(id)
+    }
+    setPrepPiezas(next)
+    if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={cerrar}>
       <div
         className="bg-white rounded-2xl border border-black/10 w-full max-w-lg p-4 max-h-[90vh] overflow-y-auto space-y-3"
         onClick={(e) => e.stopPropagation()}
@@ -394,7 +511,7 @@ export default function PreparacionEnvio({
               {cliente.email ?? 'sin mail'}
             </p>
           </div>
-          <button onClick={onClose} className="text-sm text-muted">
+          <button onClick={cerrar} className="text-sm text-muted">
             ✕
           </button>
         </div>
@@ -420,27 +537,42 @@ export default function PreparacionEnvio({
               </label>
             )}
 
-            {!esAgenda && piezasDelTema.length > 0 && (
+            {!esAgenda && carpetasConMaterial.length > 0 && (
               <div>
-                <p className="text-xs text-muted mb-1">Material a incluir (viaja como link público, no vence)</p>
-                <div className="space-y-1">
-                  {piezasDelTema.map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 text-xs text-ink">
-                      <input
-                        type="checkbox"
-                        checked={prepPiezas.has(p.id)}
-                        onChange={(e) => {
-                          const next = new Set(prepPiezas)
-                          if (e.target.checked) next.add(p.id)
-                          else next.delete(p.id)
-                          setPrepPiezas(next)
-                          const props = propuestas.find((x) => x.id === prepProp)
-                          if (props) setPrepMensaje(armarMensaje(cliente, props, piezas.filter((x) => next.has(x.id))))
-                        }}
-                      />
-                      {p.titulo} <span className="text-faint">({p.categoria})</span>
-                    </label>
-                  ))}
+                <p className="text-xs text-muted mb-1">
+                  Material a incluir (viaja como link público, no vence) —{' '}
+                  <b className="text-ink">{prepPiezas.size} seleccionado{prepPiezas.size === 1 ? '' : 's'}</b>
+                </p>
+                <div className="border border-black/10 rounded-lg divide-y divide-black/5 max-h-52 overflow-y-auto">
+                  {carpetasConMaterial.map((carpeta) => {
+                    const ids = carpeta.items.map((p) => p.id)
+                    const todos = ids.every((id) => prepPiezas.has(id))
+                    const delTema = carpeta.items.some((p) => piezasDelTema.some((t) => t.id === p.id))
+                    return (
+                      <div key={carpeta.key} className="p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-ink">
+                            {carpeta.label}
+                            {delTema && <span className="ml-1 text-[9px] text-brandDark">· del tema</span>}
+                          </span>
+                          <button
+                            onClick={() => toggleCarpeta(ids)}
+                            className="text-[10px] font-medium text-brandDark whitespace-nowrap"
+                          >
+                            {todos ? 'quitar todo' : 'agregar toda la carpeta'}
+                          </button>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {carpeta.items.map((p) => (
+                            <label key={p.id} className="flex items-center gap-2 text-xs text-ink">
+                              <input type="checkbox" checked={prepPiezas.has(p.id)} onChange={() => togglePieza(p.id)} />
+                              <span className="truncate">{p.titulo}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -574,11 +706,11 @@ export default function PreparacionEnvio({
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-muted text-center">
-                  {prepCanal === 'llamada' ? '¿Hiciste la llamada?' : '¿Se envió?'} Queda registrado como actividad y se
-                  agenda el próximo paso automáticamente.
+                  {prepCanal === 'llamada' ? '¿Hiciste la llamada?' : '¿Se envió el mensaje?'} Al confirmar queda
+                  registrado como actividad y se agenda el próximo paso automáticamente.
                 </p>
                 <div className="flex gap-2">
-                  <button onClick={onClose} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                  <button onClick={cerrar} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
                     {prepCanal === 'llamada' ? 'No se hizo' : 'No se envió'}
                   </button>
                   <button
@@ -586,7 +718,7 @@ export default function PreparacionEnvio({
                     disabled={guardando}
                     className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold disabled:opacity-50"
                   >
-                    {guardando ? 'Registrando...' : prepCanal === 'llamada' ? 'Llamada hecha ✓' : 'Enviado ✓'}
+                    {guardando ? 'Registrando...' : '✓ Confirmar la acción'}
                   </button>
                 </div>
               </div>

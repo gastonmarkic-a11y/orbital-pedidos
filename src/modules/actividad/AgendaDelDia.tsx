@@ -6,6 +6,16 @@ import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 
+// Nombre visible del operador que agendó cada contacto
+const NOMBRE_OPERADOR: Record<string, string> = {
+  Marketing: 'Luna',
+  Damian: 'Damián',
+  ProspeccionVenta: 'Damián',
+  Adrian: 'Adrián',
+  Martin: 'Martín',
+  Corporativo: 'Corporativo',
+}
+
 export default function AgendaDelDia() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const navigate = useNavigate()
@@ -61,9 +71,7 @@ export default function AgendaDelDia() {
         // agenda_owner: cada uno ve lo que agendó él, más el pool que nadie tomó todavía.
         q =
           codigo === 'Marketing' || codigo === 'Damian'
-            ? q
-                .or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-                .or(`agenda_owner.eq.${codigo},agenda_owner.is.null`)
+            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null').eq('agenda_owner', codigo)
             : q.eq('vendedor_asignado', codigo)
       }
       return q
@@ -157,20 +165,12 @@ export default function AgendaDelDia() {
                     <div key={c.cod} className="bg-white border border-black/10 rounded-xl p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium">
-                            {c.nomcomerc || c.razon}
-                            {!c.agenda_owner && (
-                              <span
-                                className="ml-1.5 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 bg-black/5 text-muted align-middle"
-                                title="Nadie la tomó todavía: al contactarlo pasa a ser tuya"
-                              >
-                                del pool
-                              </span>
-                            )}
-                          </p>
+                          <p className="text-sm font-medium">{c.nomcomerc || c.razon}</p>
                           <p className="text-xs text-muted">
-                            {c.zona ?? c.localidad}{' '}
-                            {c.vendedor_asignado && esAdmin && <span>· {c.vendedor_asignado}</span>}
+                            {c.zona ?? c.localidad}
+                            {c.agenda_owner && (
+                              <span className="text-brandDark"> · agendó {NOMBRE_OPERADOR[c.agenda_owner] ?? c.agenda_owner}</span>
+                            )}
                           </p>
                         </div>
                         <button onClick={() => cargar(c)} className="text-xs font-medium text-brandDark whitespace-nowrap">
@@ -252,7 +252,12 @@ export default function AgendaDelDia() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium">{c.nomcomerc || c.razon}</p>
-                        <p className="text-xs text-red-600">Agendado para {c.proxima_agenda_fecha}</p>
+                        <p className="text-xs text-red-600">
+                          Agendado para {c.proxima_agenda_fecha}
+                          {c.agenda_owner && (
+                            <span className="text-muted"> · agendó {NOMBRE_OPERADOR[c.agenda_owner] ?? c.agenda_owner}</span>
+                          )}
+                        </p>
                       </div>
                       <button onClick={() => cargar(c)} className="text-xs font-medium text-brandDark whitespace-nowrap">
                         📤 Enviar →
