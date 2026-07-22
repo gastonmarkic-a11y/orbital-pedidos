@@ -56,12 +56,14 @@ export default function AgendaDelDia() {
     function base() {
       let q = supabase.from('clientes').select('*')
       if (!esAdmin) {
-        // Prospección (Luna=Marketing, Damián=Damian) comparte el mismo pool: los clientes
-        // quedan con vendedor_asignado='Marketing' (o null), no con el código de cada uno.
-        // Sin esta excepción Damián no ve nunca nada agendado (bug detectado 2026-07-20).
+        // Prospección (Luna=Marketing, Damián=Damian) comparte cartera pero NO agenda.
+        // La agenda vive en el cliente (una sola fila), así que el dueño se guarda en
+        // agenda_owner: cada uno ve lo que agendó él, más el pool que nadie tomó todavía.
         q =
           codigo === 'Marketing' || codigo === 'Damian'
-            ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+            ? q
+                .or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+                .or(`agenda_owner.eq.${codigo},agenda_owner.is.null`)
             : q.eq('vendedor_asignado', codigo)
       }
       return q
@@ -155,7 +157,17 @@ export default function AgendaDelDia() {
                     <div key={c.cod} className="bg-white border border-black/10 rounded-xl p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium">{c.nomcomerc || c.razon}</p>
+                          <p className="text-sm font-medium">
+                            {c.nomcomerc || c.razon}
+                            {!c.agenda_owner && (
+                              <span
+                                className="ml-1.5 text-[9px] font-semibold uppercase rounded-full px-1.5 py-0.5 bg-black/5 text-muted align-middle"
+                                title="Nadie la tomó todavía: al contactarlo pasa a ser tuya"
+                              >
+                                del pool
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted">
                             {c.zona ?? c.localidad}{' '}
                             {c.vendedor_asignado && esAdmin && <span>· {c.vendedor_asignado}</span>}

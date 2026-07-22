@@ -36,6 +36,21 @@ const PRIO_COLORS: Record<string, string> = {
   tibio: 'bg-emerald-500',
 }
 
+// Un contacto queda "reservado" para quien lo trabajó: durante estos días el otro
+// operador ve el aviso antes de volver a contactarlo, para no duplicar el contacto.
+const RESERVA_DIAS = 15
+
+// Color por operador: de un vistazo se ve quién está trabajando cada contacto.
+const COLOR_OPERADOR: Record<string, { barra: string; pill: string }> = {
+  Marketing: { barra: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' }, // Luna
+  Damian: { barra: '#2563eb', pill: 'bg-blue-100 text-blue-700' }, // Damián
+  ProspeccionVenta: { barra: '#2563eb', pill: 'bg-blue-100 text-blue-700' }, // Damián histórico
+  Adrian: { barra: '#0d9488', pill: 'bg-teal-100 text-teal-700' },
+  Martin: { barra: '#c2410c', pill: 'bg-orange-100 text-orange-700' },
+  Corporativo: { barra: '#6b7280', pill: 'bg-gray-100 text-gray-700' },
+}
+const COLOR_LIBRE = '#d4d4d8' // sin contactar / reserva vencida
+
 const TABS_VENDEDOR = [
   { codigo: 'Adrian', label: 'Adrián' },
   { codigo: 'Martin', label: 'Martín' },
@@ -44,11 +59,12 @@ const TABS_VENDEDOR = [
   { codigo: 'Corporativo', label: 'Corporativo' },
 ]
 
-// Destinos a los que un prospectador puede derivar un cliente
+// Destinos de derivación. Disponibles para todos los roles; se descarta el propio.
 const DERIVAR_OPTS = [
   { codigo: 'Adrian', label: 'Adrián' },
   { codigo: 'Martin', label: 'Martín' },
   { codigo: 'Corporativo', label: 'Corporativo' },
+  { codigo: 'Marketing', label: '🔍 Prospección' },
   { codigo: 'ProspeccionVenta', label: '💰 Venta directa' },
 ]
 
@@ -87,11 +103,32 @@ export default function Cartera() {
   const [borrando, setBorrando] = useState(false)
   const [derivar, setDerivar] = useState<Cliente | null>(null)
   const [derivando, setDerivando] = useState(false)
+  const [avisoReserva, setAvisoReserva] = useState<Cliente | null>(null)
   const [recarga, setRecarga] = useState(0)
 
   // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
   const mostrarPedido = !esProspOperador || modoCartera === 'venta_directa'
-  const mostrarDerivar = esProspOperador && modoCartera === 'prospectos'
+  // Derivar disponible para todos los roles (vendedores, prospección y corporativo)
+  const mostrarDerivar = true
+
+  // Reserva: quién viene trabajando el contacto y si sigue vigente (15 días).
+  // Se calcula de la última actividad real, no de una marca aparte, así nunca queda desfasado.
+  function reservaDe(cod: string) {
+    const por = ultimaActPor[cod] ?? null
+    const dias = daysSince(ultimaAct[cod] ?? null)
+    const vigente = por !== null && dias !== null && dias < RESERVA_DIAS
+    const mia = por === codigoEfectivo || (por === 'ProspeccionVenta' && codigoEfectivo === 'Damian')
+    return {
+      por,
+      dias,
+      vigente,
+      ajena: vigente && !mia,
+      quedan: dias === null ? 0 : Math.max(0, RESERVA_DIAS - dias),
+      nombre: por ? (NOMBRE_OPERADOR[por] ?? por) : null,
+      color: vigente && por ? (COLOR_OPERADOR[por]?.barra ?? COLOR_LIBRE) : COLOR_LIBRE,
+      pill: vigente && por ? (COLOR_OPERADOR[por]?.pill ?? 'bg-black/5 text-muted') : 'bg-black/5 text-muted',
+    }
+  }
 
   useEffect(() => {
     supabase.from('propuestas_julio').select('*').then(({ data }) => setPropuestas((data as Propuesta[]) ?? []))
@@ -307,7 +344,12 @@ export default function Cartera() {
     toast('✓ Datos guardados', 'success')
   }
 
+  // Si otro operador lo viene trabajando y la reserva sigue vigente, avisa antes de pisar.
   function enviar(c: Cliente) {
+    if (reservaDe(c.cod).ajena) {
+      setAvisoReserva(c)
+      return
+    }
     navigate('/envios', { state: { cliente: c } })
   }
 
@@ -469,13 +511,38 @@ export default function Cartera() {
         </p>
       )}
 
+      {/* Quién está trabajando cada contacto: la barra de color de cada fila */}
+      <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted">
+        <span className="font-semibold uppercase tracking-wide text-[10px]">Trabajando ahora</span>
+        {[
+          ['Marketing', 'Luna'],
+          ['Damian', 'Damián'],
+          ['Adrian', 'Adrián'],
+          ['Martin', 'Martín'],
+        ].map(([cod, nombre]) => (
+          <span key={cod} className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: COLOR_OPERADOR[cod].barra }} />
+            {nombre}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-sm" style={{ background: COLOR_LIBRE }} />
+          Libre (sin contactar o +{RESERVA_DIAS}d)
+        </span>
+      </div>
+
       {/* Vista celular: tarjetas con todos los datos, sin scroll lateral */}
       <div className="md:hidden space-y-2">
         {filas.map(({ c }) => {
           const dias = daysSince(ultimaAct[c.cod] ?? null)
           const canje = Math.floor((c.unidades_2025 ?? 0) * 0.2)
+          const res = reservaDe(c.cod)
           return (
-            <div key={c.cod} className="bg-white border border-black/10 rounded-xl p-3 space-y-1.5">
+            <div
+              key={c.cod}
+              className="bg-white border border-black/10 rounded-xl p-3 space-y-1.5"
+              style={{ boxShadow: `inset 4px 0 0 ${res.color}` }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">
@@ -526,8 +593,10 @@ export default function Cartera() {
                     </b>
                   )}
                 </span>
-                {ultimaActPor[c.cod] && dias !== null && (
-                  <span className="text-brandDark">por {NOMBRE_OPERADOR[ultimaActPor[c.cod]] ?? ultimaActPor[c.cod]}</span>
+                {res.nombre && dias !== null && (
+                  <span className={`text-[10px] font-semibold rounded-full px-1.5 py-0.5 ${res.pill}`}>
+                    {res.vigente ? `🔒 ${res.nombre} · ${res.quedan}d` : `por ${res.nombre}`}
+                  </span>
                 )}
               </div>
               {c.nota && <p className="text-[11px] text-muted">📝 {c.nota}</p>}
@@ -605,8 +674,13 @@ export default function Cartera() {
               const dias = daysSince(ultimaAct[c.cod] ?? null)
               const canje = Math.floor((c.unidades_2025 ?? 0) * 0.2)
               const canjePct = Math.round((canje / maxCanje) * 100)
+              const res = reservaDe(c.cod)
               return (
-                <tr key={c.cod} className="border-t border-black/10 hover:bg-[#F1EDE4]">
+                <tr
+                  key={c.cod}
+                  className="border-t border-black/10 hover:bg-[#F1EDE4]"
+                  style={{ boxShadow: `inset 4px 0 0 ${res.color}` }}
+                >
                   <td className="px-2.5 py-2">
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
@@ -712,8 +786,10 @@ export default function Cartera() {
                     ) : (
                       <span className="text-red-600 font-medium">Hace {dias}d</span>
                     )}
-                    {ultimaActPor[c.cod] && dias !== null && (
-                      <div className="text-[10px] text-brandDark">por {NOMBRE_OPERADOR[ultimaActPor[c.cod]] ?? ultimaActPor[c.cod]}</div>
+                    {res.nombre && dias !== null && (
+                      <div className={`inline-block mt-0.5 text-[10px] font-semibold rounded-full px-1.5 py-0.5 ${res.pill}`}>
+                        {res.vigente ? `🔒 ${res.nombre} · ${res.quedan}d` : `por ${res.nombre}`}
+                      </div>
                     )}
                   </td>
                   <td className="px-2.5 py-2">
@@ -882,7 +958,7 @@ export default function Cartera() {
               <b>{derivar.nomcomerc || derivar.razon}</b> pasa a manos de:
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {DERIVAR_OPTS.map((d) => (
+              {DERIVAR_OPTS.filter((d) => d.codigo !== codigoActivo).map((d) => (
                 <button
                   key={d.codigo}
                   onClick={() => derivarA(d.codigo)}
@@ -899,6 +975,40 @@ export default function Cartera() {
           </div>
         </div>
       )}
+
+      {avisoReserva && (() => {
+        const r = reservaDe(avisoReserva.cod)
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAvisoReserva(null)}>
+            <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+              <p className="text-sm font-semibold text-ink mb-1">⚠ Contacto ya reservado</p>
+              <p className="text-xs text-muted mb-3">
+                <b>{r.nombre}</b> contactó a <b>{avisoReserva.nomcomerc || avisoReserva.razon}</b>{' '}
+                {r.dias === 0 ? 'hoy' : `hace ${r.dias} día${r.dias === 1 ? '' : 's'}`}. Queda reservado{' '}
+                <b>{r.quedan} día{r.quedan === 1 ? '' : 's'}</b> más para no duplicar el contacto.
+              </p>
+              <p className="text-[11px] text-faint mb-3">
+                Si igual necesitás contactarlo, podés seguir — pero avisale a {r.nombre} para no pisarse.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setAvisoReserva(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                  Mejor no
+                </button>
+                <button
+                  onClick={() => {
+                    const c = avisoReserva
+                    setAvisoReserva(null)
+                    navigate('/envios', { state: { cliente: c } })
+                  }}
+                  className="flex-1 rounded-lg bg-amber-500 text-white py-2 text-sm font-semibold"
+                >
+                  Contactar igual
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

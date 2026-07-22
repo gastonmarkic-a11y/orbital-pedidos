@@ -45,6 +45,8 @@ export interface Cliente {
   prioridad: string | null
   proximo_paso: string | null
   proxima_agenda_fecha: string | null
+  /** Operador que agendó proxima_agenda_fecha. null = del pool, nadie la tomó todavía */
+  agenda_owner: string | null
   ultima_compra_fecha: string | null
   ultima_compra_monto: number | null
   unidades_2025: number | null

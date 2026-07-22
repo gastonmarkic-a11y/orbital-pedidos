@@ -374,6 +374,7 @@ export default function Envios() {
         nota: `${prepCanal === 'llamada' ? '📞' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${prepCanal === 'llamada' ? 'llamada' : 'se envió'} "${prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.`,
         proximo_paso: sig.texto,
         proxima_agenda_fecha: fechaSig,
+        agenda_owner: codigoEfectivo,
       })
       .eq('cod', prep.cod)
     if (errCli) toast('No se pudo actualizar la ficha del cliente: ' + errCli.message, 'error')
@@ -415,6 +416,7 @@ export default function Envios() {
         nota: `🔔 ${new Date().toLocaleDateString('es-AR')} — Recordatorio para el ${fechaTxt}: ${desc}`,
         proximo_paso: desc,
         proxima_agenda_fecha: prepFecha,
+        agenda_owner: codigoEfectivo,
       })
       .eq('cod', prep.cod)
     setGuardando(false)
@@ -459,6 +461,7 @@ export default function Envios() {
         nota: `📅 ${new Date().toLocaleDateString('es-AR')} — Reunión el ${fechaTxt}${horaTxt}: ${desc}`,
         proximo_paso: `Reunión${horaTxt}: ${desc}`,
         proxima_agenda_fecha: prepFecha,
+        agenda_owner: codigoEfectivo,
       })
       .eq('cod', prep.cod)
     setGuardando(false)
