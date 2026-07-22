@@ -70,11 +70,6 @@ export default function Marketing() {
 
   async function guardarEdicion() {
     if (!editando) return
-    const esCopy = editando.categoria === 'copy'
-    if (esCopy && edTexto.trim().length > 400) {
-      toast(`Los copys no pueden superar 400 caracteres (WhatsApp corta el mensaje). Este tiene ${edTexto.trim().length}.`, 'error')
-      return
-    }
     setEdGuardando(true)
     const cambios = {
       titulo: edTitulo.trim() || editando.titulo,
@@ -251,18 +246,8 @@ export default function Marketing() {
                 value={edTexto}
                 onChange={(e) => setEdTexto(e.target.value)}
                 rows={8}
-                className={`w-full mt-1 bg-white border rounded-lg px-3 py-2 text-sm text-ink ${
-                  editando.categoria === 'copy' && edTexto.trim().length > 400 ? 'border-red-400' : 'border-black/10'
-                }`}
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
               />
-              {editando.categoria === 'copy' && (
-                <span
-                  className={`text-[10px] ${edTexto.trim().length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}
-                >
-                  {edTexto.trim().length} / 400 caracteres
-                  {edTexto.trim().length > 400 ? ' — demasiado largo para WhatsApp, acortalo' : ''}
-                </span>
-              )}
             </label>
             <div className="flex gap-2">
               <button onClick={() => setEditando(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">

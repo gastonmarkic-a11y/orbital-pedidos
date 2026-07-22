@@ -11,7 +11,6 @@ import PreparacionEnvio from './PreparacionEnvio'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
-const TOPE_DIARIO = 25
 
 // Etiqueta corta del canal para la lista de enviados
 const CANAL_LABEL: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'Mail', llamada: '📞 Llamada', reunion: '📅 Reunión' }
@@ -182,7 +181,6 @@ export default function Envios() {
   }, [clientes, filtroProp, busqueda, ultimaPropuesta, ultimaPorTipo, propuestas])
 
   const enCooldownCount = useMemo(() => clientes.filter((c) => enCooldown(c)).length, [clientes, ultimaPropuesta])
-  const topeAlcanzado = enviadosHoy >= TOPE_DIARIO
 
   async function guardarTelefono() {
     const t = telWhatsApp(telInput)
@@ -262,26 +260,11 @@ export default function Envios() {
           </div>
         ))}
         <div className="bg-white border border-black/10 rounded-xl p-3 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
-          <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1">Tope diario</p>
-          <p className="text-sm font-bold mb-1">
-            {enviadosHoy} / {TOPE_DIARIO}
-          </p>
-          <div className="h-2 bg-black/5 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full ${topeAlcanzado ? 'bg-red-500' : 'bg-brand'}`}
-              style={{ width: `${Math.min(100, (enviadosHoy / TOPE_DIARIO) * 100)}%` }}
-            />
-          </div>
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500" />
+          <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1">Enviados hoy</p>
+          <p className="text-2xl font-bold">{enviadosHoy}</p>
         </div>
       </div>
-
-      {topeAlcanzado && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
-          Llegaste al tope diario de {TOPE_DIARIO} envíos — mañana la cola se rearma sola. Esto protege que no te marquen
-          como spam.
-        </div>
-      )}
 
       {/* Filtros */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -347,8 +330,7 @@ export default function Envios() {
               </div>
               <button
                 onClick={() => setPrep(c)}
-                disabled={topeAlcanzado}
-                className="rounded-lg bg-brand text-white px-4 py-2 text-xs font-semibold disabled:opacity-40 shrink-0"
+                className="rounded-lg bg-brand text-white px-4 py-2 text-xs font-semibold shrink-0"
               >
                 Preparar envío →
               </button>

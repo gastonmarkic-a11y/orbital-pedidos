@@ -611,7 +611,7 @@ export default function PreparacionEnvio({
                   ? '📝 Qué hay que hacer (ej: el dueño no estaba, volver a llamar)'
                   : prepCanal === 'reunion'
                     ? '📝 Motivo de la reunión (ej: presentar la colección nueva, cierre de acuerdo)'
-                    : 'Mensaje (corto — WhatsApp corta los textos largos; el link va arriba)'}
+                    : 'Mensaje'}
               <textarea
                 value={prepMensaje}
                 onChange={(e) => setPrepMensaje(e.target.value)}
@@ -625,12 +625,6 @@ export default function PreparacionEnvio({
                 }
                 className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
               />
-              {prepCanal !== 'llamada' && !esAgenda && (
-                <span className={`text-[10px] ${prepMensaje.length > 400 ? 'text-red-600 font-semibold' : 'text-faint'}`}>
-                  {prepMensaje.length} caracteres{' '}
-                  {prepMensaje.length > 400 ? '— demasiado largo para WhatsApp, acortalo' : ''}
-                </span>
-              )}
             </label>
 
             <div className="grid grid-cols-2 gap-2">
