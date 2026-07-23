@@ -13,6 +13,21 @@ interface Cuota {
   pct: number
 }
 
+// Plazos de pago habituales (días). Se tildan y el 100% se reparte en partes iguales.
+const PLAZOS_FIJOS = [0, 30, 60, 90, 120, 150]
+
+// Reparte 100% en partes iguales entre los plazos elegidos, ajustando el último
+// para que la suma dé exactamente 100 (evita 33,33 × 3 = 99,99).
+function repartirCuotas(dias: number[]): Cuota[] {
+  const unicos = [...new Set(dias)].sort((a, b) => a - b)
+  const n = unicos.length
+  if (n === 0) return []
+  const base = Math.floor((100 / n) * 10) / 10
+  const cuotas = unicos.map((d) => ({ dias: d, pct: base }))
+  cuotas[n - 1].pct = Math.round((100 - base * (n - 1)) * 100) / 100
+  return cuotas
+}
+
 export default function NuevoPedido() {
   const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
@@ -36,6 +51,7 @@ export default function NuevoPedido() {
   const [dtoComercial, setDtoComercial] = useState('')
   const [blancoPct, setBlancoPct] = useState(100)
   const [cuotas, setCuotas] = useState<Cuota[]>([{ dias: 0, pct: 100 }])
+  const [otroPlazo, setOtroPlazo] = useState('')
   const [wsp, setWsp] = useState('')
   const [mail, setMail] = useState('')
   const [obs, setObs] = useState('')
@@ -225,6 +241,25 @@ export default function NuevoPedido() {
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
   const pendientesCarrito = cartKeys.reduce((a, k) => a + pendienteDe(k), 0)
   const totalCuotas = cuotas.reduce((a, c) => a + (c.pct || 0), 0)
+
+  // Los 6 plazos fijos + cualquier plazo extra que el usuario haya agregado y esté tildado.
+  const plazosVisibles = [...new Set([...PLAZOS_FIJOS, ...cuotas.map((c) => c.dias)])].sort((a, b) => a - b)
+
+  function togglePlazo(d: number) {
+    const actuales = new Set(cuotas.map((c) => c.dias))
+    if (actuales.has(d)) actuales.delete(d)
+    else actuales.add(d)
+    setCuotas(repartirCuotas([...actuales]))
+  }
+
+  function agregarOtroPlazo() {
+    const d = parseInt(otroPlazo, 10)
+    if (!Number.isFinite(d) || d < 0) return
+    const actuales = new Set(cuotas.map((c) => c.dias))
+    actuales.add(d)
+    setCuotas(repartirCuotas([...actuales]))
+    setOtroPlazo('')
+  }
 
   function getCuotasLabel() {
     return cuotas.map((c) => `${c.dias}d-${c.pct}%`).join(' / ')
@@ -722,52 +757,49 @@ export default function NuevoPedido() {
             </label>
 
             <div>
-              <p className="text-xs text-muted mb-1">
-                Cuotas de pago{' '}
-                <span className={Math.abs(totalCuotas - 100) < 0.5 ? 'text-emerald-600' : 'text-red-600'}>
-                  ({Math.round(totalCuotas)}%)
-                </span>
-              </p>
-              <div className="space-y-1.5">
-                {cuotas.map((c, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      value={c.dias}
-                      min={0}
-                      max={210}
-                      onChange={(e) =>
-                        setCuotas(cuotas.map((x, j) => (j === i ? { ...x, dias: parseFloat(e.target.value) || 0 } : x)))
-                      }
-                      className="w-16 border border-black/10 rounded-md px-2 py-1.5 text-xs"
-                    />
-                    <span className="text-[11px] text-faint">días</span>
-                    <input
-                      type="number"
-                      value={c.pct}
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      onChange={(e) =>
-                        setCuotas(cuotas.map((x, j) => (j === i ? { ...x, pct: parseFloat(e.target.value) || 0 } : x)))
-                      }
-                      className="w-16 border border-black/10 rounded-md px-2 py-1.5 text-xs"
-                    />
-                    <span className="text-[11px] text-faint">%</span>
-                    {cuotas.length > 1 && (
-                      <button onClick={() => setCuotas(cuotas.filter((_, j) => j !== i))} className="text-red-600 px-1">
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <p className="text-xs text-muted mb-1.5">Forma de pago — tildá los plazos (en días)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {plazosVisibles.map((d) => {
+                  const activo = cuotas.some((c) => c.dias === d)
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => togglePlazo(d)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        activo ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted hover:bg-[#F1EDE4]'
+                      }`}
+                    >
+                      {d === 0 ? 'Contado' : `${d}d`}
+                    </button>
+                  )
+                })}
               </div>
-              <button
-                onClick={() => setCuotas([...cuotas, { dias: 30, pct: 0 }])}
-                className="mt-1.5 text-xs text-brandDark font-medium"
-              >
-                + Agregar cuota
-              </button>
+              <div className="flex items-center gap-1.5 mt-2">
+                <input
+                  type="number"
+                  value={otroPlazo}
+                  min={1}
+                  max={365}
+                  placeholder="otro"
+                  onChange={(e) => setOtroPlazo(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && agregarOtroPlazo()}
+                  className="w-20 border border-black/10 rounded-md px-2 py-1.5 text-xs"
+                />
+                <span className="text-[11px] text-faint">días</span>
+                <button type="button" onClick={agregarOtroPlazo} className="text-xs text-brandDark font-medium">
+                  + Agregar plazo
+                </button>
+              </div>
+              {cuotas.length > 0 && (
+                <p className="text-[11px] text-muted mt-2">
+                  {cuotas.length === 1 && cuotas[0].dias === 0
+                    ? 'Contado (100%)'
+                    : cuotas
+                        .map((c) => `${c.dias === 0 ? 'contado' : c.dias + 'd'}: ${c.pct}%`)
+                        .join(' · ')}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
