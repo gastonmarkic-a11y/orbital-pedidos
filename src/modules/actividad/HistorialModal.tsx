@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Actividad, Cliente, Propuesta } from '../../lib/types'
-
-const NOMBRE_OPERADOR: Record<string, string> = {
-  Marketing: 'Luna',
-  Damian: 'Damián',
-  ProspeccionVenta: 'Damián',
-  Adrian: 'Adrián',
-  Martin: 'Martín',
-  Corporativo: 'Corporativo',
-}
+import { NOMBRE_OPERADOR } from '../../lib/operadores'
 
 // Ícono del canal/tipo de cada contacto, para el gráfico de secuencia
 function iconoDe(desarrollo: string | null): { icono: string; label: string } {

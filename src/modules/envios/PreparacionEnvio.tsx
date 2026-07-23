@@ -5,6 +5,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
+import { nombreDePila } from '../../lib/operadores'
 
 // Modal de preparación de contacto. Vive acá (y no dentro de Envios) para poder
 // abrirlo también desde Cartera sin salir de la página: enviar es la acción más
@@ -194,7 +195,9 @@ export default function PreparacionEnvio({
     nombreRemitente: string,
   ) {
     const contacto = c.contacto ? ` ${c.contacto.split(' ')[0]}` : ''
-    const remitente = (nombreRemitente || 'el equipo').split(' ')[0]
+    // Firma con el nombre de pila real del operador: la cuenta compartida figura como
+    // "Prospección" en la base, pero quien escribe es Luna (o Damián).
+    const remitente = nombreDePila(codigoEfectivo, nombreRemitente)
     // Todos los materiales elegidos, no solo el primero: se puede mandar catálogo +
     // lista de precios + propuesta en un mismo mensaje.
     const links = piezasSel

@@ -5,16 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
-
-// Nombre visible del operador que agendó cada contacto
-const NOMBRE_OPERADOR: Record<string, string> = {
-  Marketing: 'Luna',
-  Damian: 'Damián',
-  ProspeccionVenta: 'Damián',
-  Adrian: 'Adrián',
-  Martin: 'Martín',
-  Corporativo: 'Corporativo',
-}
+import { NOMBRE_OPERADOR } from '../../lib/operadores'
 
 export default function AgendaDelDia() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()

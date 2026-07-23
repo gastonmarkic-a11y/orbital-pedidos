@@ -8,14 +8,13 @@ import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince } from '../../lib/dates'
 import { aNacional } from '../../lib/telefono'
 import PreparacionEnvio from './PreparacionEnvio'
+import { nombreOperador } from '../../lib/operadores'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
 
 // Etiqueta corta del canal para la lista de enviados
 const CANAL_LABEL: Record<string, string> = { wa_me: 'WhatsApp', mailto: 'Mail', llamada: '📞 Llamada', reunion: '📅 Reunión' }
-// Nombre visible del operador de prospección (dos usuarios comparten cartera)
-const OPERADOR_NOMBRE: Record<string, string> = { Marketing: 'Luna', Damian: 'Damián', ProspeccionVenta: 'Damián' }
 
 interface ActProp {
   cod_cliente: string | null
@@ -205,7 +204,7 @@ export default function Envios() {
   if (loading) return <p className="text-sm text-muted p-4">Cargando envíos...</p>
 
   const esProsp = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
-  const nombreOperador = OPERADOR_NOMBRE[codigoEfectivo] ?? miNombre ?? codigoEfectivo
+  const nombreOperadorTxt = nombreOperador(codigoEfectivo, miNombre)
   const propDe = (id: number) => propuestas.find((p) => p.id === id)
   const clienteDe = (cod: string) => clientes.find((c) => c.cod === cod)
 
@@ -215,7 +214,7 @@ export default function Envios() {
         <h2 className="text-base font-semibold">📤 Envíos de Propuestas</h2>
         {esProsp && (
           <span className="text-xs font-medium text-brandDark bg-brand/10 rounded-full px-3 py-1">
-            👤 {nombreOperador} · tope 25 diario individual
+            👤 {nombreOperadorTxt} · tope 25 diario individual
           </span>
         )}
       </div>
@@ -223,7 +222,7 @@ export default function Envios() {
       {esProsp && (
         <p className="text-[11px] text-faint">
           Luna y Damián comparten la misma cartera, pero cada uno tiene su propio tope de 25 envíos por día. Este panel
-          cuenta solo los tuyos ({nombreOperador}).
+          cuenta solo los tuyos ({nombreOperadorTxt}).
         </p>
       )}
 
@@ -353,7 +352,7 @@ export default function Envios() {
       {envios.length > 0 && (
         <div className="bg-white rounded-xl border border-black/10 p-4 space-y-2">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide">
-            Enviados hoy{esProsp ? ` · ${nombreOperador}` : ''}
+            Enviados hoy{esProsp ? ` · ${nombreOperadorTxt}` : ''}
           </p>
           {envios
             .filter((e) => e.estado !== 'descartado')

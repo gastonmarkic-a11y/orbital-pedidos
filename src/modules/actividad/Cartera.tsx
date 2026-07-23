@@ -10,6 +10,7 @@ import HistorialModal from './HistorialModal'
 import PreparacionEnvio, { leerEnvioPendiente } from '../envios/PreparacionEnvio'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
+import { NOMBRE_OPERADOR } from '../../lib/operadores'
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -17,16 +18,6 @@ const ORIGEN_LABELS: Record<string, string> = {
   ex_vendedor: '⚡ Ex-vendedor',
   marketing_frio: '🌐 Marketing frío',
   con_nota: '📋 Con nota',
-}
-
-// Nombre visible del operador que hizo cada contacto (para no pisarse en prospección)
-const NOMBRE_OPERADOR: Record<string, string> = {
-  Marketing: 'Luna',
-  Damian: 'Damián',
-  ProspeccionVenta: 'Damián', // histórico: contactos viejos de Damián antes de mudar su código
-  Adrian: 'Adrián',
-  Martin: 'Martín',
-  Corporativo: 'Corporativo',
 }
 
 const PRIO_COLORS: Record<string, string> = {
