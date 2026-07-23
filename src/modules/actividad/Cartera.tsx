@@ -389,7 +389,9 @@ export default function Cartera() {
   async function derivarA(codigoDest: string) {
     if (!derivar) return
     setDerivando(true)
-    const { error } = await supabase.from('clientes').update({ vendedor_asignado: codigoDest }).eq('cod', derivar.cod)
+    // Va por RPC (no update directo): al derivar el cliente deja de ser tuyo y las
+    // políticas de seguridad rechazaban el update. La función valida el permiso server-side.
+    const { error } = await supabase.rpc('derivar_cliente', { p_cod: derivar.cod, p_destino: codigoDest })
     setDerivando(false)
     if (error) {
       toast('No se pudo derivar: ' + error.message, 'error')
