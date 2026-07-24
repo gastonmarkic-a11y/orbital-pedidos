@@ -152,7 +152,10 @@ export interface Pedido {
   cod_cliente: string | null
   cliente: string | null
   cond_entrega: string | null
+  entrega_canal: string | null
+  entrega_pago: string | null
   cond_pago: string | null
+  medios_pago: string[] | null
   dto_comercial: string | null
   dto_financiero: string | null
   dias_pago: string | null

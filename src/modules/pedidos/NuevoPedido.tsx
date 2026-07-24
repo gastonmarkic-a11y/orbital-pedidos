@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { COND_ENTREGA, qtyClass } from './calc'
+import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass } from './calc'
 
 interface Cuota {
   dias: number
@@ -46,7 +46,9 @@ export default function NuevoPedido() {
   const [filtroTratam, setFiltroTratam] = useState('')
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [cart, setCart] = useState<Record<string, number>>({})
-  const [condEntrega, setCondEntrega] = useState('')
+  const [entregaCanal, setEntregaCanal] = useState('')
+  const [entregaPago, setEntregaPago] = useState('')
+  const [medios, setMedios] = useState<string[]>([])
   const [dtoFinanciero, setDtoFinanciero] = useState('')
   const [dtoComercial, setDtoComercial] = useState('')
   const [blancoPct, setBlancoPct] = useState(100)
@@ -297,8 +299,16 @@ export default function NuevoPedido() {
       toast('Ingresá o buscá el número de cliente primero', 'error')
       return
     }
-    if (!condEntrega) {
-      toast('Seleccioná una condición de entrega', 'error')
+    if (!entregaCanal) {
+      toast('Elegí por qué canal se entrega el pedido', 'error')
+      return
+    }
+    if (!entregaPago) {
+      toast('Elegí cuándo cobra: antes, contra entrega, después o cuenta corriente', 'error')
+      return
+    }
+    if (!medios.length) {
+      toast('Tildá al menos un tipo de pago (efectivo, transferencia, cheque o eCheck)', 'error')
       return
     }
     if (Math.abs(totalCuotas - 100) > 1) {
@@ -344,7 +354,8 @@ export default function NuevoPedido() {
       const totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
 
       const negroPct = 100 - blancoPct
-      let pagoLabel = getCuotasLabel() + (blancoPct < 100 ? ` | Blanco:${blancoPct}% Negro:${negroPct}%` : '')
+      let pagoLabel = getCuotasLabel() + ` | ${labelMedios(medios)}`
+      pagoLabel += blancoPct < 100 ? ` | Blanco:${blancoPct}% Negro:${negroPct}%` : ''
       if (dtoFinanciero && parseFloat(dtoFinanciero) > 0) pagoLabel += ` | Dto. financiero: ${dtoFinanciero}%`
       if (dtoComercial && parseFloat(dtoComercial) > 0) pagoLabel += ` | Dto. comercial: ${dtoComercial}%`
 
@@ -370,8 +381,11 @@ export default function NuevoPedido() {
         cuotas_detalle: JSON.stringify(cuotas),
         cod_cliente: cliente.cod,
         cliente: `${cliente.cod} - ${cliente.razon ?? ''}`,
-        cond_entrega: condEntrega,
+        cond_entrega: labelEntrega(entregaCanal, entregaPago),
+        entrega_canal: entregaCanal,
+        entrega_pago: entregaPago,
         cond_pago: pagoLabel,
+        medios_pago: medios,
         dto_comercial: dtoComercial,
         dto_financiero: dtoFinanciero,
         wsp,
@@ -400,7 +414,9 @@ export default function NuevoPedido() {
       await loadStock()
       setCart({})
       setCliente(null)
-      setCondEntrega('')
+      setEntregaCanal('')
+      setEntregaPago('')
+      setMedios([])
       setDtoFinanciero('')
       setDtoComercial('')
       setBlancoPct(100)
@@ -740,24 +756,70 @@ export default function NuevoPedido() {
 
           <div className="bg-white rounded-xl p-4 border border-black/10 space-y-3">
             <p className="text-xs font-semibold text-muted uppercase tracking-wide">Condiciones</p>
-            <label className="block text-xs text-muted">
-              Condición de entrega
-              <select
-                value={condEntrega}
-                onChange={(e) => setCondEntrega(e.target.value)}
-                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">— Seleccioná —</option>
-                {COND_ENTREGA.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <p className="text-xs text-muted mb-1.5">Forma de entrega — canal y cobranza se combinan</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-[11px] text-faint">
+                  Por dónde se manda
+                  <select
+                    value={entregaCanal}
+                    onChange={(e) => setEntregaCanal(e.target.value)}
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+                  >
+                    <option value="">— Seleccioná —</option>
+                    {ENTREGA_CANALES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-faint">
+                  Cuándo paga
+                  <select
+                    value={entregaPago}
+                    onChange={(e) => setEntregaPago(e.target.value)}
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+                  >
+                    <option value="">— Seleccioná —</option>
+                    {ENTREGA_PAGOS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {entregaCanal && entregaPago && (
+                <p className="text-[11px] text-muted mt-1.5">🚚 {labelEntrega(entregaCanal, entregaPago)}</p>
+              )}
+            </div>
 
             <div>
-              <p className="text-xs text-muted mb-1.5">Forma de pago — tildá los plazos (en días)</p>
+              <p className="text-xs text-muted mb-1.5">Tipo de pago — tildá todos los que apliquen</p>
+              <div className="flex flex-wrap gap-1.5">
+                {MEDIOS_PAGO.map((m) => {
+                  const activo = medios.includes(m.id)
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() =>
+                        setMedios((prev) => (activo ? prev.filter((x) => x !== m.id) : [...prev, m.id]))
+                      }
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        activo ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted hover:bg-[#F1EDE4]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-muted mb-1.5">Plazos de pago — tildá los plazos (en días)</p>
               <div className="flex flex-wrap gap-1.5">
                 {plazosVisibles.map((d) => {
                   const activo = cuotas.some((c) => c.dias === d)

@@ -138,20 +138,49 @@ export function importeDe(p: Pedido, stock: StockItem[]): number {
   return imp.neto || p.importe_neto || 0
 }
 
-export const COND_ENTREGA = [
-  'Retira el cliente en fábrica y paga contra entrega',
-  'Retira el cte y paga contraentrega',
-  'Paga y luego retira',
-  'Solamente retira y paga luego',
-  'Retira comisionista y trae pago',
-  'Retira comisionista y el cte paga luego',
-  'Retira el vendedor',
-  'Se envía moto y paga contraentrega',
-  'Paga el cte y luego se manda por moto',
-  'Se envía moto y luego el cte paga',
-  'Se manda por expreso y paga luego',
-  'Paga primero y luego se manda por expreso',
-]
+// Condición de entrega combinable: canal (por dónde sale la mercadería) × momento del pago.
+// Antes era una lista fija de 12 frases armadas; ahora se eligen las dos partes por separado
+// y se arma la frase con labelEntrega() — así entran todas las combinaciones sin agregar textos.
+export const ENTREGA_CANALES = [
+  { id: 'retira_cliente', label: 'Retira el cliente en fábrica' },
+  { id: 'retira_comisionista', label: 'Retira comisionista' },
+  { id: 'retira_vendedor', label: 'Retira el vendedor' },
+  { id: 'moto', label: 'Se envía por moto' },
+  { id: 'expreso', label: 'Se manda por expreso' },
+  { id: 'correo', label: 'Se manda por correo' },
+] as const
+
+export const ENTREGA_PAGOS = [
+  { id: 'anterior', label: 'Paga antes (cobranza anterior)' },
+  { id: 'contra_entrega', label: 'Paga contra entrega' },
+  { id: 'posterior', label: 'Paga después (cobranza posterior)' },
+  { id: 'cta_corriente', label: 'Queda en cuenta corriente' },
+] as const
+
+export type EntregaCanalId = (typeof ENTREGA_CANALES)[number]['id']
+export type EntregaPagoId = (typeof ENTREGA_PAGOS)[number]['id']
+
+/** Frase que se guarda en pedidos.cond_entrega y ve depósito/logística. */
+export function labelEntrega(canal: string, pago: string): string {
+  const c = ENTREGA_CANALES.find((x) => x.id === canal)?.label ?? ''
+  const p = ENTREGA_PAGOS.find((x) => x.id === pago)?.label ?? ''
+  return [c, p].filter(Boolean).join(' · ')
+}
+
+// Instrumento con el que paga el cliente. Es multicheck: un mismo pedido puede
+// pagarse en parte por transferencia y en parte con cheques/e-checks.
+export const MEDIOS_PAGO = [
+  { id: 'efectivo', label: 'Efectivo' },
+  { id: 'transferencia', label: 'Transferencia' },
+  { id: 'cheque', label: 'Cheque' },
+  { id: 'echeck', label: 'eCheck' },
+] as const
+
+export type MedioPagoId = (typeof MEDIOS_PAGO)[number]['id']
+
+export function labelMedios(medios: string[]): string {
+  return medios.map((m) => MEDIOS_PAGO.find((x) => x.id === m)?.label ?? m).join(' + ')
+}
 
 export function qtyClass(n: number): string {
   if (n >= 50) return 'bg-emerald-100 text-emerald-700'

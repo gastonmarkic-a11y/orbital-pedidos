@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, parseFP, qtyClass } from './calc'
+import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 
@@ -536,6 +536,13 @@ export default function Pedidos() {
                           {l.cond_pago}
                         </div>
                       )}
+                      {!!l.medios_pago?.length && (
+                        <div className="col-span-2">
+                          <span className="text-faint uppercase text-[10px] font-semibold">Tipo de pago</span>
+                          <br />
+                          {labelMedios(l.medios_pago)}
+                        </div>
+                      )}
                       {(esDeposito || esAdmin || esAdministracion) && (
                         <div>
                           <span className="text-faint uppercase text-[10px] font-semibold">Blanco / Negro</span>
@@ -813,6 +820,11 @@ export default function Pedidos() {
                               </p>
                             )}
                             <p className="text-[11px] text-muted">Pago: {l.cond_pago || '—'}</p>
+                            {l.entrega_pago === 'contra_entrega' && (
+                              <p className="text-[11px] font-bold text-amber-800 bg-amber-100 rounded px-1.5 py-1">
+                                💰 Cobrar en la entrega{l.medios_pago?.length ? ` — ${labelMedios(l.medios_pago)}` : ''}
+                              </p>
+                            )}
                           </div>
                           <button
                             onClick={() => {
