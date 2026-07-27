@@ -47,6 +47,9 @@ export interface Cliente {
   proxima_agenda_fecha: string | null
   /** Operador que agendó proxima_agenda_fecha. null = del pool, nadie la tomó todavía */
   agenda_owner: string | null
+  /** Prospector (Marketing=Luna / Damian) que derivó el contacto a un vendedor. Se fija arriba de la agenda hasta que lo toma. */
+  derivado_por: string | null
+  derivado_at: string | null
   ultima_compra_fecha: string | null
   ultima_compra_monto: number | null
   unidades_2025: number | null

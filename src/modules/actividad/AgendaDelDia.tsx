@@ -14,6 +14,7 @@ export default function AgendaDelDia() {
   const [modo, setModo] = useState<'hoy' | 'semana'>('hoy')
   const [agendados, setAgendados] = useState<Cliente[]>([])
   const [vencidos, setVencidos] = useState<Cliente[]>([])
+  const [derivados, setDerivados] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
   const toast = useToast()
   const [editCod, setEditCod] = useState<string | null>(null)
@@ -71,12 +72,31 @@ export default function AgendaDelDia() {
     Promise.all([
       base().gte('proxima_agenda_fecha', desde).lte('proxima_agenda_fecha', hasta).order('proxima_agenda_fecha'),
       base().lt('proxima_agenda_fecha', hoy),
-    ]).then(([a, v]) => {
-      setAgendados((a.data as Cliente[]) ?? [])
-      setVencidos((v.data as Cliente[]) ?? [])
+      // Nuevos contactos que la prospección le pasó a este vendedor y todavía no tomó
+      base().not('derivado_por', 'is', null).order('derivado_at', { ascending: false }),
+    ]).then(([a, v, d]) => {
+      const der = (d.data as Cliente[]) ?? []
+      const derSet = new Set(der.map((c) => c.cod))
+      // Los derivados van fijados arriba en su propia sección: se sacan del resto para no duplicarlos
+      setAgendados(((a.data as Cliente[]) ?? []).filter((c) => !derSet.has(c.cod)))
+      setVencidos(((v.data as Cliente[]) ?? []).filter((c) => !derSet.has(c.cod)))
+      setDerivados(der)
       setLoading(false)
     })
   }, [vendedor, esAdmin, modo, codigoEfectivo])
+
+  // El vendedor marca que ya tomó el contacto derivado: se despega de arriba de la agenda.
+  async function tomarDerivado(c: Cliente) {
+    const { error } = await supabase.from('clientes').update({ derivado_por: null }).eq('cod', c.cod)
+    if (error) {
+      toast('No se pudo actualizar: ' + error.message, 'error')
+      return
+    }
+    setDerivados((prev) => prev.filter((x) => x.cod !== c.cod))
+    // Sigue en la agenda de hoy, pero ya sin el destaque de "nuevo"
+    setAgendados((prev) => (prev.some((x) => x.cod === c.cod) ? prev : [{ ...c, derivado_por: null }, ...prev]))
+    toast('✓ Contacto tomado', 'success')
+  }
 
   function cargar(c: Cliente) {
     navigate('/envios', { state: { cliente: c } })
@@ -126,6 +146,49 @@ export default function AgendaDelDia() {
         <p className="text-sm text-muted p-4">Cargando...</p>
       ) : (
         <>
+          {derivados.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                🔔 Nuevos contactos de prospección ({derivados.length})
+              </p>
+              {derivados.map((c) => (
+                <div key={c.cod} className="bg-violet-50 border-2 border-violet-400 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-violet-900">{c.nomcomerc || c.razon}</p>
+                      <p className="text-xs text-violet-700">
+                        {c.zona ?? c.localidad}
+                        {c.derivado_por && (
+                          <span className="font-semibold">
+                            {' '}· te lo pasó {NOMBRE_OPERADOR[c.derivado_por] ?? c.derivado_por}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button onClick={() => cargar(c)} className="text-xs font-semibold text-violet-800 whitespace-nowrap">
+                      📤 Enviar →
+                    </button>
+                  </div>
+                  <p className="text-xs text-violet-800 mt-1.5">
+                    👤 {c.contacto || '—'} · 📞 {c.whatsapp || c.telefono || '—'} · ✉️ {c.email || '—'}
+                  </p>
+                  {c.proximo_paso && (
+                    <div className="mt-2 bg-white/70 border border-violet-200 rounded-lg px-2.5 py-1.5">
+                      <p className="text-[10px] uppercase font-semibold text-violet-700 tracking-wide">🎯 Próxima acción</p>
+                      <p className="text-sm text-ink font-medium">{c.proximo_paso}</p>
+                    </div>
+                  )}
+                  {c.nota && <p className="text-[11px] text-violet-700 mt-1.5">📝 {c.nota}</p>}
+                  <button
+                    onClick={() => tomarDerivado(c)}
+                    className="mt-2 text-[11px] font-medium text-violet-700 border border-violet-300 rounded-lg px-2.5 py-1"
+                  >
+                    ✓ Lo tomo (sacar el destaque)
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {vencidosRecientes.length > 0 && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
               ⚠ Tenés {vencidosRecientes.length} contactos con agenda vencida en los últimos 7 días sin actividad
@@ -225,7 +288,7 @@ export default function AgendaDelDia() {
                 </div>
               </div>
             ))}
-            {agendados.length === 0 && (
+            {agendados.length === 0 && derivados.length === 0 && (
               <p className="text-sm text-faint text-center py-10">
                 No tenés nada agendado para {modo === 'hoy' ? 'hoy' : 'esta semana'}. Mirá "Cartera" para buscar a
                 quién contactar.

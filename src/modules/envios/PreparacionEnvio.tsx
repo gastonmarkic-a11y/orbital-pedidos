@@ -368,6 +368,8 @@ export default function PreparacionEnvio({
         proximo_paso: sig.texto,
         proxima_agenda_fecha: fechaSig,
         agenda_owner: codigoEfectivo,
+        // Al contactarlo, deja de ser un "nuevo contacto de prospección" destacado en la agenda
+        derivado_por: null,
       })
       .eq('cod', cliente.cod)
     if (errCli) toast('No se pudo actualizar la ficha del cliente: ' + errCli.message, 'error')
