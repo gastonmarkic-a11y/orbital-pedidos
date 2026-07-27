@@ -19,6 +19,16 @@ interface FaltanSecretos {
   faltan: string[]
 }
 
+interface PrecioItem {
+  variant_id: number
+  producto: string
+  variante: string
+  sku: string | null
+  estado: string
+  price: number
+  compare_at_price: number | null
+}
+
 const GRUPOS: { key: Grupo; label: string; ayuda: string }[] = [
   {
     key: 'publicado_sin_stock',
@@ -50,6 +60,89 @@ export default function Tienda() {
   const [grupo, setGrupo] = useState<Grupo>('publicado_sin_stock')
   const [importando, setImportando] = useState(false)
   const [importe, setImporte] = useState<Record<string, unknown> | null>(null)
+
+  // --- Editor de precios de Shopify ---
+  const [tienda, setTienda] = useState<'linea' | 'outlet'>('linea')
+  const [buscarPrec, setBuscarPrec] = useState('')
+  const [items, setItems] = useState<PrecioItem[] | null>(null)
+  const [cargandoPrec, setCargandoPrec] = useState(false)
+  const [edits, setEdits] = useState<Record<number, { price: string; compare: string }>>({})
+  const [guardandoId, setGuardandoId] = useState<number | null>(null)
+
+  async function listarPrecios() {
+    setCargandoPrec(true)
+    const { data, error } = await supabase.functions.invoke('shopify-precios', {
+      body: { accion: 'listar', tienda, q: buscarPrec.trim() },
+    })
+    setCargandoPrec(false)
+    const cuerpo = (data ?? {}) as { error?: string; detalle?: string; items?: PrecioItem[] }
+    if (error || cuerpo.error) {
+      toast(cuerpo.detalle || cuerpo.error || error?.message || 'No se pudieron traer los precios', 'error')
+      return
+    }
+    setItems(cuerpo.items ?? [])
+    setEdits({})
+  }
+
+  function valorEdit(it: PrecioItem, campo: 'price' | 'compare') {
+    const e = edits[it.variant_id]
+    if (e) return e[campo]
+    return campo === 'price' ? String(it.price) : it.compare_at_price != null ? String(it.compare_at_price) : ''
+  }
+
+  function setEdit(it: PrecioItem, campo: 'price' | 'compare', v: string) {
+    setEdits((prev) => {
+      const base = prev[it.variant_id] ?? {
+        price: String(it.price),
+        compare: it.compare_at_price != null ? String(it.compare_at_price) : '',
+      }
+      return { ...prev, [it.variant_id]: { ...base, [campo]: v } }
+    })
+  }
+
+  async function guardarPrecio(it: PrecioItem) {
+    const price = valorEdit(it, 'price')
+    const compare = valorEdit(it, 'compare')
+    if (
+      !window.confirm(
+        `Actualizar en Shopify (tienda ${tienda}):\n\n${it.producto}${it.variante && it.variante !== 'Default Title' ? ' · ' + it.variante : ''}\n` +
+          `Promocionado (precio de venta): ${price || '—'}\nReferencia (tachado): ${compare || '— sin referencia —'}\n\n` +
+          `⚠ Esto cambia el precio EN VIVO en la tienda online.`
+      )
+    )
+      return
+    setGuardandoId(it.variant_id)
+    const { data, error } = await supabase.functions.invoke('shopify-precios', {
+      body: { accion: 'guardar', tienda, variant_id: it.variant_id, price, compare_at_price: compare },
+    })
+    setGuardandoId(null)
+    const cuerpo = (data ?? {}) as {
+      ok?: boolean
+      error?: string
+      detalle?: string
+      price?: number
+      compare_at_price?: number | null
+    }
+    if (error || cuerpo.error) {
+      toast(cuerpo.detalle || cuerpo.error || error?.message || 'No se pudo guardar', 'error')
+      return
+    }
+    setItems((prev) =>
+      prev
+        ? prev.map((x) =>
+            x.variant_id === it.variant_id
+              ? { ...x, price: cuerpo.price ?? x.price, compare_at_price: cuerpo.compare_at_price ?? null }
+              : x
+          )
+        : prev
+    )
+    setEdits((prev) => {
+      const n = { ...prev }
+      delete n[it.variant_id]
+      return n
+    })
+    toast('✓ Precio actualizado en Shopify', 'success')
+  }
 
   async function comparar() {
     setCargando(true)
@@ -181,6 +274,115 @@ export default function Tienda() {
           )}
         </>
       )}
+
+      <div className="border border-black/10 rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="font-semibold">💲 Editar precios en Shopify</h2>
+          <div className="inline-flex rounded-lg bg-[#F1EDE4] p-0.5">
+            {(['linea', 'outlet'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => {
+                  setTienda(t)
+                  setItems(null)
+                }}
+                className={`px-3 py-1 text-sm rounded-md ${tienda === t ? 'bg-white shadow-sm font-medium' : 'text-black/60'}`}
+              >
+                {t === 'linea' ? 'Línea' : 'Outlet'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-sm text-black/70">
+          <strong>Promocionado</strong> = precio de venta (Shopify <code>price</code>).{' '}
+          <strong>Referencia</strong> = precio tachado (Shopify <code>compare_at_price</code>); dejalo vacío para sacar
+          el tachado. Los cambios se publican <strong>en vivo</strong> en la tienda.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            value={buscarPrec}
+            onChange={(e) => setBuscarPrec(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && listarPrecios()}
+            placeholder="Buscar por producto o SKU (vacío = todos)"
+            className="flex-1 min-w-[200px] border border-black/10 rounded-lg px-3 py-2 text-sm"
+          />
+          <button
+            onClick={listarPrecios}
+            disabled={cargandoPrec}
+            className="px-3 py-2 rounded-lg bg-[#15151A] text-white text-sm disabled:opacity-50"
+          >
+            {cargandoPrec ? 'Buscando…' : '🔍 Buscar productos'}
+          </button>
+        </div>
+
+        {items && (
+          <div className="border border-black/10 rounded-lg overflow-x-auto">
+            {items.length === 0 ? (
+              <p className="p-4 text-sm text-black/60">Sin resultados.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-[#F1EDE4]">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Producto</th>
+                    <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                    <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Promocionado</th>
+                    <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Referencia (tachado)</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it) => {
+                    const cambiado = !!edits[it.variant_id]
+                    return (
+                      <tr key={it.variant_id} className="border-t border-black/5">
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{it.producto}</div>
+                          {it.variante && it.variante !== 'Default Title' && (
+                            <div className="text-xs text-black/50">{it.variante}</div>
+                          )}
+                          {it.estado !== 'active' && (
+                            <span className="text-[10px] uppercase text-amber-700">({it.estado})</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-black/60 whitespace-nowrap">{it.sku ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            value={valorEdit(it, 'price')}
+                            onChange={(e) => setEdit(it, 'price', e.target.value)}
+                            inputMode="decimal"
+                            className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            value={valorEdit(it, 'compare')}
+                            onChange={(e) => setEdit(it, 'compare', e.target.value)}
+                            inputMode="decimal"
+                            placeholder="sin tachado"
+                            className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm placeholder:text-black/30"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => guardarPrecio(it)}
+                            disabled={!cambiado || guardandoId === it.variant_id}
+                            className="px-3 py-1.5 rounded-lg bg-[#C8A96E] text-white text-xs font-semibold disabled:opacity-40"
+                          >
+                            {guardandoId === it.variant_id ? 'Guardando…' : 'Guardar'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+        {items && items.length >= 500 && (
+          <p className="text-xs text-black/60">Mostrando las primeras 500. Afiná la búsqueda para ver el resto.</p>
+        )}
+      </div>
 
       <div className="border border-black/10 rounded-lg p-4 space-y-3">
         <h2 className="font-semibold">Importar pedidos de la tienda</h2>
