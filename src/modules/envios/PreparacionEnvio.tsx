@@ -119,6 +119,9 @@ export default function PreparacionEnvio({
   const [prepFecha, setPrepFecha] = useState('')
   const [prepHora, setPrepHora] = useState('')
   const [prepAbierto, setPrepAbierto] = useState(false)
+  // Nota de contexto (NO es un recordatorio): lo que se habló / lo que quiero recordar
+  // para llegar en tema cuando reaparezca la próxima agenda de este cliente.
+  const [prepNota, setPrepNota] = useState('')
   const [guardando, setGuardando] = useState(false)
 
   // Carga inicial + preselección de propuesta, canal y mensaje para este cliente
@@ -350,6 +353,7 @@ export default function PreparacionEnvio({
       actividad_futura: sig.texto,
       proximo_paso_fecha: fechaSig,
       propuesta_enviada_id: prepProp,
+      nota_contexto: prepNota.trim() || null,
     })
     if (errAct) toast('El envío se guardó pero la actividad falló: ' + errAct.message, 'error')
     // Actualizar la ficha del cliente: lo último hablado / enviado queda visible en Cartera y Agenda
@@ -358,7 +362,9 @@ export default function PreparacionEnvio({
       .update({
         nota: `${prepCanal === 'llamada' ? '📞' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${
           prepCanal === 'llamada' ? 'llamada' : 'se envió'
-        } "${prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.`,
+        } "${prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.${
+          prepNota.trim() ? ` 🧠 ${prepNota.trim()}` : ''
+        }`,
         proximo_paso: sig.texto,
         proxima_agenda_fecha: fechaSig,
         agenda_owner: codigoEfectivo,
@@ -706,6 +712,19 @@ export default function PreparacionEnvio({
                   {prepCanal === 'llamada' ? '¿Hiciste la llamada?' : '¿Se envió el mensaje?'} Al confirmar queda
                   registrado como actividad y se agenda el próximo paso automáticamente.
                 </p>
+                <label className="block text-xs text-muted">
+                  🧠 Nota de contexto (opcional) — qué te dijo / qué querés recordar
+                  <textarea
+                    value={prepNota}
+                    onChange={(e) => setPrepNota(e.target.value)}
+                    rows={2}
+                    placeholder="Ej: le interesó la línea nueva, pidió precios; retoma después del 10"
+                    className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+                  />
+                  <span className="text-[10px] text-faint">
+                    Es solo para llegar en tema a la próxima agenda. No es un recordatorio ni cambia la fecha del próximo paso.
+                  </span>
+                </label>
                 <div className="flex gap-2">
                   <button onClick={cerrar} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
                     {prepCanal === 'llamada' ? 'No se hizo' : 'No se envió'}

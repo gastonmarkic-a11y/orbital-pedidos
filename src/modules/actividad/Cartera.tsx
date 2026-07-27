@@ -95,6 +95,11 @@ export default function Cartera() {
   const [borrando, setBorrando] = useState(false)
   const [derivar, setDerivar] = useState<Cliente | null>(null)
   const [derivando, setDerivando] = useState(false)
+  // Nota / recordatorio manual desde la cartera
+  const [notaCli, setNotaCli] = useState<Cliente | null>(null)
+  const [notaTxt, setNotaTxt] = useState('')
+  const [notaFecha, setNotaFecha] = useState('')
+  const [notaSaving, setNotaSaving] = useState(false)
   const [avisoReserva, setAvisoReserva] = useState<Cliente | null>(null)
   const [enviarA, setEnviarA] = useState<Cliente | null>(null)
   // Filtro por quién viene trabajando cada contacto (multi-selección). Vacío = sin filtrar.
@@ -404,6 +409,59 @@ export default function Cartera() {
     toast(`✓ ${derivar.nomcomerc || derivar.razon} derivado a ${destLabel}`, 'success')
   }
 
+  function abrirNota(c: Cliente) {
+    setNotaCli(c)
+    setNotaTxt('')
+    setNotaFecha('')
+  }
+
+  async function guardarNota() {
+    if (!notaCli) return
+    const txt = notaTxt.trim()
+    if (!txt) {
+      toast('Escribí la nota', 'error')
+      return
+    }
+    setNotaSaving(true)
+    const hoy = new Date().toLocaleDateString('es-AR')
+    const cuando = notaFecha ? ` (recordar el ${new Date(notaFecha + 'T00:00:00').toLocaleDateString('es-AR')})` : ''
+    const linea = `🔔 ${hoy}${cuando} — ${txt}`
+    // Se antepone la nota nueva y se conserva lo anterior como historial (tope 500 chars)
+    const previa = (notaCli.nota || '').trim()
+    const nuevaNota = (previa ? `${linea} · ${previa}` : linea).slice(0, 500)
+    const upd: Record<string, unknown> = { nota: nuevaNota }
+    // Con fecha, además queda agendado como recordatorio en la Agenda de ese día
+    if (notaFecha) {
+      upd.proximo_paso = txt
+      upd.proxima_agenda_fecha = notaFecha
+      upd.agenda_owner = codigoActivo || codigoEfectivo
+    }
+    const { error } = await supabase.from('clientes').update(upd).eq('cod', notaCli.cod)
+    if (!error && notaFecha) {
+      await supabase.from('actividad_diaria').insert({
+        vendedor: codigoActivo || codigoEfectivo,
+        cod_cliente: notaCli.cod,
+        nombre_comercio: notaCli.nomcomerc,
+        contacto: notaCli.contacto,
+        telefono: notaCli.whatsapp || notaCli.telefono,
+        localidad: notaCli.localidad,
+        email: notaCli.email,
+        actividad_desarrollo: `🔔 Recordatorio: ${txt}`,
+        actividad_futura: txt,
+        proximo_paso_fecha: notaFecha,
+        nota_contexto: txt,
+      })
+    }
+    setNotaSaving(false)
+    if (error) {
+      toast('No se pudo guardar la nota: ' + error.message, 'error')
+      return
+    }
+    setClientes((prev) => prev.map((x) => (x.cod === notaCli.cod ? { ...x, nota: nuevaNota } : x)))
+    toast(notaFecha ? '✓ Recordatorio agendado' : '✓ Nota guardada', 'success')
+    setNotaCli(null)
+  }
+
   if (loading) return <p className="text-sm text-muted p-4">Cargando cartera...</p>
 
   const buscando = !!busqueda.trim()
@@ -659,6 +717,9 @@ export default function Cartera() {
                     🛒 Pedido
                   </button>
                 )}
+                <button onClick={() => abrirNota(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted" title="Agregar nota o recordatorio">
+                  📝 Nota
+                </button>
                 <button onClick={() => setHistorial(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted">
                   Historial
                 </button>
@@ -852,6 +913,9 @@ export default function Cartera() {
                           Pedido
                         </button>
                       )}
+                      <button onClick={() => abrirNota(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
+                        📝 Nota
+                      </button>
                       <button onClick={() => setHistorial(c)} className="text-[11px] text-muted font-medium whitespace-nowrap">
                         Historial
                       </button>
@@ -1022,6 +1086,50 @@ export default function Cartera() {
             <button onClick={() => setDerivar(null)} className="w-full mt-3 rounded-lg border border-black/10 py-2 text-sm text-muted">
               Cancelar
             </button>
+          </div>
+        </div>
+      )}
+
+      {notaCli && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setNotaCli(null)}>
+          <div className="bg-white rounded-2xl border border-black/10 w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-ink mb-1">📝 Nota / recordatorio</p>
+            <p className="text-xs text-muted mb-3">
+              <b>{notaCli.nomcomerc || notaCli.razon}</b> ({notaCli.cod})
+            </p>
+            <label className="block text-xs text-muted">
+              Nota — lo que hablaste o querés recordar
+              <textarea
+                value={notaTxt}
+                onChange={(e) => setNotaTxt(e.target.value)}
+                rows={3}
+                autoFocus
+                placeholder="Ej: pidió que lo llame la semana que viene por la colección nueva"
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+              />
+            </label>
+            <label className="block text-xs text-muted mt-2">
+              📅 Recordármelo el (opcional — si ponés fecha, aparece en la Agenda ese día)
+              <input
+                type="date"
+                value={notaFecha}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setNotaFecha(e.target.value)}
+                className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setNotaCli(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarNota}
+                disabled={notaSaving}
+                className="flex-1 rounded-lg bg-brand text-white py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {notaSaving ? 'Guardando...' : notaFecha ? 'Guardar y agendar' : 'Guardar nota'}
+              </button>
+            </div>
           </div>
         </div>
       )}
