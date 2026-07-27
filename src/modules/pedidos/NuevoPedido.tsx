@@ -61,6 +61,11 @@ export default function NuevoPedido() {
   const [cdEditando, setCdEditando] = useState(false)
   const [cd, setCd] = useState({ direccion: '', telefono: '', email: '', contacto: '', horario: '' })
   const [cdSaving, setCdSaving] = useState(false)
+  // Alta de cliente provisorio (sin número): cualquiera puede cargarlo para poder armar el pedido.
+  // Administración completa después el número real.
+  const [provOpen, setProvOpen] = useState(false)
+  const [prov, setProv] = useState({ razon: '', contacto: '', telefono: '', localidad: '' })
+  const [provSaving, setProvSaving] = useState(false)
 
   async function loadStock() {
     const data = await fetchPaged<StockItem>(() => supabase.from('stock').select('*').order('modelo'))
@@ -166,6 +171,44 @@ export default function NuevoPedido() {
     setSugerencias([])
     if (c.email) setMail(c.email)
     if (c.telefono) setWsp(c.telefono)
+  }
+
+  // Crea un cliente provisorio (código temporal TMP-…) y lo deja elegido para armar el pedido.
+  // Administración le pone el número real más adelante desde Pedidos.
+  async function crearProvisorio() {
+    const razon = prov.razon.trim()
+    if (!razon) {
+      toast('Poné al menos el nombre o razón social', 'error')
+      return
+    }
+    setProvSaving(true)
+    const codTemporal = 'TMP-' + Date.now().toString().slice(-8)
+    const nuevo = {
+      cod: codTemporal,
+      razon,
+      nomcomerc: razon,
+      contacto: prov.contacto.trim() || null,
+      telefono: prov.telefono.trim() || null,
+      whatsapp: prov.telefono.trim() || null,
+      localidad: prov.localidad.trim() || null,
+      origen: 'propio',
+      vendedor_asignado: codigoEfectivo || (vendedor?.codigo ?? null),
+      clasificacion_recupero: 'sin_historial',
+      nro_lista: 5,
+      nota: '⏳ Cliente provisorio sin N° — Administración completa el código.',
+    }
+    const { error } = await supabase.from('clientes').insert(nuevo)
+    setProvSaving(false)
+    if (error) {
+      toast('No se pudo crear el cliente provisorio: ' + error.message, 'error')
+      return
+    }
+    setProvOpen(false)
+    setProv({ razon: '', contacto: '', telefono: '', localidad: '' })
+    setBusquedaCliente('')
+    setSugerencias([])
+    elegirCliente(nuevo as unknown as Cliente)
+    toast('✓ Cliente provisorio cargado — Administración le pone el número después', 'success')
   }
 
   // Stock agrupado — filtros combinables (búsqueda + modelo + tipo + clasificación + tratamiento)
@@ -459,6 +502,12 @@ export default function NuevoPedido() {
                 cambiar
               </button>
             </div>
+            {cliente.cod?.startsWith('TMP-') && (
+              <div className="bg-amber-100 border border-amber-200 text-amber-800 rounded-lg p-2 text-[11px]">
+                ⏳ Cliente <b>provisorio</b> (sin N° todavía). Podés cargar el pedido igual; Administración completa el
+                número de cliente antes de facturar.
+              </div>
+            )}
             <div className="bg-[#F1EDE4] rounded-lg p-2.5 text-xs mt-2">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-muted uppercase tracking-wide text-[10px]">
@@ -539,6 +588,55 @@ export default function NuevoPedido() {
                 </button>
               ))}
             </div>
+
+            {!provOpen ? (
+              <button
+                onClick={() => {
+                  setProv((p) => ({ ...p, razon: busquedaCliente.trim() }))
+                  setProvOpen(true)
+                }}
+                className="w-full rounded-lg border border-dashed border-brand/50 text-brandDark py-2 text-xs font-medium"
+              >
+                ➕ Cliente nuevo sin número (provisorio)
+              </button>
+            ) : (
+              <div className="rounded-lg border border-black/10 bg-[#F8F6F0] p-3 space-y-2">
+                <p className="text-[11px] text-muted">
+                  Cargá los datos para poder armar el pedido. Administración le pone el N° de cliente después.
+                </p>
+                {(
+                  [
+                    ['razon', 'Nombre o razón social *'],
+                    ['contacto', 'Contacto'],
+                    ['telefono', 'Teléfono / WhatsApp'],
+                    ['localidad', 'Localidad'],
+                  ] as const
+                ).map(([k, ph]) => (
+                  <input
+                    key={k}
+                    value={prov[k]}
+                    onChange={(e) => setProv({ ...prov, [k]: e.target.value })}
+                    placeholder={ph}
+                    className="w-full bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+                  />
+                ))}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setProvOpen(false)}
+                    className="rounded-lg border border-black/10 px-3 py-2 text-xs text-muted"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={crearProvisorio}
+                    disabled={provSaving}
+                    className="flex-1 rounded-lg bg-brand text-white py-2 text-xs font-semibold disabled:opacity-50"
+                  >
+                    {provSaving ? 'Cargando...' : 'Usar este cliente provisorio'}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

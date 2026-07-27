@@ -53,6 +53,11 @@ export default function Pedidos() {
   const [modalEditar, setModalEditar] = useState<Pedido | null>(null)
   const [editItems, setEditItems] = useState<PedidoItem[]>([])
   const [editBusqueda, setEditBusqueda] = useState('')
+  // Completar el N° de cliente de un pedido cargado con cliente provisorio (TMP-…)
+  const [asignarPed, setAsignarPed] = useState<Pedido | null>(null)
+  const [codNuevo, setCodNuevo] = useState('')
+  const [listaNueva, setListaNueva] = useState('')
+  const [asignando, setAsignando] = useState(false)
 
   const cargar = useCallback(async () => {
     const [{ data: peds }, st] = await Promise.all([
@@ -86,6 +91,32 @@ export default function Pedidos() {
       )
     return logs
   }, [pedidos, esVendedor, esTienda, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
+
+  async function asignarCodigo() {
+    if (!asignarPed) return
+    const nuevo = codNuevo.trim()
+    if (!nuevo) {
+      toast('Ingresá el número de cliente', 'error')
+      return
+    }
+    setAsignando(true)
+    const lista = listaNueva.trim() ? parseInt(listaNueva) : null
+    const { error } = await supabase.rpc('asignar_codigo_cliente', {
+      p_cod_actual: asignarPed.cod_cliente,
+      p_cod_nuevo: nuevo,
+      p_nro_lista: Number.isFinite(lista as number) ? lista : null,
+    })
+    setAsignando(false)
+    if (error) {
+      toast('No se pudo asignar: ' + error.message, 'error')
+      return
+    }
+    setAsignarPed(null)
+    setCodNuevo('')
+    setListaNueva('')
+    await cargar()
+    toast('✓ Número de cliente asignado', 'success')
+  }
 
   async function cambiarEstado(id: number, estado: EstadoPedido, extra: Record<string, unknown> = {}) {
     const { error } = await supabase.from('pedidos').update({ estado, ...extra }).eq('id', id)
@@ -451,7 +482,14 @@ export default function Pedidos() {
                 <button onClick={() => toggleAbierto(l.id)} className="w-full text-left px-3 py-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">{l.cliente}</p>
+                      <p className="text-sm font-semibold truncate">
+                        {l.cliente}
+                        {l.cod_cliente?.startsWith('TMP-') && (
+                          <span className="ml-1.5 text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-700">
+                            ⏳ provisorio
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted">
                         {l.vendedor} · {l.fecha}
                       </p>
@@ -493,6 +531,29 @@ export default function Pedidos() {
 
                 {abierto && (
                   <div className="px-3 pb-3 border-t border-black/5">
+                    {l.cod_cliente?.startsWith('TMP-') && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 my-2 text-xs">
+                        <p className="text-amber-800">
+                          ⏳ <b>Cliente provisorio</b> (sin N° definitivo): {l.cliente}
+                        </p>
+                        {esAdmin || esAdministracion ? (
+                          <button
+                            onClick={() => {
+                              setAsignarPed(l)
+                              setCodNuevo('')
+                              setListaNueva(String(l.nro_lista ?? ''))
+                            }}
+                            className="mt-1.5 w-full rounded-lg bg-amber-600 text-white py-1.5 text-xs font-semibold"
+                          >
+                            🔢 Asignar N° de cliente
+                          </button>
+                        ) : (
+                          <p className="text-[11px] text-amber-700 mt-1">
+                            Administración le pone el número antes de facturar.
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2 text-xs py-2 border-b border-black/5 mb-2">
                       {l.nro_remito && (
                         <div>
@@ -748,13 +809,18 @@ export default function Pedidos() {
                           </div>
                           <button
                             onClick={() => {
+                              if (l.cod_cliente?.startsWith('TMP-')) {
+                                toast('Asigná primero el N° de cliente (está provisorio)', 'error')
+                                return
+                              }
                               setModalFactura({ pedido: l, importe: impNeto })
                               setNroFactura('')
                               setFechaFactura(new Date().toISOString().split('T')[0])
                             }}
-                            className="w-full rounded-lg bg-[#4a4adf] text-white py-2 text-xs font-bold"
+                            disabled={l.cod_cliente?.startsWith('TMP-')}
+                            className="w-full rounded-lg bg-[#4a4adf] text-white py-2 text-xs font-bold disabled:opacity-40"
                           >
-                            📄 Confirmar y Facturar
+                            {l.cod_cliente?.startsWith('TMP-') ? '📄 Falta el N° de cliente para facturar' : '📄 Confirmar y Facturar'}
                           </button>
                         </>
                       )}
@@ -866,6 +932,39 @@ export default function Pedidos() {
       )}
 
       {/* MODAL REMITO */}
+      {asignarPed && (
+        <Modal onClose={() => setAsignarPed(null)} titulo="🔢 Asignar N° de cliente">
+          <p className="text-xs text-muted mb-2">
+            Cliente provisorio: <b>{asignarPed.cliente}</b>. Ingresá el número definitivo; se actualiza la ficha y todos
+            los pedidos, actividades y envíos de este cliente.
+          </p>
+          <input
+            value={codNuevo}
+            onChange={(e) => setCodNuevo(e.target.value)}
+            placeholder="N° de cliente (ej: 031234)"
+            autoFocus
+            className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm mb-2"
+          />
+          <label className="block text-xs text-muted mb-3">
+            Lista de precios (opcional — si la dejás vacía queda la actual)
+            <input
+              value={listaNueva}
+              onChange={(e) => setListaNueva(e.target.value)}
+              placeholder="Ej: 5"
+              inputMode="numeric"
+              className="w-full mt-1 border border-black/10 rounded-lg px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            onClick={asignarCodigo}
+            disabled={asignando}
+            className="w-full rounded-lg bg-amber-600 text-white py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {asignando ? 'Asignando...' : 'Confirmar N° de cliente'}
+          </button>
+        </Modal>
+      )}
+
       {modalRemito && (
         <Modal onClose={() => setModalRemito(null)} titulo="✓ Cerrar preparación">
           <p className="text-xs text-muted mb-2">

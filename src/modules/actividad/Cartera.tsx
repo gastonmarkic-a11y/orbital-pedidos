@@ -530,6 +530,12 @@ export default function Cartera() {
         >
           ⟳ Actualizar
         </button>
+        <button
+          onClick={() => setNuevoOpen(true)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-brand text-white"
+        >
+          + Nuevo prospecto
+        </button>
         {(
           [
             ['canje', `↩ Con canje (${conVentas.length})`],
