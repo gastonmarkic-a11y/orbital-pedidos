@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
@@ -68,6 +68,28 @@ export default function Tienda() {
   const [cargandoPrec, setCargandoPrec] = useState(false)
   const [edits, setEdits] = useState<Record<number, { price: string; compare: string }>>({})
   const [guardandoId, setGuardandoId] = useState<number | null>(null)
+  const [guardandoModelo, setGuardandoModelo] = useState<string | null>(null)
+  const [modelosAbiertos, setModelosAbiertos] = useState<Set<string>>(new Set())
+
+  // Variantes agrupadas por modelo (producto): la lista muestra modelos y adentro los colores.
+  const porModelo = useMemo(() => {
+    const m = new Map<string, PrecioItem[]>()
+    for (const it of items ?? []) {
+      const arr = m.get(it.producto) ?? []
+      arr.push(it)
+      m.set(it.producto, arr)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [items])
+
+  function toggleModelo(m: string) {
+    setModelosAbiertos((prev) => {
+      const n = new Set(prev)
+      if (n.has(m)) n.delete(m)
+      else n.add(m)
+      return n
+    })
+  }
 
   async function listarPrecios() {
     setCargandoPrec(true)
@@ -100,17 +122,11 @@ export default function Tienda() {
     })
   }
 
-  async function guardarPrecio(it: PrecioItem) {
+  // Escribe un color en Shopify. Sin confirmación ni toast de éxito: eso lo ponen los wrappers,
+  // para poder reutilizarlo en el guardado de todo el modelo. Devuelve true si salió bien.
+  async function enviarPrecio(it: PrecioItem): Promise<boolean> {
     const price = valorEdit(it, 'price')
     const compare = valorEdit(it, 'compare')
-    if (
-      !window.confirm(
-        `Actualizar en Shopify (tienda ${tienda}):\n\n${it.producto}${it.variante && it.variante !== 'Default Title' ? ' · ' + it.variante : ''}\n` +
-          `Promocionado (precio de venta): ${price || '—'}\nReferencia (tachado): ${compare || '— sin referencia —'}\n\n` +
-          `⚠ Esto cambia el precio EN VIVO en la tienda online.`
-      )
-    )
-      return
     setGuardandoId(it.variant_id)
     const { data, error } = await supabase.functions.invoke('shopify-precios', {
       body: { accion: 'guardar', tienda, variant_id: it.variant_id, price, compare_at_price: compare },
@@ -125,7 +141,7 @@ export default function Tienda() {
     }
     if (error || cuerpo.error) {
       toast(cuerpo.detalle || cuerpo.error || error?.message || 'No se pudo guardar', 'error')
-      return
+      return false
     }
     setItems((prev) =>
       prev
@@ -141,7 +157,41 @@ export default function Tienda() {
       delete n[it.variant_id]
       return n
     })
-    toast('✓ Precio actualizado en Shopify', 'success')
+    return true
+  }
+
+  async function guardarPrecio(it: PrecioItem) {
+    const price = valorEdit(it, 'price')
+    const compare = valorEdit(it, 'compare')
+    if (
+      !window.confirm(
+        `Actualizar en Shopify (tienda ${tienda}):\n\n${it.producto}${it.variante && it.variante !== 'Default Title' ? ' · ' + it.variante : ''}\n` +
+          `Promocionado (precio de venta): ${price || '—'}\nReferencia (tachado): ${compare || '— sin referencia —'}\n\n` +
+          `⚠ Esto cambia el precio EN VIVO en la tienda online.`
+      )
+    )
+      return
+    if (await enviarPrecio(it)) toast('✓ Precio actualizado en Shopify', 'success')
+  }
+
+  // Guarda de una todos los colores del modelo que tengan cambios sin guardar.
+  async function guardarModelo(modelo: string, variantes: PrecioItem[]) {
+    const conCambios = variantes.filter((v) => edits[v.variant_id])
+    if (!conCambios.length) {
+      toast('No hay cambios sin guardar en este modelo', 'error')
+      return
+    }
+    if (
+      !window.confirm(
+        `Guardar ${conCambios.length} color(es) de "${modelo}" en Shopify (tienda ${tienda}).\n\n⚠ Cambia los precios EN VIVO en la tienda online.`
+      )
+    )
+      return
+    setGuardandoModelo(modelo)
+    let ok = 0
+    for (const v of conCambios) if (await enviarPrecio(v)) ok++
+    setGuardandoModelo(null)
+    toast(`✓ ${ok}/${conCambios.length} color(es) actualizados en ${modelo}`, ok === conCambios.length ? 'success' : 'error')
   }
 
   async function comparar() {
@@ -311,76 +361,110 @@ export default function Tienda() {
             disabled={cargandoPrec}
             className="px-3 py-2 rounded-lg bg-[#15151A] text-white text-sm disabled:opacity-50"
           >
-            {cargandoPrec ? 'Buscando…' : '🔍 Buscar productos'}
+            {cargandoPrec ? 'Buscando…' : '🔍 Ver modelos'}
           </button>
         </div>
 
         {items && (
-          <div className="border border-black/10 rounded-lg overflow-x-auto">
-            {items.length === 0 ? (
-              <p className="p-4 text-sm text-black/60">Sin resultados.</p>
+          <>
+            <p className="text-xs text-black/60">
+              {porModelo.length} modelo{porModelo.length !== 1 ? 's' : ''} · {items.length} color
+              {items.length !== 1 ? 'es' : ''}. Tocá un modelo para abrir sus colores.
+            </p>
+            {porModelo.length === 0 ? (
+              <p className="p-4 text-sm text-black/60 border border-black/10 rounded-lg">Sin resultados.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-[#F1EDE4]">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Producto</th>
-                    <th className="px-3 py-2 text-left font-semibold">SKU</th>
-                    <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Promocionado</th>
-                    <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Referencia (tachado)</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it) => {
-                    const cambiado = !!edits[it.variant_id]
-                    return (
-                      <tr key={it.variant_id} className="border-t border-black/5">
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{it.producto}</div>
-                          {it.variante && it.variante !== 'Default Title' && (
-                            <div className="text-xs text-black/50">{it.variante}</div>
-                          )}
-                          {it.estado !== 'active' && (
-                            <span className="text-[10px] uppercase text-amber-700">({it.estado})</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-black/60 whitespace-nowrap">{it.sku ?? '—'}</td>
-                        <td className="px-3 py-2">
-                          <input
-                            value={valorEdit(it, 'price')}
-                            onChange={(e) => setEdit(it, 'price', e.target.value)}
-                            inputMode="decimal"
-                            className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            value={valorEdit(it, 'compare')}
-                            onChange={(e) => setEdit(it, 'compare', e.target.value)}
-                            inputMode="decimal"
-                            placeholder="sin tachado"
-                            className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm placeholder:text-black/30"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
+              <div className="border border-black/10 rounded-lg divide-y divide-black/5">
+                {porModelo.map(([modelo, vars]) => {
+                  const abierto = modelosAbiertos.has(modelo)
+                  const cambios = vars.filter((v) => edits[v.variant_id]).length
+                  return (
+                    <div key={modelo}>
+                      <button
+                        onClick={() => toggleModelo(modelo)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[#FBF7EE]"
+                      >
+                        <span className="font-medium">
+                          {abierto ? '▾' : '▸'} {modelo}
+                        </span>
+                        <span className="text-xs text-black/50 whitespace-nowrap">
+                          {vars.length} color{vars.length !== 1 ? 'es' : ''}
+                          {cambios > 0 && <span className="text-[#C8A96E] font-semibold"> · {cambios} sin guardar</span>}
+                        </span>
+                      </button>
+                      {abierto && (
+                        <div className="px-3 pb-3 overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-[#F1EDE4]">
+                              <tr>
+                                <th className="px-2 py-1.5 text-left font-semibold">Color</th>
+                                <th className="px-2 py-1.5 text-left font-semibold">SKU</th>
+                                <th className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">Promocionado</th>
+                                <th className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">Referencia</th>
+                                <th className="px-2 py-1.5"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {vars.map((it) => {
+                                const cambiado = !!edits[it.variant_id]
+                                return (
+                                  <tr key={it.variant_id} className="border-t border-black/5">
+                                    <td className="px-2 py-1.5">
+                                      {it.variante && it.variante !== 'Default Title' ? it.variante : '(único)'}
+                                      {it.estado !== 'active' && (
+                                        <span className="ml-1 text-[10px] uppercase text-amber-700">({it.estado})</span>
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-xs text-black/60 whitespace-nowrap">{it.sku ?? '—'}</td>
+                                    <td className="px-2 py-1.5">
+                                      <input
+                                        value={valorEdit(it, 'price')}
+                                        onChange={(e) => setEdit(it, 'price', e.target.value)}
+                                        inputMode="decimal"
+                                        className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <input
+                                        value={valorEdit(it, 'compare')}
+                                        onChange={(e) => setEdit(it, 'compare', e.target.value)}
+                                        inputMode="decimal"
+                                        placeholder="sin tachado"
+                                        className="w-28 border border-black/15 rounded-md px-2 py-1 text-sm placeholder:text-black/30"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <button
+                                        onClick={() => guardarPrecio(it)}
+                                        disabled={!cambiado || guardandoId === it.variant_id}
+                                        className="px-2.5 py-1 rounded-lg border border-[#C8A96E] text-[#8F6A34] text-xs font-semibold disabled:opacity-30"
+                                      >
+                                        {guardandoId === it.variant_id ? '…' : 'Guardar'}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
                           <button
-                            onClick={() => guardarPrecio(it)}
-                            disabled={!cambiado || guardandoId === it.variant_id}
-                            className="px-3 py-1.5 rounded-lg bg-[#C8A96E] text-white text-xs font-semibold disabled:opacity-40"
+                            onClick={() => guardarModelo(modelo, vars)}
+                            disabled={cambios === 0 || guardandoModelo === modelo}
+                            className="mt-2 px-3 py-2 rounded-lg bg-[#C8A96E] text-white text-xs font-semibold disabled:opacity-40"
                           >
-                            {guardandoId === it.variant_id ? 'Guardando…' : 'Guardar'}
+                            {guardandoModelo === modelo ? 'Guardando…' : `💾 Guardar todos los colores del modelo (${cambios})`}
                           </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             )}
-          </div>
+          </>
         )}
-        {items && items.length >= 500 && (
-          <p className="text-xs text-black/60">Mostrando las primeras 500. Afiná la búsqueda para ver el resto.</p>
+        {items && items.length >= 2000 && (
+          <p className="text-xs text-black/60">Mostrando las primeras 2000 variantes. Afiná la búsqueda para ver el resto.</p>
         )}
       </div>
 
