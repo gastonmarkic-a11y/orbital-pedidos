@@ -4,7 +4,7 @@ import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
-import { daysSince, ymd } from '../../lib/dates'
+import { daysSince } from '../../lib/dates'
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -41,7 +41,7 @@ function origenDe(c: Cliente): string {
   return partes.join(' · ')
 }
 
-type Seccion = 'resumen' | 'buscar' | 'nuevo' | 'reasignar' | 'prospeccion'
+type Seccion = 'buscar' | 'nuevo' | 'reasignar' | 'prospeccion'
 
 interface ContactoBusqueda {
   cod: string
@@ -56,67 +56,12 @@ interface ContactoBusqueda {
   ultima_compra_fecha: string | null
 }
 
-interface FilaSemaforo {
-  cod: string
-  nombre: string | null
-  zona: string | null
-  whatsapp: string | null
-  telefono: string | null
-  vendedor_asignado: string | null
-  derivado_por: string | null
-  proxima_agenda_fecha: string | null
-  ultima_actividad: string | null
-  ultima_compra_fecha: string | null
-}
-
 export default function GestionClientes() {
   const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
-  const [seccion, setSeccion] = useState<Seccion>('resumen')
-  const esProsp = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
+  const [seccion, setSeccion] = useState<Seccion>('buscar')
 
-  // ── 0. Resumen / semáforo de la cartera ──
-  const [filas, setFilas] = useState<FilaSemaforo[] | null>(null)
-  const [resumenLoading, setResumenLoading] = useState(false)
-  const [bucketSel, setBucketSel] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (seccion !== 'resumen') return
-    setResumenLoading(true)
-    supabase.rpc('cartera_semaforo', { p_codigo: codigoEfectivo }).then(({ data, error }) => {
-      setResumenLoading(false)
-      if (error) {
-        toast('No se pudo cargar el resumen: ' + error.message, 'error')
-        setFilas([])
-        return
-      }
-      setFilas((data as FilaSemaforo[]) ?? [])
-    })
-  }, [seccion, codigoEfectivo, toast])
-
-  // Cada contacto cae en UN color, por prioridad: derivado > agenda vencida > por recencia de contacto
-  const buckets = useMemo(() => {
-    const hoyStr = ymd(new Date())
-    const b: Record<string, FilaSemaforo[]> = { verde: [], amarillo: [], rojo: [], azul: [], rosa: [] }
-    for (const f of filas ?? []) {
-      const derivadoRelevante = esProsp ? f.derivado_por === codigoEfectivo : !!f.derivado_por
-      if (derivadoRelevante) {
-        b.rosa.push(f)
-        continue
-      }
-      if (f.proxima_agenda_fecha && f.proxima_agenda_fecha < hoyStr) {
-        b.azul.push(f)
-        continue
-      }
-      const d = daysSince(f.ultima_actividad)
-      if (d === null || d > 30) b.rojo.push(f)
-      else if (d > 7) b.amarillo.push(f)
-      else b.verde.push(f)
-    }
-    return b
-  }, [filas, esProsp, codigoEfectivo])
-
-  // ── 0b. Búsqueda general en toda la base ──
+  // ── Búsqueda general en toda la base ──
   const [busq, setBusq] = useState('')
   const [resultados, setResultados] = useState<ContactoBusqueda[] | null>(null)
   const [buscando, setBuscando] = useState(false)
@@ -325,7 +270,6 @@ export default function GestionClientes() {
       <div className="flex gap-2 flex-wrap">
         {(
           [
-            ['resumen', '📊 Resumen'],
             ['buscar', '🔎 Buscar en la base'],
             ['nuevo', '➕ Nuevo prospecto'],
             ['reasignar', '🔄 Reasignar un cliente'],
@@ -343,76 +287,6 @@ export default function GestionClientes() {
           </button>
         ))}
       </div>
-
-      {seccion === 'resumen' && (
-        <div className="space-y-3">
-          {resumenLoading ? (
-            <p className="text-sm text-muted p-2">Cargando resumen...</p>
-          ) : (
-            (() => {
-              const total = filas?.length ?? 0
-              const contactados = buckets.verde.length + buckets.amarillo.length
-              const tiles = [
-                { key: 'verde', label: 'Contactado ≤7 días', dot: 'bg-emerald-500', ring: 'border-emerald-500', n: buckets.verde.length },
-                { key: 'amarillo', label: 'Hasta 30 días', dot: 'bg-amber-500', ring: 'border-amber-500', n: buckets.amarillo.length },
-                { key: 'rojo', label: '+30 días sin contacto', dot: 'bg-red-500', ring: 'border-red-500', n: buckets.rojo.length },
-                { key: 'azul', label: 'Agenda vencida', dot: 'bg-blue-500', ring: 'border-blue-500', n: buckets.azul.length },
-                { key: 'rosa', label: esProsp ? 'Derivados por vos' : 'Derivados de prospección', dot: 'bg-pink-500', ring: 'border-pink-500', n: buckets.rosa.length },
-              ]
-              return (
-                <>
-                  <p className="text-xs text-muted">
-                    {total} contactos en tu cartera · <b className="text-emerald-600">{contactados} contactados</b> (≤30d) ·{' '}
-                    <b className="text-red-600">{buckets.rojo.length} para retomar</b>
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                    {tiles.map((t) => (
-                      <button
-                        key={t.key}
-                        onClick={() => setBucketSel(bucketSel === t.key ? null : t.key)}
-                        className={`bg-white border rounded-xl p-3 text-left ${bucketSel === t.key ? t.ring : 'border-black/10'}`}
-                      >
-                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${t.dot} mb-1`} />
-                        <p className="text-2xl font-bold">{t.n}</p>
-                        <p className="text-[11px] text-muted leading-tight">{t.label}</p>
-                      </button>
-                    ))}
-                  </div>
-                  {bucketSel && (
-                    <div className="space-y-1.5">
-                      {(buckets[bucketSel] ?? []).slice(0, 100).map((f) => (
-                        <div key={f.cod} className="bg-white border border-black/10 rounded-lg p-2.5 text-sm flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{f.nombre}</p>
-                            <p className="text-[11px] text-muted">
-                              {f.cod} · {f.zona || '—'}
-                              {f.ultima_actividad ? ` · últ. contacto hace ${daysSince(f.ultima_actividad)}d` : ' · sin contacto registrado'}
-                              {f.proxima_agenda_fecha ? ` · agenda ${f.proxima_agenda_fecha}` : ''}
-                            </p>
-                          </div>
-                          {(f.whatsapp || f.telefono) && (
-                            <span className="text-[11px] text-brandDark whitespace-nowrap">📞 {f.whatsapp || f.telefono}</span>
-                          )}
-                        </div>
-                      ))}
-                      {(buckets[bucketSel] ?? []).length > 100 && (
-                        <p className="text-[11px] text-faint text-center">Mostrando 100 de {buckets[bucketSel].length}.</p>
-                      )}
-                    </div>
-                  )}
-                  {total === 0 && (
-                    <p className="text-sm text-faint text-center py-8 bg-white rounded-xl border border-black/10">
-                      {vendedor?.rol === 'admin'
-                        ? 'Usá el selector 👁 "ver como" un vendedor para ver su resumen.'
-                        : 'No tenés contactos en tu cartera todavía.'}
-                    </p>
-                  )}
-                </>
-              )
-            })()
-          )}
-        </div>
-      )}
 
       {seccion === 'buscar' && (
         <div className="space-y-2">

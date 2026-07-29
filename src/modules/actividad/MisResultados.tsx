@@ -2,11 +2,37 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Actividad, ObjetivoMes, Propuesta } from '../../lib/types'
-import { monthKey, habilesTranscurridos, habilesDelMes } from '../../lib/dates'
+import { monthKey, habilesTranscurridos, habilesDelMes, ymd, daysSince } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
 
 const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
+
+interface FilaSem {
+  cod: string
+  nombre: string | null
+  zona: string | null
+  whatsapp: string | null
+  telefono: string | null
+  vendedor_asignado: string | null
+  derivado_por: string | null
+  proxima_agenda_fecha: string | null
+  ultima_actividad: string | null
+  ultima_compra_fecha: string | null
+}
+interface TopProd {
+  modelo: string
+  unidades: number
+  pedidos: number
+}
+interface ZonaRow {
+  zona: string
+  clientes: number
+  con_venta_2025: number
+  activos_90: number
+  sin_contacto: number
+  unidades_2025: number
+}
 
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
@@ -18,6 +44,23 @@ export default function MisResultados() {
   const [acts, setActs] = useState<Actividad[]>([])
   const [vencidos, setVencidos] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Datos del Asistente (semáforo de cartera, productos y zonas)
+  const [sem, setSem] = useState<FilaSem[]>([])
+  const [topProd, setTopProd] = useState<TopProd[]>([])
+  const [zonas, setZonas] = useState<ZonaRow[]>([])
+
+  useEffect(() => {
+    if (!vendedor || !codigoEfectivo) return
+    Promise.all([
+      supabase.rpc('cartera_semaforo', { p_codigo: codigoEfectivo }),
+      supabase.rpc('top_productos_vendedor', { p_codigo: codigoEfectivo, p_limit: 8 }),
+      supabase.rpc('zonas_vendedor', { p_codigo: codigoEfectivo }),
+    ]).then(([s, t, z]) => {
+      setSem((s.data as FilaSem[]) ?? [])
+      setTopProd((t.data as TopProd[]) ?? [])
+      setZonas((z.data as ZonaRow[]) ?? [])
+    })
+  }, [vendedor, codigoEfectivo])
 
   useEffect(() => {
     if (!vendedor) return
@@ -78,9 +121,45 @@ export default function MisResultados() {
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .slice(0, 15)
 
+  // Semáforo de la cartera: cada contacto en un color por prioridad
+  const hoyStr = ymd(new Date())
+  const bk: Record<string, FilaSem[]> = { verde: [], amarillo: [], rojo: [], azul: [], rosa: [] }
+  for (const f of sem) {
+    const der = esProspeccion ? f.derivado_por === codigoEfectivo : !!f.derivado_por
+    if (der) bk.rosa.push(f)
+    else if (f.proxima_agenda_fecha && f.proxima_agenda_fecha < hoyStr) bk.azul.push(f)
+    else {
+      const d = daysSince(f.ultima_actividad)
+      if (d === null || d > 30) bk.rojo.push(f)
+      else if (d > 7) bk.amarillo.push(f)
+      else bk.verde.push(f)
+    }
+  }
+  const semTiles: [string, string, string][] = [
+    ['verde', '≤7d', 'bg-emerald-500'],
+    ['amarillo', '≤30d', 'bg-amber-500'],
+    ['rojo', '+30d', 'bg-red-500'],
+    ['azul', 'Agenda', 'bg-blue-500'],
+    ['rosa', esProspeccion ? 'Derivé' : 'Derivados', 'bg-pink-500'],
+  ]
+  // A quién contactar: los rojos, priorizando los que compraron más recientemente (más para recuperar)
+  const aContactar = [...bk.rojo]
+    .sort((a, b) => (b.ultima_compra_fecha || '').localeCompare(a.ultima_compra_fecha || ''))
+    .slice(0, 8)
+  const zonasCalientes = zonas.slice(0, 5)
+  const zonasFrias = [...zonas]
+    .filter((z) => z.clientes >= 3)
+    .sort((a, b) => b.sin_contacto / b.clientes - a.sin_contacto / a.clientes)
+    .slice(0, 5)
+  const contactosPorVenta = ventas > 0 ? (contactos / ventas).toFixed(1) : '—'
+
   return (
     <div className="space-y-4 text-ink">
-      <h2 className="text-base font-semibold">Mis Resultados · {monthKey()}</h2>
+      <h2 className="text-base font-semibold">🤖 Asistente · {monthKey()}</h2>
+      <p className="text-xs text-muted -mt-2">
+        {esProspeccion ? 'Prospección' : (vendedor?.rol === 'admin' ? codigoEfectivo : vendedor?.nombre)} — tu resumen,
+        cartera y a quién contactar.
+      </p>
 
       {vencidos > 0 && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
@@ -115,7 +194,93 @@ export default function MisResultados() {
           Ventas proyectadas: <b>{proyVentas}</b>{' '}
           {objetivo && (proyVentas >= (objetivo.objetivo_ventas ?? 0) ? '✅ en línea' : '⚠ por debajo del objetivo')}
         </p>
+        <p className="text-sm text-ink">
+          Contactos por venta: <b>{contactosPorVenta}</b>{' '}
+          <span className="text-[11px] text-faint">(cuántos contactos te lleva cerrar una)</span>
+        </p>
       </div>
+
+      {/* Semáforo de la cartera */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <p className="text-xs font-semibold text-muted mb-2">Estado de tu cartera</p>
+        <div className="grid grid-cols-5 gap-1.5">
+          {semTiles.map(([k, lab, dot]) => (
+            <div key={k} className="text-center">
+              <span className={`inline-block w-2.5 h-2.5 rounded-full ${dot} mb-1`} />
+              <p className="text-lg font-bold leading-none">{bk[k].length}</p>
+              <p className="text-[10px] text-muted">{lab}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-faint mt-2">
+          <b className="text-emerald-600">{bk.verde.length + bk.amarillo.length}</b> contactados (≤30d) ·{' '}
+          <b className="text-red-600">{bk.rojo.length}</b> para retomar · <b className="text-blue-600">{bk.azul.length}</b>{' '}
+          con agenda vencida
+        </p>
+      </div>
+
+      {/* A quién contactar */}
+      {aContactar.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10">
+          <p className="text-xs font-semibold text-muted mb-1">🎯 A quién contactar primero</p>
+          <p className="text-[11px] text-faint mb-2">+30 días sin contacto, priorizados por compra más reciente (más para recuperar).</p>
+          <div className="space-y-1">
+            {aContactar.map((f) => (
+              <div key={f.cod} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">
+                  {f.nombre} <span className="text-faint text-[11px]">· {f.zona || '—'}</span>
+                </span>
+                <span className="text-[11px] text-muted whitespace-nowrap">
+                  {f.ultima_compra_fecha ? `compró ${f.ultima_compra_fecha}` : 'sin compra'}
+                  {f.whatsapp || f.telefono ? ` · 📞 ${f.whatsapp || f.telefono}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top productos */}
+      {topProd.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10">
+          <p className="text-xs font-semibold text-muted mb-2">🕶 Tus productos más vendidos</p>
+          <div className="space-y-1">
+            {topProd.map((p) => (
+              <div key={p.modelo} className="flex items-center justify-between text-sm">
+                <span className="truncate">{p.modelo}</span>
+                <span className="text-[11px] text-muted whitespace-nowrap">
+                  <b className="text-ink">{p.unidades}</b> u · {p.pedidos} ped.
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Zonas calientes / frías */}
+      {zonas.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10">
+          <p className="text-xs font-semibold text-muted mb-2">📍 Zonas</p>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <p className="text-[11px] font-semibold text-red-600 mb-1">🔥 Calientes (más volumen)</p>
+              {zonasCalientes.map((z) => (
+                <p key={z.zona} className="text-xs text-ink">
+                  {z.zona} — <b>{z.unidades_2025}</b> u · {z.con_venta_2025}/{z.clientes} con compra
+                </p>
+              ))}
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-blue-600 mb-1">❄ Frías (para trabajar)</p>
+              {zonasFrias.map((z) => (
+                <p key={z.zona} className="text-xs text-ink">
+                  {z.zona} — {z.sin_contacto}/{z.clientes} sin contactar
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {Object.keys(porPropuesta).length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-black/10">

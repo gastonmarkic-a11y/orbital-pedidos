@@ -118,7 +118,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   ]
   const secundarios: NavItem[] = [
     { to: '/gestion-clientes', label: 'Mis clientes' },
-    { to: '/resultados', label: 'Resultados' },
+    { to: '/resultados', label: 'Asistente' },
     { to: '/marketing', label: 'Marketing' },
   ]
   const menu: NavItem[] = []
