@@ -5,6 +5,7 @@ import { Actividad, ObjetivoMes, Propuesta } from '../../lib/types'
 import { monthKey, habilesTranscurridos, habilesDelMes, ymd, daysSince } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
+import SimuladorEscenarios from './SimuladorEscenarios'
 
 const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
 
@@ -153,6 +154,23 @@ export default function MisResultados() {
     .slice(0, 5)
   const contactosPorVenta = ventas > 0 ? (contactos / ventas).toFixed(1) : '—'
 
+  // Baseline real para el simulador
+  const unidadesMes = acts.reduce((s, a) => s + (a.unidades_vendidas ?? 0), 0)
+  const contactosDiaBase = contactos / Math.max(habilesT, 1)
+  const convBase = contactos > 0 ? ventas / contactos : 0.1
+  const uxvBase = ventas > 0 ? unidadesMes / ventas : 4
+
+  // Coach: contactos que pidieron que los llamen más adelante (para retomar antes de que se enfríen)
+  const DEFERRAL = /(m[aá]s adelante|semana que viene|pr[oó]xim|volver a llamar|m[aá]s tarde|despu[eé]s|fin de mes|el lunes|reci[eé]n|cuando pueda)/i
+  const deferidos: Actividad[] = []
+  const vistosDef = new Set<string>()
+  for (const a of [...acts].sort((x, y) => y.fecha.localeCompare(x.fecha))) {
+    if (!a.voz_cliente_nota || !DEFERRAL.test(a.voz_cliente_nota)) continue
+    if (!a.cod_cliente || vistosDef.has(a.cod_cliente)) continue
+    vistosDef.add(a.cod_cliente)
+    deferidos.push(a)
+  }
+
   return (
     <div className="space-y-4 text-ink">
       <h2 className="text-base font-semibold">🤖 Asistente · {monthKey()}</h2>
@@ -199,6 +217,37 @@ export default function MisResultados() {
           <span className="text-[11px] text-faint">(cuántos contactos te lleva cerrar una)</span>
         </p>
       </div>
+
+      <SimuladorEscenarios
+        contactosDia={contactosDiaBase}
+        convRate={convBase}
+        unidadesPorVenta={uxvBase}
+        habilesMes={habilesM}
+        objetivoVentas={objetivo?.objetivo_ventas ?? 0}
+      />
+
+      {deferidos.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-amber-200">
+          <p className="text-xs font-semibold text-amber-700 mb-1">🧭 Coach: retomá antes de que se enfríen</p>
+          <p className="text-[11px] text-faint mb-2">
+            Te dijeron "llamá más adelante". Volvé ahora con una propuesta concreta (canje / preventa / bienvenida) antes
+            de perder el interés.
+          </p>
+          <div className="space-y-1.5">
+            {deferidos.slice(0, 8).map((a) => (
+              <div key={a.id} className="border-l-2 border-amber-300 pl-2.5">
+                <p className="text-sm text-ink">
+                  {a.nombre_comercio || a.cod_cliente}{' '}
+                  <span className="text-[11px] text-faint">
+                    · {new Date(a.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                  </span>
+                </p>
+                <p className="text-[11px] text-muted">💬 {a.voz_cliente_nota}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Semáforo de la cartera */}
       <div className="bg-white rounded-xl p-4 border border-black/10">
