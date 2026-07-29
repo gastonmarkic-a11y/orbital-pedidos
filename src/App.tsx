@@ -94,6 +94,9 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     }
   if (rol === 'logistica')
     return { principales: [{ to: '/pedidos', label: 'Entregas' }], secundarios: [], menu: [] }
+  // Usuario de solo-contenido: únicamente la carpeta de material de marketing, nada más.
+  if (rol === 'contenido')
+    return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -138,6 +141,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
 
 function homeFor(rol: Rol): string {
   if (rol === 'produccion') return '/produccion'
+  if (rol === 'contenido') return '/marketing'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   return '/hoy'
 }
@@ -328,7 +332,8 @@ function Layout() {
               <Route path="/gestion-clientes" element={<GestionClientes />} />
             </>
           )}
-          <Route path="/pedidos" element={<Pedidos />} />
+          {rol === 'contenido' && <Route path="/marketing" element={<Marketing />} />}
+          {rol !== 'contenido' && <Route path="/pedidos" element={<Pedidos />} />}
           {(rol === 'admin' || rol === 'administracion') && (
             <>
               <Route path="/pedidos/dashboard" element={<DashboardPedidos />} />
