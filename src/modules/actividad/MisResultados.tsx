@@ -45,6 +45,18 @@ interface MetodoRow {
   contactos: number
   ventas: number
 }
+interface PropToque {
+  propuesta_id: number
+  envios_v: number
+  conv_v: number
+  envios_eq: number
+  conv_eq: number
+}
+interface SeqRow {
+  ambito: string
+  path: string
+  veces: number
+}
 
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
@@ -61,6 +73,8 @@ export default function MisResultados() {
   const [topProd, setTopProd] = useState<TopProd[]>([])
   const [zonas, setZonas] = useState<ZonaRow[]>([])
   const [metodo, setMetodo] = useState<MetodoRow[]>([])
+  const [propToques, setPropToques] = useState<PropToque[]>([])
+  const [secuencia, setSecuencia] = useState<SeqRow[]>([])
 
   // Coach con IA (Gemini)
   const [pregunta, setPregunta] = useState('')
@@ -105,11 +119,15 @@ export default function MisResultados() {
       supabase.rpc('top_productos_vendedor', { p_codigo: codigoEfectivo, p_limit: 8 }),
       supabase.rpc('zonas_vendedor', { p_codigo: codigoEfectivo }),
       supabase.rpc('metodo_contacto', { p_codigo: codigoEfectivo }),
-    ]).then(([s, t, z, m]) => {
+      supabase.rpc('contactos_por_propuesta', { p_codigo: codigoEfectivo }),
+      supabase.rpc('secuencia_conversion', { p_codigo: codigoEfectivo }),
+    ]).then(([s, t, z, m, pp, sq]) => {
       setSem((s.data as FilaSem[]) ?? [])
       setTopProd((t.data as TopProd[]) ?? [])
       setZonas((z.data as ZonaRow[]) ?? [])
       setMetodo((m.data as MetodoRow[]) ?? [])
+      setPropToques((pp.data as PropToque[]) ?? [])
+      setSecuencia((sq.data as SeqRow[]) ?? [])
     })
   }, [vendedor, codigoEfectivo])
 
@@ -261,6 +279,27 @@ export default function MisResultados() {
     { k: 'recordatorio', icon: '⏰', label: 'Recordatorio' },
   ]
 
+  // Contactos para convertir POR PROPUESTA (vendedor vs equipo) — el destacado
+  const propTouques = propToques
+    .filter((p) => p.envios_v > 0)
+    .map((p) => ({
+      nombre: propuestasDef.find((x) => x.id === p.propuesta_id)?.nombre ?? `Propuesta ${p.propuesta_id}`,
+      toquesV: p.conv_v > 0 ? p.envios_v / p.conv_v : null,
+      toquesEq: p.conv_eq > 0 ? p.envios_eq / p.conv_eq : null,
+    }))
+    .sort((a, b) => (b.toquesV ?? 0) - (a.toquesV ?? 0))
+
+  // Secuencia de canales más frecuente (vendedor vs equipo)
+  const canalIcon = (c: string) => (c === 'WS' ? '📱' : c === 'Llamada' ? '📞' : c === 'Visita' ? '🤝' : c === 'Mail' ? '✉️' : c)
+  const iconizar = (path: string) =>
+    path
+      .split(' → ')
+      .slice(0, 5)
+      .map(canalIcon)
+      .join(' → ')
+  const seqVend = secuencia.find((s) => s.ambito === 'vendedor')
+  const seqEq = secuencia.find((s) => s.ambito === 'equipo')
+
   return (
     <div className="space-y-4 text-ink">
       <h2 className="text-base font-semibold">🤖 Asistente · {monthKey()}</h2>
@@ -352,6 +391,47 @@ export default function MisResultados() {
               )
             })}
           </div>
+          {/* DESTACADO: contactos para convertir POR PROPUESTA */}
+          {propTouques.length > 0 && (
+            <div className="border-t border-black/10 pt-2">
+              <p className="text-xs font-semibold text-ink mb-1">📊 Contactos para convertir, por propuesta</p>
+              <div className="space-y-1">
+                {propTouques.map((p) => (
+                  <div key={p.nombre} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate">{p.nombre}</span>
+                    <span className="whitespace-nowrap">
+                      <b className="text-brandDark text-base">{p.toquesV != null ? p.toquesV.toFixed(1) : '—'}</b>
+                      <span className="text-[11px] text-muted"> contactos/venta · equipo {p.toquesEq != null ? p.toquesEq.toFixed(1) : '—'}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-faint mt-1">Cuántos contactos te lleva cerrar con cada propuesta. Ajustá el método donde estés lejos del equipo.</p>
+            </div>
+          )}
+
+          {/* Secuencia más frecuente */}
+          {(seqVend || seqEq) && (
+            <div className="border-t border-black/10 pt-2">
+              <p className="text-xs font-semibold text-ink mb-1">🔀 Tu secuencia más frecuente para cerrar</p>
+              {seqVend && (
+                <p className="text-sm">
+                  <span className="text-[11px] text-muted">Vos:</span> {iconizar(seqVend.path)}{' '}
+                  <span className="text-[11px] text-faint">({seqVend.veces}×)</span>
+                </p>
+              )}
+              {seqEq && (
+                <p className="text-sm">
+                  <span className="text-[11px] text-muted">Equipo:</span> {iconizar(seqEq.path)}{' '}
+                  <span className="text-[11px] text-faint">({seqEq.veces}×)</span>
+                </p>
+              )}
+              <p className="text-sm">
+                <span className="text-[11px] text-muted">Sugerida:</span> 📱 → 📞 → 🤝 → ✅
+              </p>
+            </div>
+          )}
+
           <p className="text-[11px] text-faint">
             Compará tu mezcla de canales con la del equipo para encontrar el método que más convierte.
           </p>
