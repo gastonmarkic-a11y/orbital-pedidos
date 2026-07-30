@@ -706,32 +706,32 @@ export default function Cartera() {
                 )}
               </div>
               {c.nota && <p className="text-[11px] text-muted">📝 {c.nota}</p>}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button onClick={() => enviar(c)} className="flex-1 rounded-lg bg-brand text-white py-1.5 text-xs font-medium">
-                  📤 Enviar
+              <div className="flex items-stretch gap-1 pt-1">
+                <button onClick={() => enviar(c)} className="flex-1 rounded-lg bg-brand text-white py-1.5 text-[11px] font-medium">
+                  Enviar
                 </button>
                 {mostrarDerivar && (
-                  <button onClick={() => setDerivar(c)} className="flex-1 rounded-lg bg-[#8F6A34] text-white py-1.5 text-xs font-medium">
-                    ↗ Derivar
+                  <button onClick={() => setDerivar(c)} className="flex-1 rounded-lg bg-[#8F6A34] text-white py-1.5 text-[11px] font-medium">
+                    Derivar
                   </button>
                 )}
                 {mostrarPedido && (
                   <button
                     onClick={() => navigate('/pedidos/nuevo', { state: { cliente: c } })}
-                    className="flex-1 rounded-lg bg-emerald-600 text-white py-1.5 text-xs font-medium"
+                    className="flex-1 rounded-lg bg-emerald-600 text-white py-1.5 text-[11px] font-medium"
                   >
-                    🛒 Pedido
+                    Pedido
                   </button>
                 )}
-                <button onClick={() => abrirNota(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted" title="Agregar nota o recordatorio">
-                  📝 Nota
+                <button onClick={() => abrirNota(c)} className="flex-1 rounded-lg border border-black/10 py-1.5 text-[11px] text-muted" title="Agregar nota o recordatorio">
+                  Nota
                 </button>
-                <button onClick={() => setHistorial(c)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs text-muted">
+                <button onClick={() => setHistorial(c)} className="flex-1 rounded-lg border border-black/10 py-1.5 text-[11px] text-muted">
                   Historial
                 </button>
                 <button
                   onClick={() => setBorrar(c)}
-                  className="rounded-lg border border-red-200 text-red-600 px-3 py-1.5 text-xs"
+                  className="rounded-lg border border-red-200 text-red-600 px-2 py-1.5 text-[11px]"
                   title="Eliminar contacto"
                 >
                   🗑

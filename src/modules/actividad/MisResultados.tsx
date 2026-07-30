@@ -34,6 +34,17 @@ interface ZonaRow {
   sin_contacto: number
   unidades_2025: number
 }
+interface MetodoRow {
+  ambito: string
+  wa: number
+  llamada: number
+  mail: number
+  reunion: number
+  recordatorio: number
+  otros: number
+  contactos: number
+  ventas: number
+}
 
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
@@ -49,6 +60,7 @@ export default function MisResultados() {
   const [sem, setSem] = useState<FilaSem[]>([])
   const [topProd, setTopProd] = useState<TopProd[]>([])
   const [zonas, setZonas] = useState<ZonaRow[]>([])
+  const [metodo, setMetodo] = useState<MetodoRow[]>([])
 
   // Coach con IA (Gemini)
   const [pregunta, setPregunta] = useState('')
@@ -92,10 +104,12 @@ export default function MisResultados() {
       supabase.rpc('cartera_semaforo', { p_codigo: codigoEfectivo }),
       supabase.rpc('top_productos_vendedor', { p_codigo: codigoEfectivo, p_limit: 8 }),
       supabase.rpc('zonas_vendedor', { p_codigo: codigoEfectivo }),
-    ]).then(([s, t, z]) => {
+      supabase.rpc('metodo_contacto', { p_codigo: codigoEfectivo }),
+    ]).then(([s, t, z, m]) => {
       setSem((s.data as FilaSem[]) ?? [])
       setTopProd((t.data as TopProd[]) ?? [])
       setZonas((z.data as ZonaRow[]) ?? [])
+      setMetodo((m.data as MetodoRow[]) ?? [])
     })
   }, [vendedor, codigoEfectivo])
 
@@ -233,6 +247,20 @@ export default function MisResultados() {
     deferidos.push(a)
   }
 
+  // Método de contacto: toques por venta y mezcla de canales, vendedor vs equipo
+  const mVend = metodo.find((m) => m.ambito === 'vendedor')
+  const mEq = metodo.find((m) => m.ambito === 'equipo')
+  const toquesDe = (m?: MetodoRow) => (m && m.ventas > 0 ? m.contactos / m.ventas : null)
+  const toquesVend = toquesDe(mVend)
+  const toquesEq = toquesDe(mEq)
+  const CANALES: { k: keyof MetodoRow; icon: string; label: string }[] = [
+    { k: 'wa', icon: '📱', label: 'WhatsApp' },
+    { k: 'llamada', icon: '📞', label: 'Llamada' },
+    { k: 'mail', icon: '✉️', label: 'Mail' },
+    { k: 'reunion', icon: '🤝', label: 'Reunión / visita' },
+    { k: 'recordatorio', icon: '⏰', label: 'Recordatorio' },
+  ]
+
   return (
     <div className="space-y-4 text-ink">
       <h2 className="text-base font-semibold">🤖 Asistente · {monthKey()}</h2>
@@ -279,6 +307,56 @@ export default function MisResultados() {
           <span className="text-[11px] text-faint">(cuántos contactos te lleva cerrar una)</span>
         </p>
       </div>
+
+      {/* Método de contacto: toques por venta + mezcla de canales vs equipo */}
+      {mVend && mVend.contactos > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10 space-y-3">
+          <p className="text-sm font-semibold">
+            🧭 Tu método de contacto <span className="text-[11px] text-faint font-normal">(últimos 90 días)</span>
+          </p>
+          <div className="flex items-center gap-3 bg-[#F1EDE4] rounded-lg p-3">
+            <div className="text-center shrink-0">
+              <p className="text-3xl font-bold text-brandDark leading-none">{toquesVend ? toquesVend.toFixed(1) : '—'}</p>
+              <p className="text-[10px] text-muted mt-1 leading-tight">contactos<br />por venta</p>
+            </div>
+            <p className="text-xs text-muted flex-1">
+              Necesitás en promedio <b>{toquesVend ? toquesVend.toFixed(1) : '—'}</b> contactos para cerrar 1 venta.
+              {toquesEq != null && (
+                <>
+                  {' '}El equipo: <b>{toquesEq.toFixed(1)}</b>.{' '}
+                  {toquesVend != null && (toquesVend <= toquesEq ? '💪 vas mejor que el promedio.' : 'hay margen para afinar el método.')}
+                </>
+              )}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            {CANALES.map((c) => {
+              const v = Number(mVend[c.k]) || 0
+              const e = Number(mEq?.[c.k]) || 0
+              const vp = mVend.contactos > 0 ? Math.round((v / mVend.contactos) * 100) : 0
+              const ep = mEq && mEq.contactos > 0 ? Math.round((e / mEq.contactos) * 100) : 0
+              return (
+                <div key={c.k} className="text-xs">
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {c.icon} {c.label}
+                    </span>
+                    <span className="text-muted">
+                      {vp}% <span className="text-faint">· equipo {ep}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-black/5 rounded-full mt-0.5 overflow-hidden">
+                    <div className="h-full bg-brand rounded-full" style={{ width: `${vp}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-faint">
+            Compará tu mezcla de canales con la del equipo para encontrar el método que más convierte.
+          </p>
+        </div>
+      )}
 
       <SimuladorEscenarios
         contactosDia={contactosDiaBase}

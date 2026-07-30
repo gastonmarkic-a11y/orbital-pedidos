@@ -250,8 +250,8 @@ export default function SimuladorEscenarios(props: Props) {
       </div>
 
       {/* Display tipo LCD + gauge */}
-      <div className="flex items-stretch gap-3 border-t border-white/10 pt-3">
-        <div className="flex-1 grid grid-cols-3 gap-2">
+      <div className="flex flex-col sm:flex-row items-center gap-3 border-t border-white/10 pt-3">
+        <div className="w-full flex-1 grid grid-cols-3 gap-2">
           {[
             { t: 'VENTAS/MES', v: fmtNum(ventasSim), d: `${deltaVentas >= 0 ? '+' : ''}${fmtNum(deltaVentas)} vs hoy`, dc: deltaVentas >= 0 ? '#34d399' : '#f87171' },
             { t: 'UNIDADES', v: fmtNum(unidadesSim), d: `${unidadesEff.toFixed(1)} x venta`, dc: '#ffffff80' },
