@@ -67,13 +67,41 @@ export default function SimuladorEscenarios(props: Props) {
   const basePrecio = Math.max(0, Math.round(props.precioBase ?? 150000))
 
   const [contactosDia, setContactosDia] = useState(baseContactos)
-  const [conv, setConv] = useState(baseConv) // %
+  const [conv, setConv] = useState(baseConv) // % base (contacto→venta)
   const [uxv, setUxv] = useState(baseUxv)
   const [descuento, setDescuento] = useState(0)
   const [precio, setPrecio] = useState(basePrecio)
+  // Palancas de la propuesta: cada una ajusta la conversión (supuestos, editables por el escenario)
+  const [foco, setFoco] = useState('todos')
+  const [plazo, setPlazo] = useState('30')
+  const [propuesta, setPropuesta] = useState('general')
 
-  // Modelo: ventas = contactos/día × días hábiles × conversión. Unidades = ventas × unidades/venta.
-  const ventasSim = contactosDia * props.habilesMes * (conv / 100)
+  const FOCO: Record<string, { m: number; label: string }> = {
+    todos: { m: 1, label: 'Toda la cartera' },
+    activos: { m: 1.4, label: 'Clientes activos' },
+    recuperar: { m: 1.0, label: 'A recuperar' },
+    frios: { m: 0.6, label: 'Contactos fríos' },
+  }
+  const PLAZO: Record<string, { m: number; label: string }> = {
+    contado: { m: 0.9, label: 'Contado' },
+    '30': { m: 1, label: '30 días' },
+    cuotas: { m: 1.15, label: '60-90-120 (cuotas)' },
+  }
+  const PROP: Record<string, { m: number; label: string }> = {
+    general: { m: 1, label: 'General' },
+    preventa: { m: 1.2, label: 'Preventa colección nueva' },
+    canje: { m: 1.1, label: 'Plan canje' },
+    bienvenida: { m: 1.05, label: 'Bienvenida' },
+  }
+  const focoM = (FOCO[foco] ?? FOCO.todos).m
+  const plazoM = (PLAZO[plazo] ?? PLAZO['30']).m
+  const propM = (PROP[propuesta] ?? PROP.general).m
+
+  // Conversión efectiva = base × palancas (tope 95%). Es la que mueve el resultado.
+  const convEfectiva = Math.min(95, conv * focoM * plazoM * propM)
+
+  // Modelo: ventas = contactos/día × días hábiles × conversión efectiva. Unidades = ventas × unidades/venta.
+  const ventasSim = contactosDia * props.habilesMes * (convEfectiva / 100)
   const unidadesSim = ventasSim * uxv
   const ingresoSim = unidadesSim * precio * (1 - descuento / 100)
 
@@ -82,7 +110,7 @@ export default function SimuladorEscenarios(props: Props) {
 
   // Coach: cuántos contactos/día harían falta para el objetivo, a la conversión elegida
   const contactosParaObjetivo =
-    props.objetivoVentas > 0 && conv > 0 ? props.objetivoVentas / (props.habilesMes * (conv / 100)) : 0
+    props.objetivoVentas > 0 && convEfectiva > 0 ? props.objetivoVentas / (props.habilesMes * (convEfectiva / 100)) : 0
 
   const data = [
     { name: 'Ritmo actual', ventas: Math.round(ventasBase), fill: '#9B968B' },
@@ -96,6 +124,9 @@ export default function SimuladorEscenarios(props: Props) {
     setUxv(baseUxv)
     setDescuento(0)
     setPrecio(basePrecio)
+    setFoco('todos')
+    setPlazo('30')
+    setPropuesta('general')
   }
 
   return (
@@ -155,6 +186,47 @@ export default function SimuladorEscenarios(props: Props) {
         />
       </div>
 
+      <div className="bg-[#F8F6F0] rounded-lg p-2.5 space-y-2">
+        <p className="text-[11px] font-semibold text-muted">Palancas de la propuesta (ajustan la conversión)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <label className="block text-[11px] text-muted">
+            🎯 Foco de cartera
+            <select value={foco} onChange={(e) => setFoco(e.target.value)} className="w-full mt-1 bg-white border border-black/10 rounded-lg px-2 py-1.5 text-sm text-ink">
+              {Object.entries(FOCO).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label} {v.m !== 1 ? `(×${v.m})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-[11px] text-muted">
+            💳 Plazo de pago
+            <select value={plazo} onChange={(e) => setPlazo(e.target.value)} className="w-full mt-1 bg-white border border-black/10 rounded-lg px-2 py-1.5 text-sm text-ink">
+              {Object.entries(PLAZO).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label} {v.m !== 1 ? `(×${v.m})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-[11px] text-muted">
+            📦 Propuesta / colección
+            <select value={propuesta} onChange={(e) => setPropuesta(e.target.value)} className="w-full mt-1 bg-white border border-black/10 rounded-lg px-2 py-1.5 text-sm text-ink">
+              {Object.entries(PROP).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label} {v.m !== 1 ? `(×${v.m})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="text-[11px] text-ink">
+          Conversión efectiva: <b className="text-brandDark">{convEfectiva.toFixed(1)}%</b>{' '}
+          <span className="text-faint">(base {conv}% × palancas)</span>
+        </p>
+        <p className="text-[10px] text-faint">Los multiplicadores son supuestos del escenario para tantear, no números medidos.</p>
+      </div>
+
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-[#F1EDE4] rounded-lg p-2">
           <p className="text-[10px] text-muted uppercase tracking-wide">Ventas / mes</p>
@@ -204,8 +276,8 @@ export default function SimuladorEscenarios(props: Props) {
 
       {props.objetivoVentas > 0 && (
         <div className="bg-brand/5 border border-brand/20 rounded-lg px-3 py-2 text-xs text-ink">
-          🧭 <b>Coach:</b> para llegar al objetivo de <b>{props.objetivoVentas}</b> ventas a una conversión del{' '}
-          <b>{conv}%</b>, necesitás cerca de <b>{Math.ceil(contactosParaObjetivo)} contactos/día</b>
+          🧭 <b>Coach:</b> para llegar al objetivo de <b>{props.objetivoVentas}</b> ventas a una conversión efectiva del{' '}
+          <b>{convEfectiva.toFixed(0)}%</b>, necesitás cerca de <b>{Math.ceil(contactosParaObjetivo)} contactos/día</b>
           {contactosParaObjetivo > contactosDia
             ? ` — hoy estás simulando ${contactosDia}. Subí contactos o mejorá la conversión.`
             : ' — con este escenario ya llegás. 💪'}
