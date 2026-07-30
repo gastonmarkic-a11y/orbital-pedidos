@@ -27,6 +27,11 @@ export function calcImporte(
       bruto += item.precio * item.cantidad
       continue
     }
+    // Preventa: el vendedor eligió el precio especial para este ítem (no se reescala por lista).
+    if (item.preventa && item.precio_pv != null) {
+      bruto += item.precio_pv * item.cantidad
+      continue
+    }
     const s = stock.find((x) => x.codigo === item.codigo)
     const precioBase = s ? s.precio || 0 : 0
     const precio = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0

@@ -124,6 +124,8 @@ export interface StockItem {
   tratamiento: string | null
   demanda: number | null
   es_caliente: boolean | null
+  /** Precio especial de preventa (si está seteado, el vendedor puede elegirlo en el pedido) */
+  precio_preventa?: number | null
 }
 
 export interface PedidoItem {
@@ -137,6 +139,10 @@ export interface PedidoItem {
   precio?: number
   sku_shopify?: string | null
   seccion?: 'linea' | 'outlet'
+  /** El vendedor eligió el precio de preventa para este ítem */
+  preventa?: boolean
+  /** Precio de preventa por unidad, snapshot al cargar el pedido (para que no cambie después) */
+  precio_pv?: number
 }
 
 export type EstadoPedido =

@@ -46,6 +46,8 @@ export default function NuevoPedido() {
   const [filtroTratam, setFiltroTratam] = useState('')
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [cart, setCart] = useState<Record<string, number>>({})
+  // SKUs para los que el vendedor eligió el precio de preventa
+  const [preventaSel, setPreventaSel] = useState<Set<string>>(new Set())
   const [entregaCanal, setEntregaCanal] = useState('')
   const [entregaPago, setEntregaPago] = useState('')
   const [medios, setMedios] = useState<string[]>([])
@@ -100,6 +102,7 @@ export default function NuevoPedido() {
         tratamiento: null,
         demanda: 0,
         es_caliente: false,
+        precio_preventa: null,
       })
     }
     setStock([...data, ...virtuales].sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '')))
@@ -386,12 +389,14 @@ export default function NuevoPedido() {
         const info = stock.find((x) => x.codigo === k)
         const disponible = p?.cantidad ?? 0
         const pendiente = Math.max(0, cart[k] - disponible)
+        const esPreventa = preventaSel.has(k) && info?.precio_preventa != null
         return {
           codigo: k,
           modelo: p?.modelo ?? info?.modelo ?? k,
           descripcion: p?.descripcion ?? info?.descripcion ?? null,
           cantidad: cart[k],
           ...(pendiente > 0 ? { pendiente } : {}),
+          ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
         }
       })
       const totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
@@ -456,6 +461,7 @@ export default function NuevoPedido() {
 
       await loadStock()
       setCart({})
+      setPreventaSel(new Set())
       setCliente(null)
       setEntregaCanal('')
       setEntregaPago('')
@@ -832,6 +838,26 @@ export default function NuevoPedido() {
                         <span className="block text-[10px] text-violet-700 font-medium">
                           🏭 {pendienteDe(k)} u. contra producción (se entregan cuando ingresen)
                         </span>
+                      )}
+                      {p.precio_preventa != null && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreventaSel((prev) => {
+                              const n = new Set(prev)
+                              if (n.has(k)) n.delete(k)
+                              else n.add(k)
+                              return n
+                            })
+                          }
+                          className={`mt-0.5 inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 border ${
+                            preventaSel.has(k)
+                              ? 'bg-amber-500 text-white border-amber-500'
+                              : 'border-amber-300 text-amber-700'
+                          }`}
+                        >
+                          {preventaSel.has(k) ? '✓ ' : ''}Preventa {formatPrecio(p.precio_preventa)}
+                        </button>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
