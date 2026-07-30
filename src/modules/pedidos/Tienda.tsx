@@ -79,6 +79,9 @@ export default function Tienda() {
       arr.push(it)
       m.set(it.producto, arr)
     }
+    // Colores ordenados alfabéticamente dentro de cada modelo
+    for (const arr of m.values())
+      arr.sort((a, b) => (a.variante || a.sku || '').localeCompare(b.variante || b.sku || '', 'es', { numeric: true }))
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [items])
 

@@ -247,6 +247,9 @@ export default function NuevoPedido() {
   const grupos = useMemo(() => {
     const g: Record<string, StockItem[]> = {}
     for (const p of stockFiltrado) (g[p.modelo] = g[p.modelo] || []).push(p)
+    // Colores (descripción) ordenados alfabéticamente dentro de cada modelo
+    for (const m of Object.keys(g))
+      g[m].sort((a, b) => (a.descripcion || a.codigo).localeCompare(b.descripcion || b.codigo, 'es', { numeric: true }))
     return g
   }, [stockFiltrado])
 
