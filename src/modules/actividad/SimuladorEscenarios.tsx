@@ -82,6 +82,22 @@ function Knob({
       <span className="text-[10px] text-white/70 text-center leading-tight">
         {icon} {label}
       </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onChange(Math.max(min, Math.round((value - step) / step) * step))}
+          className="w-6 h-6 rounded-md text-white/80 text-sm leading-none"
+          style={{ background: 'rgba(255,255,255,0.08)' }}
+        >
+          −
+        </button>
+        <button
+          onClick={() => onChange(Math.min(max, Math.round((value + step) / step) * step))}
+          className="w-6 h-6 rounded-md text-white/80 text-sm leading-none"
+          style={{ background: 'rgba(255,255,255,0.08)' }}
+        >
+          +
+        </button>
+      </div>
     </div>
   )
 }
@@ -130,7 +146,7 @@ export default function SimuladorEscenarios(props: Props) {
   const [contactosDia, setContactosDia] = useState(baseContactos)
   const [conv, setConv] = useState(baseConv)
   const [uxv, setUxv] = useState(baseUxv)
-  const [plazo, setPlazo] = useState(0) // días (0 = contado)
+  const [plazo, setPlazo] = useState('contado') // estructura de pago
   const [descuento, setDescuento] = useState(12) // arranca 12% como pediste
   const [precio, setPrecio] = useState(basePrecio)
   const [foco, setFoco] = useState('todos')
@@ -138,13 +154,20 @@ export default function SimuladorEscenarios(props: Props) {
 
   const FOCO: Record<string, number> = { todos: 1, activos: 1.4, recuperar: 1.0, frios: 0.6 }
   const PROP: Record<string, number> = { general: 1, preventa: 1.2, canje: 1.1, bienvenida: 1.05 }
-  // Plazo: contado 0.9 → 150 días 1.15 (a más plazo, más fácil el sí). Descuento: leve empujón.
-  const plazoM = 0.9 + (Math.min(plazo, 150) / 150) * 0.25
-  const descM = 1 + (descuento / 100) * 0.4
-  const convEfectiva = Math.min(95, conv * (FOCO[foco] ?? 1) * (PROP[propuesta] ?? 1) * plazoM * descM)
+  // Plazo típico: a más plazo, más fácil el sí (convM) y más grande el pedido (unidsBoost).
+  const PLAZO: Record<string, { label: string; convM: number; unidsBoost: number }> = {
+    contado: { label: 'Contado', convM: 0.92, unidsBoost: 0 },
+    '90': { label: '30·60·90', convM: 1.05, unidsBoost: 0.1 },
+    '120': { label: '30·60·90·120', convM: 1.1, unidsBoost: 0.16 },
+    '150': { label: '30·60·90·120·150', convM: 1.15, unidsBoost: 0.22 },
+  }
+  const plz = PLAZO[plazo] ?? PLAZO.contado
+  const descM = 1 + (descuento / 100) * 0.4 // el descuento también ayuda a cerrar
+  const convEfectiva = Math.min(95, conv * (FOCO[foco] ?? 1) * (PROP[propuesta] ?? 1) * plz.convM * descM)
+  const unidadesEff = uxv * (1 + plz.unidsBoost) // más plazo → pedidos más grandes
 
   const ventasSim = contactosDia * props.habilesMes * (convEfectiva / 100)
-  const unidadesSim = ventasSim * uxv
+  const unidadesSim = ventasSim * unidadesEff
   const ingresoSim = unidadesSim * precio * (1 - descuento / 100)
   const ventasBase = baseContactos * props.habilesMes * (baseConv / 100)
   const deltaVentas = ventasSim - ventasBase
@@ -162,7 +185,7 @@ export default function SimuladorEscenarios(props: Props) {
     setContactosDia(baseContactos)
     setConv(baseConv)
     setUxv(baseUxv)
-    setPlazo(0)
+    setPlazo('contado')
     setDescuento(12)
     setPrecio(basePrecio)
     setFoco('todos')
@@ -186,12 +209,22 @@ export default function SimuladorEscenarios(props: Props) {
         <Knob icon="📞" label="Contactos/día" value={contactosDia} min={1} max={Math.max(30, baseContactos * 3)} step={1} onChange={setContactosDia} accent="#38bdf8" />
         <Knob icon="🎯" label="Conversión" value={conv} min={1} max={60} step={1} onChange={setConv} accent="#f59e0b" fmt={(v) => `${v}%`} />
         <Knob icon="🕶" label="Unid./venta" value={uxv} min={1} max={40} step={1} onChange={setUxv} accent="#a78bfa" />
-        <Knob icon="💳" label="Plazo" value={plazo} min={0} max={150} step={15} onChange={setPlazo} accent="#34d399" fmt={(v) => (v === 0 ? 'Ctdo' : `${v}d`)} />
         <Knob icon="🏷" label="Descuento" value={descuento} min={0} max={40} step={1} onChange={setDescuento} accent="#f472b6" fmt={(v) => `${v}%`} />
       </div>
 
       {/* Pads */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-white/10 pt-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-white/10 pt-3">
+        <Pads
+          label="Plazo de pago"
+          value={plazo}
+          onChange={setPlazo}
+          options={[
+            { k: 'contado', label: 'Contado', color: '#f472b6' },
+            { k: '90', label: '30·60·90', color: '#34d399' },
+            { k: '120', label: '+120', color: '#34d399' },
+            { k: '150', label: '+150', color: '#34d399' },
+          ]}
+        />
         <Pads
           label="Foco de cartera"
           value={foco}
@@ -221,7 +254,7 @@ export default function SimuladorEscenarios(props: Props) {
         <div className="flex-1 grid grid-cols-3 gap-2">
           {[
             { t: 'VENTAS/MES', v: fmtNum(ventasSim), d: `${deltaVentas >= 0 ? '+' : ''}${fmtNum(deltaVentas)} vs hoy`, dc: deltaVentas >= 0 ? '#34d399' : '#f87171' },
-            { t: 'UNIDADES', v: fmtNum(unidadesSim), d: `${uxv} x venta`, dc: '#ffffff80' },
+            { t: 'UNIDADES', v: fmtNum(unidadesSim), d: `${unidadesEff.toFixed(1)} x venta`, dc: '#ffffff80' },
             { t: 'INGRESO EST.', v: fmtMoney(ingresoSim), d: `−${descuento}% desc.`, dc: '#ffffff80' },
           ].map((k) => (
             <div key={k.t} className="rounded-lg px-2 py-2 text-center" style={{ background: '#0b0b0e', border: '1px solid #ffffff14' }}>

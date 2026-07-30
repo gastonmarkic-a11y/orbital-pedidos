@@ -179,10 +179,36 @@ export default function MisResultados() {
     ['azul', 'Agenda', 'bg-blue-500'],
     ['rosa', esProspeccion ? 'Derivé' : 'Derivados', 'bg-pink-500'],
   ]
-  // A quién contactar: los rojos, priorizando los que compraron más recientemente (más para recuperar)
-  const aContactar = [...bk.rojo]
-    .sort((a, b) => (b.ultima_compra_fecha || '').localeCompare(a.ultima_compra_fecha || ''))
-    .slice(0, 8)
+  // A quién contactar: el ideal es que un cliente recompre ~cada 90 días. Priorizamos a los que
+  // están "para reponer" (compraron hace ~75-240 días) y a los contactos sin explorar (nunca
+  // contactados). Los que compraron hace poco NO son prioridad. Los muy contactados hace nada, tampoco.
+  const aContactar = sem
+    .map((f) => {
+      const dCompra = daysSince(f.ultima_compra_fecha)
+      const dContacto = daysSince(f.ultima_actividad)
+      let score = 0
+      let motivo = ''
+      if (dCompra !== null) {
+        if (dCompra < 45) {
+          score = -100 // recién compró, dejalo tranquilo
+        } else if (dCompra <= 240) {
+          score = 100 - Math.abs(dCompra - 100) / 3
+          motivo = `compró hace ${dCompra}d — toca reponer`
+        } else {
+          score = 45
+          motivo = `sin comprar hace ${Math.round(dCompra / 30)} meses`
+        }
+      } else {
+        // Nunca compró: sin explorar
+        score = dContacto === null ? 75 : 35
+        motivo = dContacto === null ? 'sin contactar / sin explorar' : 'sin comprar todavía'
+      }
+      if (dContacto !== null && dContacto < 7) score -= 50 // lo tocaste hace nada
+      return { f, score, motivo }
+    })
+    .filter((x) => x.score > 25)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
   const zonasCalientes = zonas.slice(0, 5)
   const zonasFrias = [...zonas]
     .filter((z) => z.clientes >= 3)
@@ -325,40 +351,47 @@ export default function MisResultados() {
         </div>
       )}
 
-      {/* Semáforo de la cartera */}
-      <div className="bg-white rounded-xl p-4 border border-black/10">
+      {/* Semáforo de la cartera — tarjetas de color */}
+      <div>
         <p className="text-xs font-semibold text-muted mb-2">Estado de tu cartera</p>
-        <div className="grid grid-cols-5 gap-1.5">
-          {semTiles.map(([k, lab, dot]) => (
-            <div key={k} className="text-center">
-              <span className={`inline-block w-2.5 h-2.5 rounded-full ${dot} mb-1`} />
-              <p className="text-lg font-bold leading-none">{bk[k].length}</p>
-              <p className="text-[10px] text-muted">{lab}</p>
-            </div>
-          ))}
+        <div className="grid grid-cols-5 gap-2">
+          {semTiles.map(([k, lab, dot]) => {
+            const tint: Record<string, string> = {
+              verde: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+              amarillo: 'bg-amber-50 border-amber-200 text-amber-700',
+              rojo: 'bg-red-50 border-red-200 text-red-700',
+              azul: 'bg-blue-50 border-blue-200 text-blue-700',
+              rosa: 'bg-pink-50 border-pink-200 text-pink-700',
+            }
+            return (
+              <div key={k} className={`rounded-xl border p-2.5 text-center ${tint[k]}`}>
+                <span className={`inline-block w-3 h-3 rounded-full ${dot} mb-1`} />
+                <p className="text-2xl font-bold leading-none">{bk[k].length}</p>
+                <p className="text-[10px] mt-1 leading-tight">{lab}</p>
+              </div>
+            )
+          })}
         </div>
-        <p className="text-[11px] text-faint mt-2">
-          <b className="text-emerald-600">{bk.verde.length + bk.amarillo.length}</b> contactados (≤30d) ·{' '}
-          <b className="text-red-600">{bk.rojo.length}</b> para retomar · <b className="text-blue-600">{bk.azul.length}</b>{' '}
-          con agenda vencida
-        </p>
       </div>
 
       {/* A quién contactar */}
       {aContactar.length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-black/10">
-          <p className="text-xs font-semibold text-muted mb-1">🎯 A quién contactar primero</p>
-          <p className="text-[11px] text-faint mb-2">+30 días sin contacto, priorizados por compra más reciente (más para recuperar).</p>
-          <div className="space-y-1">
-            {aContactar.map((f) => (
-              <div key={f.cod} className="flex items-center justify-between gap-2 text-sm">
+          <p className="text-sm font-semibold mb-1">🎯 A quién contactar primero</p>
+          <p className="text-[11px] text-faint mb-2">
+            Priorizados por ciclo de recompra (~90 días), contactos sin explorar y notas pendientes. Los que compraron
+            hace poco quedan afuera.
+          </p>
+          <div className="space-y-1.5">
+            {aContactar.map(({ f, motivo }) => (
+              <div key={f.cod} className="flex items-center justify-between gap-2 text-sm border-l-2 border-red-300 pl-2.5">
                 <span className="truncate">
                   {f.nombre} <span className="text-faint text-[11px]">· {f.zona || '—'}</span>
+                  {motivo && <span className="block text-[11px] text-red-600">{motivo}</span>}
                 </span>
-                <span className="text-[11px] text-muted whitespace-nowrap">
-                  {f.ultima_compra_fecha ? `compró ${f.ultima_compra_fecha}` : 'sin compra'}
-                  {f.whatsapp || f.telefono ? ` · 📞 ${f.whatsapp || f.telefono}` : ''}
-                </span>
+                {(f.whatsapp || f.telefono) && (
+                  <span className="text-[11px] text-brandDark whitespace-nowrap">📞 {f.whatsapp || f.telefono}</span>
+                )}
               </div>
             ))}
           </div>
@@ -409,12 +442,22 @@ export default function MisResultados() {
 
       {Object.keys(porPropuesta).length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-black/10">
-          <p className="text-xs font-semibold text-muted mb-2">Por tipo de propuesta</p>
-          {Object.entries(porPropuesta).map(([id, n]) => (
-            <p key={id} className="text-sm text-ink">
-              Propuesta #{id}: {n}
-            </p>
-          ))}
+          <p className="text-xs font-semibold text-muted mb-2">Envíos por propuesta este mes</p>
+          <div className="space-y-1">
+            {Object.entries(porPropuesta)
+              .sort((a, b) => b[1] - a[1])
+              .map(([id, n]) => {
+                const nombre = propuestasDef.find((p) => String(p.id) === id)?.nombre ?? `Propuesta ${id}`
+                return (
+                  <div key={id} className="flex items-center justify-between text-sm">
+                    <span className="truncate">{nombre}</span>
+                    <span className="text-[11px] text-muted whitespace-nowrap">
+                      <b className="text-ink">{n}</b> envío{n !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )
+              })}
+          </div>
         </div>
       )}
 
