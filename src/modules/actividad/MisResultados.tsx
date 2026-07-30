@@ -50,6 +50,33 @@ export default function MisResultados() {
   const [topProd, setTopProd] = useState<TopProd[]>([])
   const [zonas, setZonas] = useState<ZonaRow[]>([])
 
+  // Coach con IA (Gemini)
+  const [pregunta, setPregunta] = useState('')
+  const [respuesta, setRespuesta] = useState<string | null>(null)
+  const [pensando, setPensando] = useState(false)
+
+  async function preguntarCoach(q?: string) {
+    const texto = (q ?? pregunta).trim()
+    if (!texto) return
+    setPregunta(texto)
+    setPensando(true)
+    setRespuesta(null)
+    const { data, error } = await supabase.functions.invoke('asistente-coach', {
+      body: { codigo: codigoEfectivo, pregunta: texto },
+    })
+    setPensando(false)
+    const cuerpo = (data ?? {}) as { ok?: boolean; error?: string; detalle?: string; respuesta?: string }
+    if (error || cuerpo.error) {
+      setRespuesta(
+        cuerpo.error === 'falta_clave'
+          ? '⚙️ El coach todavía no está activado: falta cargar la API key de Gemini (GEMINI_API_KEY) en Supabase.'
+          : '❌ ' + (cuerpo.detalle || cuerpo.error || error?.message || 'No se pudo consultar al coach.')
+      )
+      return
+    }
+    setRespuesta(cuerpo.respuesta ?? 'Sin respuesta.')
+  }
+
   useEffect(() => {
     if (!vendedor || !codigoEfectivo) return
     Promise.all([
@@ -225,6 +252,46 @@ export default function MisResultados() {
         habilesMes={habilesM}
         objetivoVentas={objetivo?.objetivo_ventas ?? 0}
       />
+
+      {/* Coach con IA */}
+      <div className="bg-white rounded-xl p-4 border border-black/10 space-y-2">
+        <p className="text-sm font-semibold">🤖 Preguntale al Asistente</p>
+        <p className="text-[11px] text-faint">
+          Consultale sobre tu cartera: a quién contactar, qué ofrecer, cómo mejorar. Responde con tus datos reales.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {['¿A quién contacto hoy?', '¿Qué me conviene ofrecer?', 'Armame un plan para esta semana', '¿Cómo mejoro mi conversión?'].map((q) => (
+            <button
+              key={q}
+              onClick={() => preguntarCoach(q)}
+              disabled={pensando}
+              className="text-[11px] border border-black/10 rounded-full px-2.5 py-1 text-muted hover:bg-[#F1EDE4] disabled:opacity-50"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={pregunta}
+            onChange={(e) => setPregunta(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && preguntarCoach()}
+            placeholder="Escribí tu pregunta..."
+            className="flex-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
+          />
+          <button
+            onClick={() => preguntarCoach()}
+            disabled={pensando || !pregunta.trim()}
+            className="rounded-lg bg-brand text-white px-4 text-sm font-semibold disabled:opacity-50 shrink-0"
+          >
+            {pensando ? '...' : 'Preguntar'}
+          </button>
+        </div>
+        {pensando && <p className="text-xs text-muted">Pensando…</p>}
+        {respuesta && (
+          <div className="bg-[#F1EDE4] rounded-lg p-3 text-sm text-ink whitespace-pre-wrap">{respuesta}</div>
+        )}
+      </div>
 
       {deferidos.length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-amber-200">
