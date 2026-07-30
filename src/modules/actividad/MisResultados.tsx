@@ -65,7 +65,16 @@ export default function MisResultados() {
       body: { codigo: codigoEfectivo, pregunta: texto },
     })
     setPensando(false)
-    const cuerpo = (data ?? {}) as { ok?: boolean; error?: string; detalle?: string; respuesta?: string }
+    // En errores non-2xx el detalle viene en el body de la respuesta (error.context)
+    let cuerpo = (data ?? {}) as { ok?: boolean; error?: string; detalle?: string; respuesta?: string }
+    const ctx = (error as unknown as { context?: Response })?.context
+    if (error && ctx && typeof ctx.json === 'function') {
+      try {
+        cuerpo = await ctx.json()
+      } catch {
+        /* deja lo que haya */
+      }
+    }
     if (error || cuerpo.error) {
       setRespuesta(
         cuerpo.error === 'falta_clave'
