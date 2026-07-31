@@ -141,9 +141,15 @@ export default function SimuladorEscenarios(props: Props) {
   const baseContactos = Math.max(1, Math.round(props.contactosDia) || 5)
   const baseConv = Math.max(1, Math.round((props.convRate || 0.1) * 100))
   const baseUxv = Math.max(1, Math.round(props.unidadesPorVenta) || 4)
-  const basePrecio = Math.max(0, Math.round(props.precioBase ?? 150000))
+  const basePrecio = Math.max(0, Math.round(props.precioBase ?? 50000))
+  const maxContactos = Math.max(30, baseContactos * 3)
+  // El ecualizador arranca en la SUGERENCIA del coach: los contactos/día para llegar al objetivo
+  const sugeridoContactos =
+    props.objetivoVentas > 0
+      ? Math.min(maxContactos, Math.max(1, Math.ceil(props.objetivoVentas / (props.habilesMes * (baseConv / 100)))))
+      : baseContactos
 
-  const [contactosDia, setContactosDia] = useState(baseContactos)
+  const [contactosDia, setContactosDia] = useState(sugeridoContactos)
   const [conv, setConv] = useState(baseConv)
   const [uxv, setUxv] = useState(baseUxv)
   const [plazo, setPlazo] = useState('contado') // estructura de pago
@@ -182,7 +188,7 @@ export default function SimuladorEscenarios(props: Props) {
   const gaugeColor = pctObj >= 1 ? '#34d399' : pctObj >= 0.7 ? '#f59e0b' : '#f472b6'
 
   function reset() {
-    setContactosDia(baseContactos)
+    setContactosDia(sugeridoContactos)
     setConv(baseConv)
     setUxv(baseUxv)
     setPlazo('contado')
@@ -206,7 +212,7 @@ export default function SimuladorEscenarios(props: Props) {
 
       {/* Perillas */}
       <div className="flex flex-wrap justify-center gap-x-4 gap-y-3">
-        <Knob icon="📞" label="Contactos/día" value={contactosDia} min={1} max={Math.max(30, baseContactos * 3)} step={1} onChange={setContactosDia} accent="#38bdf8" />
+        <Knob icon="📞" label="Contactos/día" value={contactosDia} min={1} max={maxContactos} step={1} onChange={setContactosDia} accent="#38bdf8" />
         <Knob icon="🎯" label="Conversión" value={conv} min={1} max={60} step={1} onChange={setConv} accent="#f59e0b" fmt={(v) => `${v}%`} />
         <Knob icon="🕶" label="Unid./venta" value={uxv} min={1} max={40} step={1} onChange={setUxv} accent="#a78bfa" />
         <Knob icon="🏷" label="Descuento" value={descuento} min={0} max={40} step={1} onChange={setDescuento} accent="#f472b6" fmt={(v) => `${v}%`} />

@@ -14,6 +14,7 @@ import AgendaDelDia from './modules/actividad/AgendaDelDia'
 import Cartera from './modules/actividad/Cartera'
 import CargarActividad from './modules/actividad/CargarActividad'
 import MisResultados from './modules/actividad/MisResultados'
+import CoachFlotante from './modules/actividad/CoachFlotante'
 import Marketing from './modules/actividad/Marketing'
 import AdminActividad from './modules/actividad/AdminActividad'
 import AdminMarketing from './modules/actividad/AdminMarketing'
@@ -356,6 +357,7 @@ function Layout() {
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>
+      <CoachFlotante />
       <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-black/10 max-w-6xl mx-auto w-full left-0 right-0 z-20">
         {menuOpen && (
           <div className="absolute bottom-full right-2 mb-2 bg-white border border-black/10 rounded-xl shadow-lg p-2 w-56">

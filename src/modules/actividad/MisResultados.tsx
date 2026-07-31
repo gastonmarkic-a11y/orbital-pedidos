@@ -57,6 +57,11 @@ interface SeqRow {
   path: string
   veces: number
 }
+interface ToqueCliente {
+  ambito: string
+  convertidos: number
+  toques: number
+}
 
 export default function MisResultados() {
   const { vendedor, codigoEfectivo } = useAuth()
@@ -75,6 +80,7 @@ export default function MisResultados() {
   const [metodo, setMetodo] = useState<MetodoRow[]>([])
   const [propToques, setPropToques] = useState<PropToque[]>([])
   const [secuencia, setSecuencia] = useState<SeqRow[]>([])
+  const [toquesCli, setToquesCli] = useState<ToqueCliente[]>([])
 
   // Coach con IA (Gemini)
   const [pregunta, setPregunta] = useState('')
@@ -121,13 +127,15 @@ export default function MisResultados() {
       supabase.rpc('metodo_contacto', { p_codigo: codigoEfectivo }),
       supabase.rpc('contactos_por_propuesta', { p_codigo: codigoEfectivo }),
       supabase.rpc('secuencia_conversion', { p_codigo: codigoEfectivo }),
-    ]).then(([s, t, z, m, pp, sq]) => {
+      supabase.rpc('toques_por_cliente', { p_codigo: codigoEfectivo }),
+    ]).then(([s, t, z, m, pp, sq, tc]) => {
       setSem((s.data as FilaSem[]) ?? [])
       setTopProd((t.data as TopProd[]) ?? [])
       setZonas((z.data as ZonaRow[]) ?? [])
       setMetodo((m.data as MetodoRow[]) ?? [])
       setPropToques((pp.data as PropToque[]) ?? [])
       setSecuencia((sq.data as SeqRow[]) ?? [])
+      setToquesCli((tc.data as ToqueCliente[]) ?? [])
     })
   }, [vendedor, codigoEfectivo])
 
@@ -269,8 +277,13 @@ export default function MisResultados() {
   const mVend = metodo.find((m) => m.ambito === 'vendedor')
   const mEq = metodo.find((m) => m.ambito === 'equipo')
   const toquesDe = (m?: MetodoRow) => (m && m.ventas > 0 ? m.contactos / m.ventas : null)
-  const toquesVend = toquesDe(mVend)
+  const toquesVend = toquesDe(mVend) // (2) contactos para 1 venta en general
   const toquesEq = toquesDe(mEq)
+  // (1) contactos por CLIENTE para cerrar con el mismo cliente
+  const tcV = toquesCli.find((t) => t.ambito === 'vendedor')
+  const tcE = toquesCli.find((t) => t.ambito === 'equipo')
+  const porClienteV = tcV && tcV.convertidos > 0 ? tcV.toques / tcV.convertidos : null
+  const porClienteE = tcE && tcE.convertidos > 0 ? tcE.toques / tcE.convertidos : null
   const CANALES: { k: keyof MetodoRow; icon: string; label: string }[] = [
     { k: 'wa', icon: '📱', label: 'WhatsApp' },
     { k: 'llamada', icon: '📞', label: 'Llamada' },
@@ -353,20 +366,39 @@ export default function MisResultados() {
           <p className="text-sm font-semibold">
             🧭 Tu método de contacto <span className="text-[11px] text-faint font-normal">(últimos 90 días)</span>
           </p>
-          <div className="flex items-center gap-3 bg-[#F1EDE4] rounded-lg p-3">
-            <div className="text-center shrink-0">
-              <p className="text-3xl font-bold text-brandDark leading-none">{toquesVend ? toquesVend.toFixed(1) : '—'}</p>
-              <p className="text-[10px] text-muted mt-1 leading-tight">contactos<br />por venta</p>
-            </div>
-            <p className="text-xs text-muted flex-1">
-              Necesitás en promedio <b>{toquesVend ? toquesVend.toFixed(1) : '—'}</b> contactos para cerrar 1 venta.
-              {toquesEq != null && (
-                <>
-                  {' '}El equipo: <b>{toquesEq.toFixed(1)}</b>.{' '}
-                  {toquesVend != null && (toquesVend <= toquesEq ? '💪 vas mejor que el promedio.' : 'hay margen para afinar el método.')}
-                </>
-              )}
-            </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              {
+                t: 'CONTACTOS PARA 1 VENTA',
+                sub: 'en general (hoy → venta)',
+                v: toquesVend,
+                e: toquesEq,
+                hint: (v: number, e: number) => (v <= e ? '💪 mejor que el equipo' : 'a mejorar'),
+              },
+              {
+                t: 'CONTACTOS POR CLIENTE',
+                sub: 'para cerrar con el mismo',
+                v: porClienteV,
+                e: porClienteE,
+                hint: (v: number, e: number) => (v <= e ? '💪 más eficiente' : 'a mejorar'),
+              },
+            ].map((k) => (
+              <div key={k.t} className="rounded-lg p-3" style={{ background: 'linear-gradient(160deg,#17171c,#0f0f13)' }}>
+                <p className="text-[9px] tracking-wider" style={{ color: '#ffffff55' }}>
+                  {k.t}
+                </p>
+                <p className="text-3xl font-bold tabular-nums" style={{ color: '#7CF5A0', fontFamily: 'ui-monospace,monospace' }}>
+                  {k.v != null ? k.v.toFixed(1) : '—'}
+                </p>
+                <p className="text-[10px]" style={{ color: '#ffffff70' }}>
+                  {k.sub}
+                </p>
+                <p className="text-[10px] mt-1" style={{ color: '#ffffff90' }}>
+                  equipo <b>{k.e != null ? k.e.toFixed(1) : '—'}</b>
+                  {k.v != null && k.e != null && <span className="text-[#7CF5A0]"> · {k.hint(k.v, k.e)}</span>}
+                </p>
+              </div>
+            ))}
           </div>
           <div className="space-y-1.5">
             {CANALES.map((c) => {
