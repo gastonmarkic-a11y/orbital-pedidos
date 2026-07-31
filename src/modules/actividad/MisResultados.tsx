@@ -193,10 +193,15 @@ export default function MisResultados() {
     porPropuesta[k] = (porPropuesta[k] ?? 0) + 1
   }
 
-  const voces = acts
-    .filter((a) => a.voz_cliente_nota)
-    .sort((a, b) => b.fecha.localeCompare(a.fecha))
-    .slice(0, 15)
+  // Distribución de la voz del cliente por categoría (estadística, no el detalle)
+  const vozCats: Record<string, number> = {}
+  for (const a of acts) {
+    const t = clasificarVoz(a.voz_cliente_nota)
+    if (t) vozCats[t.label] = (vozCats[t.label] ?? 0) + 1
+  }
+  const vozOrden = Object.entries(vozCats).sort((a, b) => b[1] - a[1])
+  const vozTotal = vozOrden.reduce((s, [, n]) => s + n, 0)
+  const vozMax = Math.max(1, ...vozOrden.map(([, n]) => n))
 
   // Semáforo de la cartera: cada contacto en un color por prioridad
   const hoyStr = ymd(new Date())
@@ -382,23 +387,45 @@ export default function MisResultados() {
                 e: porClienteE,
                 hint: (v: number, e: number) => (v <= e ? '💪 más eficiente' : 'a mejorar'),
               },
-            ].map((k) => (
-              <div key={k.t} className="rounded-lg p-3" style={{ background: 'linear-gradient(160deg,#17171c,#0f0f13)' }}>
-                <p className="text-[9px] tracking-wider" style={{ color: '#ffffff55' }}>
-                  {k.t}
-                </p>
-                <p className="text-3xl font-bold tabular-nums" style={{ color: '#7CF5A0', fontFamily: 'ui-monospace,monospace' }}>
-                  {k.v != null ? k.v.toFixed(1) : '—'}
-                </p>
-                <p className="text-[10px]" style={{ color: '#ffffff70' }}>
-                  {k.sub}
-                </p>
-                <p className="text-[10px] mt-1" style={{ color: '#ffffff90' }}>
-                  equipo <b>{k.e != null ? k.e.toFixed(1) : '—'}</b>
-                  {k.v != null && k.e != null && <span className="text-[#7CF5A0]"> · {k.hint(k.v, k.e)}</span>}
-                </p>
-              </div>
-            ))}
+            ].map((k) => {
+              const esc = Math.max(k.v ?? 0, k.e ?? 0, 1) * 1.25
+              const mejor = k.v != null && k.e != null && k.v <= k.e
+              const barra = mejor ? '#7CF5A0' : '#f5a97c'
+              return (
+                  <div key={k.t} className="rounded-lg p-3" style={{ background: 'linear-gradient(160deg,#17171c,#0f0f13)' }}>
+                    <p className="text-[9px] tracking-wider" style={{ color: '#ffffff55' }}>
+                      {k.t}
+                    </p>
+                    <div className="flex items-end gap-1">
+                      <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: barra, fontFamily: 'ui-monospace,monospace' }}>
+                        {k.v != null ? k.v.toFixed(1) : '—'}
+                      </p>
+                      {k.v != null && k.e != null && (
+                        <span className="text-[9px] mb-0.5" style={{ color: barra }}>
+                          {k.v <= k.e ? '▼ mejor' : '▲ a mejorar'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] mb-1.5" style={{ color: '#ffffff70' }}>
+                      {k.sub}
+                    </p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] w-8 shrink-0" style={{ color: '#ffffff80' }}>vos</span>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#ffffff14' }}>
+                          <div className="h-full rounded-full" style={{ width: `${((k.v ?? 0) / esc) * 100}%`, background: barra }} />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] w-8 shrink-0" style={{ color: '#ffffff60' }}>equipo</span>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#ffffff14' }}>
+                          <div className="h-full rounded-full" style={{ width: `${((k.e ?? 0) / esc) * 100}%`, background: '#8891a0' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+            })}
           </div>
           <div className="space-y-1.5">
             {CANALES.map((c) => {
@@ -605,26 +632,48 @@ export default function MisResultados() {
         </div>
       )}
 
-      {/* Zonas calientes / frías */}
+      {/* Zonas calientes / frías — barras */}
       {zonas.length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-black/10">
           <p className="text-xs font-semibold text-muted mb-2">📍 Zonas</p>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <p className="text-[11px] font-semibold text-red-600 mb-1">🔥 Calientes (más volumen)</p>
-              {zonasCalientes.map((z) => (
-                <p key={z.zona} className="text-xs text-ink">
-                  {z.zona} — <b>{z.unidades_2025}</b> u · {z.con_venta_2025}/{z.clientes} con compra
-                </p>
-              ))}
+              <p className="text-[11px] font-semibold text-red-600 mb-1.5">🔥 Calientes (más volumen)</p>
+              <div className="space-y-1.5">
+                {(() => {
+                  const mx = Math.max(1, ...zonasCalientes.map((z) => z.unidades_2025))
+                  return zonasCalientes.map((z) => (
+                    <div key={z.zona}>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="truncate">{z.zona}</span>
+                        <span className="text-muted">{z.unidades_2025}u</span>
+                      </div>
+                      <div className="h-1.5 bg-black/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-red-500 rounded-full" style={{ width: `${(z.unidades_2025 / mx) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))
+                })()}
+              </div>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-blue-600 mb-1">❄ Frías (para trabajar)</p>
-              {zonasFrias.map((z) => (
-                <p key={z.zona} className="text-xs text-ink">
-                  {z.zona} — {z.sin_contacto}/{z.clientes} sin contactar
-                </p>
-              ))}
+              <p className="text-[11px] font-semibold text-blue-600 mb-1.5">❄ Frías (para trabajar)</p>
+              <div className="space-y-1.5">
+                {zonasFrias.map((z) => {
+                  const pct = z.clientes > 0 ? Math.round((z.sin_contacto / z.clientes) * 100) : 0
+                  return (
+                    <div key={z.zona}>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="truncate">{z.zona}</span>
+                        <span className="text-muted">{z.sin_contacto}/{z.clientes} sin contactar</span>
+                      </div>
+                      <div className="h-1.5 bg-black/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -633,50 +682,52 @@ export default function MisResultados() {
       {Object.keys(porPropuesta).length > 0 && (
         <div className="bg-white rounded-xl p-4 border border-black/10">
           <p className="text-xs font-semibold text-muted mb-2">Envíos por propuesta este mes</p>
-          <div className="space-y-1">
-            {Object.entries(porPropuesta)
-              .sort((a, b) => b[1] - a[1])
-              .map(([id, n]) => {
+          <div className="space-y-2">
+            {(() => {
+              const ent = Object.entries(porPropuesta).sort((a, b) => b[1] - a[1])
+              const mx = Math.max(1, ...ent.map(([, n]) => n))
+              return ent.map(([id, n]) => {
                 const nombre = propuestasDef.find((p) => String(p.id) === id)?.nombre ?? `Propuesta ${id}`
                 return (
-                  <div key={id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{nombre}</span>
-                    <span className="text-[11px] text-muted whitespace-nowrap">
-                      <b className="text-ink">{n}</b> envío{n !== 1 ? 's' : ''}
-                    </span>
+                  <div key={id}>
+                    <div className="flex justify-between text-xs">
+                      <span className="truncate">{nombre}</span>
+                      <span className="text-muted">
+                        <b className="text-ink">{n}</b>
+                      </span>
+                    </div>
+                    <div className="h-2 bg-black/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${(n / mx) * 100}%` }} />
+                    </div>
                   </div>
                 )
-              })}
+              })
+            })()}
           </div>
         </div>
       )}
 
+      {/* La voz del cliente — estadística por tema */}
       <div className="bg-white rounded-xl p-4 border border-black/10">
-        <p className="text-xs font-semibold text-muted mb-1">La voz del cliente este mes</p>
-        <p className="text-[11px] text-faint mb-3">
-          Lo que dijeron los clientes en cada contacto, para leer entre los números.
-        </p>
-        {voces.length === 0 ? (
+        <p className="text-xs font-semibold text-muted mb-1">🗣 La voz del cliente este mes</p>
+        <p className="text-[11px] text-faint mb-3">Qué dijeron, agrupado por tema — para ver los patrones, no caso por caso.</p>
+        {vozTotal === 0 ? (
           <p className="text-sm text-faint">Todavía no cargaste notas de clientes este mes.</p>
         ) : (
           <div className="space-y-2">
-            {voces.map((a) => {
-              const tema = clasificarVoz(a.voz_cliente_nota)
-              return (
-                <div key={a.id} className="border-l-2 border-brand/30 pl-3">
-                  <p className="text-xs text-faint">
-                    {new Date(a.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} ·{' '}
-                    {a.nombre_comercio}
-                  </p>
-                  <p className="text-sm text-ink">📝 {a.voz_cliente_nota}</p>
-                  {tema && (
-                    <span className="inline-block mt-1 text-[10px] text-brandDark bg-brand/10 rounded-full px-2 py-0.5">
-                      {tema.label}
-                    </span>
-                  )}
+            {vozOrden.map(([label, n]) => (
+              <div key={label}>
+                <div className="flex justify-between text-xs">
+                  <span className="truncate">{label}</span>
+                  <span className="text-muted">
+                    {n} · {Math.round((n / vozTotal) * 100)}%
+                  </span>
                 </div>
-              )
-            })}
+                <div className="h-2 bg-black/5 rounded-full overflow-hidden">
+                  <div className="h-full bg-brandDark rounded-full" style={{ width: `${(n / vozMax) * 100}%` }} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

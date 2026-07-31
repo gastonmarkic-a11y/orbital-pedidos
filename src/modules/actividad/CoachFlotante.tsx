@@ -2,6 +2,28 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
+// Avatar IA: orbe azul con carita de robot y glow (original, estilo tech)
+function AiAvatar({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" style={{ filter: 'drop-shadow(0 0 6px rgba(56,189,248,0.7))' }}>
+      <defs>
+        <radialGradient id="aiorb" cx="35%" cy="28%" r="80%">
+          <stop offset="0%" stopColor="#7dd3fc" />
+          <stop offset="55%" stopColor="#2563eb" />
+          <stop offset="100%" stopColor="#0b1e40" />
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22.5" fill="url(#aiorb)" stroke="#bae6fd" strokeWidth="1.5" />
+      <line x1="24" y1="11" x2="24" y2="16" stroke="#e0f2fe" strokeWidth="2" />
+      <circle cx="24" cy="10" r="2" fill="#e0f2fe" />
+      <rect x="14.5" y="16" width="19" height="15" rx="4.5" fill="#ffffff" opacity="0.96" />
+      <circle cx="20" cy="23" r="2.3" fill="#2563eb" />
+      <circle cx="28" cy="23" r="2.3" fill="#2563eb" />
+      <rect x="19" y="27.5" width="10" height="2" rx="1" fill="#93c5fd" />
+    </svg>
+  )
+}
+
 // Asistente flotante: ícono chico siempre a mano; se abre en un panel, se puede
 // ocultar (queda una pestañita en el borde para traerlo de vuelta).
 export default function CoachFlotante() {
@@ -58,12 +80,8 @@ export default function CoachFlotante() {
   // Oculto → pestañita en el borde derecho
   if (oculto) {
     return (
-      <button
-        onClick={traer}
-        title="Mostrar asistente"
-        className="fixed right-0 bottom-28 z-40 bg-[#15151A] text-white rounded-l-lg px-1.5 py-2 text-sm shadow-lg"
-      >
-        🤖
+      <button onClick={traer} title="Mostrar asistente" className="fixed right-0 bottom-28 z-40 rounded-l-lg overflow-hidden shadow-lg">
+        <AiAvatar size={30} />
       </button>
     )
   }
@@ -74,9 +92,9 @@ export default function CoachFlotante() {
       <button
         onClick={() => setOpen(true)}
         title="Preguntale al Asistente"
-        className="fixed right-4 bottom-24 z-40 w-12 h-12 rounded-full bg-[#15151A] text-white text-xl shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+        className="fixed right-4 bottom-24 z-40 active:scale-95 transition-transform"
       >
-        🤖
+        <AiAvatar size={52} />
       </button>
     )
   }
@@ -88,7 +106,9 @@ export default function CoachFlotante() {
       style={{ background: 'linear-gradient(160deg,#17171c,#0f0f13)' }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-        <span className="text-sm font-semibold text-white">🤖 Asistente</span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-white">
+          <AiAvatar size={22} /> Asistente
+        </span>
         <div className="flex items-center gap-3">
           <button onClick={ocultar} className="text-[11px] text-white/50">
             ocultar
