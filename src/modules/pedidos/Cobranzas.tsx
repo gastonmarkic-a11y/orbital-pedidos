@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
@@ -7,7 +8,10 @@ import { fetchPaged } from '../../lib/fetchAll'
 import { estadoLabel, importeDe } from './calc'
 
 export default function Cobranzas() {
+  const { rolEfectivo, codigoEfectivo } = useAuth()
   const toast = useToast()
+  // El vendedor cobra su propia cartera; administración y admin ven todo.
+  const esVendedor = rolEfectivo === 'vendedor'
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,14 +19,16 @@ export default function Cobranzas() {
   const [filtro, setFiltro] = useState('')
 
   const cargar = useCallback(async () => {
+    let q = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
+    if (esVendedor) q = q.eq('vendedor', codigoEfectivo)
     const [{ data: peds }, st] = await Promise.all([
-      supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
+      q,
       fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
     ])
     setPedidos((peds as Pedido[]) ?? [])
     setStock(st)
     setLoading(false)
-  }, [])
+  }, [esVendedor, codigoEfectivo])
 
   useEffect(() => {
     cargar()
@@ -55,7 +61,7 @@ export default function Cobranzas() {
 
   return (
     <div className="space-y-3 text-ink">
-      <h2 className="text-base font-semibold">📞 Cobranzas</h2>
+      <h2 className="text-base font-semibold">📞 {esVendedor ? 'Mis cobranzas' : 'Cobranzas'}</h2>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">

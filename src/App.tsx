@@ -124,6 +124,9 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/marketing', label: 'Marketing' },
   ]
   const menu: NavItem[] = []
+  // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
+  // pero acotada a su cartera.
+  if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' })
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
@@ -340,9 +343,11 @@ function Layout() {
           {(rol === 'admin' || rol === 'administracion') && (
             <>
               <Route path="/pedidos/dashboard" element={<DashboardPedidos />} />
-              <Route path="/pedidos/cobranzas" element={<Cobranzas />} />
               <Route path="/pedidos/clientes" element={<Clientes />} />
             </>
+          )}
+          {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && (
+            <Route path="/pedidos/cobranzas" element={<Cobranzas />} />
           )}
           {(rol === 'admin' || rol === 'deposito' || rol === 'produccion' || rol === 'tienda') && (
             <Route path="/pedidos/stock" element={<StockAdmin />} />
