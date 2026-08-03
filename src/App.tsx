@@ -23,6 +23,7 @@ import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Pedidos from './modules/pedidos/Pedidos'
 import Envios from './modules/envios/Envios'
 import GestionClientes from './modules/actividad/GestionClientes'
+import Derivaciones from './modules/atencion/Derivaciones'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
@@ -133,6 +134,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/produccion', label: 'Producción / Ingresos' },
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
+      { to: '/derivaciones', label: 'Derivaciones (bot)' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
@@ -354,6 +356,7 @@ function Layout() {
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>
