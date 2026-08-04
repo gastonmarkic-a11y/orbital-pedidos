@@ -9,6 +9,7 @@ import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
+import { exportarNovedadesTango } from './exportTango'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -370,6 +371,25 @@ export default function Pedidos() {
     }
   }
 
+  async function exportarTango() {
+    const cod = (window.prompt(
+      'Código del modelo de pedido en Tango\n(lo creás una vez en Ventas → Pedidos → Pedidos automáticos → Modelos de pedidos):',
+      localStorage.getItem('tango_modelo') || 'WEB'
+    ) || '').trim()
+    if (!cod) return
+    localStorage.setItem('tango_modelo', cod)
+    const desc = localStorage.getItem('tango_modelo_desc') || 'Pedidos App Orbital'
+    try {
+      const r = await exportarNovedadesTango(filtrados, { codigoModelo: cod, descModelo: desc })
+      toast(
+        `✓ Excel para Tango: ${r.filas} líneas de ${r.pedidos} pedidos${r.omitidos ? ` · ${r.omitidos} omitidos (sin código o sin ítems)` : ''}`,
+        'success'
+      )
+    } catch (e) {
+      toast('No se pudo generar el Excel: ' + (e as Error).message, 'error')
+    }
+  }
+
   function exportarDetalle() {
     let csv = 'Pedido;Fecha;Cliente;Estado;SKU;Modelo;Color;Cantidad\n'
     for (const l of filtrados) {
@@ -421,6 +441,15 @@ export default function Pedidos() {
           {(esDeposito || esAdmin || esAdministracion) && (
             <button onClick={exportarDetalle} className="text-xs font-medium border border-black/10 rounded-lg px-3 py-1.5 text-muted">
               ⬇ Exportar detalle
+            </button>
+          )}
+          {(esAdmin || esAdministracion) && (
+            <button
+              onClick={exportarTango}
+              className="text-xs font-semibold border border-blue-300 bg-blue-50 text-blue-700 rounded-lg px-3 py-1.5"
+              title="Genera el Excel de Novedades para importar en Tango (Pedidos automáticos)"
+            >
+              ⇢ Exportar a Tango
             </button>
           )}
           <button onClick={cargar} className="text-xs text-brandDark font-medium">
