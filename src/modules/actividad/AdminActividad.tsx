@@ -6,6 +6,7 @@ import { Actividad, ObjetivoMes, Propuesta, Vendedor } from '../../lib/types'
 import { monthKey, habilesTranscurridos, habilesDelMes } from '../../lib/dates'
 import { clasificarVoz } from './voz'
 import { useAuth } from '../../lib/auth'
+import Comparativa3Meses from './Comparativa3Meses'
 
 interface Metrica {
   label: string
@@ -366,6 +367,9 @@ export default function AdminActividad() {
           </p>
         ))}
       </div>
+
+      {/* Comparación de los últimos 3 meses */}
+      <Comparativa3Meses />
 
       {/* Avance de objetivos por persona */}
       {filas.map((f) => (
