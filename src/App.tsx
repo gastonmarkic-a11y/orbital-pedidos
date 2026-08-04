@@ -25,6 +25,7 @@ import Envios from './modules/envios/Envios'
 import GestionClientes from './modules/actividad/GestionClientes'
 import Derivaciones from './modules/atencion/Derivaciones'
 import MapaZonas from './modules/atencion/MapaZonas'
+import EnviosEcom from './modules/atencion/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
 import StockAdmin from './modules/pedidos/StockAdmin'
@@ -55,6 +56,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion': Factory,
   '/tienda': Store,
   '/publicidad': BarChart3,
+  '/envios-ecom': Truck,
 }
 
 function iconoDe(to: string, label: string) {
@@ -109,6 +111,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
+        { to: '/envios-ecom', label: 'Envíos e-comm' },
       ],
       menu: [],
     }
@@ -139,6 +142,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/derivaciones', label: 'Derivaciones (bot)' },
+      { to: '/envios-ecom', label: 'Envíos e-commerce' },
       { to: '/mapa-zonas', label: 'Mapa de zonas' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
@@ -365,6 +369,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/envios-ecom" element={<EnviosEcom />} />}
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>
