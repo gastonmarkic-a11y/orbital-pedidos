@@ -512,7 +512,13 @@ export default function MisResultados() {
           Consultale sobre tu cartera: a quién contactar, qué ofrecer, cómo mejorar. Responde con tus datos reales.
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {['¿A quién contacto hoy?', '¿Qué me conviene ofrecer?', 'Armame un plan para esta semana', '¿Cómo mejoro mi conversión?'].map((q) => (
+          {[
+            '¿A quién contacto hoy?',
+            '¿Qué me conviene ofrecer?',
+            'Armame un plan para esta semana',
+            '¿Cómo mejoro mi conversión?',
+            ...(vendedor?.rol === 'admin' ? ['¿Qué envíos hay en tránsito?'] : []),
+          ].map((q) => (
             <button
               key={q}
               onClick={() => preguntarCoach(q)}

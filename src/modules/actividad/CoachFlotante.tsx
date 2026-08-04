@@ -120,7 +120,12 @@ export default function CoachFlotante() {
       </div>
       <div className="p-3 space-y-2 max-h-[55vh] overflow-y-auto">
         <div className="flex flex-wrap gap-1">
-          {['¿A quién contacto hoy?', '¿Qué le mando?', 'Objeción: no me quiere comprar'].map((q) => (
+          {[
+            '¿A quién contacto hoy?',
+            '¿Qué le mando?',
+            'Objeción: no me quiere comprar',
+            ...(rolEfectivo === 'admin' ? ['¿Qué envíos hay en tránsito?'] : []),
+          ].map((q) => (
             <button
               key={q}
               onClick={() => preguntar(q)}
