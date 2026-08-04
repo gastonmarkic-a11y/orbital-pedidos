@@ -128,9 +128,17 @@ function fila(l: Linea, fecha: string, rs: string, p: Pedido, emp: ConfigEmpresa
 export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango): Promise<ResultadoExport> {
   const XLSX = await import('xlsx')
 
-  // Solo pedidos confirmados por depósito y no exportados aún.
+  // Solo pedidos B2B confirmados por depósito y no exportados aún.
+  // Los pedidos de la tienda online (vendedor = 'Tienda', Shopify) NO van a Tango:
+  // el e-commerce se factura por Contabilium (conector nativo de Shopify).
   const elegibles = pedidos.filter(
-    (p) => ESTADOS_CONFIRMADOS.includes(p.estado ?? '') && !p.exportado_tango_at && p.cod_cliente && p.items && p.items.length > 0
+    (p) =>
+      p.vendedor !== 'Tienda' &&
+      ESTADOS_CONFIRMADOS.includes(p.estado ?? '') &&
+      !p.exportado_tango_at &&
+      p.cod_cliente &&
+      p.items &&
+      p.items.length > 0
   )
 
   // Precios base del stock para los ítems B2B (sin precio explícito).
