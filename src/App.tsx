@@ -125,6 +125,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   const secundarios: NavItem[] = [
     { to: '/gestion-clientes', label: 'Mis clientes' },
     { to: '/resultados', label: 'Asistente' },
+    { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
   ]
   const menu: NavItem[] = []
@@ -369,7 +370,8 @@ function Layout() {
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/envios-ecom" element={<EnviosEcom />} />}
+          <Route path="/envios-ecom" element={<EnviosEcom />} />
+
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
         </Routes>
       </main>

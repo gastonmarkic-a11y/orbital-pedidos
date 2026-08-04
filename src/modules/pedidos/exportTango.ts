@@ -30,6 +30,18 @@ const COLUMNAS = [
 // Estados en los que depósito ya confirmó el pedido (listo para remitir en adelante).
 const ESTADOS_CONFIRMADOS = ['listo', 'listo_despachar', 'despachado', 'facturado']
 
+// ¿El pedido puede exportarse a Tango? (B2B, confirmado por depósito, no exportado aún)
+export function esElegibleTango(p: Pedido): boolean {
+  return (
+    p.vendedor !== 'Tienda' &&
+    ESTADOS_CONFIRMADOS.includes(p.estado ?? '') &&
+    !p.exportado_tango_at &&
+    !!p.cod_cliente &&
+    !!p.items &&
+    p.items.length > 0
+  )
+}
+
 export interface ConfigEmpresa {
   codigoModelo: string
   descModelo: string
@@ -131,15 +143,7 @@ export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango):
   // Solo pedidos B2B confirmados por depósito y no exportados aún.
   // Los pedidos de la tienda online (vendedor = 'Tienda', Shopify) NO van a Tango:
   // el e-commerce se factura por Contabilium (conector nativo de Shopify).
-  const elegibles = pedidos.filter(
-    (p) =>
-      p.vendedor !== 'Tienda' &&
-      ESTADOS_CONFIRMADOS.includes(p.estado ?? '') &&
-      !p.exportado_tango_at &&
-      p.cod_cliente &&
-      p.items &&
-      p.items.length > 0
-  )
+  const elegibles = pedidos.filter(esElegibleTango)
 
   // Precios base del stock para los ítems B2B (sin precio explícito).
   const codigos = new Set<string>()

@@ -124,7 +124,7 @@ export default function CoachFlotante() {
             '¿A quién contacto hoy?',
             '¿Qué le mando?',
             'Objeción: no me quiere comprar',
-            ...(rolEfectivo === 'admin' ? ['¿Qué envíos hay en tránsito?'] : []),
+            '¿Qué envíos hay en tránsito?',
           ].map((q) => (
             <button
               key={q}

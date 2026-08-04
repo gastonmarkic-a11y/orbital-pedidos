@@ -517,7 +517,7 @@ export default function MisResultados() {
             '¿Qué me conviene ofrecer?',
             'Armame un plan para esta semana',
             '¿Cómo mejoro mi conversión?',
-            ...(vendedor?.rol === 'admin' ? ['¿Qué envíos hay en tránsito?'] : []),
+            '¿Qué envíos hay en tránsito?',
           ].map((q) => (
             <button
               key={q}

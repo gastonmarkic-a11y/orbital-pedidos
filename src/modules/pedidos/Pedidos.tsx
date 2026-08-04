@@ -9,7 +9,7 @@ import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
-import { exportarPedidosTango } from './exportTango'
+import { exportarPedidosTango, esElegibleTango } from './exportTango'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -372,6 +372,19 @@ export default function Pedidos() {
   }
 
   async function exportarTango() {
+    const elegibles = filtrados.filter(esElegibleTango)
+    if (elegibles.length === 0) {
+      toast('No hay pedidos B2B confirmados sin exportar en la vista actual.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Se van a pasar ${elegibles.length} pedido(s) a Tango (Plenorius=blanco / Ejemplar=negro).\n` +
+          `Solo pedidos B2B en "✓ Listo p/facturar" o más avanzado, y que no se hayan exportado antes.\n\n¿Confirmás?`
+      )
+    ) {
+      return
+    }
     const cod = (window.prompt(
       'Código del modelo de pedido en Tango (creado en cada empresa,\nVentas → Pedidos → Pedidos automáticos → Modelos de pedidos):',
       localStorage.getItem('tango_modelo') || 'WEB'
@@ -562,6 +575,11 @@ export default function Pedidos() {
                         >
                           {estadoLabel(estado)}
                         </span>
+                        {l.exportado_tango_at && (
+                          <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-700">
+                            ✓ en Tango
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs font-semibold">
                         {l.total_units ?? 0} uds{' '}
