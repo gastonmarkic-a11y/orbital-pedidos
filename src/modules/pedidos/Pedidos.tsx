@@ -9,7 +9,7 @@ import { addDias, formatFecha } from '../../lib/dates'
 import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
-import { exportarNovedadesTango } from './exportTango'
+import { exportarPedidosTango } from './exportTango'
 
 const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
 const ESTADOS: EstadoPedido[] = [
@@ -373,20 +373,33 @@ export default function Pedidos() {
 
   async function exportarTango() {
     const cod = (window.prompt(
-      'Código del modelo de pedido en Tango\n(lo creás una vez en Ventas → Pedidos → Pedidos automáticos → Modelos de pedidos):',
+      'Código del modelo de pedido en Tango (creado en cada empresa,\nVentas → Pedidos → Pedidos automáticos → Modelos de pedidos):',
       localStorage.getItem('tango_modelo') || 'WEB'
     ) || '').trim()
     if (!cod) return
     localStorage.setItem('tango_modelo', cod)
     const desc = localStorage.getItem('tango_modelo_desc') || 'Pedidos App Orbital'
     try {
-      const r = await exportarNovedadesTango(filtrados, { codigoModelo: cod, descModelo: desc })
+      // Plenorius = parte blanca, Ejemplar = parte negra.
+      const r = await exportarPedidosTango(filtrados, {
+        blanco: { codigoModelo: cod, descModelo: desc },
+        negro: { codigoModelo: cod, descModelo: desc },
+      })
+      if (r.pedidos === 0) {
+        toast('No hay pedidos confirmados sin exportar en la vista actual.')
+        return
+      }
+      // Marca los pedidos como exportados para no reexportarlos.
+      const ahora = new Date().toISOString()
+      const { error } = await supabase.from('pedidos').update({ exportado_tango_at: ahora }).in('id', r.exportados)
+      if (error) throw error
+      setPedidos((prev) => prev.map((p) => (r.exportados.includes(p.id) ? { ...p, exportado_tango_at: ahora } : p)))
       toast(
-        `✓ Excel para Tango: ${r.filas} líneas de ${r.pedidos} pedidos${r.omitidos ? ` · ${r.omitidos} omitidos (sin código o sin ítems)` : ''}`,
+        `✓ ${r.pedidos} pedidos a Tango · Plenorius: ${r.lineasBlanco} líneas · Ejemplar: ${r.lineasNegro} líneas`,
         'success'
       )
     } catch (e) {
-      toast('No se pudo generar el Excel: ' + (e as Error).message, 'error')
+      toast('No se pudo exportar a Tango: ' + (e as Error).message, 'error')
     }
   }
 
@@ -443,13 +456,13 @@ export default function Pedidos() {
               ⬇ Exportar detalle
             </button>
           )}
-          {(esAdmin || esAdministracion) && (
+          {(esDeposito || esAdmin || esAdministracion) && (
             <button
               onClick={exportarTango}
               className="text-xs font-semibold border border-blue-300 bg-blue-50 text-blue-700 rounded-lg px-3 py-1.5"
-              title="Genera el Excel de Novedades para importar en Tango (Pedidos automáticos)"
+              title="Genera los Excel de Novedades para Tango (Plenorius=blanco / Ejemplar=negro). Solo pedidos confirmados y no exportados."
             >
-              ⇢ Exportar a Tango
+              ⇢ Pasar a Tango
             </button>
           )}
           <button onClick={cargar} className="text-xs text-brandDark font-medium">

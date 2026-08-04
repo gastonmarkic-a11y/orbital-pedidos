@@ -198,4 +198,6 @@ export interface Pedido {
   entrega_parcial: boolean | null
   /** Depósito decidió esperar a que ingrese el proyectado antes de armar */
   esperando_stock: boolean | null
+  /** Momento en que se exportó a Tango (Novedades). Evita reexportar. */
+  exportado_tango_at: string | null
 }
