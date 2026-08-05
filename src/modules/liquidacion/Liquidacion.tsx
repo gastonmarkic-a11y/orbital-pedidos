@@ -18,10 +18,11 @@ interface Prospector {
   nombre: string
   codigos: string[]
   objetivoCodigos: string[] // dónde buscar el objetivo en objetivos_mes (orden de prioridad)
+  prefijoCod?: string // prefijo de código de sus clientes, para atribuir reuniones derivadas
 }
 
 const PROSPECTORES: Prospector[] = [
-  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'], objetivoCodigos: ['ProspeccionVenta', 'Damian'] },
+  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'], objetivoCodigos: ['ProspeccionVenta', 'Damian'], prefijoCod: 'AG-DAM' },
   { codigo: 'Marketing', nombre: 'Luna', codigos: ['Marketing'], objetivoCodigos: ['Marketing'] },
 ]
 
@@ -79,7 +80,7 @@ interface CliRow {
   cod: string
   razon: string | null
   nomcomerc: string | null
-  derivado_por: string | null
+  derivado_at: string | null
   proxima_agenda_fecha: string | null
 }
 
@@ -204,10 +205,14 @@ export default function Liquidacion() {
           .order('id')
       )
 
+      // Reuniones = clientes derivados con reunión asignada en el mes. Se usa derivado_at
+      // (que NO se borra) en vez de derivado_por (que se limpia cuando el vendedor la toma).
       const { data: cliDeriv } = await supabase
         .from('clientes')
-        .select('cod, razon, nomcomerc, derivado_por, proxima_agenda_fecha')
-        .in('derivado_por', todosCodigos)
+        .select('cod, razon, nomcomerc, derivado_at, proxima_agenda_fecha')
+        .gte('derivado_at', desde)
+        .lt('derivado_at', hasta)
+        .not('proxima_agenda_fecha', 'is', null)
 
       const propNombre = new Map<number, string>()
       for (const p of ((props as { id: number; nombre: string }[]) ?? [])) propNombre.set(p.id, p.nombre)
@@ -224,7 +229,7 @@ export default function Liquidacion() {
       for (let i = 0; i < faltan.length; i += 300) {
         const { data } = await supabase
           .from('clientes')
-          .select('cod, razon, nomcomerc, derivado_por, proxima_agenda_fecha')
+          .select('cod, razon, nomcomerc, derivado_at, proxima_agenda_fecha')
           .in('cod', faltan.slice(i, i + 300))
         for (const c of (data as CliRow[]) ?? []) nombres.set(c.cod, c)
       }
@@ -263,9 +268,10 @@ export default function Liquidacion() {
         const clientesUnicos = mios.size
         const unidadesProp = clientesUnicos - compartidos + compartidos * 0.5
 
-        const reuniones = ((cliDeriv as CliRow[]) ?? []).filter(
-          (c) => c.derivado_por && p.codigos.includes(c.derivado_por) && c.proxima_agenda_fecha
-        ).length
+        // Reuniones del prospector: sus clientes (por prefijo de código) derivados con reunión en el mes.
+        const reuniones = p.prefijoCod
+          ? ((cliDeriv as CliRow[]) ?? []).filter((c) => (c.cod ?? '').startsWith(p.prefijoCod!)).length
+          : 0
 
         const cierresRows = acts.filter(
           (a) => a.vendedor && p.codigos.includes(a.vendedor) && (a.actividad_desarrollo ?? '').toLowerCase().startsWith('venta directa cerrada')
