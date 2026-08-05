@@ -6,6 +6,7 @@ import { monthKey, habilesTranscurridos, habilesDelMes, ymd, daysSince } from '.
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
 import SimuladorEscenarios from './SimuladorEscenarios'
+import AvanceSueldo from './AvanceSueldo'
 
 const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
 
@@ -345,6 +346,17 @@ export default function MisResultados() {
         />
         <ProgressBar label={etiquetas.ventas} real={ventas} objetivo={objetivo?.objetivo_ventas ?? 0} />
       </div>
+
+      {esProspeccion && (
+        <AvanceSueldo
+          codigoEfectivo={codigoEfectivo ?? ''}
+          acts={acts}
+          propValidas={propValidas}
+          objProp={objetivo?.objetivo_propuestas ?? 0}
+          objReuniones={objetivo?.objetivo_contactos ?? 0}
+          objCierres={objetivo?.objetivo_ventas ?? 0}
+        />
+      )}
 
       <div className="bg-white rounded-xl p-4 border border-black/10">
         <p className="text-xs font-semibold text-muted mb-2">Proyección al ritmo actual</p>
