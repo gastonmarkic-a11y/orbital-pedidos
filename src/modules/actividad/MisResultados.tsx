@@ -6,7 +6,7 @@ import { monthKey, habilesTranscurridos, habilesDelMes, ymd, daysSince } from '.
 import { clasificarVoz } from './voz'
 import ProgressBar from './ProgressBar'
 import SimuladorEscenarios from './SimuladorEscenarios'
-import AvanceSueldo from './AvanceSueldo'
+import FocoMes from './FocoMes'
 
 const PROSPECCION = ['Marketing', 'ProspeccionVenta', 'Damian']
 
@@ -348,10 +348,11 @@ export default function MisResultados() {
       </div>
 
       {esProspeccion && (
-        <AvanceSueldo
+        <FocoMes
           codigoEfectivo={codigoEfectivo ?? ''}
-          acts={acts}
           propValidas={propValidas}
+          actsMesActual={acts}
+          prog={{ propuestas: contactos, reuniones: propuestas, cierres: ventas }}
           objProp={objetivo?.objetivo_propuestas ?? 0}
           objReuniones={objetivo?.objetivo_contactos ?? 0}
           objCierres={objetivo?.objetivo_ventas ?? 0}

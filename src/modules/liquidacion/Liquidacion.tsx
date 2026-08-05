@@ -58,6 +58,8 @@ interface Resultado {
   montoReuniones: number
   montoCierres: number
   total: number
+  meta: number // total si completa los objetivos del mes
+  pctMeta: number
   // tarifas usadas
   basico: number
   factor: number
@@ -269,11 +271,14 @@ export default function Liquidacion() {
         const montoPropuestas = unidadesProp * tarifaProp
         const montoReuniones = reuniones * tarifaReunion
         const montoCierres = facturacionCierres * pctCierre
+        const total = montoBasico + montoPropuestas + montoReuniones + montoCierres
 
         const obj = p.objetivoCodigos.map((k) => objMap[k]).find(Boolean)
         const objProp = obj?.objetivo_propuestas ?? 0
         const objReuniones = obj?.objetivo_contactos ?? 0
         const objCierres = obj?.objetivo_ventas ?? 0
+        const meta = montoBasico + objProp * tarifaProp + objReuniones * tarifaReunion + montoCierres
+        const pctMeta = meta > 0 ? Math.min(100, Math.round((total / meta) * 100)) : 0
         const resena = generarResena(p.nombre, factor < 1, [
           { key: 'propuestas', label: 'propuestas', logrado: clientesUnicos, objetivo: objProp },
           { key: 'reuniones', label: 'reuniones', logrado: reuniones, objetivo: objReuniones },
@@ -300,7 +305,9 @@ export default function Liquidacion() {
           montoPropuestas,
           montoReuniones,
           montoCierres,
-          total: montoBasico + montoPropuestas + montoReuniones + montoCierres,
+          total,
+          meta,
+          pctMeta,
           basico,
           factor,
           tarifaProp,
@@ -361,6 +368,45 @@ export default function Liquidacion() {
               >
                 ⬇ Exportar
               </button>
+            </div>
+          </div>
+
+          {/* 💰 Cómo va el sueldo este mes */}
+          <div className="p-4 border-b border-black/5">
+            <div className="rounded-xl p-4 border border-brand/20" style={{ background: 'linear-gradient(160deg,#FBF8F1,#F3ECDD)' }}>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm font-semibold text-ink">💰 Cómo va el sueldo este mes</p>
+                <div className="text-right">
+                  <p className="text-[10px] text-faint uppercase tracking-wide">Acumulado</p>
+                  <p className="text-2xl font-bold text-brandDark leading-none">{money.format(r.total)}</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {[
+                  { label: 'Básico del mes', detalle: `${money.format(r.basico)} × ${num.format(r.factor)}`, monto: r.montoBasico },
+                  { label: 'Propuestas válidas', detalle: `${num.format(r.unidadesProp)} u. × ${money.format(r.tarifaProp)}`, monto: r.montoPropuestas },
+                  { label: 'Reuniones', detalle: `${r.reuniones} × ${money.format(r.tarifaReunion)}`, monto: r.montoReuniones },
+                  { label: 'Cierres telefónicos', detalle: `${num.format(r.pctCierre * 100)}% de ${money.format(r.facturacionCierres)}`, monto: r.montoCierres },
+                ].map((l) => (
+                  <div key={l.label} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="min-w-0">
+                      <span className="text-ink">{l.label}</span>
+                      <span className="block text-[10px] text-faint">{l.detalle}</span>
+                    </div>
+                    <span className="font-semibold text-ink shrink-0">{money.format(l.monto)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-black/10">
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="text-muted">Si completa los objetivos del mes</span>
+                  <span className="font-semibold text-ink">≈ {money.format(r.meta)}</span>
+                </div>
+                <div className="h-2.5 bg-black/5 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-brand" style={{ width: `${r.pctMeta}%` }} />
+                </div>
+                <p className="text-[10px] text-faint mt-1">Va por el {r.pctMeta}% de esa meta.</p>
+              </div>
             </div>
           </div>
 
