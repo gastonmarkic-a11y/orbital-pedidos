@@ -92,6 +92,18 @@ function mesLiquidacion(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function mesActualKey(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function mesPrevioKey(): string {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 function etiquetaMes(mes: string): string {
   const [y, m] = mes.split('-').map(Number)
   const nombres = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
@@ -328,23 +340,49 @@ export default function Liquidacion() {
 
   const totalGeneral = useMemo(() => resultados.reduce((s, r) => s + r.total, 0), [resultados])
 
+  const mesActual = mesActualKey()
+  const mesPrevio = mesPrevioKey()
+  const esMesActual = mes === mesActual
+
   if (loading) return <p className="text-sm text-muted p-4">Calculando estado de resultado…</p>
 
   return (
     <div className="space-y-4 text-ink">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <h2 className="text-base font-semibold">💵 Liquidación de prospectores</h2>
-          <p className="text-[11px] text-faint">Estado de resultado de {etiquetaMes(mes)} · calculado desde los datos reales</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted">Mes</label>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold">💵 Liquidación de prospectores</h2>
+            <p className="text-[11px] text-faint">
+              {esMesActual
+                ? `${etiquetaMes(mes)} · mes en curso (avance)`
+                : `${etiquetaMes(mes)} · mes cerrado (a liquidar)`}{' '}
+              · calculado desde los datos reales
+            </p>
+          </div>
           <input
             type="month"
             value={mes}
             onChange={(e) => setMes(e.target.value)}
             className="text-sm bg-white border border-black/10 rounded-lg px-2 py-1.5 text-ink"
           />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setMes(mesPrevio)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${
+              mes === mesPrevio ? 'bg-brand text-white border-brand' : 'bg-white text-muted border-black/10'
+            }`}
+          >
+            {etiquetaMes(mesPrevio)} · a liquidar
+          </button>
+          <button
+            onClick={() => setMes(mesActual)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${
+              mes === mesActual ? 'bg-brand text-white border-brand' : 'bg-white text-muted border-black/10'
+            }`}
+          >
+            {etiquetaMes(mesActual)} · en curso
+          </button>
         </div>
       </div>
 
@@ -375,9 +413,11 @@ export default function Liquidacion() {
           <div className="p-4 border-b border-black/5">
             <div className="rounded-xl p-4 border border-brand/20" style={{ background: 'linear-gradient(160deg,#FBF8F1,#F3ECDD)' }}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <p className="text-sm font-semibold text-ink">💰 Cómo va el sueldo este mes</p>
+                <p className="text-sm font-semibold text-ink">
+                  {esMesActual ? '💰 Cómo va el sueldo este mes' : '💰 Sueldo a liquidar del mes'}
+                </p>
                 <div className="text-right">
-                  <p className="text-[10px] text-faint uppercase tracking-wide">Acumulado</p>
+                  <p className="text-[10px] text-faint uppercase tracking-wide">{esMesActual ? 'Acumulado' : 'Total'}</p>
                   <p className="text-2xl font-bold text-brandDark leading-none">{money.format(r.total)}</p>
                 </div>
               </div>
@@ -399,13 +439,15 @@ export default function Liquidacion() {
               </div>
               <div className="mt-3 pt-3 border-t border-black/10">
                 <div className="flex items-center justify-between text-[11px] mb-1">
-                  <span className="text-muted">Si completa los objetivos del mes</span>
+                  <span className="text-muted">{esMesActual ? 'Si completa los objetivos del mes' : 'Techo con objetivos completos'}</span>
                   <span className="font-semibold text-ink">≈ {money.format(r.meta)}</span>
                 </div>
                 <div className="h-2.5 bg-black/5 rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-brand" style={{ width: `${r.pctMeta}%` }} />
                 </div>
-                <p className="text-[10px] text-faint mt-1">Va por el {r.pctMeta}% de esa meta.</p>
+                <p className="text-[10px] text-faint mt-1">
+                  {esMesActual ? `Va por el ${r.pctMeta}% de esa meta.` : `Alcanzó el ${r.pctMeta}% de ese techo.`}
+                </p>
               </div>
             </div>
           </div>
