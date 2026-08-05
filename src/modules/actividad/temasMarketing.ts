@@ -14,7 +14,11 @@ export const TEMAS: TemaMeta[] = [
   { key: 'canje', icono: '↩', label: 'Plan Canje', desc: 'Material para clientes activos con stock parado' },
   { key: 'preventa', icono: '🕶', label: 'Preventa Colección', desc: 'Copy, guión y catálogo de la preventa 2026' },
   { key: 'recuperar', icono: '📋', label: 'Clientes a Recuperar', desc: 'Guías de diagnóstico y propuesta segmentada' },
-  { key: 'general', icono: '📚', label: 'Material general', desc: 'Listas de precios, catálogos, imágenes y videos' },
+  { key: 'catalogos', icono: '📖', label: 'Catálogos', desc: 'Catálogos por línea: Sol, Receta, ZN, Be Rabbit, Sport' },
+  { key: 'listas-precios', icono: '💲', label: 'Lista de precios', desc: 'Listas de precios vigentes y de postventa' },
+  { key: 'cristales', icono: '🔬', label: 'Cristales y materialidad', desc: 'Blue cut, infrarrojo, triple protección y materiales de marcos' },
+  { key: 'herramientas', icono: '🧰', label: 'Herramientas comerciales', desc: 'Guiones de secuencia, objeciones y logo' },
+  { key: 'general', icono: '📚', label: 'Material general', desc: 'Material sin clasificar' },
 ]
 
 // Carpetas que se enganchan solas con los envíos de esa propuesta.
