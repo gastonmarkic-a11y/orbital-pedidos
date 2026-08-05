@@ -19,11 +19,12 @@ interface Prospector {
   codigos: string[]
   objetivoCodigos: string[] // dónde buscar el objetivo en objetivos_mes (orden de prioridad)
   prefijoCod?: string // prefijo de código de sus clientes, para atribuir reuniones derivadas
+  reunionesDe?: 'prefijo' | 'actividad' // cómo se cuentan sus reuniones/visitas
 }
 
 const PROSPECTORES: Prospector[] = [
-  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'], objetivoCodigos: ['ProspeccionVenta', 'Damian'], prefijoCod: 'AG-DAM' },
-  { codigo: 'Marketing', nombre: 'Luna', codigos: ['Marketing'], objetivoCodigos: ['Marketing'] },
+  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'], objetivoCodigos: ['ProspeccionVenta', 'Damian'], prefijoCod: 'AG-DAM', reunionesDe: 'prefijo' },
+  { codigo: 'Marketing', nombre: 'Luna', codigos: ['Marketing'], objetivoCodigos: ['Marketing'], reunionesDe: 'actividad' },
 ]
 
 interface ConfigCom {
@@ -33,6 +34,10 @@ interface ConfigCom {
   tarifa_propuesta: number
   tarifa_reunion: number
   pct_cierre: number
+  umbral_propuestas: number | null
+  basico_piso: number | null
+  extra_monto: number | null
+  extra_label: string | null
 }
 
 interface Resultado {
@@ -58,6 +63,9 @@ interface Resultado {
   montoPropuestas: number
   montoReuniones: number
   montoCierres: number
+  montoExtra: number
+  extraLabel: string | null
+  basicoCalculo: string
   total: number
   meta: number // total si completa los objetivos del mes
   pctMeta: number
@@ -268,10 +276,22 @@ export default function Liquidacion() {
         const clientesUnicos = mios.size
         const unidadesProp = clientesUnicos - compartidos + compartidos * 0.5
 
-        // Reuniones del prospector: sus clientes (por prefijo de código) derivados con reunión en el mes.
-        const reuniones = p.prefijoCod
-          ? ((cliDeriv as CliRow[]) ?? []).filter((c) => (c.cod ?? '').startsWith(p.prefijoCod!)).length
-          : 0
+        // Reuniones válidas: derivaciones a un vendedor de campo (Adrián/Martín) con reunión.
+        let reuniones = 0
+        if (p.reunionesDe === 'actividad') {
+          // Registra la derivación en la actividad ("Derivado a Adrián/Martín ..."). Solo cuentan
+          // las que van a un vendedor de campo, no las derivaciones a Ventas para llamado.
+          const clientesReunion = new Set<string>()
+          for (const a of acts) {
+            if (!a.vendedor || !p.codigos.includes(a.vendedor) || !a.cod_cliente) continue
+            const d = (a.actividad_desarrollo ?? '').toLowerCase()
+            if (d.includes('deriv') && (d.includes('adri') || d.includes('mart'))) clientesReunion.add(a.cod_cliente)
+          }
+          reuniones = clientesReunion.size
+        } else if (p.prefijoCod) {
+          // Sus clientes (por código) derivados con reunión en el mes (derivado_at, estable).
+          reuniones = ((cliDeriv as CliRow[]) ?? []).filter((c) => (c.cod ?? '').startsWith(p.prefijoCod!)).length
+        }
 
         const cierresRows = acts.filter(
           (a) => a.vendedor && p.codigos.includes(a.vendedor) && (a.actividad_desarrollo ?? '').toLowerCase().startsWith('venta directa cerrada')
@@ -279,23 +299,37 @@ export default function Liquidacion() {
         const facturacionCierres = cierresRows.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
 
         const c = cfgMap[p.codigo]
-        const basico = c?.basico ?? 0
-        const factor = c?.factor_basico ?? 1
-        const tarifaProp = c?.tarifa_propuesta ?? 0
-        const tarifaReunion = c?.tarifa_reunion ?? 0
-        const pctCierre = c?.pct_cierre ?? 0
+        const basico = Number(c?.basico ?? 0)
+        const factor = Number(c?.factor_basico ?? 1)
+        const tarifaProp = Number(c?.tarifa_propuesta ?? 0)
+        const tarifaReunion = Number(c?.tarifa_reunion ?? 0)
+        const pctCierre = Number(c?.pct_cierre ?? 0)
+        const umbral = c?.umbral_propuestas != null ? Number(c.umbral_propuestas) : null
+        const basicoPiso = Number(c?.basico_piso ?? 0)
+        const superaUmbral = umbral == null ? true : unidadesProp >= umbral
+        const basicoAplicado = umbral == null ? basico : superaUmbral ? basico : basicoPiso
+        const montoExtra = Number(c?.extra_monto ?? 0)
+        const extraLabel = c?.extra_label ?? null
+        const basicoCalculo =
+          umbral == null
+            ? `${money.format(basico)} × ${num.format(factor)}`
+            : superaUmbral
+              ? `${money.format(basico)} · llegó a ${umbral} propuestas`
+              : `piso ${money.format(basicoPiso)} · ${num.format(unidadesProp)} de ${umbral} propuestas`
 
-        const montoBasico = basico * factor
+        const montoBasico = basicoAplicado * factor
         const montoPropuestas = unidadesProp * tarifaProp
         const montoReuniones = reuniones * tarifaReunion
         const montoCierres = facturacionCierres * pctCierre
-        const total = montoBasico + montoPropuestas + montoReuniones + montoCierres
+        const total = montoBasico + montoPropuestas + montoReuniones + montoCierres + montoExtra
 
         const obj = p.objetivoCodigos.map((k) => objMap[k]).find(Boolean)
         const objProp = obj?.objetivo_propuestas ?? 0
         const objReuniones = obj?.objetivo_contactos ?? 0
         const objCierres = obj?.objetivo_ventas ?? 0
-        const meta = montoBasico + objProp * tarifaProp + objReuniones * tarifaReunion + montoCierres
+        // Techo: básico pleno + variables al objetivo + adicionales fijos.
+        const metaBasico = umbral == null ? montoBasico : basico * factor
+        const meta = metaBasico + objProp * tarifaProp + objReuniones * tarifaReunion + montoCierres + montoExtra
         const pctMeta = meta > 0 ? Math.min(100, Math.round((total / meta) * 100)) : 0
         const resena = generarResena(p.nombre, factor < 1, [
           { key: 'propuestas', label: 'propuestas', logrado: clientesUnicos, objetivo: objProp },
@@ -323,6 +357,9 @@ export default function Liquidacion() {
           montoPropuestas,
           montoReuniones,
           montoCierres,
+          montoExtra,
+          extraLabel,
+          basicoCalculo,
           total,
           meta,
           pctMeta,
@@ -429,17 +466,22 @@ export default function Liquidacion() {
               </div>
               <div className="mt-3 space-y-1.5">
                 {[
-                  { label: 'Básico del mes', detalle: `${money.format(r.basico)} × ${num.format(r.factor)}`, monto: r.montoBasico },
-                  { label: 'Propuestas válidas', detalle: `${num.format(r.unidadesProp)} u. × ${money.format(r.tarifaProp)}`, monto: r.montoPropuestas },
+                  { label: 'Básico del mes', detalle: r.basicoCalculo, monto: r.montoBasico },
+                  ...(r.tarifaProp > 0
+                    ? [{ label: 'Propuestas válidas', detalle: `${num.format(r.unidadesProp)} u. × ${money.format(r.tarifaProp)}`, monto: r.montoPropuestas }]
+                    : []),
                   { label: 'Reuniones', detalle: `${r.reuniones} × ${money.format(r.tarifaReunion)}`, monto: r.montoReuniones },
                   { label: 'Cierres telefónicos', detalle: `${num.format(r.pctCierre * 100)}% de ${money.format(r.facturacionCierres)}`, monto: r.montoCierres },
-                ].map((l) => (
+                  ...(r.extraLabel
+                    ? [{ label: r.extraLabel, detalle: r.montoExtra > 0 ? 'fijo' : 'a definir', monto: r.montoExtra, textoMonto: r.montoExtra > 0 ? undefined : 'a definir' }]
+                    : []),
+                ].map((l: { label: string; detalle: string; monto: number; textoMonto?: string }) => (
                   <div key={l.label} className="flex items-center justify-between gap-2 text-sm">
                     <div className="min-w-0">
                       <span className="text-ink">{l.label}</span>
                       <span className="block text-[10px] text-faint">{l.detalle}</span>
                     </div>
-                    <span className="font-semibold text-ink shrink-0">{money.format(l.monto)}</span>
+                    <span className="font-semibold text-ink shrink-0">{l.textoMonto ?? money.format(l.monto)}</span>
                   </div>
                 ))}
               </div>
@@ -546,17 +588,19 @@ export default function Liquidacion() {
                 </tr>
               </thead>
               <tbody>
-                <Linea concepto="Básico" calculo={`${money.format(r.basico)} × ${num.format(r.factor)}`} monto={r.montoBasico} />
-                <Linea
-                  concepto="Propuestas válidas"
-                  calculo={`${num.format(r.unidadesProp)} u. × ${money.format(r.tarifaProp)}`}
-                  monto={r.montoPropuestas}
-                />
+                <Linea concepto="Básico" calculo={r.basicoCalculo} monto={r.montoBasico} />
+                {r.tarifaProp > 0 && (
+                  <Linea
+                    concepto="Propuestas válidas"
+                    calculo={`${num.format(r.unidadesProp)} u. × ${money.format(r.tarifaProp)}`}
+                    monto={r.montoPropuestas}
+                  />
+                )}
                 <Linea
                   concepto="Reuniones"
                   calculo={`${r.reuniones} × ${money.format(r.tarifaReunion)}`}
                   monto={r.montoReuniones}
-                  nota="derivaciones a un vendedor con reunión asignada"
+                  nota="derivaciones a un vendedor (Adrián/Martín) con reunión"
                 />
                 <Linea
                   concepto="Cierres telefónicos"
@@ -564,6 +608,14 @@ export default function Liquidacion() {
                   monto={r.montoCierres}
                   nota={`${r.cantCierres} ventas directas cerradas`}
                 />
+                {r.extraLabel && (
+                  <Linea
+                    concepto={r.extraLabel}
+                    calculo={r.montoExtra > 0 ? 'fijo' : 'a definir'}
+                    monto={r.montoExtra}
+                    montoTexto={r.montoExtra > 0 ? undefined : 'a definir'}
+                  />
+                )}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-black/15">
@@ -636,10 +688,11 @@ async function exportarProspector(r: Resultado, mes: string) {
   resumen.push([])
   resumen.push(['ESTADO DE RESULTADO'])
   resumen.push(['Concepto', 'Cálculo', 'Resultado ($)'])
-  resumen.push(['Básico', `${r.basico} x ${r.factor}`, r.montoBasico])
-  resumen.push(['Propuestas válidas', `${r.unidadesProp} u. x ${r.tarifaProp}`, r.montoPropuestas])
+  resumen.push(['Básico', r.basicoCalculo, r.montoBasico])
+  if (r.tarifaProp > 0) resumen.push(['Propuestas válidas', `${r.unidadesProp} u. x ${r.tarifaProp}`, r.montoPropuestas])
   resumen.push(['Reuniones', `${r.reuniones} x ${r.tarifaReunion}`, r.montoReuniones])
   resumen.push(['Cierres telefónicos', `${r.pctCierre * 100}% de ${r.facturacionCierres}`, r.montoCierres])
+  if (r.extraLabel) resumen.push([r.extraLabel, r.montoExtra > 0 ? 'fijo' : 'a definir', r.montoExtra])
   resumen.push(['TOTAL A PAGAR', '', r.total])
   resumen.push([])
   resumen.push(['OBJETIVOS DEL MES', 'Logrado', 'Objetivo', '%'])
@@ -669,7 +722,7 @@ async function exportarProspector(r: Resultado, mes: string) {
   XLSX.writeFile(wb, `Liquidacion_${r.nombre}_${mes}.xlsx`)
 }
 
-function Linea({ concepto, calculo, monto, nota }: { concepto: string; calculo: string; monto: number; nota?: string }) {
+function Linea({ concepto, calculo, monto, nota, montoTexto }: { concepto: string; calculo: string; monto: number; nota?: string; montoTexto?: string }) {
   return (
     <tr className="border-b border-black/5">
       <td className="py-2 align-top">
@@ -677,7 +730,7 @@ function Linea({ concepto, calculo, monto, nota }: { concepto: string; calculo: 
         {nota && <span className="block text-[10px] text-faint">{nota}</span>}
       </td>
       <td className="py-2 text-muted text-xs align-top">{calculo}</td>
-      <td className="py-2 text-right font-semibold text-ink align-top">{money.format(monto)}</td>
+      <td className="py-2 text-right font-semibold text-ink align-top">{montoTexto ?? money.format(monto)}</td>
     </tr>
   )
 }
