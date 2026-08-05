@@ -349,9 +349,18 @@ export default function Liquidacion() {
               <p className="text-sm font-semibold flex items-center gap-2">📞 {r.nombre}</p>
               <p className="text-[11px] text-faint">{r.diasTexto}</p>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] text-faint uppercase tracking-wide">Total a pagar</p>
-              <p className="text-2xl font-bold text-brandDark">{money.format(r.total)}</p>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-[10px] text-faint uppercase tracking-wide">Total a pagar</p>
+                <p className="text-2xl font-bold text-brandDark">{money.format(r.total)}</p>
+              </div>
+              <button
+                onClick={() => exportarProspector(r, mes)}
+                title={`Exportar la liquidación de ${r.nombre} a Excel`}
+                className="text-xs px-3 py-2 rounded-lg border border-black/10 text-brandDark font-medium hover:bg-[#F1EDE4] whitespace-nowrap"
+              >
+                ⬇ Exportar
+              </button>
             </div>
           </div>
 
@@ -518,6 +527,52 @@ export default function Liquidacion() {
       </div>
     </div>
   )
+}
+
+// Exporta la liquidación de un prospector a Excel (2 hojas: Liquidación + Clientes).
+async function exportarProspector(r: Resultado, mes: string) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+
+  const resumen: (string | number)[][] = []
+  resumen.push(['LIQUIDACIÓN DE PROSPECTOR'])
+  resumen.push(['Prospector', r.nombre])
+  resumen.push(['Mes', etiquetaMes(mes)])
+  resumen.push(['Período', r.diasTexto])
+  resumen.push([])
+  resumen.push(['ESTADO DE RESULTADO'])
+  resumen.push(['Concepto', 'Cálculo', 'Resultado ($)'])
+  resumen.push(['Básico', `${r.basico} x ${r.factor}`, r.montoBasico])
+  resumen.push(['Propuestas válidas', `${r.unidadesProp} u. x ${r.tarifaProp}`, r.montoPropuestas])
+  resumen.push(['Reuniones', `${r.reuniones} x ${r.tarifaReunion}`, r.montoReuniones])
+  resumen.push(['Cierres telefónicos', `${r.pctCierre * 100}% de ${r.facturacionCierres}`, r.montoCierres])
+  resumen.push(['TOTAL A PAGAR', '', r.total])
+  resumen.push([])
+  resumen.push(['OBJETIVOS DEL MES', 'Logrado', 'Objetivo', '%'])
+  resumen.push(['Propuestas', r.clientesUnicos, r.objProp, `${pctDe(r.clientesUnicos, r.objProp)}%`])
+  resumen.push(['Reuniones', r.reuniones, r.objReuniones, `${pctDe(r.reuniones, r.objReuniones)}%`])
+  resumen.push(['Cierres', r.cantCierres, r.objCierres, `${pctDe(r.cantCierres, r.objCierres)}%`])
+  resumen.push([])
+  resumen.push(['CONTACTOS POR PROPUESTA', 'Clientes'])
+  for (const pp of r.porPropuesta) resumen.push([pp.nombre, pp.clientes])
+  resumen.push(['Clientes únicos (base)', r.clientesUnicos])
+  resumen.push(['Compartidos (cuentan 1/2)', r.compartidos])
+  resumen.push(['Unidades computadas', r.unidadesProp])
+  resumen.push([])
+  resumen.push(['RESEÑA DEL MES'])
+  for (const b of r.resena) resumen.push([b])
+
+  const wsR = XLSX.utils.aoa_to_sheet(resumen)
+  wsR['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 8 }]
+  XLSX.utils.book_append_sheet(wb, wsR, 'Liquidación')
+
+  const clientes: (string | number)[][] = [['#', 'Cliente', 'Código', 'Propuesta', 'Cuenta']]
+  r.detalle.forEach((d, i) => clientes.push([i + 1, d.nombre, d.cod, d.propuestas.join(' + '), d.compartido ? '0,5 (compartido)' : '1']))
+  const wsC = XLSX.utils.aoa_to_sheet(clientes)
+  wsC['!cols'] = [{ wch: 5 }, { wch: 34 }, { wch: 14 }, { wch: 26 }, { wch: 16 }]
+  XLSX.utils.book_append_sheet(wb, wsC, 'Clientes')
+
+  XLSX.writeFile(wb, `Liquidacion_${r.nombre}_${mes}.xlsx`)
 }
 
 function Linea({ concepto, calculo, monto, nota }: { concepto: string; calculo: string; monto: number; nota?: string }) {
