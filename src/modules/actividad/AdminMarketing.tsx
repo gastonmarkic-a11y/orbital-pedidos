@@ -63,7 +63,14 @@ export default function AdminMarketing() {
       })
   }, [piezas])
 
-  const temaEfectivo = tema === NUEVA ? temaNuevo.trim().toLowerCase() : tema
+  // Carpeta destino. Si "crear nueva" coincide con una existente (por clave o por su
+  // nombre visible, sin distinguir mayúsculas), usa la existente para no duplicar.
+  const temaEfectivo = (() => {
+    if (tema !== NUEVA) return tema
+    const n = temaNuevo.trim().toLowerCase()
+    const existente = carpetas.find((c) => c.key.toLowerCase() === n || c.label.toLowerCase() === n)
+    return existente ? existente.key : n
+  })()
 
   async function agregar(e: FormEvent) {
     e.preventDefault()
