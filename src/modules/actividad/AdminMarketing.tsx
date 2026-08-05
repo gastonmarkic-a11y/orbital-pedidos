@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { PiezaMarketing } from '../../lib/types'
+import { TEMAS, TEMAS_ENGANCHE, metaTema } from './temasMarketing'
 
 const CATEGORIAS = [
   { value: 'copy', label: '✏️ Copy (texto para enviar)' },
@@ -12,8 +13,7 @@ const CATEGORIAS = [
   { value: 'precios', label: '💲 Lista de precios' },
 ]
 
-// Temas que se enganchan con el motor de envíos (propuestas). El resto son carpetas libres.
-const TEMAS_CONOCIDOS = ['bienvenida', 'canje', 'preventa', 'recuperar', 'general']
+const NUEVA = '__nueva__'
 
 function sanitize(name: string) {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
@@ -27,6 +27,7 @@ export default function AdminMarketing() {
   const [error, setError] = useState<string | null>(null)
   const [categoria, setCategoria] = useState('catalogo')
   const [tema, setTema] = useState('general')
+  const [temaNuevo, setTemaNuevo] = useState('')
   const [titulo, setTitulo] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [texto, setTexto] = useState('')
@@ -48,16 +49,34 @@ export default function AdminMarketing() {
 
   useEffect(recargar, [])
 
-  const temasSugeridos = [...new Set([...TEMAS_CONOCIDOS, ...piezas.map((p) => p.tema).filter(Boolean) as string[]])]
+  // Carpetas existentes: las conocidas (siempre) + las creadas por el equipo, con su nombre lindo y el conteo.
+  const carpetas = useMemo(() => {
+    const keys = [...new Set([...TEMAS.map((t) => t.key), ...piezas.map((p) => p.tema || 'general')])]
+    const conocidas = TEMAS.map((t) => t.key)
+    return keys
+      .map((key) => ({ key, label: metaTema(key).label, n: piezas.filter((p) => (p.tema || 'general') === key).length }))
+      .sort((a, b) => {
+        const ia = conocidas.indexOf(a.key)
+        const ib = conocidas.indexOf(b.key)
+        if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+        return a.label.localeCompare(b.label)
+      })
+  }, [piezas])
+
+  const temaEfectivo = tema === NUEVA ? temaNuevo.trim().toLowerCase() : tema
 
   async function agregar(e: FormEvent) {
     e.preventDefault()
     if (!titulo.trim()) return
+    if (tema === NUEVA && !temaNuevo.trim()) {
+      setError('Poné un nombre para la carpeta nueva, o elegí una existente.')
+      return
+    }
     setGuardando(true)
     setError(null)
     let url: string | null = null
     if (archivo) {
-      const path = `${categoria}/${Date.now()}-${sanitize(archivo.name)}`
+      const path = `${temaEfectivo || 'general'}/${Date.now()}-${sanitize(archivo.name)}`
       const { error: upErr } = await supabase.storage.from('marketing').upload(path, archivo)
       if (upErr) {
         setError(`No se pudo subir el archivo: ${upErr.message}`)
@@ -72,7 +91,7 @@ export default function AdminMarketing() {
     if (editandoId) {
       const cambios: Record<string, unknown> = {
         categoria,
-        tema: tema.trim() || 'general',
+        tema: temaEfectivo || 'general',
         titulo: titulo.trim(),
         descripcion: descripcion.trim() || null,
         contenido_texto: texto.trim() || null,
@@ -84,7 +103,7 @@ export default function AdminMarketing() {
       const orden = piezas.filter((p) => p.categoria === categoria).length + 1
       const { error } = await supabase.from('piezas_marketing').insert({
         categoria,
-        tema: tema.trim() || 'general',
+        tema: temaEfectivo || 'general',
         titulo: titulo.trim(),
         descripcion: descripcion.trim() || null,
         contenido_texto: texto.trim() || null,
@@ -100,6 +119,8 @@ export default function AdminMarketing() {
     }
     setOk(true)
     setEditandoId(null)
+    if (tema === NUEVA) setTema(temaEfectivo) // deja la carpeta recién creada seleccionada
+    setTemaNuevo('')
     setTitulo('')
     setDescripcion('')
     setTexto('')
@@ -177,24 +198,36 @@ export default function AdminMarketing() {
           </select>
         </label>
         <label className="block text-xs text-muted">
-          Carpeta / tema (elegí una existente o escribí una nueva para crearla)
-          <input
+          Carpeta
+          <select
             value={tema}
-            onChange={(e) => setTema(e.target.value.toLowerCase())}
-            list="temas-list"
-            placeholder="ej: bienvenida, canje, catalogos-2026, dia-del-padre..."
-            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint"
-          />
-          <datalist id="temas-list">
-            {temasSugeridos.map((t) => (
-              <option key={t} value={t} />
+            onChange={(e) => setTema(e.target.value)}
+            className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
+          >
+            {carpetas.map((c) => (
+              <option key={c.key} value={c.key}>
+                {metaTema(c.key).icono} {c.label} ({c.n})
+              </option>
             ))}
-          </datalist>
-          <span className="text-[10px] text-faint">
-            Las carpetas <b>bienvenida / canje / preventa / recuperar</b> se enganchan solas con los envíos de esa propuesta.
-            Cualquier otra queda como carpeta de material para el equipo.
-          </span>
+            <option value={NUEVA}>➕ Crear carpeta nueva…</option>
+          </select>
         </label>
+        {tema === NUEVA && (
+          <label className="block text-xs text-muted -mt-1">
+            Nombre de la carpeta nueva
+            <input
+              value={temaNuevo}
+              onChange={(e) => setTemaNuevo(e.target.value.toLowerCase())}
+              placeholder="ej: infrarrojo + blue cut, dia del padre..."
+              className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-faint"
+            />
+          </label>
+        )}
+        <p className="text-[10px] text-faint -mt-1">
+          Para sumar a una carpeta que ya existe, elegila de la lista. Las carpetas{' '}
+          <b>{TEMAS_ENGANCHE.join(' / ')}</b> se enganchan solas con los envíos de esa propuesta; cualquier otra queda como
+          material del equipo.
+        </p>
         <label className="block text-xs text-muted">
           Título
           <input
@@ -257,7 +290,10 @@ export default function AdminMarketing() {
               <p className="text-sm font-medium text-ink">
                 {p.titulo} {!p.activa && <span className="text-[10px] text-faint">(oculta)</span>}
               </p>
-              <p className="text-xs text-faint">{CATEGORIAS.find((c) => c.value === p.categoria)?.label ?? p.categoria}</p>
+              <p className="text-xs text-faint">
+                {metaTema(p.tema || 'general').icono} {metaTema(p.tema || 'general').label} ·{' '}
+                {CATEGORIAS.find((c) => c.value === p.categoria)?.label ?? p.categoria}
+              </p>
             </div>
             <div className="flex gap-3 shrink-0">
               <button onClick={() => editar(p)} className="text-xs font-medium text-brandDark">

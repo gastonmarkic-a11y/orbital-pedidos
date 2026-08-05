@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { PiezaMarketing } from '../../lib/types'
+import { TEMAS, metaTema } from './temasMarketing'
 
 const CATEGORIAS: Record<string, string> = {
   copy: '✏️ Copys',
@@ -14,26 +15,6 @@ const CATEGORIAS: Record<string, string> = {
   precios: '💲 Lista de precios',
 }
 const ORDEN_CAT = ['propuesta', 'copy', 'guion', 'catalogo', 'video', 'imagen', 'precios']
-
-const TEMAS: { key: string; icono: string; label: string; desc: string }[] = [
-  { key: 'bienvenida', icono: '🤝', label: 'Propuesta Bienvenida', desc: 'Todo para sumar ópticas nuevas: copy, guión, propuesta y video' },
-  { key: 'canje', icono: '↩', label: 'Plan Canje', desc: 'Material para clientes activos con stock parado' },
-  { key: 'preventa', icono: '🕶', label: 'Preventa Colección', desc: 'Copy, guión y catálogo de la preventa 2026' },
-  { key: 'recuperar', icono: '📋', label: 'Clientes a Recuperar', desc: 'Guías de diagnóstico y propuesta segmentada' },
-  { key: 'general', icono: '📚', label: 'Material general', desc: 'Listas de precios, catálogos, imágenes y videos' },
-]
-
-// Metadata de una carpeta: conocida (con ícono/desc) o creada por el admin (📁 genérica)
-function metaTema(key: string): { key: string; icono: string; label: string; desc: string } {
-  const conocido = TEMAS.find((t) => t.key === key)
-  if (conocido) return conocido
-  return {
-    key,
-    icono: '📁',
-    label: key.charAt(0).toUpperCase() + key.slice(1).replace(/[-_]/g, ' '),
-    desc: 'Carpeta de material del equipo',
-  }
-}
 
 export default function Marketing() {
   const { vendedor } = useAuth()
