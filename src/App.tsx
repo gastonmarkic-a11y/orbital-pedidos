@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3,
+  BarChart3, Banknote,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -33,6 +33,7 @@ import Clientes from './modules/pedidos/Clientes'
 import Produccion from './modules/pedidos/Produccion'
 import Tienda from './modules/pedidos/Tienda'
 import Publicidad from './modules/publicidad/Publicidad'
+import Liquidacion from './modules/liquidacion/Liquidacion'
 
 interface NavItem {
   to: string
@@ -57,6 +58,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/tienda': Store,
   '/publicidad': BarChart3,
   '/envios-ecom': Truck,
+  '/liquidacion': Banknote,
 }
 
 function iconoDe(to: string, label: string) {
@@ -111,6 +113,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
+        { to: '/liquidacion', label: 'Liquidación' },
         { to: '/envios-ecom', label: 'Envíos e-comm' },
       ],
       menu: [],
@@ -143,6 +146,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/derivaciones', label: 'Derivaciones (bot)' },
+      { to: '/liquidacion', label: 'Liquidación prospectores' },
       { to: '/envios-ecom', label: 'Envíos e-commerce' },
       { to: '/mapa-zonas', label: 'Mapa de zonas' },
       { to: '/actividad-admin', label: 'Equipo' },
@@ -369,6 +373,7 @@ function Layout() {
           )}
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
 
