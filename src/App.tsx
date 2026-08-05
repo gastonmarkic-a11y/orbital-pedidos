@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote,
+  BarChart3, Banknote, Calculator,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -34,6 +34,7 @@ import Produccion from './modules/pedidos/Produccion'
 import Tienda from './modules/pedidos/Tienda'
 import Publicidad from './modules/publicidad/Publicidad'
 import Liquidacion from './modules/liquidacion/Liquidacion'
+import PanelCosteo from './modules/produccion/PanelCosteo'
 
 interface NavItem {
   to: string
@@ -59,6 +60,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/publicidad': BarChart3,
   '/envios-ecom': Truck,
   '/liquidacion': Banknote,
+  '/produccion/costeo': Calculator,
 }
 
 function iconoDe(to: string, label: string) {
@@ -77,7 +79,10 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'produccion')
     return {
       principales: [{ to: '/produccion', label: 'Producción' }],
-      secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
+      secundarios: [
+        { to: '/pedidos/stock', label: 'Stock' },
+        { to: '/produccion/costeo', label: 'Costeo' },
+      ],
       menu: [],
     }
   if (rol === 'tienda')
@@ -143,6 +148,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción / Ingresos' },
+      { to: '/produccion/costeo', label: 'Costeo de producción' },
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/derivaciones', label: 'Derivaciones (bot)' },
@@ -366,6 +372,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
             <Route path="/produccion" element={<Produccion />} />
           )}
+          {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/costeo" element={<PanelCosteo />} />}
           {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
           {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
