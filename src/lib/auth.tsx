@@ -58,7 +58,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     setCuentas(lista)
-    setVendedor(elegirActiva(lista))
+    const activa = elegirActiva(lista)
+    setVendedor(activa)
+    // Check-in de versión: deja registrado qué build está usando cada usuario,
+    // para detectar quién quedó en una versión vieja (caché/PWA).
+    try {
+      await supabase.from('app_checkins').upsert(
+        {
+          user_id: userId,
+          email: activa?.email ?? null,
+          codigo: activa?.codigo ?? null,
+          nombre: activa?.nombre ?? null,
+          version: __APP_BUILD__,
+          user_agent: navigator.userAgent,
+          visto_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+    } catch {
+      /* no bloquear el login si falla el registro */
+    }
   }
 
   function setCuenta(codigo: string) {
