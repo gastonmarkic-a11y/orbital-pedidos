@@ -17,11 +17,12 @@ interface Prospector {
   codigo: string
   nombre: string
   codigos: string[]
+  objetivoCodigos: string[] // dónde buscar el objetivo en objetivos_mes (orden de prioridad)
 }
 
 const PROSPECTORES: Prospector[] = [
-  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'] },
-  { codigo: 'Marketing', nombre: 'Luna', codigos: ['Marketing'] },
+  { codigo: 'Damian', nombre: 'Damián', codigos: ['ProspeccionVenta', 'Damian'], objetivoCodigos: ['ProspeccionVenta', 'Damian'] },
+  { codigo: 'Marketing', nombre: 'Luna', codigos: ['Marketing'], objetivoCodigos: ['Marketing'] },
 ]
 
 interface ConfigCom {
@@ -46,6 +47,11 @@ interface Resultado {
   cantCierres: number
   facturacionCierres: number
   detalle: { cod: string; nombre: string; propuestas: string[]; compartido: boolean }[]
+  // objetivos del mes
+  objProp: number
+  objReuniones: number
+  objCierres: number
+  resena: string[]
   // resultado ($)
   montoBasico: number
   montoPropuestas: number
@@ -95,6 +101,62 @@ function nombreCliente(c: CliRow | undefined, cod: string): string {
   return c.nomcomerc || c.razon || cod
 }
 
+function pctDe(logrado: number, objetivo: number): number {
+  return objetivo > 0 ? Math.round((logrado / objetivo) * 100) : 0
+}
+
+// Escala suave, sin rojos: es primer mes y no se busca ser agresivo.
+function colorObjetivo(pct: number): string {
+  if (pct >= 80) return '#10b981' // verde
+  if (pct >= 40) return '#C8A96E' // dorado
+  return '#E0B04A' // ámbar suave
+}
+
+interface MetricaObj {
+  key: 'propuestas' | 'reuniones' | 'cierres'
+  label: string
+  logrado: number
+  objetivo: number
+}
+
+const CONSEJOS: Record<string, string> = {
+  propuestas:
+    'Mantener el ritmo de envíos y priorizar las ópticas con más potencial de recompra: mejor pocas bien elegidas que muchas al azar.',
+  reuniones:
+    'La clave es cerrar cada propuesta con una fecha concreta de reunión. Ofrecer dos horarios en el mismo mensaje ayuda a que digan que sí.',
+  cierres:
+    'Hacer un seguimiento a las 48 hs del envío y usar el llamado para cerrar con un beneficio puntual (envío sin cargo, un plazo o un combo).',
+}
+
+// Reseña de acompañamiento: reconoce lo bueno, marca 1-2 mejoras y da un consejo.
+function generarResena(nombre: string, medioMes: boolean, metricas: MetricaObj[]): string[] {
+  const conObjetivo = metricas.filter((m) => m.objetivo > 0)
+  const bullets: string[] = []
+
+  bullets.push(
+    medioMes
+      ? `${nombre} arrancó a mitad de mes, así que este primer período es de adaptación al rol — y aun así dejó una base concreta para construir.`
+      : `Primer mes de ${nombre} en el rol: etapa de adaptación, con una base para seguir construyendo.`
+  )
+
+  if (conObjetivo.length) {
+    const orden = [...conObjetivo].sort((a, b) => pctDe(b.logrado, b.objetivo) - pctDe(a.logrado, a.objetivo))
+    const top = orden[0]
+    bullets.push(
+      `Lo más fuerte fue el volumen de ${top.label}: ${top.logrado} sobre un objetivo de ${top.objetivo} (${pctDe(top.logrado, top.objetivo)}%). Buen punto de apoyo para el resto.`
+    )
+    const aMejorar = orden.filter((m) => pctDe(m.logrado, m.objetivo) < 60 && m.key !== top.key).slice(0, 2)
+    for (const m of aMejorar) {
+      bullets.push(`A trabajar: ${m.label} (${m.logrado}/${m.objetivo}, ${pctDe(m.logrado, m.objetivo)}%). ${CONSEJOS[m.key]}`)
+    }
+  }
+
+  bullets.push(
+    'Sin apuro: el foco del próximo mes es ir convirtiendo ese volumen de propuestas en reuniones y en cierres. Paso a paso.'
+  )
+  return bullets
+}
+
 export default function Liquidacion() {
   const [mes, setMes] = useState(mesLiquidacion())
   const [loading, setLoading] = useState(true)
@@ -110,10 +172,13 @@ export default function Liquidacion() {
       const hasta = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`
       const todosCodigos = PROSPECTORES.flatMap((p) => p.codigos)
 
-      const [{ data: cfg }, { data: props }] = await Promise.all([
+      const [{ data: cfg }, { data: props }, { data: objs }] = await Promise.all([
         supabase.from('comisiones_config').select('*'),
         supabase.from('propuestas_julio').select('id, nombre'),
+        supabase.from('objetivos_mes').select('*').eq('mes_anio', mes),
       ])
+      const objMap: Record<string, { objetivo_contactos: number | null; objetivo_propuestas: number | null; objetivo_ventas: number | null }> = {}
+      for (const o of (objs as any[]) ?? []) objMap[o.vendedor] = o
 
       const acts = await fetchPaged<ActRow>(() =>
         supabase
@@ -205,6 +270,16 @@ export default function Liquidacion() {
         const montoReuniones = reuniones * tarifaReunion
         const montoCierres = facturacionCierres * pctCierre
 
+        const obj = p.objetivoCodigos.map((k) => objMap[k]).find(Boolean)
+        const objProp = obj?.objetivo_propuestas ?? 0
+        const objReuniones = obj?.objetivo_contactos ?? 0
+        const objCierres = obj?.objetivo_ventas ?? 0
+        const resena = generarResena(p.nombre, factor < 1, [
+          { key: 'propuestas', label: 'propuestas', logrado: clientesUnicos, objetivo: objProp },
+          { key: 'reuniones', label: 'reuniones', logrado: reuniones, objetivo: objReuniones },
+          { key: 'cierres', label: 'cierres telefónicos', logrado: cierresRows.length, objetivo: objCierres },
+        ])
+
         out.push({
           codigo: p.codigo,
           nombre: p.nombre,
@@ -217,6 +292,10 @@ export default function Liquidacion() {
           cantCierres: cierresRows.length,
           facturacionCierres,
           detalle,
+          objProp,
+          objReuniones,
+          objCierres,
+          resena,
           montoBasico,
           montoPropuestas,
           montoReuniones,
@@ -309,6 +388,47 @@ export default function Liquidacion() {
                 </tfoot>
               </table>
             )}
+          </div>
+
+          {/* Objetivos del mes: buscado vs logrado */}
+          <div className="p-4 border-b border-black/5">
+            <p className="text-[10px] uppercase text-faint font-semibold mb-3">Objetivos del mes · buscado vs. logrado</p>
+            <div className="space-y-3">
+              {[
+                { label: 'Propuestas', logrado: r.clientesUnicos, objetivo: r.objProp },
+                { label: 'Reuniones', logrado: r.reuniones, objetivo: r.objReuniones },
+                { label: 'Cierres telefónicos', logrado: r.cantCierres, objetivo: r.objCierres },
+              ].map((m) => {
+                const pct = pctDe(m.logrado, m.objetivo)
+                return (
+                  <div key={m.label}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-ink font-medium">{m.label}</span>
+                      <span className="text-muted">
+                        <b className="text-ink">{m.logrado}</b> / {m.objetivo || '—'}
+                        {m.objetivo > 0 && <span className="text-faint"> · {pct}%</span>}
+                      </span>
+                    </div>
+                    <div className="h-2.5 bg-black/5 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: colorObjetivo(pct) }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Reseña de acompañamiento */}
+          <div className="p-4 border-b border-black/5 bg-[#FBFAF7]">
+            <p className="text-[10px] uppercase text-faint font-semibold mb-2">📝 Reseña del mes</p>
+            <div className="space-y-1.5">
+              {r.resena.map((b, i) => (
+                <p key={i} className="text-sm text-ink flex gap-2">
+                  <span className="text-brand shrink-0">•</span>
+                  <span>{b}</span>
+                </p>
+              ))}
+            </div>
           </div>
 
           {/* Estado de resultado */}
