@@ -55,6 +55,7 @@ export default function DashboardVentas() {
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando ventas…</p>
   if (!meses.length) return <p className="text-sm text-faint p-4">Todavía no hay ventas cargadas.</p>
+  if (!mesSel || !porMes.get(mesSel)) return <p className="text-sm text-muted p-4">Cargando ventas…</p>
 
   const cur = porMes.get(mesSel)!
   const curVal = moneda === 'usd' ? cur.usd : cur.ars
