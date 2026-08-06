@@ -40,6 +40,7 @@ import PedidosProduccion from './modules/produccion/PedidosProduccion'
 import DashboardVentas from './modules/pedidos/DashboardVentas'
 import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
+import DashboardHub from './modules/pedidos/DashboardHub'
 
 interface NavItem {
   to: string
@@ -124,7 +125,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
         { to: '/liquidacion', label: 'Liquidación' },
-        { to: '/envios-ecom', label: 'Envíos e-comm' },
+        { to: '/envios-ecom', label: 'Envíos' },
       ],
       menu: [],
     }
@@ -150,7 +151,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
       { to: '/pedidos/dashboard', label: 'Dashboard' },
-      { to: '/ventas-historico', label: 'Ventas histórico' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción (órdenes y costos)' },
@@ -158,8 +158,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/derivaciones', label: 'Derivaciones (bot)' },
       { to: '/liquidacion', label: 'Liquidación prospectores' },
-      { to: '/envios-ecom', label: 'Envíos e-commerce' },
-      { to: '/mapa-zonas', label: 'Mapa de zonas' },
+      { to: '/envios-ecom', label: 'Envíos' },
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
@@ -365,7 +364,7 @@ function Layout() {
           {rol !== 'contenido' && <Route path="/pedidos" element={<Pedidos />} />}
           {(rol === 'admin' || rol === 'administracion') && (
             <>
-              <Route path="/pedidos/dashboard" element={<DashboardPedidos />} />
+              <Route path="/pedidos/dashboard" element={<DashboardHub />} />
               <Route path="/pedidos/clientes" element={<Clientes />} />
             </>
           )}

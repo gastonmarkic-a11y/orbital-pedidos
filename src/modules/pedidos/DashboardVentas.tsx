@@ -179,8 +179,8 @@ export default function DashboardVentas() {
       </div>
 
       <p className="text-[10px] text-faint">
-        Datos de Tango facturado (NC restadas, sin líneas no-producto). El e-commerce actual se sigue por Shopify. Julio 2026
-        en adelante lo alimenta la app; los maestros de Tango llegan hasta junio 2026.
+        Tango facturado, todas las empresas unificadas (Plenorius + Ejemplar + Plastic), NC restadas y sin líneas
+        no-producto. Julio 2026 cargado del detalle de comprobantes (ambos archivos unidos). El e-commerce actual se sigue por Shopify.
       </p>
     </div>
   )
