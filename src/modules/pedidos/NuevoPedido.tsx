@@ -48,6 +48,8 @@ export default function NuevoPedido() {
   const [cart, setCart] = useState<Record<string, number>>({})
   // SKUs para los que el vendedor eligió el precio de preventa
   const [preventaSel, setPreventaSel] = useState<Set<string>>(new Set())
+  // SKUs marcados como regalo/bonificación (precio 0)
+  const [regaloSel, setRegaloSel] = useState<Set<string>>(new Set())
   const [entregaCanal, setEntregaCanal] = useState('')
   const [entregaPago, setEntregaPago] = useState('')
   const [medios, setMedios] = useState<string[]>([])
@@ -392,13 +394,15 @@ export default function NuevoPedido() {
         const info = stock.find((x) => x.codigo === k)
         const disponible = p?.cantidad ?? 0
         const pendiente = Math.max(0, cart[k] - disponible)
-        const esPreventa = preventaSel.has(k) && info?.precio_preventa != null
+        const esRegalo = regaloSel.has(k)
+        const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
         return {
           codigo: k,
           modelo: p?.modelo ?? info?.modelo ?? k,
           descripcion: p?.descripcion ?? info?.descripcion ?? null,
           cantidad: cart[k],
           ...(pendiente > 0 ? { pendiente } : {}),
+          ...(esRegalo ? { regalo: true, precio: 0 } : {}),
           ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
         }
       })
@@ -862,6 +866,23 @@ export default function NuevoPedido() {
                           {preventaSel.has(k) ? '✓ ' : ''}Preventa {formatPrecio(p.precio_preventa)}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRegaloSel((prev) => {
+                            const n = new Set(prev)
+                            if (n.has(k)) n.delete(k)
+                            else n.add(k)
+                            return n
+                          })
+                        }
+                        className={`mt-0.5 ml-1 inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 border ${
+                          regaloSel.has(k) ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-300 text-emerald-700'
+                        }`}
+                        title="Marcar como regalo/bonificación (precio 0)"
+                      >
+                        {regaloSel.has(k) ? '✓ ' : '🎁 '}Regalo $0
+                      </button>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => changeQty(k, -1)} className="w-6 h-6 rounded border border-black/10 text-xs">

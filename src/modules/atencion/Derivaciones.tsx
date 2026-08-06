@@ -35,6 +35,28 @@ export default function Derivaciones() {
   const toast = useToast()
   const [derivaciones, setDerivaciones] = useState<Derivacion[]>([])
   const [loading, setLoading] = useState(true)
+  const [abierta, setAbierta] = useState<string | null>(null)
+  const [conv, setConv] = useState<Record<string, { emisor: string; contenido: string }[]>>({})
+  const [contacto, setContacto] = useState<Record<string, string | null>>({})
+
+  async function verConversacion(d: Derivacion) {
+    if (abierta === d.id) { setAbierta(null); return }
+    setAbierta(d.id)
+    if (!conv[d.conversacion_id]) {
+      const { data: msgs } = await supabase
+        .from('at_mensajes')
+        .select('emisor, contenido, created_at')
+        .eq('conversacion_id', d.conversacion_id)
+        .order('created_at', { ascending: true })
+      setConv((c) => ({ ...c, [d.conversacion_id]: (msgs as { emisor: string; contenido: string }[]) ?? [] }))
+      // teléfono del contacto para poder responder por WhatsApp
+      const { data: cv } = await supabase.from('at_conversaciones').select('contacto_id').eq('id', d.conversacion_id).maybeSingle()
+      if (cv?.contacto_id) {
+        const { data: ct } = await supabase.from('contactos').select('telefono').eq('id', cv.contacto_id).maybeSingle()
+        setContacto((p) => ({ ...p, [d.conversacion_id]: (ct as { telefono: string | null } | null)?.telefono ?? null }))
+      }
+    }
+  }
 
   useEffect(() => {
     supabase
@@ -114,7 +136,34 @@ export default function Derivaciones() {
                 </span>
               </div>
               <p className="text-sm text-ink mt-1">{d.resumen}</p>
+              {abierta === d.id && (
+                <div className="mt-2 bg-[#F7F5F0] rounded-lg p-2 max-h-64 overflow-y-auto space-y-1.5">
+                  {(conv[d.conversacion_id] ?? []).length === 0 ? (
+                    <p className="text-[11px] text-faint">Sin mensajes en esta conversación.</p>
+                  ) : (
+                    (conv[d.conversacion_id] ?? []).map((m, i) => (
+                      <div key={i} className={`text-xs ${m.emisor === 'bot' ? 'text-muted' : 'text-ink font-medium'}`}>
+                        <span className="text-[9px] uppercase text-faint mr-1">{m.emisor === 'bot' ? '🤖 IRIS' : '👤 Cliente'}</span>
+                        {m.contenido}
+                      </div>
+                    ))
+                  )}
+                  {contacto[d.conversacion_id] && (
+                    <a
+                      href={`https://wa.me/${(contacto[d.conversacion_id] || '').replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block mt-1 text-[11px] font-semibold text-emerald-700"
+                    >
+                      💬 Responder por WhatsApp ({contacto[d.conversacion_id]}) →
+                    </a>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2 mt-2">
+                <button onClick={() => verConversacion(d)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-brandDark">
+                  {abierta === d.id ? 'Ocultar' : '💬 Ver conversación'}
+                </button>
                 {d.estado === 'pendiente' && (
                   <button onClick={() => tomar(d.id)} className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-brandDark">
                     Tomar

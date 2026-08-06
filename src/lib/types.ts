@@ -143,6 +143,8 @@ export interface PedidoItem {
   preventa?: boolean
   /** Precio de preventa por unidad, snapshot al cargar el pedido (para que no cambie después) */
   precio_pv?: number
+  /** Ítem marcado como regalo/bonificación: va a precio 0 (lo ve depósito y va 0 a Tango) */
+  regalo?: boolean
 }
 
 export type EstadoPedido =
