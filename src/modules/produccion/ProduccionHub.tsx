@@ -16,11 +16,10 @@ export default function ProduccionHub() {
   const tabs: { key: Tab; label: string }[] = esProd
     ? [
         { key: 'pedidos', label: '📋 Pedidos' },
-        { key: 'generar', label: '⚙️ Generar' },
+        { key: 'generar', label: '⚙️ Orden de producción' },
         { key: 'costeo', label: '🧮 Costeo' },
-        { key: 'ingresos', label: '📦 Ingresos / Stock' },
       ]
-    : [{ key: 'ingresos', label: '📦 Ingresos / Stock' }]
+    : [{ key: 'ingresos', label: '📦 Ingresos a confirmar' }]
   const [tab, setTab] = useState<Tab>(tabs[0].key)
 
   return (

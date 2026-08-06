@@ -112,6 +112,10 @@ export default function GeneradorProduccion() {
   const [porColor, setPorColor] = useState(false) // familia = modelo (false) o modelo+color de armazón (true)
   const [generando, setGenerando] = useState<string | null>(null)
   const [generadas, setGeneradas] = useState<Set<string>>(new Set())
+  // Ajustes manuales sobre lo que propone el sistema: overrides[familia][sku] = cantidad
+  const [overrides, setOverrides] = useState<Record<string, Record<string, number>>>({})
+  const setOverride = (familia: string, sku: string, val: number) =>
+    setOverrides((prev) => ({ ...prev, [familia]: { ...(prev[familia] ?? {}), [sku]: Math.max(0, Math.floor(val || 0)) } }))
 
   useEffect(() => {
     async function cargar() {
@@ -206,11 +210,23 @@ export default function GeneradorProduccion() {
     return out.sort((a, b) => b.loteTotal - a.loteTotal)
   }, [skus, porColor, params])
 
+  // cantidad efectiva de un SKU: el ajuste manual si existe, si no lo que propuso el sistema
+  const cantEfectiva = (familia: string, i: ItemProp) => overrides[familia]?.[i.sku] ?? i.cantidad
+  const loteEfectivo = (p: Propuesta) => p.items.reduce((a, i) => a + cantEfectiva(p.familia, i), 0)
+
   async function generar(p: Propuesta) {
+    const itemsAjust = p.items
+      .map((i) => ({ ...i, cantidad: cantEfectiva(p.familia, i) }))
+      .filter((i) => i.cantidad > 0)
+    const loteTotal = itemsAjust.reduce((a, i) => a + i.cantidad, 0)
+    if (loteTotal <= 0) {
+      toast('La orden quedó en 0 unidades — ajustá las cantidades', 'error')
+      return
+    }
     setGenerando(p.familia)
     const { data: ped, error } = await supabase
       .from('pedidos_produccion')
-      .insert({ familia_armazon: p.familia, estado: 'pendiente', lote_total: p.loteTotal, creado_por: codigoEfectivo })
+      .insert({ familia_armazon: p.familia, estado: 'pendiente', lote_total: loteTotal, creado_por: codigoEfectivo })
       .select('id')
       .single()
     if (error || !ped) {
@@ -218,7 +234,7 @@ export default function GeneradorProduccion() {
       toast('No se pudo generar: ' + (error?.message ?? ''), 'error')
       return
     }
-    const items = p.items.map((i) => ({
+    const items = itemsAjust.map((i) => ({
       pedido_id: (ped as { id: number }).id,
       sku: i.sku,
       modelo: i.modelo,
@@ -230,11 +246,11 @@ export default function GeneradorProduccion() {
     const { error: e2 } = await supabase.from('pedidos_produccion_items').insert(items)
     setGenerando(null)
     if (e2) {
-      toast('Pedido creado pero falló el detalle: ' + e2.message, 'error')
+      toast('Orden creada pero falló el detalle: ' + e2.message, 'error')
       return
     }
     setGeneradas((prev) => new Set(prev).add(p.familia))
-    toast(`✓ Pedido de producción generado — ${p.titulo} (${p.loteTotal} u.)`, 'success')
+    toast(`✓ Orden de producción generada — ${p.titulo} (${loteTotal} u.)`, 'success')
   }
 
   if (loading) return <p className="text-sm text-muted p-4">Analizando demanda y stock…</p>
@@ -245,9 +261,9 @@ export default function GeneradorProduccion() {
     <div className="space-y-4 text-ink">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-base font-semibold">🏭 Generador de pedidos de producción</h2>
+          <h2 className="text-base font-semibold">🏭 Órdenes de producción</h2>
           <p className="text-[11px] text-faint">
-            {propuestas.length} familias a producir · {ent.format(totalUnidades)} u. · lote {params.lote_min} · alarma ≤{params.alarma_min} · cobertura {params.cobertura_objetivo_dias}d · cap {Math.round(params.cap_sku_pct * 100)}%
+            {propuestas.length} familias propuestas · {ent.format(totalUnidades)} u. · podés ajustar cada SKU antes de generar · lote {params.lote_min} · alarma ≤{params.alarma_min} · cobertura {params.cobertura_objetivo_dias}d
           </p>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted">
@@ -269,6 +285,7 @@ export default function GeneradorProduccion() {
       ) : (
         propuestas.map((p) => {
           const generada = generadas.has(p.familia)
+          const loteEff = loteEfectivo(p)
           return (
             <div key={p.familia} className={`bg-white rounded-xl border ${generada ? 'border-emerald-300' : 'border-black/10'}`}>
               <div className="p-4 flex items-center justify-between gap-2 flex-wrap border-b border-black/5">
@@ -281,18 +298,18 @@ export default function GeneradorProduccion() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p className="text-[10px] text-faint uppercase tracking-wide">Lote</p>
-                    <p className="text-xl font-bold text-brandDark leading-none">{ent.format(p.loteTotal)} u.</p>
+                    <p className="text-[10px] text-faint uppercase tracking-wide">Lote {loteEff !== p.loteTotal && <span className="text-amber-600">(ajustado)</span>}</p>
+                    <p className="text-xl font-bold text-brandDark leading-none">{ent.format(loteEff)} u.</p>
                   </div>
                   {generada ? (
-                    <span className="text-xs bg-emerald-50 text-emerald-700 rounded-lg px-3 py-2 font-medium">✓ generado</span>
+                    <span className="text-xs bg-emerald-50 text-emerald-700 rounded-lg px-3 py-2 font-medium">✓ generada</span>
                   ) : (
                     <button
                       onClick={() => generar(p)}
                       disabled={generando === p.familia}
                       className="text-xs px-3 py-2 rounded-lg bg-brand text-white font-medium disabled:opacity-50 whitespace-nowrap"
                     >
-                      {generando === p.familia ? 'Generando…' : 'Generar pedido'}
+                      {generando === p.familia ? 'Generando…' : 'Generar orden'}
                     </button>
                   )}
                 </div>
@@ -309,7 +326,9 @@ export default function GeneradorProduccion() {
                     </tr>
                   </thead>
                   <tbody>
-                    {p.items.map((i) => (
+                    {p.items.map((i) => {
+                      const cantEff = cantEfectiva(p.familia, i)
+                      return (
                       <tr key={i.sku} className="border-t border-black/5">
                         <td className="py-1">
                           {i.descripcion} <span className="text-faint font-mono">· {i.sku}</span>
@@ -318,10 +337,23 @@ export default function GeneradorProduccion() {
                           <span className={i.stock <= params.alarma_min ? 'text-red-600 font-semibold' : ''}>{i.stock}</span>
                         </td>
                         <td className="py-1 text-right text-muted">{ent.format(i.deficit)}</td>
-                        <td className="py-1 text-right font-bold text-ink">{ent.format(i.cantidad)}</td>
-                        <td className="py-1 text-right text-faint">{num1.format((i.cantidad / p.loteTotal) * 100)}%</td>
+                        <td className="py-1 text-right">
+                          {generada ? (
+                            <span className="font-bold text-ink">{ent.format(cantEff)}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={0}
+                              value={cantEff}
+                              onChange={(e) => setOverride(p.familia, i.sku, Number(e.target.value))}
+                              className="w-16 bg-white border border-black/10 rounded px-1.5 py-0.5 text-right text-[11px] font-bold text-ink"
+                            />
+                          )}
+                        </td>
+                        <td className="py-1 text-right text-faint">{loteEff > 0 ? num1.format((cantEff / loteEff) * 100) : '0'}%</td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
