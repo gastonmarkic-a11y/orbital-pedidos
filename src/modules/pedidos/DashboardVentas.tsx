@@ -130,6 +130,7 @@ export default function DashboardVentas() {
 
   const cur = porMes.get(mesSel) ?? { ars: 0, u: 0, ops: 0, b2b: 0, b2c: 0 }
   const cmp = porMes.get(mesCmp)
+  const [y, m] = mesSel.split('-')
   const mv = (r: Fila) => (metrica === 'ars' ? r.v : r.u)
   const fmtM = (n: number) => (metrica === 'ars' ? kAr(n) : `${ent.format(n)} u`)
   const delta = (a: number, b?: number) => (b == null || !b ? null : Math.round(((a - b) / Math.abs(b)) * 100))
@@ -139,6 +140,13 @@ export default function DashboardVentas() {
   const ult = meses.slice(-18)
   const maxEvo = Math.max(...ult.map((am) => (metrica === 'ars' ? porMes.get(am)!.ars : porMes.get(am)!.u)), 1)
   const totCanal = cur.b2b + cur.b2c
+  // Mes en curso: no comparar contra un mes completo (siempre daría negativo). Se muestra
+  // AVANCE hacia un objetivo mínimo = mismo mes del año anterior (o el mes comparado).
+  const hoyMes = new Date().toISOString().slice(0, 7)
+  const esCurso = mesSel === hoyMes
+  const objetivo = porMes.get(`${+y - 1}-${m}`)?.ars ?? cmp?.ars ?? 0
+  const progreso = objetivo > 0 ? Math.round((cur.ars / objetivo) * 100) : null
+  const dPctFact = delta(cur.ars, cmp?.ars)
 
   // ---- UI helpers ----
   const Delta = ({ pct }: { pct: number | null }) => pct == null ? <span className="text-faint">—</span>
@@ -184,12 +192,11 @@ export default function DashboardVentas() {
     return p == null ? <span className="text-faint">—</span> : <b className={p >= 0 ? 'text-emerald-600' : 'text-red-600'}>{p >= 0 ? '▲' : '▼'} {Math.abs(p)}%</b>
   }
 
-  // Acelerador (gauge semicircular) — % vs el mes comparado, aguja + ticks
-  const Acelerador = ({ pct }: { pct: number | null }) => {
+  // Acelerador (gauge semicircular). pct = posición de la aguja (-100..100); centro/sub = textos; color = acento.
+  const Acelerador = ({ pct, centro, sub, color }: { pct: number | null; centro: string; sub: string; color: string }) => {
     const p = pct == null ? 0 : Math.max(-100, Math.min(100, pct))
     const theta = (90 - (p / 100) * 90) * (Math.PI / 180)
     const nx = 100 + 72 * Math.cos(theta), ny = 100 - 72 * Math.sin(theta)
-    const color = pct == null ? '#9ca3af' : pct >= 0 ? '#34d399' : '#f87171'
     const ticks = Array.from({ length: 41 }, (_, i) => i)
     return (
       <svg viewBox="0 0 200 118" className="w-full max-w-[210px]">
@@ -204,8 +211,8 @@ export default function DashboardVentas() {
         })}
         <line x1={100} y1={100} x2={nx} y2={ny} stroke={color} strokeWidth={3.2} strokeLinecap="round" />
         <circle cx={100} cy={100} r={5} fill={color} />
-        <text x={100} y={70} textAnchor="middle" fill="#fff" fontSize={24} fontWeight={700}>{pct == null ? '—' : `${pct >= 0 ? '+' : ''}${pct}%`}</text>
-        <text x={100} y={90} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={9}>vs {etiqueta(mesCmp)}</text>
+        <text x={100} y={70} textAnchor="middle" fill="#fff" fontSize={22} fontWeight={700}>{centro}</text>
+        <text x={100} y={90} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={8.5}>{sub}</text>
       </svg>
     )
   }
@@ -275,8 +282,12 @@ export default function DashboardVentas() {
           <p className="text-[11px] mt-1">vs {etiqueta(mesCmp)}: {deltaBig(cur.ars, cmp?.ars)}</p>
         </div>
         <div className="flex flex-col items-center justify-center">
-          <Acelerador pct={delta(cur.ars, cmp?.ars)} />
-          <p className="text-[9px] text-white/40 -mt-1">acelerador de facturación</p>
+          {esCurso && progreso != null ? (
+            <Acelerador pct={progreso - 100} centro={`${progreso}%`} sub={`del objetivo (${etiqueta(`${+y - 1}-${m}`)})`} color={progreso >= 100 ? '#34d399' : '#e6a817'} />
+          ) : (
+            <Acelerador pct={dPctFact} centro={dPctFact == null ? '—' : `${dPctFact >= 0 ? '+' : ''}${dPctFact}%`} sub={`vs ${etiqueta(mesCmp)}`} color={dPctFact == null ? '#9ca3af' : dPctFact >= 0 ? '#34d399' : '#f87171'} />
+          )}
+          <p className="text-[9px] text-white/40 -mt-1">{esCurso ? '🟡 mes en curso · avance vs objetivo' : 'acelerador vs comparado'}</p>
         </div>
         {esGeneral && totCanal > 0 ? (
           <div className="flex items-center gap-3 justify-center">
