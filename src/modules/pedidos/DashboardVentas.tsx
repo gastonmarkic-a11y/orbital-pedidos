@@ -30,6 +30,7 @@ export default function DashboardVentas() {
   const [mesSel, setMesSel] = useState('')
   const [mesCmp, setMesCmp] = useState('')
   const [metrica, setMetrica] = useState<'ars' | 'u'>('ars')
+  const [tapMode, setTapMode] = useState<'mes' | 'cmp'>('mes')
 
   const [clientes, setClientes] = useState<Fila[]>([])
   const [modelos, setModelos] = useState<Fila[]>([])
@@ -138,7 +139,6 @@ export default function DashboardVentas() {
   const ult = meses.slice(-18)
   const maxEvo = Math.max(...ult.map((am) => (metrica === 'ars' ? porMes.get(am)!.ars : porMes.get(am)!.u)), 1)
   const totCanal = cur.b2b + cur.b2c
-  const pctB2b = totCanal ? Math.round((cur.b2b / totCanal) * 100) : 0
 
   // ---- UI helpers ----
   const Delta = ({ pct }: { pct: number | null }) => pct == null ? <span className="text-faint">—</span>
@@ -175,6 +175,54 @@ export default function DashboardVentas() {
           {!loadDet && data.length === 0 && <p className="text-xs text-faint">{vacio}</p>}
         </div>
       </div>
+    )
+  }
+
+  const kArShort = (n: number) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${Math.round(n / 1e3)}k`)
+  const deltaBig = (a: number, b?: number | null) => {
+    const p = delta(a, b ?? undefined)
+    return p == null ? <span className="text-faint">—</span> : <b className={p >= 0 ? 'text-emerald-600' : 'text-red-600'}>{p >= 0 ? '▲' : '▼'} {Math.abs(p)}%</b>
+  }
+
+  // Acelerador (gauge semicircular) — % vs el mes comparado, aguja + ticks
+  const Acelerador = ({ pct }: { pct: number | null }) => {
+    const p = pct == null ? 0 : Math.max(-100, Math.min(100, pct))
+    const theta = (90 - (p / 100) * 90) * (Math.PI / 180)
+    const nx = 100 + 72 * Math.cos(theta), ny = 100 - 72 * Math.sin(theta)
+    const color = pct == null ? '#9ca3af' : pct >= 0 ? '#34d399' : '#f87171'
+    const ticks = Array.from({ length: 41 }, (_, i) => i)
+    return (
+      <svg viewBox="0 0 200 118" className="w-full max-w-[210px]">
+        {ticks.map((i) => {
+          const d = 180 - (i / 40) * 180
+          const a = d * (Math.PI / 180)
+          const pctAt = (90 - d) / 0.9
+          const on = pct != null && (p >= 0 ? pctAt >= 0 && pctAt <= p : pctAt <= 0 && pctAt >= p)
+          const x1 = 100 + 80 * Math.cos(a), y1 = 100 - 80 * Math.sin(a)
+          const x2 = 100 + 92 * Math.cos(a), y2 = 100 - 92 * Math.sin(a)
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={on ? color : 'rgba(255,255,255,0.16)'} strokeWidth={2.6} strokeLinecap="round" />
+        })}
+        <line x1={100} y1={100} x2={nx} y2={ny} stroke={color} strokeWidth={3.2} strokeLinecap="round" />
+        <circle cx={100} cy={100} r={5} fill={color} />
+        <text x={100} y={70} textAnchor="middle" fill="#fff" fontSize={24} fontWeight={700}>{pct == null ? '—' : `${pct >= 0 ? '+' : ''}${pct}%`}</text>
+        <text x={100} y={90} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={9}>vs {etiqueta(mesCmp)}</text>
+      </svg>
+    )
+  }
+
+  // Donut de canal B2B/B2C
+  const DonutCanal = ({ b2b, b2c }: { b2b: number; b2c: number }) => {
+    const tot = b2b + b2c || 1
+    const pb = b2b / tot
+    const R = 42, C = 2 * Math.PI * R
+    return (
+      <svg viewBox="0 0 120 120" className="w-[112px] h-[112px] shrink-0">
+        <circle cx={60} cy={60} r={R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={13} />
+        <circle cx={60} cy={60} r={R} fill="none" stroke="#e6a817" strokeWidth={13} strokeDasharray={`${C} ${C}`} transform="rotate(-90 60 60)" />
+        <circle cx={60} cy={60} r={R} fill="none" stroke="#fff" strokeWidth={13} strokeDasharray={`${pb * C} ${C}`} strokeLinecap="butt" transform="rotate(-90 60 60)" />
+        <text x={60} y={57} textAnchor="middle" fill="#fff" fontSize={18} fontWeight={700}>{Math.round(pb * 100)}%</text>
+        <text x={60} y={72} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={8}>B2B</text>
+      </svg>
     )
   }
 
@@ -218,7 +266,30 @@ export default function DashboardVentas() {
         </label>
       </div>
 
-      {/* KPIs */}
+      {/* HERO impacto: facturación + acelerador + donut de canal */}
+      <div className="rounded-2xl p-4 md:p-5 bg-neutral-900 text-white grid gap-4 md:grid-cols-[1.1fr_1fr_1fr] items-center">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/50">Facturación · {etiqueta(mesSel)}</p>
+          <p className="text-3xl md:text-4xl font-bold text-amber-400 leading-tight">{kAr(cur.ars)}</p>
+          <p className="text-[11px] text-white/60 mt-0.5">{ent.format(cur.u)} u · {ent.format(cur.ops)} {esGeneral ? 'operaciones' : 'clientes'} · ticket {kAr(ticket)}</p>
+          <p className="text-[11px] mt-1">vs {etiqueta(mesCmp)}: {deltaBig(cur.ars, cmp?.ars)}</p>
+        </div>
+        <div className="flex flex-col items-center justify-center">
+          <Acelerador pct={delta(cur.ars, cmp?.ars)} />
+          <p className="text-[9px] text-white/40 -mt-1">acelerador de facturación</p>
+        </div>
+        {esGeneral && totCanal > 0 ? (
+          <div className="flex items-center gap-3 justify-center">
+            <DonutCanal b2b={cur.b2b} b2c={cur.b2c} />
+            <div className="text-[11px] space-y-1.5">
+              <div><span className="inline-block w-2.5 h-2.5 rounded-full bg-white mr-1.5 align-middle" />B2B mayorista<br /><b className="text-white">{kAr(cur.b2b)}</b></div>
+              <div><span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 mr-1.5 align-middle" />B2C minorista<br /><b className="text-amber-400">{kAr(cur.b2c)}</b></div>
+            </div>
+          </div>
+        ) : <div className="hidden md:block" />}
+      </div>
+
+      {/* KPIs con delta */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi titulo={`Facturación ${etiqueta(mesSel)}`} valor={kAr(cur.ars)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(cur.ars, cmp?.ars)} />
         <Kpi titulo="Unidades" valor={ent.format(cur.u)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(cur.u, cmp?.u)} />
@@ -226,38 +297,57 @@ export default function DashboardVentas() {
         <Kpi titulo="Ticket promedio" valor={kAr(ticket)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(ticket, ticketCmp)} />
       </div>
 
-      {/* Canal B2B/B2C (solo general) */}
-      {esGeneral && totCanal > 0 && (
-        <div className="bg-white rounded-xl p-4 border border-black/10">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Reparto por canal · {etiqueta(mesSel)}</p>
-          <div className="flex h-6 rounded-lg overflow-hidden mb-2">
-            <div className="bg-brand h-full flex items-center justify-center text-white text-[10px] font-semibold" style={{ width: `${pctB2b}%` }}>{pctB2b >= 12 ? `B2B ${pctB2b}%` : ''}</div>
-            <div className="bg-amber-500 h-full flex items-center justify-center text-white text-[10px] font-semibold" style={{ width: `${100 - pctB2b}%` }}>{100 - pctB2b >= 12 ? `B2C ${100 - pctB2b}%` : ''}</div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg border border-black/10 p-2"><p className="text-[10px] text-faint uppercase">B2B · Mayorista (ópticas)</p><p className="font-bold text-brandDark">{kAr(cur.b2b)}</p></div>
-            <div className="rounded-lg border border-black/10 p-2"><p className="text-[10px] text-faint uppercase">B2C · Minorista (e-commerce)</p><p className="font-bold text-amber-600">{kAr(cur.b2c)}</p></div>
+      {/* Evolución interactiva con feedback claro */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Evolución 18 meses · {metrica === 'ars' ? '$' : 'unid.'}</p>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-faint">Al tocar una barra, fijar:</span>
+            <div className="flex bg-[#F1EDE4] rounded-lg p-0.5">
+              <button onClick={() => setTapMode('mes')} className={`px-2 py-0.5 rounded-md font-medium ${tapMode === 'mes' ? 'bg-brandDark text-white' : 'text-muted'}`}>Mes</button>
+              <button onClick={() => setTapMode('cmp')} className={`px-2 py-0.5 rounded-md font-medium ${tapMode === 'cmp' ? 'bg-amber-400 text-white' : 'text-muted'}`}>Comparar</button>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Evolución clickeable */}
-      <div className="bg-white rounded-xl p-4 border border-black/10">
-        <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Evolución (18 meses · {metrica === 'ars' ? '$' : 'unid.'}) — tocá una barra</p>
-        <div className="flex items-end gap-1 h-32">
+        {/* Callout: qué tocaste y cómo compara */}
+        <div className="rounded-lg bg-[#F7F5F0] p-2.5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span className="font-semibold text-brandDark">📅 {etiqueta(mesSel)}: {metrica === 'ars' ? kAr(cur.ars) : ent.format(cur.u) + ' u'}</span>
+          <span className="text-muted">
+            vs <span className="text-amber-700 font-medium">{etiqueta(mesCmp)}</span> ({metrica === 'ars' ? kAr(cmp?.ars ?? 0) : ent.format(cmp?.u ?? 0) + ' u'}):{' '}
+            {deltaBig(metrica === 'ars' ? cur.ars : cur.u, metrica === 'ars' ? cmp?.ars : cmp?.u)}
+          </span>
+        </div>
+
+        <div className="flex items-end gap-1 h-36">
           {ult.map((am) => {
-            const v = metrica === 'ars' ? porMes.get(am)!.ars : porMes.get(am)!.u
+            const pt = porMes.get(am)!
+            const v = metrica === 'ars' ? pt.ars : pt.u
             const activo = am === mesSel, comparado = am === mesCmp
             return (
-              <button key={am} onClick={() => setMesSel(am)} className="flex-1 flex flex-col items-center justify-end h-full group" title={`${etiqueta(am)}: ${metrica === 'ars' ? kAr(v) : ent.format(v) + ' u'}`}>
-                <div className={`w-full rounded-t ${activo ? 'bg-brandDark' : comparado ? 'bg-amber-400' : 'bg-brand/50 group-hover:bg-brand/80'}`} style={{ height: `${Math.max(2, (v / maxEvo) * 100)}%` }} />
+              <button
+                key={am}
+                onClick={() => (tapMode === 'mes' ? setMesSel(am) : setMesCmp(am))}
+                className="flex-1 flex flex-col items-center justify-end h-full group"
+                title={`${etiqueta(am)}: ${metrica === 'ars' ? kAr(v) : ent.format(v) + ' u'}`}
+              >
+                {(activo || comparado) && (
+                  <span className={`text-[8px] font-bold mb-0.5 leading-none ${activo ? 'text-brandDark' : 'text-amber-600'}`}>
+                    {metrica === 'ars' ? kArShort(v) : ent.format(v)}
+                  </span>
+                )}
+                <div
+                  className={`w-full rounded-t transition-colors ${activo ? 'bg-brandDark' : comparado ? 'bg-amber-400' : 'bg-brand/40 group-hover:bg-brand/70'}`}
+                  style={{ height: `${Math.max(2, (v / maxEvo) * 100)}%` }}
+                />
+                <span className={`text-[7px] mt-0.5 leading-none ${activo ? 'text-brandDark font-semibold' : comparado ? 'text-amber-600 font-semibold' : 'text-transparent group-hover:text-faint'}`}>
+                  {etiqueta(am)}
+                </span>
               </button>
             )
           })}
         </div>
-        <div className="flex gap-1 mt-1">
-          {ult.map((am) => <span key={am} className="flex-1 text-center text-[8px] text-faint">{am.endsWith('-01') || am === mesSel ? etiqueta(am) : ''}</span>)}
-        </div>
+        <p className="text-[10px] text-faint mt-2">Barra <b className="text-brandDark">oscura</b> = mes elegido · <b className="text-amber-600">ámbar</b> = mes comparado. Tocá para cambiar según el selector de arriba.</p>
       </div>
 
       {/* Rankings */}
