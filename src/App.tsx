@@ -139,14 +139,13 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   const secundarios: NavItem[] = [
     { to: '/gestion-clientes', label: 'Mis clientes' },
     { to: '/resultados', label: 'Asistente' },
-    { to: '/ventas-historico', label: 'Ventas' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
   ]
   const menu: NavItem[] = []
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
-  if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' })
+  if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' })
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
