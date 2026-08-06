@@ -37,6 +37,7 @@ import Liquidacion from './modules/liquidacion/Liquidacion'
 import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
 import PedidosProduccion from './modules/produccion/PedidosProduccion'
+import DashboardVentas from './modules/pedidos/DashboardVentas'
 
 interface NavItem {
   to: string
@@ -65,6 +66,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion/costeo': Calculator,
   '/produccion/generar': Factory,
   '/produccion/pedidos': Factory,
+  '/ventas-historico': TrendingUp,
 }
 
 function iconoDe(to: string, label: string) {
@@ -151,6 +153,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
       { to: '/pedidos/dashboard', label: 'Dashboard' },
+      { to: '/ventas-historico', label: 'Ventas histórico' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción / Ingresos' },
@@ -391,6 +394,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
 
