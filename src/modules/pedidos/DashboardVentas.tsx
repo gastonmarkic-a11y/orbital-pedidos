@@ -177,7 +177,7 @@ export default function DashboardVentas() {
                   <p className="text-[11px] text-muted">{pctB2c}% del total</p>
                 </div>
               </div>
-              {cur.b2c === 0 && <p className="text-[10px] text-faint mt-2">Minorista (Shopify) disponible desde jul-26. Meses previos: e-commerce estaba en Contabilium.</p>}
+              {cur.b2c === 0 && <p className="text-[10px] text-faint mt-2">Minorista (Shopify) disponible desde oct-25. Meses previos no tienen e-commerce cargado.</p>}
             </>
           ) : <p className="text-xs text-faint">Sin datos de canal este mes.</p>}
         </div>
