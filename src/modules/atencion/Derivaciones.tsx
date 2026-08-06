@@ -10,17 +10,24 @@ import { useToast } from '../../lib/toast'
 interface Derivacion {
   id: string
   conversacion_id: string
-  motivo: 'sin_respuesta' | 'confirmar_stock' | 'reclamo_excepcion'
+  motivo: string
   resumen: string
   tipo_cliente: 'mayorista' | 'minorista' | null
   estado: 'pendiente' | 'tomada' | 'resuelta'
   created_at: string
 }
 
-const MOTIVO: Record<Derivacion['motivo'], { label: string; color: string }> = {
+const MOTIVO: Record<string, { label: string; color: string }> = {
   sin_respuesta: { label: '❓ Sin respuesta en la base', color: 'border-amber-400' },
   confirmar_stock: { label: '📦 Confirmar stock', color: 'border-emerald-500' },
   reclamo_excepcion: { label: '⚠ Reclamo / excepción', color: 'border-red-500' },
+  precio_mayorista: { label: '💲 Precio mayorista (óptica)', color: 'border-brand' },
+  iris_deriva: { label: '🤖 IRIS derivó la charla', color: 'border-amber-400' },
+  envio_incidencia: { label: '🚚 Incidencia con el envío', color: 'border-red-500' },
+  recuperada: { label: '↩ Conversación recuperada', color: 'border-amber-400' },
+}
+function motivoInfo(m: string) {
+  return MOTIVO[m] ?? { label: `🔔 ${m.replace(/_/g, ' ')}`, color: 'border-amber-400' }
 }
 
 export default function Derivaciones() {
@@ -96,10 +103,10 @@ export default function Derivaciones() {
       ) : (
         <div className="space-y-2">
           {pendientes.map((d) => (
-            <div key={d.id} className={`bg-white rounded-xl border border-black/10 border-l-4 ${MOTIVO[d.motivo].color} p-3`}>
+            <div key={d.id} className={`bg-white rounded-xl border border-black/10 border-l-4 ${motivoInfo(d.motivo).color} p-3`}>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold text-muted">
-                  {MOTIVO[d.motivo].label}
+                  {motivoInfo(d.motivo).label}
                   {d.tipo_cliente ? ` · ${d.tipo_cliente}` : ''}
                 </span>
                 <span className="text-[10px] text-faint">
