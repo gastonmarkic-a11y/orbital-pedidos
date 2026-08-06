@@ -139,6 +139,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   const secundarios: NavItem[] = [
     { to: '/gestion-clientes', label: 'Mis clientes' },
     { to: '/resultados', label: 'Asistente' },
+    { to: '/ventas-historico', label: 'Ventas' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
   ]
@@ -388,7 +389,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
+          {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
 
