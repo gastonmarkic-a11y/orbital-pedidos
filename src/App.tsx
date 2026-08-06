@@ -39,6 +39,7 @@ import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
 import PedidosProduccion from './modules/produccion/PedidosProduccion'
 import DashboardVentas from './modules/pedidos/DashboardVentas'
 import ActualizarBanner from './modules/ActualizarBanner'
+import ProduccionHub from './modules/produccion/ProduccionHub'
 
 interface NavItem {
   to: string
@@ -86,12 +87,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'produccion')
     return {
       principales: [{ to: '/produccion', label: 'Producción' }],
-      secundarios: [
-        { to: '/pedidos/stock', label: 'Stock' },
-        { to: '/produccion/generar', label: 'Generar' },
-        { to: '/produccion/pedidos', label: 'Pedidos prod.' },
-        { to: '/produccion/costeo', label: 'Costeo' },
-      ],
+      secundarios: [{ to: '/pedidos/stock', label: 'Stock' }],
       menu: [],
     }
   if (rol === 'tienda')
@@ -157,10 +153,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/ventas-historico', label: 'Ventas histórico' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
-      { to: '/produccion', label: 'Producción / Ingresos' },
-      { to: '/produccion/generar', label: 'Generar producción' },
-      { to: '/produccion/pedidos', label: 'Pedidos de producción' },
-      { to: '/produccion/costeo', label: 'Costeo de producción' },
+      { to: '/produccion', label: 'Producción (órdenes y costos)' },
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/derivaciones', label: 'Derivaciones (bot)' },
@@ -383,7 +376,7 @@ function Layout() {
             <Route path="/pedidos/stock" element={<StockAdmin />} />
           )}
           {(rol === 'admin' || rol === 'deposito' || rol === 'produccion') && (
-            <Route path="/produccion" element={<Produccion />} />
+            <Route path="/produccion" element={<ProduccionHub />} />
           )}
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/costeo" element={<PanelCosteo />} />}
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/generar" element={<GeneradorProduccion />} />}
