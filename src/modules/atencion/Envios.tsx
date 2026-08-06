@@ -52,9 +52,22 @@ function linkTrack(url: string | null, tn: string) {
   return url.trim().endsWith('=') ? url + tn : url
 }
 
+interface PedidoDespacho {
+  id: number
+  cliente: string | null
+  estado: string | null
+  fecha_entrega: string | null
+  tipo_transporte: string | null
+  nro_guia: string | null
+  contacto_entrega: string | null
+  direccion_entrega: string | null
+  vendedor: string | null
+}
+
 export default function Envios() {
   const [resumen, setResumen] = useState<Resumen | null>(null)
   const [rows, setRows] = useState<EnvioRow[]>([])
+  const [pedidos, setPedidos] = useState<PedidoDespacho[]>([])
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState('')
   const [loading, setLoading] = useState(true)
@@ -77,6 +90,14 @@ export default function Envios() {
 
   useEffect(() => {
     cargarResumen()
+    // Pedidos del sistema (B2B) en estados de despacho — no solo e-commerce.
+    supabase
+      .from('pedidos')
+      .select('id, cliente, estado, fecha_entrega, tipo_transporte, nro_guia, contacto_entrega, direccion_entrega, vendedor')
+      .in('estado', ['listo_despachar', 'despachado'])
+      .neq('vendedor', 'Tienda')
+      .order('id', { ascending: false })
+      .then(({ data }) => setPedidos((data as PedidoDespacho[]) ?? []))
   }, [cargarResumen])
 
   useEffect(() => {
@@ -105,9 +126,9 @@ export default function Envios() {
     <div className="space-y-3 text-ink">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-base font-semibold">📦 Envíos (e-commerce)</h2>
+          <h2 className="text-base font-semibold">📦 Envíos</h2>
           <p className="text-[11px] text-faint">
-            Estado de los envíos de Envia.com{resumen?.ult_sync ? ` · última sync ${fecha(resumen.ult_sync)}` : ''}
+            Pedidos B2B del sistema para despacho + envíos de e-commerce (Envia){resumen?.ult_sync ? ` · sync ${fecha(resumen.ult_sync)}` : ''}
           </p>
         </div>
         <button
@@ -121,6 +142,38 @@ export default function Envios() {
 
       {msg && <p className="text-[11px] text-brandDark bg-brand/5 rounded-lg px-3 py-2">{msg}</p>}
 
+      {/* Pedidos del sistema (B2B) para despacho */}
+      <div className="bg-white rounded-xl border border-black/10 p-3">
+        <p className="text-sm font-semibold mb-1">
+          🚚 Pedidos B2B para despacho
+          <span className="text-[11px] text-faint font-normal">
+            {' '}· {pedidos.filter((p) => p.estado === 'listo_despachar').length} listos ·{' '}
+            {pedidos.filter((p) => p.estado === 'despachado').length} despachados
+          </span>
+        </p>
+        {pedidos.length === 0 ? (
+          <p className="text-[11px] text-faint">No hay pedidos del sistema en estado de despacho.</p>
+        ) : (
+          <div className="space-y-1 max-h-56 overflow-y-auto">
+            {pedidos.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 text-xs border-t border-black/5 pt-1 first:border-0 first:pt-0">
+                <span className="truncate">
+                  <b>{p.cliente || `#${p.id}`}</b>
+                  <span className="text-faint"> · {p.tipo_transporte || 's/transporte'}{p.nro_guia ? ` · guía ${p.nro_guia}` : ''}</span>
+                </span>
+                <span
+                  className="text-[10px] font-bold rounded-full px-2 py-0.5 whitespace-nowrap"
+                  style={p.estado === 'despachado' ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#fef9c3', color: '#a16207' }}
+                >
+                  {p.estado === 'despachado' ? '🚚 despachado' : '📦 listo p/despachar'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[10px] uppercase text-faint font-semibold tracking-wide pt-1">E-commerce (Envia)</p>
       {/* Tiles de resumen */}
       {resumen && (
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
