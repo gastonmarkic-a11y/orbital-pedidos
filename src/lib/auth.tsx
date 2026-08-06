@@ -70,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           codigo: activa?.codigo ?? null,
           nombre: activa?.nombre ?? null,
           version: __APP_BUILD__,
+          build_ts: __APP_BUILD_TS__,
           user_agent: navigator.userAgent,
           visto_at: new Date().toISOString(),
         },

@@ -38,6 +38,7 @@ import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
 import PedidosProduccion from './modules/produccion/PedidosProduccion'
 import DashboardVentas from './modules/pedidos/DashboardVentas'
+import ActualizarBanner from './modules/ActualizarBanner'
 
 interface NavItem {
   to: string
@@ -300,6 +301,7 @@ function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F4EF]">
+      <ActualizarBanner />
       <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
