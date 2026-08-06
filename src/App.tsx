@@ -36,6 +36,7 @@ import Publicidad from './modules/publicidad/Publicidad'
 import Liquidacion from './modules/liquidacion/Liquidacion'
 import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
+import PedidosProduccion from './modules/produccion/PedidosProduccion'
 
 interface NavItem {
   to: string
@@ -63,6 +64,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/liquidacion': Banknote,
   '/produccion/costeo': Calculator,
   '/produccion/generar': Factory,
+  '/produccion/pedidos': Factory,
 }
 
 function iconoDe(to: string, label: string) {
@@ -84,6 +86,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/pedidos/stock', label: 'Stock' },
         { to: '/produccion/generar', label: 'Generar' },
+        { to: '/produccion/pedidos', label: 'Pedidos prod.' },
         { to: '/produccion/costeo', label: 'Costeo' },
       ],
       menu: [],
@@ -152,6 +155,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción / Ingresos' },
       { to: '/produccion/generar', label: 'Generar producción' },
+      { to: '/produccion/pedidos', label: 'Pedidos de producción' },
       { to: '/produccion/costeo', label: 'Costeo de producción' },
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
@@ -378,6 +382,7 @@ function Layout() {
           )}
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/costeo" element={<PanelCosteo />} />}
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/generar" element={<GeneradorProduccion />} />}
+          {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/pedidos" element={<PedidosProduccion />} />}
           {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
           {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
