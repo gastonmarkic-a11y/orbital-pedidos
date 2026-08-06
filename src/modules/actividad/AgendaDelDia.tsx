@@ -6,6 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 import { NOMBRE_OPERADOR } from '../../lib/operadores'
+import RetomarPropuestasZona from './RetomarPropuestasZona'
 
 export default function AgendaDelDia() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
@@ -146,6 +147,9 @@ export default function AgendaDelDia() {
         <p className="text-sm text-muted p-4">Cargando...</p>
       ) : (
         <>
+          {(codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian') && (
+            <RetomarPropuestasZona codigoEfectivo={codigoEfectivo} />
+          )}
           {derivados.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
