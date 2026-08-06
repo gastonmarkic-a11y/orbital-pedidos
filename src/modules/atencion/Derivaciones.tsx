@@ -38,6 +38,23 @@ export default function Derivaciones() {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [conv, setConv] = useState<Record<string, { emisor: string; contenido: string }[]>>({})
   const [contacto, setContacto] = useState<Record<string, string | null>>({})
+  const [respuesta, setRespuesta] = useState<Record<string, string>>({})
+  const [enviando, setEnviando] = useState<string | null>(null)
+
+  async function responderConv(d: Derivacion) {
+    const texto = (respuesta[d.conversacion_id] ?? '').trim()
+    if (!texto) return
+    setEnviando(d.id)
+    const { data, error } = await supabase.functions.invoke('at-responder', {
+      body: { conversacion_id: d.conversacion_id, texto, agente: vendedor?.nombre ?? null },
+    })
+    setEnviando(null)
+    if (error) { toast('No se pudo enviar: ' + error.message, 'error'); return }
+    const res = data as { enviado?: boolean; detalle?: string }
+    setConv((c) => ({ ...c, [d.conversacion_id]: [...(c[d.conversacion_id] ?? []), { emisor: 'agente', contenido: texto }] }))
+    setRespuesta((r) => ({ ...r, [d.conversacion_id]: '' }))
+    toast(res?.enviado ? '✓ Respuesta enviada por WhatsApp' : res?.detalle || 'Respuesta registrada', 'success')
+  }
 
   async function verConversacion(d: Derivacion) {
     if (abierta === d.id) { setAbierta(null); return }
@@ -142,21 +159,31 @@ export default function Derivaciones() {
                     <p className="text-[11px] text-faint">Sin mensajes en esta conversación.</p>
                   ) : (
                     (conv[d.conversacion_id] ?? []).map((m, i) => (
-                      <div key={i} className={`text-xs ${m.emisor === 'bot' ? 'text-muted' : 'text-ink font-medium'}`}>
-                        <span className="text-[9px] uppercase text-faint mr-1">{m.emisor === 'bot' ? '🤖 IRIS' : '👤 Cliente'}</span>
+                      <div key={i} className={`text-xs ${m.emisor === 'cliente' ? 'text-ink font-medium' : m.emisor === 'agente' ? 'text-emerald-700' : 'text-muted'}`}>
+                        <span className="text-[9px] uppercase text-faint mr-1">{m.emisor === 'cliente' ? '👤 Cliente' : m.emisor === 'agente' ? '🧑‍💼 Vos' : '🤖 IRIS'}</span>
                         {m.contenido}
                       </div>
                     ))
                   )}
-                  {contacto[d.conversacion_id] && (
-                    <a
-                      href={`https://wa.me/${(contacto[d.conversacion_id] || '').replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-block mt-1 text-[11px] font-semibold text-emerald-700"
+                  {/* Responder centralizado (WhatsApp) */}
+                  <div className="pt-1.5 mt-1 border-t border-black/10 flex items-end gap-1.5">
+                    <textarea
+                      value={respuesta[d.conversacion_id] ?? ''}
+                      onChange={(e) => setRespuesta((r) => ({ ...r, [d.conversacion_id]: e.target.value }))}
+                      placeholder="Escribí la respuesta al cliente…"
+                      rows={2}
+                      className="flex-1 rounded-lg border border-black/10 px-2 py-1.5 text-xs"
+                    />
+                    <button
+                      onClick={() => responderConv(d)}
+                      disabled={enviando === d.id || !(respuesta[d.conversacion_id] ?? '').trim()}
+                      className="rounded-lg bg-emerald-600 text-white px-3 py-2 text-xs font-semibold disabled:opacity-50 shrink-0"
                     >
-                      💬 Responder por WhatsApp ({contacto[d.conversacion_id]}) →
-                    </a>
+                      {enviando === d.id ? '…' : 'Enviar'}
+                    </button>
+                  </div>
+                  {contacto[d.conversacion_id] && (
+                    <p className="text-[10px] text-faint">Contacto: {contacto[d.conversacion_id]}</p>
                   )}
                 </div>
               )}
