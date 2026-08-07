@@ -30,6 +30,15 @@ function motivoInfo(m: string) {
   return MOTIVO[m] ?? { label: `🔔 ${m.replace(/_/g, ' ')}`, color: 'border-amber-400' }
 }
 
+// Responsable por tema (criterio acordado): envíos/posventa → Mauro; comercial → Prospección
+// (Luna/Damián); redes o consultas no codificables → Gastón.
+function responsableDe(motivo: string, tipo: string | null): string {
+  if (['envio_incidencia', 'confirmar_stock'].includes(motivo)) return 'Mauro (envíos)'
+  if (['reclamo_excepcion'].includes(motivo)) return 'Mauro (posventa)'
+  if (motivo === 'precio_mayorista' || (motivo === 'iris_deriva' && tipo === 'mayorista')) return 'Prospección (Luna/Damián)'
+  return 'Gastón (general/redes)'
+}
+
 export default function Derivaciones() {
   const { vendedor } = useAuth()
   const toast = useToast()
@@ -40,6 +49,22 @@ export default function Derivaciones() {
   const [contacto, setContacto] = useState<Record<string, string | null>>({})
   const [respuesta, setRespuesta] = useState<Record<string, string>>({})
   const [enviando, setEnviando] = useState<string | null>(null)
+  const [piezas, setPiezas] = useState<{ titulo: string; link: string | null; texto: string | null }[]>([])
+
+  useEffect(() => {
+    supabase.from('piezas_marketing').select('titulo, url_publica, url_corta, url, contenido_texto').eq('activa', true)
+      .then(({ data }) => {
+        const rows = (data as { titulo: string; url_publica: string | null; url_corta: string | null; url: string | null; contenido_texto: string | null }[]) ?? []
+        setPiezas(rows.map((p) => ({ titulo: p.titulo, link: p.url_corta || p.url_publica || p.url, texto: p.contenido_texto })))
+      })
+  }, [])
+
+  // Inserta el material elegido (link o texto) en la respuesta de esa conversación.
+  function adjuntar(convId: string, idx: number) {
+    const p = piezas[idx]; if (!p) return
+    const frag = p.link ? `${p.titulo}: ${p.link}` : (p.texto || p.titulo)
+    setRespuesta((r) => ({ ...r, [convId]: ((r[convId] ?? '').trim() + (r[convId]?.trim() ? '\n\n' : '') + frag) }))
+  }
 
   async function responderConv(d: Derivacion) {
     const texto = (respuesta[d.conversacion_id] ?? '').trim()
@@ -147,6 +172,7 @@ export default function Derivaciones() {
                 <span className="text-[11px] font-semibold text-muted">
                   {motivoInfo(d.motivo).label}
                   {d.tipo_cliente ? ` · ${d.tipo_cliente}` : ''}
+                  <span className="ml-1 inline-block rounded-full bg-brand/10 text-brandDark px-2 py-0.5 text-[10px] font-medium">→ {responsableDe(d.motivo, d.tipo_cliente)}</span>
                 </span>
                 <span className="text-[10px] text-faint">
                   {new Date(d.created_at).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -166,7 +192,20 @@ export default function Derivaciones() {
                     ))
                   )}
                   {/* Responder centralizado (WhatsApp) */}
-                  <div className="pt-1.5 mt-1 border-t border-black/10 flex items-end gap-1.5">
+                  <div className="pt-1.5 mt-1 border-t border-black/10">
+                    {piezas.length > 0 && (
+                      <div className="mb-1.5">
+                        <select
+                          value=""
+                          onChange={(e) => { if (e.target.value !== '') adjuntar(d.conversacion_id, Number(e.target.value)); e.currentTarget.value = '' }}
+                          className="text-[11px] rounded-lg border border-black/10 px-2 py-1 bg-white w-full max-w-xs"
+                        >
+                          <option value="">📎 Adjuntar material (catálogo, lista de precios…)</option>
+                          {piezas.map((p, i) => <option key={i} value={i}>{p.link ? '🔗 ' : '📄 '}{p.titulo}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="flex items-end gap-1.5">
                     <textarea
                       value={respuesta[d.conversacion_id] ?? ''}
                       onChange={(e) => setRespuesta((r) => ({ ...r, [d.conversacion_id]: e.target.value }))}
@@ -181,6 +220,7 @@ export default function Derivaciones() {
                     >
                       {enviando === d.id ? '…' : 'Enviar'}
                     </button>
+                    </div>
                   </div>
                   {contacto[d.conversacion_id] && (
                     <p className="text-[10px] text-faint">Contacto: {contacto[d.conversacion_id]}</p>
