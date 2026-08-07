@@ -23,7 +23,8 @@ import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Pedidos from './modules/pedidos/Pedidos'
 import Envios from './modules/envios/Envios'
 import GestionClientes from './modules/actividad/GestionClientes'
-import Derivaciones from './modules/atencion/Derivaciones'
+import Conversaciones from './modules/atencion/Conversaciones'
+import BannerPendientes from './modules/atencion/BannerPendientes'
 import MapaZonas from './modules/atencion/MapaZonas'
 import EnviosEcom from './modules/atencion/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
@@ -124,6 +125,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
+        { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
         { to: '/envios-ecom', label: 'Envíos' },
       ],
@@ -156,7 +158,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/produccion', label: 'Producción (órdenes y costos)' },
       { to: '/tienda', label: 'Tienda Shopify' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
-      { to: '/derivaciones', label: 'Derivaciones (bot)' },
+      { to: '/conversaciones', label: 'Conversaciones (bot)' },
       { to: '/liquidacion', label: 'Liquidación prospectores' },
       { to: '/envios-ecom', label: 'Envíos' },
       { to: '/actividad-admin', label: 'Equipo' },
@@ -294,6 +296,7 @@ function Layout() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F4EF]">
       <ActualizarBanner />
+      <BannerPendientes />
       <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -386,7 +389,8 @@ function Layout() {
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Derivaciones />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/conversaciones" element={<Conversaciones />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Conversaciones />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
