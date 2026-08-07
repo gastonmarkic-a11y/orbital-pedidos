@@ -21,6 +21,8 @@ const METRICAS: { k: Metric; label: string }[] = [
   { k: 'frio', label: '❄ Sin contactar' },
 ]
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+// Solo estas provincias se abren por ciudad (mucho volumen/dispersión); el resto queda por provincia.
+const DRILL = new Set(['CABA', 'Buenos Aires', 'Santa Fe'])
 
 export default function MapaZonas() {
   const [prov, setProv] = useState<string | null>(null)
@@ -52,7 +54,8 @@ export default function MapaZonas() {
         )}
       </div>
       <p className="text-[11px] text-faint -mt-1">
-        {prov ? `Localidades de ${prov}` : 'Provincias'} · facturación real 2026 (Tango + Shopify) · tocá una zona para {prov ? 'volver' : 'ver sus localidades'}.
+        {prov ? `Ciudades de ${prov}` : 'Provincias'} · facturación real 2026 (Tango + Shopify).{' '}
+        {prov ? 'Tocá "← Provincias" para volver.' : 'Tocá CABA, Buenos Aires o Santa Fe para ver sus ciudades; el resto es solo por provincia.'}
       </p>
 
       <div className="flex gap-1.5 flex-wrap items-center">
@@ -78,10 +81,11 @@ export default function MapaZonas() {
             const pct = (v / max) * 100
             const b2bW = esFact && total(r) > 0 ? (Number(r.b2b_ars) / total(r)) * pct : pct
             const b2cW = esFact && total(r) > 0 ? (Number(r.b2c_ars) / total(r)) * pct : 0
+            const drillable = !prov && DRILL.has(r.zona)
             return (
-              <button key={r.zona} onClick={() => !prov && setProv(r.zona)} className={`w-full text-left bg-white rounded-xl border border-black/10 p-3 ${!prov ? 'hover:border-brand/40' : 'cursor-default'}`}>
+              <button key={r.zona} onClick={() => drillable && setProv(r.zona)} className={`w-full text-left bg-white rounded-xl border border-black/10 p-3 ${drillable ? 'hover:border-brand/40 cursor-pointer' : 'cursor-default'}`}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="text-sm font-medium truncate">{!prov && '▸ '}{r.zona}</span>
+                  <span className="text-sm font-medium truncate">{drillable && '▸ '}{r.zona}</span>
                   <span className="text-sm font-bold tabular-nums" style={{ color: esFrio ? '#2563eb' : '#c0392b' }}>
                     {esFact ? kAr(v) : v.toLocaleString('es-AR')}
                   </span>
