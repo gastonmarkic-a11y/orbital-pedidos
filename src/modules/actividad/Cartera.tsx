@@ -225,7 +225,6 @@ export default function Cartera() {
   const aRecuperar = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'recuperar'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
   const bienvenida = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'bienvenida'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
   const fidelizados = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'fidelizacion'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
-  const canjeTotal = useMemo(() => conVentas.reduce((a, c) => a + Math.floor((c.unidades_2025 ?? 0) * 0.2), 0), [conVentas])
 
   const zonas = useMemo(() => {
     const set = new Set<string>()
@@ -521,11 +520,10 @@ export default function Cartera() {
       )}
 
       {/* Las tarjetas SON los filtros: tocás una y se filtra la lista. */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {(
           [
             { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500', seg: 'canje', sub: 'ventas en 2025 · canje' },
-            { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500', seg: 'canje', sub: 'unidades sugeridas (20%)' },
             { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500', seg: 'recuperar', sub: 'con ventas previas a 2025' },
             { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500', seg: 'bienvenida', sub: 'sin ventas (fríos)' },
             { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500', seg: 'fidelizacion', sub: 'con ventas 2026 (activos)' },

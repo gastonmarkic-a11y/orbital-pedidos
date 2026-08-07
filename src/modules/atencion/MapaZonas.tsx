@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 // Mapa de zonas por FACTURACIÓN REAL 2026 (Tango B2B + Shopify B2C).
-// Niveles: Provincias → (Ciudades solo en CABA/Buenos Aires/Santa Fe) → Clientes (con su actividad).
+// Niveles: Región (CABA/AMBA/Interior/NOA/NEA/CUYO/CENTRO/Patagonia) → Provincia → Clientes (con actividad).
 
-interface ZonaRow { zona: string; clientes: number; con_venta: number; activos_90: number; sin_contactar: number; b2b_ars: number; b2c_ars: number }
-interface CliRow { cod: string; nombre: string | null; localidad: string | null; vendedor: string | null; b2b_ars: number; ultima_actividad: string | null }
+interface ZonaRow { zona: string; clientes: number; con_venta: number; sin_contactar: number; b2b_ars: number; b2c_ars: number }
+interface CliRow { cod: string; nombre: string | null; provincia: string | null; localidad: string | null; vendedor: string | null; b2b_ars: number; ultima_actividad: string | null }
 type Metric = 'facturacion' | 'clientes' | 'frio'
 
 const METRICAS: { k: Metric; label: string }[] = [
@@ -14,13 +14,14 @@ const METRICAS: { k: Metric; label: string }[] = [
   { k: 'frio', label: '❄ Sin contactar' },
 ]
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
-const DRILL = new Set(['CABA', 'Buenos Aires', 'Santa Fe']) // solo estas se abren por ciudad
+// Regiones que abren directo a clientes (una sola "provincia"). El resto abre provincias primero.
+const DIRECTO = new Set(['CABA', 'AMBA Norte', 'AMBA Sur', 'AMBA Oeste', 'Interior Bs As', 'Exterior', 'Sin zona'])
 const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Martin: 'Martín', Corporativo: 'Corporativo' }
 function diasDesde(f: string | null): number | null { if (!f) return null; const d = new Date(f + 'T00:00:00'); if (isNaN(d.getTime())) return null; return Math.floor((Date.now() - d.getTime()) / 86400000) }
 
 export default function MapaZonas() {
+  const [region, setRegion] = useState<string | null>(null)
   const [prov, setProv] = useState<string | null>(null)
-  const [loc, setLoc] = useState<string | null>(null)
   const [verCli, setVerCli] = useState(false)
   const [zonaRows, setZonaRows] = useState<ZonaRow[]>([])
   const [cliRows, setCliRows] = useState<CliRow[]>([])
@@ -30,15 +31,15 @@ export default function MapaZonas() {
   useEffect(() => {
     setLoading(true)
     if (verCli) {
-      supabase.rpc('zonas_clientes', { p_provincia: prov, p_localidad: loc }).then(({ data, error }) => {
+      supabase.rpc('mapa_clientes', { p_region: region, p_provincia: prov }).then(({ data, error }) => {
         setCliRows(error ? [] : ((data as CliRow[]) ?? [])); setLoading(false)
       })
     } else {
-      supabase.rpc('zonas_facturacion', { p_provincia: prov }).then(({ data, error }) => {
+      supabase.rpc('mapa_zonas', { p_region: region }).then(({ data, error }) => {
         setZonaRows(error ? [] : ((data as ZonaRow[]) ?? [])); setLoading(false)
       })
     }
-  }, [prov, loc, verCli])
+  }, [region, prov, verCli])
 
   const total = (r: ZonaRow) => Number(r.b2b_ars) + Number(r.b2c_ars)
   const valor = (r: ZonaRow) => (metric === 'facturacion' ? total(r) : metric === 'clientes' ? r.clientes : r.sin_contactar)
@@ -48,26 +49,26 @@ export default function MapaZonas() {
   const esFact = metric === 'facturacion'
 
   function volver() {
-    if (verCli && loc) { setVerCli(false); setLoc(null) }        // clientes de ciudad → ciudades
-    else if (verCli) { setVerCli(false); setProv(null) }          // clientes de provincia → provincias
-    else { setProv(null); setLoc(null) }                          // ciudades → provincias
+    if (verCli && prov) { setVerCli(false); setProv(null) }         // clientes de provincia → provincias
+    else if (verCli) { setVerCli(false); setRegion(null) }          // clientes de región → regiones
+    else { setRegion(null); setProv(null) }                         // provincias → regiones
   }
   function tapZona(z: string) {
-    if (!prov) { if (DRILL.has(z)) setProv(z); else { setProv(z); setVerCli(true) } } // provincia
-    else { setLoc(z); setVerCli(true) }                                               // ciudad → clientes
+    if (!region) { if (DIRECTO.has(z)) { setRegion(z); setVerCli(true) } else setRegion(z) }  // región
+    else { setProv(z); setVerCli(true) }                                                      // provincia → clientes
   }
 
-  const titulo = verCli ? `Clientes de ${loc || prov}` : prov ? `Ciudades de ${prov}` : 'Provincias'
+  const titulo = verCli ? `Clientes de ${prov || region}` : region ? `Provincias de ${region}` : 'Regiones'
 
   return (
     <div className="space-y-3 text-ink">
       <div className="flex items-center gap-2 flex-wrap">
         <h2 className="text-base font-semibold">🗺 Mapa de zonas</h2>
-        {(prov || verCli) && <button onClick={volver} className="text-xs text-brandDark font-medium">← Volver</button>}
+        {(region || verCli) && <button onClick={volver} className="text-xs text-brandDark font-medium">← Volver</button>}
       </div>
       <p className="text-[11px] text-faint -mt-1">
         {titulo} · facturación real 2026 (Tango + Shopify).{' '}
-        {!prov && !verCli ? 'Tocá CABA, Buenos Aires o Santa Fe para ver ciudades; el resto abre directo los clientes.' : verCli ? 'Detalle de cada cliente y su última actividad.' : 'Tocá una ciudad para ver sus clientes.'}
+        {!region && !verCli ? 'CABA/AMBA/Interior abren clientes; NOA/NEA/CUYO/CENTRO/Patagonia abren provincias.' : verCli ? 'Detalle de cada cliente y su última actividad.' : 'Tocá una provincia para ver sus clientes.'}
       </p>
 
       {!verCli && (
@@ -87,7 +88,6 @@ export default function MapaZonas() {
       {loading ? (
         <p className="text-sm text-muted p-2">Cargando...</p>
       ) : verCli ? (
-        /* ---- Clientes de la zona ---- */
         <div className="space-y-1.5">
           <p className="text-[11px] text-faint">{cliRows.length} cliente{cliRows.length !== 1 ? 's' : ''}</p>
           {cliRows.map((c) => {
@@ -110,14 +110,13 @@ export default function MapaZonas() {
       ) : ordenadas.length === 0 ? (
         <p className="text-sm text-faint text-center py-8 bg-white rounded-xl border border-black/10">Sin datos.</p>
       ) : (
-        /* ---- Zonas (provincias o ciudades) ---- */
         <div className="space-y-1.5">
           {ordenadas.map((r) => {
             const v = valor(r)
             const pct = (v / max) * 100
             const b2bW = esFact && total(r) > 0 ? (Number(r.b2b_ars) / total(r)) * pct : pct
             const b2cW = esFact && total(r) > 0 ? (Number(r.b2c_ars) / total(r)) * pct : 0
-            const abre = !prov ? (DRILL.has(r.zona) ? 'ciudad' : 'cli') : 'cli'
+            const abreCli = !region ? DIRECTO.has(r.zona) : true
             return (
               <button key={r.zona} onClick={() => tapZona(r.zona)} className="w-full text-left bg-white rounded-xl border border-black/10 p-3 hover:border-brand/40 cursor-pointer">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -137,7 +136,7 @@ export default function MapaZonas() {
                 <p className="text-[10px] text-muted mt-1.5">
                   {r.clientes} clientes · {r.con_venta} con venta 2026 · {r.sin_contactar} sin contactar
                   {esFact ? ` · B2B ${kAr(Number(r.b2b_ars))}${Number(r.b2c_ars) > 0 ? ` · B2C ${kAr(Number(r.b2c_ars))}` : ''}` : ''}
-                  {abre === 'cli' ? ' · tocá para ver los clientes' : ' · tocá para ver ciudades'}
+                  {abreCli ? ' · tocá para ver clientes' : ' · tocá para ver provincias'}
                 </p>
               </button>
             )
