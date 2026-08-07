@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import DashboardPedidos from './Dashboard'
 import DashboardVentas from './DashboardVentas'
-import MapaZonas from '../atencion/MapaZonas'
+import Territorios from '../territorios/Territorios'
 
 // Dashboard general con pestañas: operativo + ventas histórico + mapa de zonas,
 // para que convivan en un solo lugar (menos ítems de menú sueltos).
@@ -15,7 +15,7 @@ export default function DashboardHub() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'operativo', label: `📊 Operativo · ${mesAnio}` },
     { key: 'ventas', label: '📈 Ventas' },
-    { key: 'mapa', label: '🗺 Mapa de zonas' },
+    { key: 'mapa', label: '🗺 Territorios' },
   ]
   return (
     <div className="space-y-4">
@@ -32,7 +32,7 @@ export default function DashboardHub() {
       </div>
       {tab === 'operativo' && <DashboardPedidos />}
       {tab === 'ventas' && <DashboardVentas />}
-      {tab === 'mapa' && <MapaZonas />}
+      {tab === 'mapa' && <Territorios />}
     </div>
   )
 }
