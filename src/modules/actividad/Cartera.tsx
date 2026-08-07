@@ -74,6 +74,7 @@ export default function Cartera() {
   const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian')
   const [modoCartera, setModoCartera] = useState<'prospectos' | 'venta_directa'>('prospectos')
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [cohorte, setCohorte] = useState<Record<string, { v2026: boolean; v2025: boolean; ultimoAnio: number | null; u2025: number }>>({})
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
   const [ultimaActPor, setUltimaActPor] = useState<Record<string, string>>({})
   const [propuestaMes, setPropuestaMes] = useState<Record<string, string>>({})
@@ -161,6 +162,15 @@ export default function Cartera() {
       })
       setClientes(rows)
       const codsSet = new Set(rows.map((c) => c.cod))
+      // Cohorte por ventas reales (histórico): 2026=fidelizado, 2025=con ventas/canje, previas=recuperar, sin ventas=bienvenida.
+      const codsArr = rows.map((c) => c.cod)
+      const coMap: Record<string, { v2026: boolean; v2025: boolean; ultimoAnio: number | null; u2025: number }> = {}
+      for (let i = 0; i < codsArr.length; i += 300) {
+        const { data } = await supabase.from('v_cliente_cohorte').select('cod_cliente, v2026, v2025, ultimo_anio, u2025').in('cod_cliente', codsArr.slice(i, i + 300))
+        for (const r of (data as { cod_cliente: string; v2026: boolean; v2025: boolean; ultimo_anio: number | null; u2025: number }[]) ?? [])
+          coMap[r.cod_cliente] = { v2026: r.v2026, v2025: r.v2025, ultimoAnio: r.ultimo_anio, u2025: r.u2025 }
+      }
+      setCohorte(coMap)
       const acts = await fetchPaged<{ cod_cliente: string | null; fecha: string; vendedor: string | null; propuesta_enviada_id: number | null }>(
         () =>
           supabase
@@ -201,17 +211,20 @@ export default function Cartera() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, clientes])
 
-  const esFidelizado = (c: Cliente) => c.clasificacion_recupero === 'fidelizacion'
-  const conVentas = useMemo(
-    () => clientes.filter((c) => ((c.unidades_2025 ?? 0) > 0 || c.clasificacion_recupero === 'activo') && !esFidelizado(c)),
-    [clientes]
-  )
-  const aRecuperar = useMemo(
-    () => clientes.filter((c) => c.clasificacion_recupero && ['2024', '2022_2023', '2021_o_antes'].includes(c.clasificacion_recupero)),
-    [clientes]
-  )
-  const bienvenida = useMemo(() => clientes.filter((c) => c.clasificacion_recupero === 'sin_historial'), [clientes])
-  const fidelizados = useMemo(() => clientes.filter(esFidelizado), [clientes])
+  // Cohorte EXCLUYENTE por ventas reales (sin duplicados ni limbo):
+  //  2026 → Fidelizado (activo este año) · 2025 → Con ventas/Canje · previas a 2025 → A recuperar · sin ventas → Bienvenida (frío)
+  const cohorteDe = (c: Cliente): Segmento => {
+    const co = cohorte[c.cod]
+    if (co?.v2026) return 'fidelizacion'
+    if (co?.v2025 || (c.unidades_2025 ?? 0) > 0) return 'canje'
+    if (co?.ultimoAnio) return 'recuperar'
+    return 'bienvenida'
+  }
+  const esFidelizado = (c: Cliente) => cohorteDe(c) === 'fidelizacion'
+  const conVentas = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'canje'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
+  const aRecuperar = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'recuperar'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
+  const bienvenida = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'bienvenida'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fidelizados = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'fidelizacion'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
   const canjeTotal = useMemo(() => conVentas.reduce((a, c) => a + Math.floor((c.unidades_2025 ?? 0) * 0.2), 0), [conVentas])
 
   const zonas = useMemo(() => {
@@ -507,53 +520,37 @@ export default function Cartera() {
         </div>
       )}
 
+      {/* Las tarjetas SON los filtros: tocás una y se filtra la lista. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-        {[
-          { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500' },
-          { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500' },
-          { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500' },
-          { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500' },
-          { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500' },
-        ].map((k) => (
-          <div key={k.label} className="bg-white border border-black/10 rounded-xl p-3 relative overflow-hidden">
-            <div className={`absolute top-0 left-0 right-0 h-0.5 ${k.color}`} />
-            <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1">{k.label}</p>
-            <p className="text-2xl font-bold">{k.val}</p>
-          </div>
-        ))}
+        {(
+          [
+            { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500', seg: 'canje', sub: 'ventas en 2025 · canje' },
+            { label: 'Canje propuesto', val: canjeTotal, color: 'bg-amber-500', seg: 'canje', sub: 'unidades sugeridas (20%)' },
+            { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500', seg: 'recuperar', sub: 'con ventas previas a 2025' },
+            { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500', seg: 'bienvenida', sub: 'sin ventas (fríos)' },
+            { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500', seg: 'fidelizacion', sub: 'con ventas 2026 (activos)' },
+          ] as { label: string; val: number; color: string; seg: Segmento; sub: string }[]
+        ).map((k) => {
+          const activo = !buscando && segmento === k.seg
+          return (
+            <button
+              key={k.label}
+              onClick={() => setSegmento(k.seg)}
+              className={`text-left bg-white border rounded-xl p-3 relative overflow-hidden transition ${activo ? 'border-brand ring-2 ring-brand/30' : 'border-black/10 hover:border-brand/40'}`}
+            >
+              <div className={`absolute top-0 left-0 right-0 h-0.5 ${k.color}`} />
+              <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1">{k.label}</p>
+              <p className="text-2xl font-bold">{k.val}</p>
+              <p className="text-[10px] text-faint mt-0.5 leading-tight">{k.sub}</p>
+            </button>
+          )
+        })}
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
-        <button
-          onClick={() => setRecarga((r) => r + 1)}
-          className="text-xs font-medium px-3 py-1.5 rounded-full border border-black/10 text-muted"
-        >
-          ⟳ Actualizar
-        </button>
-        <button
-          onClick={() => setNuevoOpen(true)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-brand text-white"
-        >
-          + Nuevo prospecto
-        </button>
-        {(
-          [
-            ['canje', `↩ Con canje (${conVentas.length})`],
-            ['recuperar', `📋 A recuperar (${aRecuperar.length})`],
-            ['bienvenida', `🔍 Bienvenida (${bienvenida.length})`],
-            ['fidelizacion', `⭐ Fidelizados (${fidelizados.length})`],
-          ] as [Segmento, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setSegmento(key)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-full border ${
-              segmento === key && !buscando ? 'bg-brand border-brand text-white' : 'border-black/10 text-muted'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        <button onClick={() => setRecarga((r) => r + 1)} className="text-xs font-medium px-3 py-1.5 rounded-full border border-black/10 text-muted">⟳ Actualizar</button>
+        <button onClick={() => setNuevoOpen(true)} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-brand text-white">+ Nuevo prospecto</button>
+        <span className="text-[11px] text-faint">Tocá una tarjeta de arriba para filtrar la lista.</span>
       </div>
 
       <div className="flex gap-2 flex-wrap">
