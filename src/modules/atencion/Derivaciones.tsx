@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
+import { responsableLabel, esMia } from './ruteo'
 
 // Derivaciones del bot de atención (multicanal): cuando el bot no puede resolver,
 // crea una derivación en la tabla `derivaciones`. Acá el equipo las ve en tiempo real
@@ -30,17 +31,10 @@ function motivoInfo(m: string) {
   return MOTIVO[m] ?? { label: `🔔 ${m.replace(/_/g, ' ')}`, color: 'border-amber-400' }
 }
 
-// Responsable por tema (criterio acordado): envíos/posventa → Mauro; comercial → Prospección
-// (Luna/Damián); redes o consultas no codificables → Gastón.
-function responsableDe(motivo: string, tipo: string | null): string {
-  if (['envio_incidencia', 'confirmar_stock'].includes(motivo)) return 'Mauro (envíos)'
-  if (['reclamo_excepcion'].includes(motivo)) return 'Mauro (posventa)'
-  if (motivo === 'precio_mayorista' || (motivo === 'iris_deriva' && tipo === 'mayorista')) return 'Prospección (Luna/Damián)'
-  return 'Gastón (general/redes)'
-}
 
 export default function Derivaciones() {
-  const { vendedor } = useAuth()
+  const { vendedor, codigoEfectivo, rolEfectivo } = useAuth()
+  const [soloMias, setSoloMias] = useState(false)
   const toast = useToast()
   const [derivaciones, setDerivaciones] = useState<Derivacion[]>([])
   const [loading, setLoading] = useState(true)
@@ -146,17 +140,22 @@ export default function Derivaciones() {
     toast('✓ Derivación resuelta', 'success')
   }
 
-  const pendientes = derivaciones.filter((d) => d.estado !== 'resuelta')
+  const todas = derivaciones.filter((d) => d.estado !== 'resuelta')
+  const mias = todas.filter((d) => esMia(d.motivo, d.tipo_cliente, codigoEfectivo ?? null, rolEfectivo ?? null))
+  const pendientes = soloMias ? mias : todas
 
   return (
     <div className="space-y-3 text-ink">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-base font-semibold">🔔 Derivaciones del bot</h2>
-        <span className="text-xs text-muted">
-          {pendientes.length} pendiente{pendientes.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-[#F1EDE4] rounded-lg p-0.5 text-[11px]">
+            <button onClick={() => setSoloMias(false)} className={`px-2.5 py-1 rounded-md font-medium ${!soloMias ? 'bg-brand text-white' : 'text-muted'}`}>Todas ({todas.length})</button>
+            <button onClick={() => setSoloMias(true)} className={`px-2.5 py-1 rounded-md font-medium ${soloMias ? 'bg-brand text-white' : 'text-muted'}`}>Mías ({mias.length})</button>
+          </div>
+        </div>
       </div>
-      <p className="text-[11px] text-faint -mt-1">Consultas que el bot de atención (WhatsApp/IG/web) no pudo resolver. Se actualizan en vivo.</p>
+      <p className="text-[11px] text-faint -mt-1">Consultas que el bot de atención (WhatsApp/IG/web) no pudo resolver. Se actualizan en vivo. "Mías" = las de tu tema (envíos/comercial/pagos/…).</p>
 
       {loading ? (
         <p className="text-sm text-muted p-2">Cargando...</p>
@@ -172,7 +171,7 @@ export default function Derivaciones() {
                 <span className="text-[11px] font-semibold text-muted">
                   {motivoInfo(d.motivo).label}
                   {d.tipo_cliente ? ` · ${d.tipo_cliente}` : ''}
-                  <span className="ml-1 inline-block rounded-full bg-brand/10 text-brandDark px-2 py-0.5 text-[10px] font-medium">→ {responsableDe(d.motivo, d.tipo_cliente)}</span>
+                  <span className="ml-1 inline-block rounded-full bg-brand/10 text-brandDark px-2 py-0.5 text-[10px] font-medium">→ {responsableLabel(d.motivo, d.tipo_cliente)}</span>
                 </span>
                 <span className="text-[10px] text-faint">
                   {new Date(d.created_at).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
