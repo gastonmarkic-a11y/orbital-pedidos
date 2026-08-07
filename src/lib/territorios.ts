@@ -20,3 +20,18 @@ export const TERRITORIOS: Territorio[] = [
 
 // Provincias que están dentro de alguna región definida (para detectar "otros").
 export const PROVINCIAS_MAPEADAS = new Set(TERRITORIOS.flatMap((t) => t.provincias))
+
+// Provincia (canónica) → región. Para agrupar carteras/clientes por región en el front.
+export const PROV_REGION: Record<string, string> = {}
+for (const t of TERRITORIOS) for (const p of t.provincias) PROV_REGION[p] = t.region
+
+export function regionDeProvincia(prov: string | null | undefined): string {
+  const p = (prov ?? '').trim()
+  if (!p) return 'Sin zona'
+  if (PROV_REGION[p]) return PROV_REGION[p]
+  const norm = p.toLowerCase()
+  for (const k in PROV_REGION) if (k.toLowerCase() === norm) return PROV_REGION[k]
+  if (/ciudad aut|capital federal|c\.?a\.?b\.?a/.test(norm)) return 'CABA'
+  if (/buenos aires|bs\.? ?as/.test(norm)) return 'BUENOS AIRES'
+  return 'Otros'
+}

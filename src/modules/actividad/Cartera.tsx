@@ -11,6 +11,15 @@ import PreparacionEnvio, { leerEnvioPendiente } from '../envios/PreparacionEnvio
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
 import { NOMBRE_OPERADOR } from '../../lib/operadores'
+import { regionDeProvincia } from '../../lib/territorios'
+
+// Propuesta comercial de cada cohorte (qué ofrecerle a esa base).
+const PROPUESTA: Record<string, { t: string; d: string }> = {
+  canje: { t: '🎯 Plan Canje', d: 'Compraron en 2025 → ofrecerles canjear/renovar (~20% de sus unidades).' },
+  recuperar: { t: '↩ Recuperación', d: 'Última compra previa a 2025 → reactivar con propuesta de reenganche.' },
+  bienvenida: { t: '👋 Paquete de Bienvenida', d: 'Prospectos sin compras (fríos) → enviar la bienvenida Orbital.' },
+  fidelizacion: { t: '⭐ Fidelización', d: 'Ya compraron en 2026 (activos) → sostener con novedades y atención preferencial.' },
+}
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -234,6 +243,16 @@ export default function Cartera() {
 
   const segmentoRows =
     segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : segmento === 'fidelizacion' ? fidelizados : bienvenida
+
+  // Desglose por región de la base seleccionada (ej: CUYO 4 · NOA 3 · Buenos Aires 20).
+  const zonasSeg = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of segmentoRows) {
+      const z = regionDeProvincia((c as { provincia?: string | null }).provincia ?? c.zona)
+      m.set(z, (m.get(z) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1])
+  }, [segmentoRows])
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -550,6 +569,23 @@ export default function Cartera() {
         <button onClick={() => setNuevoOpen(true)} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-brand text-white">+ Nuevo prospecto</button>
         <span className="text-[11px] text-faint">Tocá una tarjeta de arriba para filtrar la lista.</span>
       </div>
+
+      {/* Propuesta de la base seleccionada + desglose por región */}
+      {!buscando && PROPUESTA[segmento] && (
+        <div className="bg-ink text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+          <div className="min-w-0 md:flex-1">
+            <p className="text-base font-semibold">{PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
+            <p className="text-[11px] text-white/70">{PROPUESTA[segmento].d}</p>
+          </div>
+          {zonasSeg.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 md:justify-end">
+              {zonasSeg.slice(0, 8).map(([z, n]) => (
+                <span key={z} className="text-[11px] rounded-full bg-white/10 px-2 py-0.5 whitespace-nowrap">{z} <b>{n}</b></span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap">
         <input
