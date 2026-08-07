@@ -6,6 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { ymd, mondayOfWeek, sundayOfWeek } from '../../lib/dates'
 import { NOMBRE_OPERADOR } from '../../lib/operadores'
+import { regionDeProvincia } from '../../lib/territorios'
 import RetomarPropuestasZona from './RetomarPropuestasZona'
 
 export default function AgendaDelDia() {
@@ -21,6 +22,7 @@ export default function AgendaDelDia() {
   const [editCod, setEditCod] = useState<string | null>(null)
   const [ed, setEd] = useState({ contacto: '', telefono: '', email: '' })
   const [edSaving, setEdSaving] = useState(false)
+  const [zonaFiltro, setZonaFiltro] = useState<string | null>(null)
 
   function empezarEdicion(c: Cliente) {
     setEditCod(c.cod)
@@ -113,8 +115,18 @@ export default function AgendaDelDia() {
 
   const fechaLabel = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  // Filtro por región/zona: conteo sobre todo lo que hay que contactar y filtrado de cada lista.
+  const regionCli = (c: Cliente) => regionDeProvincia((c as { provincia?: string | null }).provincia ?? c.zona)
+  const zonaCount = new Map<string, number>()
+  for (const c of [...agendados, ...vencidosRecientes, ...derivados]) { const z = regionCli(c); zonaCount.set(z, (zonaCount.get(z) ?? 0) + 1) }
+  const zonas = [...zonaCount.entries()].sort((a, b) => b[1] - a[1])
+  const fZona = (l: Cliente[]) => (zonaFiltro ? l.filter((c) => regionCli(c) === zonaFiltro) : l)
+  const agendadosV = fZona(agendados)
+  const derivadosV = fZona(derivados)
+  const vencidosRecientesV = fZona(vencidosRecientes)
+
   const porFecha: Record<string, Cliente[]> = {}
-  for (const c of agendados) {
+  for (const c of agendadosV) {
     const k = c.proxima_agenda_fecha ?? '—'
     ;(porFecha[k] = porFecha[k] || []).push(c)
   }
@@ -147,15 +159,28 @@ export default function AgendaDelDia() {
         <p className="text-sm text-muted p-4">Cargando...</p>
       ) : (
         <>
+          {zonas.length > 1 && (
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] uppercase tracking-wide text-faint font-semibold mr-0.5">Zona</span>
+              <button onClick={() => setZonaFiltro(null)} className={`text-[11px] rounded-full px-3 py-1.5 border font-medium ${!zonaFiltro ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted'}`}>
+                Todas ({zonas.reduce((a, [, n]) => a + n, 0)})
+              </button>
+              {zonas.map(([z, n]) => (
+                <button key={z} onClick={() => setZonaFiltro(zonaFiltro === z ? null : z)} className={`text-[11px] rounded-full px-3 py-1.5 border font-medium ${zonaFiltro === z ? 'bg-brand text-white border-brand' : 'border-black/10 text-muted'}`}>
+                  {z} <b>{n}</b>
+                </button>
+              ))}
+            </div>
+          )}
           {(codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian') && (
             <RetomarPropuestasZona codigoEfectivo={codigoEfectivo} />
           )}
-          {derivados.length > 0 && (
+          {derivadosV.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
-                🔔 Nuevos contactos de prospección ({derivados.length})
+                🔔 Nuevos contactos de prospección ({derivadosV.length})
               </p>
-              {derivados.map((c) => (
+              {derivadosV.map((c) => (
                 <div key={c.cod} className="bg-violet-50 border-2 border-violet-400 rounded-xl p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -193,9 +218,9 @@ export default function AgendaDelDia() {
               ))}
             </div>
           )}
-          {vencidosRecientes.length > 0 && (
+          {vencidosRecientesV.length > 0 && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
-              ⚠ Tenés {vencidosRecientes.length} contactos con agenda vencida en los últimos 7 días sin actividad
+              ⚠ Tenés {vencidosRecientesV.length} contactos con agenda vencida en los últimos 7 días sin actividad
               nueva.
             </div>
           )}
@@ -292,20 +317,20 @@ export default function AgendaDelDia() {
                 </div>
               </div>
             ))}
-            {agendados.length === 0 && derivados.length === 0 && (
+            {agendadosV.length === 0 && derivadosV.length === 0 && (
               <p className="text-sm text-faint text-center py-10">
                 No tenés nada agendado para {modo === 'hoy' ? 'hoy' : 'esta semana'}. Mirá "Cartera" para buscar a
                 quién contactar.
               </p>
             )}
           </div>
-          {vencidosRecientes.length > 0 && (
+          {vencidosRecientesV.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
                 Vencidos (últimos 7 días)
               </p>
               <div className="space-y-2">
-                {vencidosRecientes.map((c) => (
+                {vencidosRecientesV.map((c) => (
                   <div key={c.cod} className="bg-white border border-red-200 rounded-xl p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
