@@ -10,9 +10,11 @@ type Tab = 'operativo' | 'ventas' | 'mapa'
 
 export default function DashboardHub() {
   const [tab, setTab] = useState<Tab>('operativo')
+  const hoy = new Date()
+  const mesAnio = hoy.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'operativo', label: '📊 Operativo' },
-    { key: 'ventas', label: '📈 Ventas histórico' },
+    { key: 'operativo', label: `📊 Operativo · ${mesAnio}` },
+    { key: 'ventas', label: '📈 Ventas' },
     { key: 'mapa', label: '🗺 Mapa de zonas' },
   ]
   return (

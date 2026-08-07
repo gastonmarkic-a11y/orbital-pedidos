@@ -90,20 +90,21 @@ export default function DashboardVentas() {
     setMesCmp(porMes.has(prevAnual) ? prevAnual : (meses[meses.length - 2] ?? ult))
   }, [meses]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // detalle del mes seleccionado
+  // detalle del mes primario (el MÁS NUEVO de los dos elegidos — comparación siempre viejo→nuevo)
   useEffect(() => {
     let cancel = false
     if (!mesSel) return
+    const mesDet = !mesCmp || mesSel >= mesCmp ? mesSel : mesCmp
     async function cargar() {
       setLoadDet(true)
-      const topCli = supabase.rpc('ventas_top_clientes', { p_cartera: esGeneral ? null : scope, p_mes: mesSel, p_limit: 15 })
+      const topCli = supabase.rpc('ventas_top_clientes', { p_cartera: esGeneral ? null : scope, p_mes: mesDet, p_limit: 15 })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const proms: any[] = [topCli]
       if (esGeneral) {
         proms.push(
-          supabase.from('ventas_hist_modelo').select('modelo,unidades,importe_ars').eq('anio_mes', mesSel).order('unidades', { ascending: false }).limit(15),
-          supabase.from('ventas_hist_zona').select('zona,unidades,importe_ars').eq('anio_mes', mesSel),
-          supabase.from('v_ventas_cartera_mes').select('vendedor,unidades,importe_ars').eq('anio_mes', mesSel),
+          supabase.from('ventas_hist_modelo').select('modelo,unidades,importe_ars').eq('anio_mes', mesDet).order('unidades', { ascending: false }).limit(15),
+          supabase.from('ventas_hist_zona').select('zona,unidades,importe_ars').eq('anio_mes', mesDet),
+          supabase.from('v_ventas_cartera_mes').select('vendedor,unidades,importe_ars').eq('anio_mes', mesDet),
         )
       }
       const res = await Promise.all(proms) as { data: unknown }[]
@@ -123,14 +124,17 @@ export default function DashboardVentas() {
     }
     cargar()
     return () => { cancel = true }
-  }, [mesSel, scope, esGeneral, carteras])
+  }, [mesSel, mesCmp, scope, esGeneral, carteras])
 
   if (loading) return <p className="text-sm text-muted p-4">Cargando ventas…</p>
   if (!meses.length) return <p className="text-sm text-faint p-4">No hay ventas para {esGeneral ? 'mostrar' : 'esta cartera'} todavía.</p>
 
-  const cur = porMes.get(mesSel) ?? { ars: 0, u: 0, ops: 0, b2b: 0, b2c: 0 }
-  const cmp = porMes.get(mesCmp)
-  const [y, m] = mesSel.split('-')
+  // Comparación SIEMPRE viejo→nuevo: el más nuevo de los dos es el primario, el más viejo el comparado.
+  const mesNuevo = !mesCmp || mesSel >= mesCmp ? mesSel : mesCmp
+  const mesViejo = mesNuevo === mesSel ? mesCmp : mesSel
+  const cur = porMes.get(mesNuevo) ?? { ars: 0, u: 0, ops: 0, b2b: 0, b2c: 0 }
+  const cmp = porMes.get(mesViejo)
+  const [y, m] = mesNuevo.split('-')
   const mv = (r: Fila) => (metrica === 'ars' ? r.v : r.u)
   const fmtM = (n: number) => (metrica === 'ars' ? kAr(n) : `${ent.format(n)} u`)
   const delta = (a: number, b?: number) => (b == null || !b ? null : Math.round(((a - b) / Math.abs(b)) * 100))
@@ -143,7 +147,7 @@ export default function DashboardVentas() {
   // Mes en curso: no comparar contra un mes completo (siempre daría negativo). Se muestra
   // AVANCE hacia un objetivo mínimo = mismo mes del año anterior (o el mes comparado).
   const hoyMes = new Date().toISOString().slice(0, 7)
-  const esCurso = mesSel === hoyMes
+  const esCurso = mesNuevo === hoyMes
   const objetivo = porMes.get(`${+y - 1}-${m}`)?.ars ?? cmp?.ars ?? 0
   const progreso = objetivo > 0 ? Math.round((cur.ars / objetivo) * 100) : null
   const dPctFact = delta(cur.ars, cmp?.ars)
@@ -166,7 +170,7 @@ export default function DashboardVentas() {
       <div className="bg-white rounded-xl p-4 border border-black/10">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide">{titulo}</p>
-          <span className="text-[10px] text-faint">{etiqueta(mesSel)} · {metrica === 'ars' ? '$' : 'u'}</span>
+          <span className="text-[10px] text-faint">{etiqueta(mesNuevo)} · {metrica === 'ars' ? '$' : 'u'}</span>
         </div>
         <div className="space-y-1.5">
           {data.slice(0, 15).map((d, i) => (
@@ -276,16 +280,16 @@ export default function DashboardVentas() {
       {/* HERO impacto: facturación + acelerador + donut de canal */}
       <div className="rounded-2xl p-4 md:p-5 bg-neutral-900 text-white grid gap-4 md:grid-cols-[1.1fr_1fr_1fr] items-center">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-white/50">Facturación · {etiqueta(mesSel)}</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/50">Facturación · {etiqueta(mesNuevo)}</p>
           <p className="text-3xl md:text-4xl font-bold text-amber-400 leading-tight">{kAr(cur.ars)}</p>
           <p className="text-[11px] text-white/60 mt-0.5">{ent.format(cur.u)} u · {ent.format(cur.ops)} {esGeneral ? 'operaciones' : 'clientes'} · ticket {kAr(ticket)}</p>
-          <p className="text-[11px] mt-1">vs {etiqueta(mesCmp)}: {deltaBig(cur.ars, cmp?.ars)}</p>
+          <p className="text-[11px] mt-1">vs {etiqueta(mesViejo)}: {deltaBig(cur.ars, cmp?.ars)}</p>
         </div>
         <div className="flex flex-col items-center justify-center">
           {esCurso && progreso != null ? (
             <Acelerador pct={progreso - 100} centro={`${progreso}%`} sub={`del objetivo (${etiqueta(`${+y - 1}-${m}`)})`} color={progreso >= 100 ? '#34d399' : '#e6a817'} />
           ) : (
-            <Acelerador pct={dPctFact} centro={dPctFact == null ? '—' : `${dPctFact >= 0 ? '+' : ''}${dPctFact}%`} sub={`vs ${etiqueta(mesCmp)}`} color={dPctFact == null ? '#9ca3af' : dPctFact >= 0 ? '#34d399' : '#f87171'} />
+            <Acelerador pct={dPctFact} centro={dPctFact == null ? '—' : `${dPctFact >= 0 ? '+' : ''}${dPctFact}%`} sub={`vs ${etiqueta(mesViejo)}`} color={dPctFact == null ? '#9ca3af' : dPctFact >= 0 ? '#34d399' : '#f87171'} />
           )}
           <p className="text-[9px] text-white/40 -mt-1">{esCurso ? '🟡 mes en curso · avance vs objetivo' : 'acelerador vs comparado'}</p>
         </div>
@@ -302,10 +306,10 @@ export default function DashboardVentas() {
 
       {/* KPIs con delta */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi titulo={`Facturación ${etiqueta(mesSel)}`} valor={kAr(cur.ars)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(cur.ars, cmp?.ars)} />
-        <Kpi titulo="Unidades" valor={ent.format(cur.u)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(cur.u, cmp?.u)} />
-        <Kpi titulo={esGeneral ? 'Operaciones' : 'Clientes con compra'} valor={ent.format(cur.ops)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(cur.ops, cmp?.ops)} />
-        <Kpi titulo="Ticket promedio" valor={kAr(ticket)} sub={`vs ${etiqueta(mesCmp)}`} pct={delta(ticket, ticketCmp)} />
+        <Kpi titulo={`Facturación ${etiqueta(mesNuevo)}`} valor={kAr(cur.ars)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(cur.ars, cmp?.ars)} />
+        <Kpi titulo="Unidades" valor={ent.format(cur.u)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(cur.u, cmp?.u)} />
+        <Kpi titulo={esGeneral ? 'Operaciones' : 'Clientes con compra'} valor={ent.format(cur.ops)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(cur.ops, cmp?.ops)} />
+        <Kpi titulo="Ticket promedio" valor={kAr(ticket)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(ticket, ticketCmp)} />
       </div>
 
       {/* Evolución interactiva con feedback claro */}
@@ -323,9 +327,9 @@ export default function DashboardVentas() {
 
         {/* Callout: qué tocaste y cómo compara */}
         <div className="rounded-lg bg-[#F7F5F0] p-2.5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          <span className="font-semibold text-brandDark">📅 {etiqueta(mesSel)}: {metrica === 'ars' ? kAr(cur.ars) : ent.format(cur.u) + ' u'}</span>
+          <span className="font-semibold text-brandDark">📅 {etiqueta(mesNuevo)}: {metrica === 'ars' ? kAr(cur.ars) : ent.format(cur.u) + ' u'}</span>
           <span className="text-muted">
-            vs <span className="text-amber-700 font-medium">{etiqueta(mesCmp)}</span> ({metrica === 'ars' ? kAr(cmp?.ars ?? 0) : ent.format(cmp?.u ?? 0) + ' u'}):{' '}
+            vs <span className="text-amber-700 font-medium">{etiqueta(mesViejo)}</span> ({metrica === 'ars' ? kAr(cmp?.ars ?? 0) : ent.format(cmp?.u ?? 0) + ' u'}):{' '}
             {deltaBig(metrica === 'ars' ? cur.ars : cur.u, metrica === 'ars' ? cmp?.ars : cmp?.u)}
           </span>
         </div>
@@ -334,7 +338,7 @@ export default function DashboardVentas() {
           {ult.map((am) => {
             const pt = porMes.get(am)!
             const v = metrica === 'ars' ? pt.ars : pt.u
-            const activo = am === mesSel, comparado = am === mesCmp
+            const activo = am === mesNuevo, comparado = am === mesViejo
             return (
               <button
                 key={am}

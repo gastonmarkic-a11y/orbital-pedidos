@@ -233,9 +233,10 @@ export default function DashboardPedidos() {
       </div>
 
       {/* KPI POR ESTADO */}
+      <p className="text-xs font-semibold text-muted uppercase tracking-wide -mb-1">📦 Pipeline actual (todos los pedidos en proceso, no solo del mes)</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {[
-          { label: 'Total pedidos', value: pedidos.length, color: '#0a0a0a', sub: '' },
+          { label: 'En proceso (a facturar)', value: (counts['pendiente'] ?? 0) + (counts['en_preparacion'] ?? 0) + (counts['observado'] ?? 0) + (counts['listo'] ?? 0), color: '#0a0a0a', sub: 'previo a facturación' },
           { label: '⏳ Pendiente', value: counts['pendiente'] ?? 0, color: '#e07020', sub: '' },
           { label: '🔧 En preparación', value: counts['en_preparacion'] ?? 0, color: '#1a7abf', sub: '' },
           { label: '⚠ Observado', value: counts['observado'] ?? 0, color: '#c0392b', sub: (counts['observado'] ?? 0) > 0 ? '¡Atención!' : '' },
