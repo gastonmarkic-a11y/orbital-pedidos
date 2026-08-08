@@ -42,6 +42,7 @@ import DashboardVentas from './modules/pedidos/DashboardVentas'
 import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
+import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 
 interface NavItem {
   to: string
@@ -494,6 +495,14 @@ function Layout() {
 }
 
 export default function App() {
+  // Catálogo B2B público: ruta independiente del login por mail (acceso con clave propia).
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/catalogo')) {
+    return (
+      <ToastProvider>
+        <CatalogoPublico />
+      </ToastProvider>
+    )
+  }
   return (
     <AuthProvider>
       <ToastProvider>
