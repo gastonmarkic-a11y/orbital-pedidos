@@ -25,6 +25,7 @@ import Envios from './modules/envios/Envios'
 import GestionClientes from './modules/actividad/GestionClientes'
 import Conversaciones from './modules/atencion/Conversaciones'
 import BannerPendientes from './modules/atencion/BannerPendientes'
+import BannerPedidosWeb from './modules/atencion/BannerPedidosWeb'
 import MapaZonas from './modules/atencion/MapaZonas'
 import EnviosEcom from './modules/atencion/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
@@ -298,6 +299,7 @@ function Layout() {
     <div className="min-h-screen flex flex-col bg-[#F6F4EF]">
       <ActualizarBanner />
       <BannerPendientes />
+      <BannerPedidosWeb />
       <header className="bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between sticky top-0 z-10 gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

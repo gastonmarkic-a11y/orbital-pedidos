@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
+import { colorLegible } from './colorLegible'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -269,7 +270,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
 
             {/* Detalle del color */}
             <div className="mt-2">
-              <p className="text-sm font-semibold">{v.descripcion || v.codigo}</p>
+              <p className="text-sm font-semibold">{colorLegible(v.descripcion) || v.codigo}</p>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {[v.tipo, v.clasificacion, v.tratamiento].filter(Boolean).map((t) => (
                   <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#F1EDE4] text-neutral-600">{cap(t)}</span>
@@ -373,7 +374,7 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{c.modelo}</p>
-                    <p className="text-[11px] text-neutral-500 truncate">{c.descripcion}</p>
+                    <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>
                     <p className="text-sm font-bold text-[#8F6A34]">{kAr(c.precio)}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
