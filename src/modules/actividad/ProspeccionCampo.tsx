@@ -18,6 +18,15 @@ const FEED: Record<string, { vendedor: string; label: string; prospLabel: string
   Damian: { vendedor: 'Martin', label: 'Martín', prospLabel: 'Damián' },
 }
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
+const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+function fechaDeDia(n: number): Date {
+  const d = new Date(2026, 7, 11)
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  let added = 1
+  while (added < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) added++ }
+  return d
+}
+const labelDia = (n: number) => { const d = fechaDeDia(n); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
 const soloDigitos = (t: string) => t.replace(/\D/g, '')
 const waLink = (t: string | null) => { if (!t) return null; const d = soloDigitos(t); return d ? `https://wa.me/${d.length <= 10 ? '54' + d : d}` : null }
 
@@ -108,7 +117,7 @@ export default function ProspeccionCampo() {
             <p className="text-base font-semibold mt-2 leading-snug">
               Conseguí <b>{META} turnos</b> en <b>{zonaActiva.slice(0, 3).join(' · ') || 'la zona'}</b> para pasarle a <b>{feed.label}</b>.
             </p>
-            <p className="text-[11px] text-white/60 mt-1">Va a recorrer esa zona en el Día {diaActivo}. Avisales: "va a pasar {feed.label} a saludarte".</p>
+            <p className="text-[11px] text-white/60 mt-1">Va a recorrer esa zona el {labelDia(diaActivo)}. Avisales: "va a pasar {feed.label} a saludarte".</p>
             <div className="mt-3 flex items-center gap-2">
               <div className="flex-1 h-2 bg-white/15 rounded-full overflow-hidden">
                 <div className="h-full bg-gold" style={{ width: `${(turnosDia.length / META) * 100}%` }} />
@@ -125,7 +134,7 @@ export default function ProspeccionCampo() {
               const tgt = Math.max(0, META_DIA - rows.filter((r) => r.dia_num === d).length)
               return (
                 <button key={d} onClick={() => setDiaSel(d)} className={`shrink-0 text-[11px] rounded-full px-3 py-1.5 border font-medium ${d === diaActivo ? 'bg-brand text-white border-brand' : 'bg-white border-black/10 text-muted'}`}>
-                  Día {d} · {zonaDe(d)[0] ?? '—'} ({n}/{tgt})
+                  {labelDia(d)} · {zonaDe(d)[0] ?? "—"} ({n}/{tgt})
                 </button>
               )
             })}
@@ -133,7 +142,7 @@ export default function ProspeccionCampo() {
 
           {/* Alta de turno */}
           <div className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Cargar turno en {zonaActiva[0] ?? 'la zona'} (Día {diaActivo})</p>
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Cargar turno en {zonaActiva[0] ?? 'la zona'} ({labelDia(diaActivo)})</p>
             <input value={cli} onChange={(e) => setCli(e.target.value)} placeholder="Óptica / contacto *" className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
             <div className="grid grid-cols-2 gap-2">
               <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="Teléfono / WhatsApp" className="rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />

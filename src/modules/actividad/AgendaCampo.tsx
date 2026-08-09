@@ -11,10 +11,21 @@ import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, 
 
 interface Row {
   dia_num: number; orden_en_dia: number; bloque: string; cohorte: string
-  region: string | null; localidad: string | null; cod: string
+  region: string | null; localidad: string | null; provincia: string | null; cod: string
   nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean; resultado: string | null
 }
 const RESULTADOS: Record<string, string> = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' }
+
+// Fecha real del día N: días hábiles desde el 11/8/2026 (saltea sábados y domingos).
+const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+function fechaDeDia(n: number): Date {
+  const d = new Date(2026, 7, 11)
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  let added = 1
+  while (added < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) added++ }
+  return d
+}
+const labelDia = (n: number) => { const d = fechaDeDia(n); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
@@ -186,9 +197,13 @@ export default function AgendaCampo() {
   }
 
   const interiorPorRegion = useMemo(() => {
-    const m: Record<string, Row[]> = {}
-    for (const r of interior) { const k = r.region ?? 'Otros'; (m[k] ??= []).push(r) }
-    return Object.entries(m).sort((a, b) => b[1].length - a[1].length)
+    const m: Record<string, Record<string, Row[]>> = {}
+    for (const r of interior) {
+      const reg = r.region ?? 'Otros'; const prov = r.provincia ?? '(sin provincia)'
+      ;((m[reg] ??= {})[prov] ??= []).push(r)
+    }
+    const tot = (p: Record<string, Row[]>) => Object.values(p).reduce((s, rs) => s + rs.length, 0)
+    return Object.entries(m).sort((a, b) => tot(b[1]) - tot(a[1]))
   }, [interior])
 
   return (
@@ -209,6 +224,29 @@ export default function AgendaCampo() {
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">No hay plan de campo generado para {ven}.</p>
       ) : (
         <div className="space-y-2.5">
+          {/* Resumen de performance del vendedor */}
+          {(() => {
+            const vis = baGba.filter((r) => r.visitado)
+            const rc: Record<string, number> = { vendio: 0, visito: 0, no_estaba: 0, reagendar: 0 }
+            vis.forEach((r) => { if (r.resultado && rc[r.resultado] != null) rc[r.resultado]++ })
+            const conv = vis.length ? Math.round((rc.vendio / vis.length) * 100) : 0
+            return (
+              <div className="bg-ink text-white rounded-2xl p-4">
+                <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Tu performance de agenda</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1 h-2 bg-white/15 rounded-full overflow-hidden"><div className="h-full bg-gold" style={{ width: `${baGba.length ? (vis.length / baGba.length) * 100 : 0}%` }} /></div>
+                  <span className="text-sm font-bold">{vis.length}/{baGba.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="rounded-full px-2 py-0.5 bg-emerald-500/20 text-emerald-300">🟢 {rc.vendio} vendió</span>
+                  <span className="rounded-full px-2 py-0.5 bg-white/10">🔵 {rc.visito} visité</span>
+                  <span className="rounded-full px-2 py-0.5 bg-white/10">🟠 {rc.no_estaba} no estaba</span>
+                  <span className="rounded-full px-2 py-0.5 bg-white/10">🟣 {rc.reagendar} reagendar</span>
+                  <span className="rounded-full px-2 py-0.5 bg-gold/20 text-gold">conv. {conv}%</span>
+                </div>
+              </div>
+            )
+          })()}
           {dias.map((d) => {
             const delDia = baGba.filter((r) => r.dia_num === d).sort((a, b) => a.orden_en_dia - b.orden_en_dia)
             const turnosDia = turnos.filter((t) => t.dia_num === d)
@@ -233,7 +271,7 @@ export default function AgendaCampo() {
                   <GripVertical size={16} className="text-faint shrink-0 cursor-grab" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? 'Hoy' : `Día ${d}`}</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? `Hoy · ${labelDia(d)}` : labelDia(d)}</span>
                       {completo && <span className="text-[10px] text-emerald-600 font-medium">✓ completo</span>}
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate">{zona || 'Zona'}</p>
@@ -298,19 +336,28 @@ export default function AgendaCampo() {
               {verInterior && (
                 <div className="border-t border-black/5 p-3 space-y-3">
                   <p className="text-[11px] text-faint">No entran en el recorrido diario. Se cubren con viajes concentrados o vía prospección/catálogo.</p>
-                  {interiorPorRegion.map(([reg, rs]) => (
-                    <div key={reg}>
-                      <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">{reg} ({rs.length})</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                        {rs.map((r) => (
-                          <div key={r.cod} className="flex items-center justify-between gap-2 bg-[#F6F4EF] rounded-lg px-2.5 py-1.5">
-                            <span className="text-[12px] truncate">{r.nombre}</span>
-                            <span className="text-[10px] text-faint shrink-0">{r.localidad}</span>
+                  {interiorPorRegion.map(([reg, provs]) => {
+                    const provList = Object.entries(provs).sort((a, b) => b[1].length - a[1].length)
+                    const totReg = provList.reduce((s, [, rs]) => s + rs.length, 0)
+                    return (
+                      <div key={reg}>
+                        <p className="text-[12px] font-bold text-brandDark uppercase tracking-wide mb-1">{reg} · {totReg} clientes</p>
+                        {provList.map(([prov, rs]) => (
+                          <div key={prov} className="mb-2 ml-1">
+                            <p className="text-[11px] font-semibold text-muted mb-1">{prov} ({rs.length})</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                              {rs.map((r) => (
+                                <div key={r.cod} className="flex items-center justify-between gap-2 bg-[#F6F4EF] rounded-lg px-2.5 py-1.5">
+                                  <span className="text-[12px] truncate">{r.nombre}</span>
+                                  <span className="text-[10px] text-faint shrink-0">{r.localidad}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
