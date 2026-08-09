@@ -27,6 +27,7 @@ function fechaDeDia(n: number): Date {
 }
 const labelDia = (n: number) => { const d = fechaDeDia(n); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
+interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
@@ -156,6 +157,8 @@ export default function AgendaCampo() {
   const [posponiendo, setPosponiendo] = useState<number | null>(null)
   const [visitar, setVisitar] = useState<Row | null>(null)
   const [dragDia, setDragDia] = useState<number | null>(null)
+  const [salv, setSalv] = useState<Record<number, Bienv[]>>({})
+  const [salvLoad, setSalvLoad] = useState<number | null>(null)
 
   async function cargar() {
     setLoading(true)
@@ -194,6 +197,12 @@ export default function AgendaCampo() {
     await supabase.rpc('mover_dia_campo', { p_vendedor: ven, p_desde: desde, p_hasta: hasta })
     await cargar()
     setAbierto(null)
+  }
+  async function pedirBienvenida(d: number) {
+    setSalvLoad(d)
+    const { data } = await supabase.rpc('bienvenida_cerca', { p_vendedor: ven, p_dia: d, p_limit: 8 })
+    setSalv((s) => ({ ...s, [d]: (data as Bienv[]) ?? [] }))
+    setSalvLoad(null)
   }
 
   const interiorPorRegion = useMemo(() => {
@@ -320,6 +329,34 @@ export default function AgendaCampo() {
                           {t.telefono && <a href={waLink(t.telefono) ?? `tel:${t.telefono}`} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-medium rounded-lg border border-black/10 bg-white py-1.5 px-3 text-emerald-700">Contactar</a>}
                         </div>
                       ))}
+                    </div>
+
+                    {/* Salvavidas: pedir más ópticas de bienvenida cerca */}
+                    <div className="space-y-2">
+                      {!salv[d] ? (
+                        <button onClick={() => pedirBienvenida(d)} disabled={salvLoad === d}
+                          className="w-full rounded-xl border border-dashed border-emerald-300 text-emerald-700 py-2.5 text-[12px] font-semibold disabled:opacity-50">
+                          {salvLoad === d ? 'Buscando…' : '🆘 Terminé temprano — pedir más ópticas de bienvenida cerca'}
+                        </button>
+                      ) : (
+                        <>
+                          <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Bienvenida cerca ({salv[d].length}) <span className="text-[10px] font-normal text-faint normal-case">— para sumar hoy</span></p>
+                          {salv[d].length === 0 ? <p className="text-[11px] text-faint">No hay ópticas de bienvenida sin visitar en esta zona.</p> : salv[d].map((b) => (
+                            <div key={b.cod} className="bg-emerald-50/50 rounded-xl border border-emerald-100 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-medium truncate">{b.nombre}</p>
+                                {b.dist != null && <span className="text-[10px] text-faint shrink-0">{b.dist} km</span>}
+                              </div>
+                              <p className="text-[11px] text-muted">{[b.zona, b.direccion].filter(Boolean).join(' · ')}</p>
+                              <div className="flex gap-2 mt-2">
+                                {waLink(b.telefono) && <a href={waLink(b.telefono)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 bg-white py-1.5 text-emerald-700">WhatsApp</a>}
+                                {mapsLink(b.direccion, b.zona) && <a href={mapsLink(b.direccion, b.zona)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 bg-white py-1.5 text-brandDark">Ruta</a>}
+                              </div>
+                            </div>
+                          ))}
+                          <button onClick={() => pedirBienvenida(d)} className="w-full text-[11px] text-emerald-700 font-medium py-1.5">↻ Buscar otras</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
