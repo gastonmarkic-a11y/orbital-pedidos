@@ -16,7 +16,7 @@ const FEED: Record<string, { vendedor: string; label: string; prospLabel: string
   Marketing: { vendedor: 'Adrian', label: 'Adrián', prospLabel: 'Luna' },
   Damian: { vendedor: 'Martin', label: 'Martín', prospLabel: 'Damián' },
 }
-const META = 5
+const META_DIA = 12 // visitas objetivo por día (propios + prospección)
 const soloDigitos = (t: string) => t.replace(/\D/g, '')
 const waLink = (t: string | null) => { if (!t) return null; const d = soloDigitos(t); return d ? `https://wa.me/${d.length <= 10 ? '54' + d : d}` : null }
 
@@ -58,6 +58,8 @@ export default function ProspeccionCampo() {
   const zonaDe = (d: number) => Array.from(new Set(rows.filter((r) => r.dia_num === d).map((r) => r.localidad).filter(Boolean)))
   const zonaActiva = zonaDe(diaActivo)
   const turnosDia = turnos.filter((t) => t.dia_num === diaActivo)
+  const ownDia = rows.filter((r) => r.dia_num === diaActivo).length
+  const META = Math.max(0, META_DIA - ownDia) // dinámico: completa hasta 12 según clientes propios del día
   const faltan = Math.max(0, META - turnosDia.length)
 
   async function agregar() {
@@ -109,9 +111,10 @@ export default function ProspeccionCampo() {
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {dias.map((d) => {
               const n = turnos.filter((t) => t.dia_num === d).length
+              const tgt = Math.max(0, META_DIA - rows.filter((r) => r.dia_num === d).length)
               return (
                 <button key={d} onClick={() => setDiaSel(d)} className={`shrink-0 text-[11px] rounded-full px-3 py-1.5 border font-medium ${d === diaActivo ? 'bg-brand text-white border-brand' : 'bg-white border-black/10 text-muted'}`}>
-                  Día {d} · {zonaDe(d)[0] ?? '—'} ({n}/{META})
+                  Día {d} · {zonaDe(d)[0] ?? '—'} ({n}/{tgt})
                 </button>
               )
             })}

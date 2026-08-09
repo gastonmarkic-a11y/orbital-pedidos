@@ -69,7 +69,10 @@ export default function DashboardPedidos() {
     if (FACTURABLES.includes(l.estado ?? '')) vendMap[v].facturado += imp(l)
     if (l.estado === 'observado') vendMap[v].observados++
   }
+  // Gastón es admin, no vendedor: no se lista en el ranking de facturación.
+  const NO_VENDEDORES = new Set(['Gaston', 'Gastón', '—', ''])
   const vendArr = Object.entries(vendMap)
+    .filter(([nombre]) => !NO_VENDEDORES.has(nombre))
     .map(([nombre, d]) => ({ nombre, ...d }))
     .sort((a, b) => b.facturado - a.facturado)
   const maxFact = Math.max(...vendArr.map((v) => v.facturado), 1)

@@ -16,6 +16,7 @@ interface Row {
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
+const META_DIA = 12 // visitas objetivo por día (propios + prospección)
 const soloDigitos = (t: string | null) => (t ? t.replace(/\D/g, '') : '')
 const waLink = (t: string | null) => { const d = soloDigitos(t); return d ? `https://wa.me/${d.length <= 10 ? '54' + d : d}` : null }
 const mapsLink = (dir: string | null, loc: string | null) => {
@@ -131,6 +132,10 @@ export default function AgendaCampo() {
             const completo = hechos === delDia.length
             const esHoy = d === hoy
             const open = abierto === d
+            const canjeN = delDia.filter((r) => r.cohorte === 'canje').length
+            const recupN = delDia.filter((r) => r.cohorte === 'recuperar').length
+            const sugeridos = Math.max(0, META_DIA - delDia.length) // prospección sugerida para llegar a ~12/día
+            const faltanPros = Math.max(0, sugeridos - turnosDia.length)
             return (
               <div key={d} className={`rounded-2xl border overflow-hidden ${esHoy ? 'border-brand ring-1 ring-brand/20' : 'border-black/10'} bg-white`}>
                 {/* Cabecera del día */}
@@ -141,7 +146,12 @@ export default function AgendaCampo() {
                       {completo && <span className="text-[10px] text-emerald-600 font-medium">✓ completo</span>}
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate">{zona || 'Zona'}</p>
-                    <p className="text-[11px] text-faint">{delDia.length} clientes + {turnosDia.length} prospección · {hechos}/{delDia.length} visitados</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-black/5 text-muted">{delDia.length} clientes</span>
+                      <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-700">{canjeN} canje</span>
+                      <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-blue-100 text-blue-700">{recupN} recuperar</span>
+                      <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${faltanPros > 0 ? 'bg-[#8F6A34]/10 text-[#8F6A34]' : 'bg-emerald-100 text-emerald-700'}`}>{turnosDia.length}/{sugeridos} prospección</span>
+                    </div>
                   </div>
                   {open ? <ChevronDown size={18} className="text-faint shrink-0" /> : <ChevronRight size={18} className="text-faint shrink-0" />}
                 </button>
@@ -157,16 +167,21 @@ export default function AgendaCampo() {
                     {/* Clientes propios */}
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Clientes de la zona ({delDia.length})</p>
+                      {delDia.length > 1 && (
+                        <p className="text-[11px] text-brandDark bg-brand/5 rounded-lg px-2.5 py-1.5">
+                          🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b>
+                        </p>
+                      )}
                       {delDia.map((r) => <ClienteCard key={r.cod} r={r} onToggle={toggle} />)}
                     </div>
 
                     {/* Prospección */}
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">
-                        Prospección ({turnosDia.length}) <span className="text-[10px] font-normal text-faint normal-case">— {ven === 'Adrian' ? 'Luna' : 'Damián'} · "va a pasar el vendedor"</span>
+                        Prospección ({turnosDia.length}/{sugeridos}) <span className="text-[10px] font-normal text-faint normal-case">— {ven === 'Adrian' ? 'Luna' : 'Damián'} · "va a pasar el vendedor"</span>
                       </p>
                       {turnosDia.length === 0 ? (
-                        <p className="text-[11px] text-faint bg-[#F6F4EF] rounded-xl border border-dashed border-black/15 p-3">Sin turnos cargados. {ven === 'Adrian' ? 'Luna' : 'Damián'} carga 5 turnos 2 días antes en esta zona.</p>
+                        <p className="text-[11px] text-faint bg-[#F6F4EF] rounded-xl border border-dashed border-black/15 p-3">Faltan <b>{sugeridos}</b> turnos para llegar a {META_DIA} visitas del día. {ven === 'Adrian' ? 'Luna' : 'Damián'} los carga 2 días antes en esta zona.</p>
                       ) : turnosDia.map((t) => (
                         <div key={t.id} className="bg-[#F6F4EF] rounded-xl border border-black/10 p-3 flex items-center justify-between gap-2">
                           <div className="min-w-0">
