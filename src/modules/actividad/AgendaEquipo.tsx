@@ -49,6 +49,26 @@ export default function AgendaEquipo() {
         <p className="text-xs text-muted">Recorrido de campo + prospección · resultados del día y acumulados</p>
       </div>
 
+      {(() => {
+        const allBa = [...(planes.Adrian ?? []), ...(planes.Martin ?? [])].filter((r) => r.bloque === 'ba_gba')
+        const total = allBa.length, visit = allBa.filter((r) => r.visitado).length
+        const vh = actHoy.length, ventas = actHoy.filter((a) => a.resultado_contacto === 'vendio')
+        const monto = ventas.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
+        const conv = vh ? Math.round((ventas.length / vh) * 100) : 0
+        return (
+          <div className="bg-ink text-white rounded-2xl p-4">
+            <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Resumen general — hoy</p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div><p className="text-2xl font-bold">{vh}</p><p className="text-[10px] text-white/60">visitas hoy</p></div>
+              <div><p className="text-2xl font-bold text-emerald-300">{ventas.length}</p><p className="text-[10px] text-white/60">ventas hoy</p></div>
+              <div><p className="text-lg font-bold text-emerald-300">{kAr(monto)}</p><p className="text-[10px] text-white/60">facturado hoy</p></div>
+              <div><p className="text-2xl font-bold text-gold">{conv}%</p><p className="text-[10px] text-white/60">conversión</p></div>
+              <div><p className="text-2xl font-bold">{visit}<span className="text-sm text-white/50">/{total}</span></p><p className="text-[10px] text-white/60">avance total</p></div>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="grid gap-4 md:grid-cols-2">
         {VEND.map((v) => {
           const rows = (planes[v.cod] ?? [])

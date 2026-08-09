@@ -363,6 +363,7 @@ function Layout() {
               <Route path="/hoy" element={
                 codigoEfectivo === 'Adrian' || codigoEfectivo === 'Martin' ? <AgendaCampo />
                 : codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian' ? <ProspeccionCampo />
+                : rol === 'admin' || rol === 'administracion' ? <AgendaEquipo />
                 : <AgendaDelDia />
               } />
               <Route path="/cartera" element={<Cartera />} />
