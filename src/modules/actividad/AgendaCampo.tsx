@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Phone, Check, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck } from 'lucide-react'
+import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical } from 'lucide-react'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -144,6 +144,7 @@ export default function AgendaCampo() {
   const [verInterior, setVerInterior] = useState(false)
   const [posponiendo, setPosponiendo] = useState<number | null>(null)
   const [visitar, setVisitar] = useState<Row | null>(null)
+  const [dragDia, setDragDia] = useState<number | null>(null)
 
   async function cargar() {
     setLoading(true)
@@ -175,6 +176,12 @@ export default function AgendaCampo() {
     await supabase.rpc('posponer_dia_campo', { p_vendedor: ven, p_dia: dia })
     await cargar()
     setPosponiendo(null)
+    setAbierto(null)
+  }
+  async function moverDia(desde: number, hasta: number) {
+    if (desde === hasta) return
+    await supabase.rpc('mover_dia_campo', { p_vendedor: ven, p_desde: desde, p_hasta: hasta })
+    await cargar()
     setAbierto(null)
   }
 
@@ -215,10 +222,16 @@ export default function AgendaCampo() {
             const sugeridos = Math.max(0, META_DIA - delDia.length) // prospección sugerida para llegar a ~12/día
             const faltanPros = Math.max(0, sugeridos - turnosDia.length)
             return (
-              <div key={d} className={`rounded-2xl border overflow-hidden ${esHoy ? 'border-brand ring-1 ring-brand/20' : 'border-black/10'} bg-white`}>
+              <div key={d}
+                draggable
+                onDragStart={() => setDragDia(d)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragDia) moverDia(dragDia, d); setDragDia(null) }}
+                className={`rounded-2xl border overflow-hidden bg-white transition ${esHoy ? 'border-brand ring-1 ring-brand/20' : 'border-black/10'} ${dragDia === d ? 'opacity-40' : ''} ${dragDia && dragDia !== d ? 'border-dashed' : ''}`}>
                 {/* Cabecera del día */}
                 <button onClick={() => setAbierto(open ? null : d)} className="w-full text-left p-3.5 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
+                  <GripVertical size={16} className="text-faint shrink-0 cursor-grab" />
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? 'Hoy' : `Día ${d}`}</span>
                       {completo && <span className="text-[10px] text-emerald-600 font-medium">✓ completo</span>}
