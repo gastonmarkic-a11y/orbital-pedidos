@@ -12,6 +12,7 @@ import { Rol } from './lib/types'
 
 import AgendaDelDia from './modules/actividad/AgendaDelDia'
 import AgendaCampo from './modules/actividad/AgendaCampo'
+import ProspeccionCampo from './modules/actividad/ProspeccionCampo'
 import Cartera from './modules/actividad/Cartera'
 import CargarActividad from './modules/actividad/CargarActividad'
 import MisResultados from './modules/actividad/MisResultados'
@@ -357,7 +358,11 @@ function Layout() {
           <Route index element={<Navigate to={homeFor(rol)} replace />} />
           {esVendedorOAdmin && (
             <>
-              <Route path="/hoy" element={codigoEfectivo === 'Adrian' || codigoEfectivo === 'Martin' ? <AgendaCampo /> : <AgendaDelDia />} />
+              <Route path="/hoy" element={
+                codigoEfectivo === 'Adrian' || codigoEfectivo === 'Martin' ? <AgendaCampo />
+                : codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian' ? <ProspeccionCampo />
+                : <AgendaDelDia />
+              } />
               <Route path="/cartera" element={<Cartera />} />
               <Route path="/cargar" element={<CargarActividad />} />
               <Route path="/resultados" element={<MisResultados />} />

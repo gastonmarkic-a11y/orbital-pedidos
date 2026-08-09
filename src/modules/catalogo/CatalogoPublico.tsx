@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
-import { colorLegible } from './colorLegible'
+import { colorLegible, colorSwatch } from './colorLegible'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -87,6 +87,7 @@ export default function CatalogoPublico() {
   const [soloDestacados, setSoloDestacados] = useState(false)
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
+  const [quick, setQuick] = useState<Modelo | null>(null)
   const [carritoOpen, setCarritoOpen] = useState(false)
   const [cart, setCart] = useState<Record<string, CartItem>>(() => {
     try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}') } catch { return {} }
@@ -198,23 +199,29 @@ export default function CatalogoPublico() {
                   <span className="flex-1 h-px bg-black/10" />
                 </div>
               )}
-              <button onClick={() => setSel(m)} className="text-left bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#8F6A34]/40 hover:shadow-sm">
-                <div className="aspect-square bg-white relative">
-                  {m.imagen ? <img src={m.imagen} alt={m.modelo} className="w-full h-full object-contain" /> : <Placeholder />}
-                  {m.caliente && <span className="absolute top-2 left-2 bg-[#8F6A34] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"><Star size={9} />TOP</span>}
-                </div>
-                <div className="p-3">
-                  <p className="text-sm font-semibold truncate">{m.modelo}</p>
-                  <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
-                  <p className="text-base font-bold mt-1 text-[#8F6A34]">{kAr(m.precio_desde)}</p>
-                </div>
-              </button>
+              <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#8F6A34]/40 hover:shadow-sm">
+                <button onClick={() => setSel(m)} className="text-left w-full block">
+                  <div className="aspect-square bg-white relative">
+                    {m.imagen ? <img src={m.imagen} alt={m.modelo} className="w-full h-full object-contain" /> : <Placeholder />}
+                    {m.caliente && <span className="absolute top-2 left-2 bg-[#8F6A34] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"><Star size={9} />TOP</span>}
+                  </div>
+                  <div className="p-3 pb-2">
+                    <p className="text-sm font-semibold truncate">{m.modelo}</p>
+                    <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
+                    <p className="text-base font-bold mt-1 text-[#8F6A34]">{kAr(m.precio_desde)}</p>
+                  </div>
+                </button>
+                <button onClick={() => setQuick(m)} className="mx-3 mb-3 w-[calc(100%-1.5rem)] rounded-lg bg-[#8F6A34]/10 text-[#8F6A34] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#8F6A34]/20">
+                  <Plus size={14} /> Agregar
+                </button>
+              </div>
             </Fragment>
           ))}
         </div>
         {filtrados.length === 0 && <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con esos filtros.</p>}
       </main>
 
+      {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
@@ -225,6 +232,60 @@ export default function CatalogoPublico() {
           <span className="text-sm font-bold">{kAr(cartTotal)} · Ver pedido →</span>
         </button>
       )}
+    </div>
+  )
+}
+
+// ── Carga rápida desde la grilla: elegir color y cantidad sin entrar al detalle ──
+function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
+  modelo: Modelo; clave: string; cart: Record<string, CartItem>
+  onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void; onVerDetalle: () => void
+}) {
+  const [vars, setVars] = useState<Variante[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    supabase.rpc('catalogo_modelo', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data, error }) => {
+      setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
+    })
+  }, [clave, modelo.modelo])
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-base font-bold">{modelo.modelo}</h2>
+            <p className="text-[11px] text-neutral-400">Elegí color y cantidad</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+        </div>
+        {loading ? <p className="text-sm text-neutral-500 p-6 text-center">Cargando colores…</p> : (
+          <div className="p-3 space-y-1.5">
+            {vars.map((v) => {
+              const q = cart[v.codigo]?.cantidad ?? 0
+              return (
+                <div key={v.codigo} className="flex items-center gap-2.5 rounded-xl border border-black/10 p-2">
+                  <span className="w-6 h-6 rounded-full shrink-0 border border-black/10" style={{ background: colorSwatch(v.descripcion) }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium truncate">{colorLegible(v.descripcion) || v.codigo}</p>
+                    <p className="text-[12px] font-bold text-[#8F6A34]">{kAr(v.precio)}{v.tiene_preventa && <span className="text-[10px] text-neutral-400 line-through ml-1">{kAr(v.precio_lista)}</span>}</p>
+                  </div>
+                  {q === 0 ? (
+                    <button onClick={() => onAdd(v, modelo.modelo)} className="shrink-0 w-9 h-9 rounded-lg bg-[#8F6A34] text-white flex items-center justify-center"><Plus size={16} /></button>
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-8 h-8 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
+                      <span className="w-6 text-center text-sm font-bold">{q}</span>
+                      <button onClick={() => onSetQty(v.codigo, q + 1)} className="w-8 h-8 rounded-lg border border-black/10 flex items-center justify-center"><Plus size={14} /></button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <button onClick={onVerDetalle} className="w-full text-[12px] text-[#8F6A34] font-medium py-2 mt-1">Ver fotos y detalle →</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -278,8 +339,9 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
               <div className="flex gap-2 overflow-x-auto py-3 -mx-1 px-1">
                 {vars.map((vv, idx) => (
                   <button key={vv.codigo} onClick={() => setI(idx)}
-                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden bg-white ${idx === i ? 'border-[#8F6A34]' : 'border-black/10'}`}>
+                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden bg-white relative ${idx === i ? 'border-[#8F6A34]' : 'border-black/10'}`}>
                     {vv.imagen ? <img src={vv.imagen} alt="" className="w-full h-full object-contain" /> : <Placeholder />}
+                    <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full border border-white shadow-sm" style={{ background: colorSwatch(vv.descripcion) }} />
                   </button>
                 ))}
               </div>
@@ -287,7 +349,10 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
 
             {/* Detalle del color */}
             <div className="mt-2">
-              <p className="text-sm font-semibold">{colorLegible(v.descripcion) || v.codigo}</p>
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <span className="w-4 h-4 rounded-full border border-black/10 shrink-0" style={{ background: colorSwatch(v.descripcion) }} />
+                {colorLegible(v.descripcion) || v.codigo}
+              </p>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {[v.tipo, v.clasificacion, v.tratamiento].filter(Boolean).map((t) => (
                   <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#F1EDE4] text-neutral-600">{cap(t)}</span>

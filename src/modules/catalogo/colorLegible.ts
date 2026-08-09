@@ -32,6 +32,35 @@ const TOKENS: [RegExp, string][] = [
   [/\bespejp\b/g, 'espejo'],
 ]
 
+// Color aproximado del armazón (primer color mencionado) para un swatch visual,
+// así se distinguen los colores aunque compartan la foto del modelo.
+const SWATCH: [RegExp, string][] = [
+  [/negro|ngb|ngm|matt black/i, '#1b1b1b'],
+  [/carey/i, '#6b3f1d'],
+  [/habano|ha\b/i, '#9c6b3a'],
+  [/marr[oó]n|marron|ma\b/i, '#5b3a1a'],
+  [/bordo|bord[oó]|cherry/i, '#6b1f2b'],
+  [/rojo|ro\b|red/i, '#c0392b'],
+  [/naranja|na\b|orange/i, '#e67e22'],
+  [/amarillo|am\b/i, '#f1c40f'],
+  [/verde|vem?\b|green/i, '#2e7d32'],
+  [/celeste|ce\b/i, '#5bc0eb'],
+  [/azul|az\b|blue/i, '#2456b5'],
+  [/violeta|lila/i, '#7d3cad'],
+  [/rosa|pink/i, '#e78fb3'],
+  [/dorado|oro|gold|champ/i, '#c9a227'],
+  [/plata|plateado|niquel|silver/i, '#c0c0c0'],
+  [/gris|gr\b|gray|peltre|cobre/i, '#8a8a8a'],
+  [/beige|arena|hueso|marfil|nude|pastel/i, '#d9c6a5'],
+  [/blanco|white/i, '#f0f0f0'],
+  [/clear|cristal|incoloro|transp/i, '#dfe7ee'],
+]
+export function colorSwatch(desc: string | null | undefined): string {
+  if (!desc) return '#cccccc'
+  for (const [re, hex] of SWATCH) if (re.test(desc)) return hex
+  return '#cccccc'
+}
+
 export function colorLegible(desc: string | null | undefined): string {
   if (!desc) return ''
   let s = desc.trim().toLowerCase()
