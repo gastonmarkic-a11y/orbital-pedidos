@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Phone, Check, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock } from 'lucide-react'
+import { Phone, Check, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck } from 'lucide-react'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -11,8 +12,9 @@ import { Phone, Check, ChevronDown, ChevronRight, Navigation, Plane, CalendarClo
 interface Row {
   dia_num: number; orden_en_dia: number; bloque: string; cohorte: string
   region: string | null; localidad: string | null; cod: string
-  nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean
+  nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean; resultado: string | null
 }
+const RESULTADOS: Record<string, string> = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
@@ -29,29 +31,103 @@ function CohorteChip({ c }: { c: string }) {
   return <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${canje ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{canje ? 'Canje' : 'A recuperar'}</span>
 }
 
-function ClienteCard({ r, onToggle }: { r: Row; onToggle: (cod: string, v: boolean) => void }) {
+function ClienteCard({ r, onRegistrar }: { r: Row; onRegistrar: (r: Row) => void }) {
   const wa = waLink(r.telefono)
   const maps = mapsLink(r.direccion, r.localidad)
   return (
-    <div className={`bg-white rounded-xl border p-3 transition ${r.visitado ? 'border-emerald-200 opacity-60' : 'border-black/10'}`}>
+    <div className={`bg-white rounded-xl border p-3 transition ${r.visitado ? 'border-emerald-200' : 'border-black/10'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className={`text-sm font-semibold truncate ${r.visitado ? 'line-through text-muted' : 'text-ink'}`}>{r.nombre}</p>
+          <p className={`text-sm font-semibold truncate ${r.visitado ? 'text-muted' : 'text-ink'}`}>{r.nombre}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <CohorteChip c={r.cohorte} />
             {r.localidad && <span className="text-[10px] text-faint">{r.localidad}</span>}
+            {r.visitado && <span className="text-[10px] font-medium text-emerald-700">{RESULTADOS[r.resultado ?? ''] ?? '✓ visitado'}</span>}
           </div>
           {r.direccion && <p className="text-[11px] text-muted mt-1 truncate">{r.direccion}</p>}
         </div>
-        <button onClick={() => onToggle(r.cod, !r.visitado)} title="Marcar visitado"
-          className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border ${r.visitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-black/15 text-faint'}`}>
-          <Check size={18} />
-        </button>
       </div>
       <div className="flex gap-2 mt-2">
         {wa && <a href={wa} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
         {r.telefono && <a href={`tel:${r.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar</a>}
         {maps && <a href={maps} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-brandDark flex items-center justify-center gap-1"><Navigation size={12} />Ruta</a>}
+      </div>
+      <button onClick={() => onRegistrar(r)} className={`w-full mt-2 rounded-lg py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 ${r.visitado ? 'border border-black/10 text-muted' : 'bg-ink text-white'}`}>
+        <ClipboardCheck size={14} />{r.visitado ? 'Editar visita' : 'Registrar visita'}
+      </button>
+    </div>
+  )
+}
+
+// Registro de visita (check-in + resultado + nota + próxima agenda), tipo Cartera.
+function VisitaModal({ r, vendedor, onClose, onSaved, onCargarPedido }: {
+  r: Row; vendedor: string; onClose: () => void; onSaved: (cod: string, resultado: string) => void; onCargarPedido: () => void
+}) {
+  const [resultado, setResultado] = useState<string>(r.resultado ?? 'visito')
+  const [nota, setNota] = useState('')
+  const [prox, setProx] = useState('')
+  const [fecha, setFecha] = useState('')
+  const [monto, setMonto] = useState('')
+  const [uni, setUni] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar() {
+    setGuardando(true)
+    const hoy = new Date().toISOString().slice(0, 10)
+    const vendio = resultado === 'vendio'
+    await supabase.from('actividad_diaria').insert({
+      fecha: hoy, vendedor, cod_cliente: r.cod, nombre_comercio: r.nombre,
+      telefono: r.telefono, localidad: r.localidad, direccion: r.direccion,
+      origen: 'agenda_campo', resultado_contacto: resultado,
+      actividad_desarrollo: nota || RESULTADOS[resultado] || 'Visita de campo',
+      actividad_futura: prox || null, proximo_paso_fecha: fecha || null,
+      unidades_vendidas: vendio && uni ? Number(uni) : null,
+      monto_vendido: vendio && monto ? Number(monto) : null,
+    })
+    await supabase.from('agenda_campo').update({ visitado: true, resultado }).eq('vendedor', vendedor).eq('cod_cliente', r.cod)
+    setGuardando(false)
+    onSaved(r.cod, resultado)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
+          <div><h2 className="text-base font-bold truncate">{r.nombre}</h2><p className="text-[11px] text-faint">Registrar visita</p></div>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-[11px] font-medium text-muted">Resultado</label>
+            <div className="grid grid-cols-2 gap-1.5 mt-1">
+              {Object.entries(RESULTADOS).map(([k, lbl]) => (
+                <button key={k} onClick={() => setResultado(k)} className={`text-[12px] rounded-lg py-2 border font-medium ${resultado === k ? 'bg-ink text-white border-ink' : 'border-black/10 text-muted'}`}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+          {resultado === 'vendio' && (
+            <>
+              <button onClick={onCargarPedido} className="w-full bg-brand text-white rounded-lg py-2.5 text-sm font-medium">Cargar pedido →</button>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={uni} onChange={(e) => setUni(e.target.value)} inputMode="numeric" placeholder="Unidades" className="rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+                <input value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" placeholder="Monto $" className="rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+              </div>
+            </>
+          )}
+          <div>
+            <label className="text-[11px] font-medium text-muted">Nota de la visita</label>
+            <textarea value={nota} onChange={(e) => setNota(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" placeholder="Qué pasó, qué mostró, objeciones…" />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted">Próxima agenda</label>
+            <div className="flex gap-2 mt-1">
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+              <input value={prox} onChange={(e) => setProx(e.target.value)} placeholder="Próximo paso" className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            </div>
+          </div>
+          <button onClick={guardar} disabled={guardando} className="w-full bg-ink text-white rounded-lg py-3 text-sm font-medium disabled:opacity-50">{guardando ? 'Guardando…' : 'Guardar visita'}</button>
+        </div>
       </div>
     </div>
   )
@@ -59,6 +135,7 @@ function ClienteCard({ r, onToggle }: { r: Row; onToggle: (cod: string, v: boole
 
 export default function AgendaCampo() {
   const { codigoEfectivo } = useAuth()
+  const navigate = useNavigate()
   const [ven, setVen] = useState<string>(codigoEfectivo === 'Martin' ? 'Martin' : 'Adrian')
   const [rows, setRows] = useState<Row[]>([])
   const [turnos, setTurnos] = useState<Turno[]>([])
@@ -66,6 +143,7 @@ export default function AgendaCampo() {
   const [abierto, setAbierto] = useState<number | null>(null)
   const [verInterior, setVerInterior] = useState(false)
   const [posponiendo, setPosponiendo] = useState<number | null>(null)
+  const [visitar, setVisitar] = useState<Row | null>(null)
 
   async function cargar() {
     setLoading(true)
@@ -88,9 +166,9 @@ export default function AgendaCampo() {
 
   const totalPend = baGba.filter((r) => !r.visitado).length
 
-  async function toggle(cod: string, v: boolean) {
-    setRows((rs) => rs.map((r) => (r.cod === cod ? { ...r, visitado: v } : r)))
-    await supabase.from('agenda_campo').update({ visitado: v }).eq('vendedor', ven).eq('cod_cliente', cod)
+  function onVisitaSaved(cod: string, resultado: string) {
+    setRows((rs) => rs.map((r) => (r.cod === cod ? { ...r, visitado: true, resultado } : r)))
+    setVisitar(null)
   }
   async function posponer(dia: number) {
     setPosponiendo(dia)
@@ -172,7 +250,7 @@ export default function AgendaCampo() {
                           🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b>
                         </p>
                       )}
-                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onToggle={toggle} />)}
+                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} />)}
                     </div>
 
                     {/* Prospección */}
@@ -226,6 +304,8 @@ export default function AgendaCampo() {
           )}
         </div>
       )}
+
+      {visitar && <VisitaModal r={visitar} vendedor={ven} onClose={() => setVisitar(null)} onSaved={onVisitaSaved} onCargarPedido={() => navigate('/pedidos/nuevo')} />}
     </div>
   )
 }
