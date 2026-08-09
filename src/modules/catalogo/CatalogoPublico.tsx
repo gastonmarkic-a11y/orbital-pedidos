@@ -260,28 +260,35 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
         </div>
         {loading ? <p className="text-sm text-neutral-500 p-6 text-center">Cargando colores…</p> : (
-          <div className="p-3 space-y-1.5">
-            {vars.map((v) => {
-              const q = cart[v.codigo]?.cantidad ?? 0
-              return (
-                <div key={v.codigo} className="flex items-center gap-2.5 rounded-xl border border-black/10 p-2">
-                  <span className="w-6 h-6 rounded-full shrink-0 border border-black/10" style={{ background: colorSwatch(v.descripcion) }} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium truncate">{colorLegible(v.descripcion) || v.codigo}</p>
-                    <p className="text-[12px] font-bold text-[#8F6A34]">{kAr(v.precio)}{v.tiene_preventa && <span className="text-[10px] text-neutral-400 line-through ml-1">{kAr(v.precio_lista)}</span>}</p>
-                  </div>
-                  {q === 0 ? (
-                    <button onClick={() => onAdd(v, modelo.modelo)} className="shrink-0 w-9 h-9 rounded-lg bg-[#8F6A34] text-white flex items-center justify-center"><Plus size={16} /></button>
-                  ) : (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-8 h-8 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
-                      <span className="w-6 text-center text-sm font-bold">{q}</span>
-                      <button onClick={() => onSetQty(v.codigo, q + 1)} className="w-8 h-8 rounded-lg border border-black/10 flex items-center justify-center"><Plus size={14} /></button>
+          <div className="p-3">
+            <p className="text-[11px] text-neutral-400 mb-2">{vars.length} colores — deslizá →</p>
+            <div className="flex gap-2.5 overflow-x-auto pb-2">
+              {vars.map((v) => {
+                const q = cart[v.codigo]?.cantidad ?? 0
+                return (
+                  <div key={v.codigo} className={`shrink-0 w-32 rounded-xl border overflow-hidden ${q > 0 ? 'border-[#8F6A34]' : 'border-black/10'}`}>
+                    <div className="aspect-square relative" style={{ background: v.imagen ? '#fff' : colorSwatch(v.descripcion) }}>
+                      {v.imagen && <img src={v.imagen} alt={v.descripcion ?? ''} className="w-full h-full object-contain" />}
+                      <span className="absolute bottom-1 left-1 w-4 h-4 rounded-full border border-white shadow" style={{ background: colorSwatch(v.descripcion) }} />
+                      {v.tiene_preventa && <span className="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-bold rounded-full px-1.5 py-0.5">PV</span>}
                     </div>
-                  )}
-                </div>
-              )
-            })}
+                    <div className="p-2">
+                      <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
+                      <p className="text-[12px] font-bold text-[#8F6A34] mt-0.5">{kAr(v.precio)}</p>
+                      {q === 0 ? (
+                        <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#8F6A34] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
+                      ) : (
+                        <div className="flex items-center justify-between mt-1.5">
+                          <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={13} /></button>
+                          <span className="text-sm font-bold">{q}</span>
+                          <button onClick={() => onSetQty(v.codigo, q + 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Plus size={13} /></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
             <button onClick={onVerDetalle} className="w-full text-[12px] text-[#8F6A34] font-medium py-2 mt-1">Ver fotos y detalle →</button>
           </div>
         )}
@@ -324,7 +331,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
           <div className="p-4">
             {/* Imagen grande */}
             <div className="aspect-square bg-white rounded-xl border border-black/5 relative overflow-hidden">
-              {v.imagen ? <img src={v.imagen} alt={v.descripcion ?? ''} className="w-full h-full object-contain" /> : <Placeholder label="Sin foto aún" />}
+              {(v.imagen || modelo.imagen) ? <img src={v.imagen || modelo.imagen!} alt={v.descripcion ?? ''} className="w-full h-full object-contain" /> : <Placeholder label="Sin foto aún" />}
               {vars.length > 1 && (
                 <>
                   <button onClick={() => setI((i - 1 + vars.length) % vars.length)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5 shadow"><ChevronLeft size={18} /></button>
@@ -339,8 +346,9 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
               <div className="flex gap-2 overflow-x-auto py-3 -mx-1 px-1">
                 {vars.map((vv, idx) => (
                   <button key={vv.codigo} onClick={() => setI(idx)}
-                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden bg-white relative ${idx === i ? 'border-[#8F6A34]' : 'border-black/10'}`}>
-                    {vv.imagen ? <img src={vv.imagen} alt="" className="w-full h-full object-contain" /> : <Placeholder />}
+                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden relative ${idx === i ? 'border-[#8F6A34]' : 'border-black/10'}`}
+                    style={{ background: vv.imagen ? '#fff' : colorSwatch(vv.descripcion) }}>
+                    {vv.imagen && <img src={vv.imagen} alt="" className="w-full h-full object-contain" />}
                     <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full border border-white shadow-sm" style={{ background: colorSwatch(vv.descripcion) }} />
                   </button>
                 ))}

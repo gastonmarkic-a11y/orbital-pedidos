@@ -12,15 +12,18 @@ const ESTADOS_ORDEN = ['pendiente', 'en_preparacion', 'observado', 'listo', 'fac
 export default function DashboardPedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
+  const [ecom, setEcom] = useState<{ anio_mes: string; importe_ars: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
       fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
-    ]).then(([p, s]) => {
+      supabase.from('v_ventas_ecom_mes').select('anio_mes,importe_ars'),
+    ]).then(([p, s, e]) => {
       setPedidos((p.data as Pedido[]) ?? [])
       setStock(s)
+      setEcom((e.data as { anio_mes: string; importe_ars: number }[]) ?? [])
       setLoading(false)
     })
   }, [])
@@ -51,6 +54,11 @@ export default function DashboardPedidos() {
   const ticketProm = facturadosCount > 0 ? Math.round(facturadoMesActual / facturadosCount) : 0
   const pctObservado = pedidosMesActual.length > 0 ? Math.round((observadosMes / pedidosMesActual.length) * 100) : 0
 
+  // Venta minorista (Shopify B2C) del mes → para que el operativo cuadre con Ventas.
+  const amActual = `${anioActual}-${String(mesActual + 1).padStart(2, '0')}`
+  const b2cActual = ecom.filter((r) => r.anio_mes === amActual).reduce((a, r) => a + Number(r.importe_ars), 0)
+  const facturadoTotal = facturadoMesActual + b2cActual
+
   function trend(actual: number, anterior: number) {
     if (anterior === 0 && actual === 0) return <span className="text-[10px] text-faint">Sin datos del mes anterior</span>
     if (anterior === 0) return <span className="text-[10px] text-emerald-600">▲ Nuevo vs mes anterior</span>
@@ -69,6 +77,8 @@ export default function DashboardPedidos() {
     if (FACTURABLES.includes(l.estado ?? '')) vendMap[v].facturado += imp(l)
     if (l.estado === 'observado') vendMap[v].observados++
   }
+  // Tienda = venta minorista Shopify del mes (no viene de pedidos)
+  vendMap['Tienda'] = { pedidos: 0, facturado: b2cActual, observados: 0 }
   // Gastón es admin, no vendedor: no se lista en el ranking de facturación.
   const NO_VENDEDORES = new Set(['Gaston', 'Gastón', '—', ''])
   const vendArr = Object.entries(vendMap)
@@ -196,7 +206,7 @@ export default function DashboardPedidos() {
         </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {[
-            { label: 'Facturado este mes', val: formatPrecio(facturadoMesActual) || '$ 0', t: trend(facturadoMesActual, facturadoMesAnterior) },
+            { label: 'Facturado este mes', val: formatPrecio(facturadoTotal) || '$ 0', t: <span className="text-[10px] text-white/50">B2B {formatPrecio(facturadoMesActual)} + Tienda {formatPrecio(b2cActual)}</span> },
             { label: 'Pedidos cargados', val: String(pedidosMesActual.length), t: trend(pedidosMesActual.length, pedidosMesAnterior.length) },
             { label: 'Tasa de facturación', val: tasaFacturacion + '%', t: <span className="text-[10px] text-white/50">Facturados / cargados</span> },
             { label: 'Ticket promedio', val: formatPrecio(ticketProm) || '$ 0', t: <span className="text-[10px] text-white/50">Por pedido facturado</span> },
