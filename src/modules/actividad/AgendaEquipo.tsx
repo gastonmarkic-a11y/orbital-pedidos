@@ -9,7 +9,7 @@ interface Row { dia_num: number; bloque: string; cohorte: string; localidad: str
 interface Turno { vendedor: string; dia_num: number; cargado_por: string | null }
 interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null }
 
-const VEND = [{ cod: 'Adrian', label: 'Adrián', prosp: 'Luna' }, { cod: 'Martin', label: 'Martín', prosp: 'Damián' }]
+const VEND = [{ cod: 'Adrian', label: 'Adrián', prosp: 'Luna', prospCod: 'Marketing' }, { cod: 'Martin', label: 'Martín', prosp: 'Damián', prospCod: 'Damian' }]
 const RES = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' } as const
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
@@ -17,6 +17,7 @@ export default function AgendaEquipo() {
   const [planes, setPlanes] = useState<Record<string, Row[]>>({})
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [actHoy, setActHoy] = useState<Act[]>([])
+  const [julio, setJulio] = useState<{ prospector: string; cerrado: boolean }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -29,9 +30,11 @@ export default function AgendaEquipo() {
         supabase.from('agenda_turnos').select('vendedor,dia_num,cargado_por'),
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas').eq('origen', 'agenda_campo').eq('fecha', hoy),
       ])
+      const pj = await supabase.from('prospectos_julio').select('prospector,cerrado')
       setPlanes({ Adrian: (a.data as Row[]) ?? [], Martin: (m.data as Row[]) ?? [] })
       setTurnos((t.data as Turno[]) ?? [])
       setActHoy((ah.data as Act[]) ?? [])
+      setJulio((pj.data as { prospector: string; cerrado: boolean }[]) ?? [])
       setLoading(false)
     }
     cargar()
@@ -93,7 +96,7 @@ export default function AgendaEquipo() {
                 <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">Prospección ({v.prosp})</p>
                 <div className="grid grid-cols-2 gap-2 text-[12px]">
                   <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold">{turnosV.length}</p><p className="text-[10px] text-muted">turnos para {v.label}</p></div>
-                  <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold text-faint">—</p><p className="text-[10px] text-muted">base julio a cerrar 🔧</p></div>
+                  <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold">{julio.filter((j) => j.prospector === v.prospCod && !j.cerrado).length}<span className="text-[10px] text-faint">/{julio.filter((j) => j.prospector === v.prospCod).length}</span></p><p className="text-[10px] text-muted">base julio a cerrar</p></div>
                 </div>
               </div>
               {/* sin visitar del día actual */}

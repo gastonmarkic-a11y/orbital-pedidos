@@ -10,6 +10,7 @@ import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall } fro
 
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
+interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; localidad: string | null; es_interior: boolean }
 
 // prospector code -> vendedor que alimenta
 const FEED: Record<string, { vendedor: string; label: string; prospLabel: string }> = {
@@ -28,6 +29,7 @@ export default function ProspeccionCampo() {
   const [loading, setLoading] = useState(true)
   const [diaSel, setDiaSel] = useState<number | null>(null)
   const [verJulio, setVerJulio] = useState(false)
+  const [julio, setJulio] = useState<PJ[]>([])
   // form
   const [cli, setCli] = useState('')
   const [tel, setTel] = useState('')
@@ -44,7 +46,16 @@ export default function ProspeccionCampo() {
     setTurnos((tur as Turno[]) ?? [])
     setLoading(false)
   }
-  useEffect(() => { cargar() /* eslint-disable-next-line */ }, [codigoEfectivo])
+  async function cargarJulio() {
+    const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: codigoEfectivo })
+    setJulio((data as PJ[]) ?? [])
+  }
+  useEffect(() => { cargar(); cargarJulio() /* eslint-disable-next-line */ }, [codigoEfectivo])
+
+  async function cerrarJulio(id: number, v: boolean) {
+    setJulio((js) => js.map((j) => (j.id === id ? { ...j, cerrado: v } : j)))
+    await supabase.from('prospectos_julio').update({ cerrado: v }).eq('id', id)
+  }
 
   const dias = useMemo(() => Array.from(new Set(rows.map((r) => r.dia_num))).sort((a, b) => a - b), [rows])
   const hoyVendedor = useMemo(() => dias.find((d) => rows.some((r) => r.dia_num === d && !r.visitado)) ?? dias[0] ?? 1, [dias, rows])
@@ -153,12 +164,21 @@ export default function ProspeccionCampo() {
           {/* Tarea paralela: prospectos de julio */}
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
             <button onClick={() => setVerJulio((v) => !v)} className="w-full flex items-center justify-between p-3.5 text-sm font-medium">
-              <span>En paralelo · cerrar prospectos de julio</span>{verJulio ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <span>En paralelo · cerrar prospectos de julio ({julio.filter((j) => !j.cerrado).length} abiertos)</span>{verJulio ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
             {verJulio && (
-              <div className="border-t border-black/5 p-3">
-                <p className="text-[12px] text-muted">Seguimiento y cierre de los prospectos que generaste en julio (los de tu liquidación). Priorizá el interior del país para venta por catálogo.</p>
-                <p className="text-[11px] text-faint mt-2">🔧 Listado en preparación — se conecta con tu liquidación de julio.</p>
+              <div className="border-t border-black/5 p-3 space-y-2">
+                <p className="text-[12px] text-muted">Cerrá los prospectos que generaste en julio. <b>Interior primero</b> (venta por catálogo).</p>
+                {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : julio.map((j) => (
+                  <div key={j.id} className={`flex items-center gap-2 rounded-xl border p-2 ${j.cerrado ? 'border-emerald-200 opacity-60' : 'border-black/10'}`}>
+                    <button onClick={() => cerrarJulio(j.id, !j.cerrado)} className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border ${j.cerrado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-black/15 text-faint'}`}><Check size={15} /></button>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[13px] font-medium truncate ${j.cerrado ? 'line-through text-muted' : ''}`}>{j.nombre}</p>
+                      <p className="text-[10px] text-faint">{j.codigo}{j.localidad ? ` · ${j.localidad}` : ''}{j.compartido ? ' · ½ compartido' : ''}</p>
+                    </div>
+                    {j.es_interior && <span className="shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 bg-[#8F6A34]/10 text-[#8F6A34]">INTERIOR</span>}
+                  </div>
+                ))}
               </div>
             )}
           </div>
