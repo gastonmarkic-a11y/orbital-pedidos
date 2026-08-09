@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
 import { colorLegible } from './colorLegible'
@@ -119,7 +119,7 @@ export default function CatalogoPublico() {
 
   const filtrados = useMemo(() => {
     const qn = q.trim().toLowerCase()
-    return modelos.filter((m) => {
+    const base = modelos.filter((m) => {
       if (qn && !m.modelo.toLowerCase().includes(qn)) return false
       if (fTipo && !m.tipos.includes(fTipo)) return false
       if (fClasif && !m.clasificaciones.includes(fClasif)) return false
@@ -127,7 +127,13 @@ export default function CatalogoPublico() {
       if (soloDestacados && !m.caliente) return false
       return true
     })
+    // Los que tienen foto primero; los que faltan (sin imagen) quedan al final.
+    return base.map((m, i) => ({ m, i })).sort((a, b) => {
+      const ia = a.m.imagen ? 0 : 1, ib = b.m.imagen ? 0 : 1
+      return ia - ib || a.i - b.i
+    }).map((x) => x.m)
   }, [modelos, q, fTipo, fClasif, fTrat, soloDestacados])
+  const sinFoto = filtrados.filter((m) => !m.imagen).length
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
@@ -179,20 +185,31 @@ export default function CatalogoPublico() {
 
       {/* Grilla de modelos */}
       <main className="max-w-6xl mx-auto px-3 py-4">
-        <p className="text-[11px] text-neutral-400 mb-3">{filtrados.length} modelo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''}</p>
+        <p className="text-[11px] text-neutral-400 mb-3">
+          {filtrados.length} modelo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''}
+          {sinFoto > 0 && <span className="text-neutral-300"> · {sinFoto} con foto pendiente</span>}
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          {filtrados.map((m) => (
-            <button key={m.modelo} onClick={() => setSel(m)} className="text-left bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#8F6A34]/40 hover:shadow-sm">
-              <div className="aspect-square bg-white relative">
-                {m.imagen ? <img src={m.imagen} alt={m.modelo} className="w-full h-full object-contain" /> : <Placeholder />}
-                {m.caliente && <span className="absolute top-2 left-2 bg-[#8F6A34] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"><Star size={9} />TOP</span>}
-              </div>
-              <div className="p-3">
-                <p className="text-sm font-semibold truncate">{m.modelo}</p>
-                <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
-                <p className="text-base font-bold mt-1 text-[#8F6A34]">{kAr(m.precio_desde)}</p>
-              </div>
-            </button>
+          {filtrados.map((m, idx) => (
+            <Fragment key={m.modelo}>
+              {sinFoto > 0 && !m.imagen && (idx === 0 || filtrados[idx - 1].imagen) && (
+                <div className="col-span-2 md:col-span-4 mt-4 mb-1 flex items-center gap-3">
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">Próximamente con foto</span>
+                  <span className="flex-1 h-px bg-black/10" />
+                </div>
+              )}
+              <button onClick={() => setSel(m)} className="text-left bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#8F6A34]/40 hover:shadow-sm">
+                <div className="aspect-square bg-white relative">
+                  {m.imagen ? <img src={m.imagen} alt={m.modelo} className="w-full h-full object-contain" /> : <Placeholder />}
+                  {m.caliente && <span className="absolute top-2 left-2 bg-[#8F6A34] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"><Star size={9} />TOP</span>}
+                </div>
+                <div className="p-3">
+                  <p className="text-sm font-semibold truncate">{m.modelo}</p>
+                  <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
+                  <p className="text-base font-bold mt-1 text-[#8F6A34]">{kAr(m.precio_desde)}</p>
+                </div>
+              </button>
+            </Fragment>
           ))}
         </div>
         {filtrados.length === 0 && <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con esos filtros.</p>}
