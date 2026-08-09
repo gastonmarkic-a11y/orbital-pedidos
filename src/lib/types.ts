@@ -158,6 +158,7 @@ export type EstadoPedido =
 
 export interface Pedido {
   id: number
+  created_at?: string | null
   fecha: string | null
   vendedor: string | null
   cod_cliente: string | null

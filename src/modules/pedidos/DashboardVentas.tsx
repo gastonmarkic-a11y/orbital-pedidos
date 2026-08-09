@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
+import { importeDe } from './calc'
+import type { Pedido, StockItem } from '../../lib/types'
+
+// Estados que cuentan como facturado (igual que el dashboard operativo).
+const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
 
 // Dashboard de ventas — SOLO PESOS. Interactivo y ecualizable:
 //  - Scope: General (admin) o una cartera puntual (por código de cliente). Vendedor: su cartera.
@@ -64,6 +69,22 @@ export default function DashboardVentas() {
         }
         for (const r of (e.data as { anio_mes: string; unidades: number; importe_ars: number; comprobantes: number }[]) ?? []) {
           const a = get(r.anio_mes); a.ars += r.importe_ars; a.u += r.unidades; a.ops += r.comprobantes; a.b2c += r.importe_ars
+        }
+        // Empalme: meses posteriores al histórico Tango (jul-26) → B2B desde los pedidos
+        // facturados de la app, con el MISMO cálculo que el operativo (así agosto coincide).
+        const cutoff = ((m.data as { anio_mes: string }[]) ?? []).reduce((mx, r) => (r.anio_mes > mx ? r.anio_mes : mx), '0000-00')
+        const [ped, stk] = await Promise.all([
+          supabase.from('pedidos').select('*'),
+          supabase.from('stock').select('codigo,precio,precio_preventa'),
+        ])
+        const stock = (stk.data as StockItem[]) ?? []
+        for (const p of (ped.data as Pedido[]) ?? []) {
+          if (!FACTURABLES.includes(p.estado ?? '')) continue
+          const mes = p.created_at ? String(p.created_at).slice(0, 7) : ''
+          if (!mes || mes <= cutoff) continue // no duplicar lo que ya está en el histórico
+          const a = get(mes)
+          const n = importeDe(p, stock)
+          a.ars += n; a.b2b += n; a.ops += 1; a.u += (p.total_units ?? 0)
         }
       } else {
         const { data } = await supabase.rpc('ventas_cartera_mensual', { p_cartera: scope })
