@@ -13,6 +13,7 @@ import { Rol } from './lib/types'
 import AgendaDelDia from './modules/actividad/AgendaDelDia'
 import AgendaCampo from './modules/actividad/AgendaCampo'
 import ProspeccionCampo from './modules/actividad/ProspeccionCampo'
+import AgendaEquipo from './modules/actividad/AgendaEquipo'
 import Cartera from './modules/actividad/Cartera'
 import CargarActividad from './modules/actividad/CargarActividad'
 import MisResultados from './modules/actividad/MisResultados'
@@ -166,6 +167,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/liquidacion', label: 'Liquidación prospectores' },
       { to: '/envios-ecom', label: 'Envíos' },
       { to: '/actividad-admin', label: 'Equipo' },
+      { to: '/agenda-equipo', label: 'Agenda equipo (campo)' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' }
     )
   }
@@ -398,6 +400,7 @@ function Layout() {
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
+          {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/agenda-equipo" element={<AgendaEquipo />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/conversaciones" element={<Conversaciones />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Conversaciones />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
