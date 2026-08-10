@@ -177,7 +177,10 @@ export default function Derivaciones() {
                   {new Date(d.created_at).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
-              <p className="text-sm text-ink mt-1">{d.resumen}</p>
+              <button onClick={() => verConversacion(d)} className="w-full text-left mt-1 flex items-start justify-between gap-2 group">
+                <span className="text-sm text-ink">{d.resumen}</span>
+                <span className="text-[10px] font-medium text-brandDark shrink-0 whitespace-nowrap">{abierta === d.id ? '▲ ocultar' : '▼ abrir chat'}</span>
+              </button>
               {abierta === d.id && (
                 <div className="mt-2 bg-[#F7F5F0] rounded-lg p-2 max-h-64 overflow-y-auto space-y-1.5">
                   {(conv[d.conversacion_id] ?? []).length === 0 ? (

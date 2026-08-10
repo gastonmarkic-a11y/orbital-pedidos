@@ -25,6 +25,18 @@ export default function Conversaciones() {
   const [q, setQ] = useState('')
   const [abierta, setAbierta] = useState<string | null>(null)
   const [msgs, setMsgs] = useState<Record<string, { emisor: string; contenido: string }[]>>({})
+  const [resp, setResp] = useState<Record<string, string>>({})
+  const [enviando, setEnviando] = useState<string | null>(null)
+
+  async function responder(id: string) {
+    const texto = (resp[id] ?? '').trim(); if (!texto) return
+    setEnviando(id)
+    const { error } = await supabase.functions.invoke('at-responder', { body: { conversacion_id: id, texto } })
+    setEnviando(null)
+    if (error) return
+    setMsgs((m) => ({ ...m, [id]: [...(m[id] ?? []), { emisor: 'agente', contenido: texto }] }))
+    setResp((r) => ({ ...r, [id]: '' }))
+  }
 
   useEffect(() => {
     async function cargar() {
@@ -153,6 +165,10 @@ export default function Conversaciones() {
                             <span className="text-[9px] uppercase text-faint mr-1">{m.emisor === 'cliente' ? '👤' : m.emisor === 'agente' ? '🧑‍💼' : '🤖'}</span>{m.contenido}
                           </div>
                         ))}
+                        <div className="flex items-end gap-1.5 pt-1.5 border-t border-black/10 mt-1">
+                          <textarea value={resp[c.id] ?? ''} onChange={(e) => setResp((r) => ({ ...r, [c.id]: e.target.value }))} rows={2} placeholder={c.canal_origen === 'whatsapp' ? 'Responder por WhatsApp…' : 'Responder…'} className="flex-1 rounded-lg border border-black/10 px-2 py-1.5 text-xs" />
+                          <button onClick={() => responder(c.id)} disabled={enviando === c.id || !(resp[c.id] ?? '').trim()} className="rounded-lg bg-emerald-600 text-white px-3 py-2 text-xs font-semibold disabled:opacity-50 shrink-0">{enviando === c.id ? '…' : 'Enviar'}</button>
+                        </div>
                       </div>
                     )}
                   </div>

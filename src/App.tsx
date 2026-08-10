@@ -148,6 +148,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/resultados', label: 'Asistente' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
+    { to: '/conversaciones', label: 'Conversaciones' },
   ]
   const menu: NavItem[] = []
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
@@ -402,8 +403,8 @@ function Layout() {
           )}
           {rol === 'admin' && <Route path="/actividad-admin/marketing" element={<AdminMarketing />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/agenda-equipo" element={<AgendaEquipo />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/conversaciones" element={<Conversaciones />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/derivaciones" element={<Conversaciones />} />}
+          <Route path="/conversaciones" element={<Conversaciones />} />
+          <Route path="/derivaciones" element={<Conversaciones />} />
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
