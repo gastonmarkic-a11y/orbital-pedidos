@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall } from 'lucide-react'
+import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall, Send } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Pantalla de PROSPECCIÓN de campo para Luna (Marketing) y Damián.
@@ -74,8 +74,8 @@ export default function ProspeccionCampo() {
     setLoading(false)
   }
   async function cargarJulio() {
-    // Base de prospección COMPARTIDA (Luna + Damián): traemos toda la base de julio.
-    const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: null })
+    // Cada prospector ve LO SUYO: Luna (Marketing) sus contactos, Damián los suyos.
+    const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: codigoEfectivo ?? null })
     setJulio((data as PJ[]) ?? [])
   }
   useEffect(() => { cargar(); cargarJulio() /* eslint-disable-next-line */ }, [codigoEfectivo])
@@ -83,6 +83,23 @@ export default function ProspeccionCampo() {
   async function cerrarJulio(id: number, v: boolean) {
     setJulio((js) => js.map((j) => (j.id === id ? { ...j, cerrado: v } : j)))
     await supabase.from('prospectos_julio').update({ cerrado: v }).eq('id', id)
+  }
+
+  // Registro de actividad SIEMPRE (envíos, turnos, confirmaciones) → actividad_diaria.
+  async function registrarActividad(p: { cod: string; nombre: string | null; telefono: string | null; localidad: string | null; origen: string; desarrollo: string; resultado?: string }) {
+    const hoy = new Date().toISOString().slice(0, 10)
+    await supabase.from('actividad_diaria').insert({
+      fecha: hoy, vendedor: codigoEfectivo ?? 'prospeccion', cod_cliente: p.cod, nombre_comercio: p.nombre,
+      telefono: p.telefono, localidad: p.localidad, origen: p.origen,
+      resultado_contacto: p.resultado ?? 'contacto', actividad_desarrollo: p.desarrollo,
+    })
+  }
+  const [enviado, setEnviado] = useState<Record<number, boolean>>({})
+  async function enviarJulio(j: PJ) {
+    await registrarActividad({ cod: j.codigo ?? String(j.id), nombre: j.nombre, telefono: j.telefono, localidad: j.localidad, origen: 'prospeccion_julio', desarrollo: 'Envío de catálogo/propuesta por WhatsApp (prospección julio)' })
+    setEnviado((e) => ({ ...e, [j.id]: true }))
+    const link = waLink(j.telefono)
+    if (link) window.open(link, '_blank')
   }
 
   const dias = useMemo(() => Array.from(new Set(rows.map((r) => r.dia_num))).sort((a, b) => a - b), [rows])
@@ -105,6 +122,7 @@ export default function ProspeccionCampo() {
       telefono: b.telefono, localidad: b.zona, cargado_por: codigoEfectivo, nota: 'Confirmado: va a pasar el vendedor',
     }).select().single()
     if (data) setTurnos((t) => [...t, data as Turno])
+    await registrarActividad({ cod: b.cod, nombre: b.nombre, telefono: b.telefono, localidad: b.zona, origen: 'prospeccion_turno', desarrollo: `Confirmado: va a pasar ${feed.label}` })
     setZonaProsp((z) => z.filter((x) => x.cod !== b.cod))
   }
 
@@ -124,6 +142,7 @@ export default function ProspeccionCampo() {
       cargado_por: codigoEfectivo, nota: nota.trim() || null,
     }).select().single()
     if (data) setTurnos((t) => [...t, data as Turno])
+    await registrarActividad({ cod: cli.trim(), nombre: cli.trim(), telefono: tel.trim() || null, localidad: zonaActiva[0] ?? null, origen: 'prospeccion_turno', desarrollo: `Turno cargado para ${feed.label}${nota.trim() ? ' — ' + nota.trim() : ''}` })
     setCli(''); setTel(''); setNota(''); setGuardando(false)
   }
   async function borrar(id: number) {
@@ -224,11 +243,11 @@ export default function ProspeccionCampo() {
           {/* Tarea paralela: prospectos de julio */}
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
             <button onClick={() => setVerJulio((v) => !v)} className="w-full flex items-center justify-between p-3.5 text-sm font-medium">
-              <span>En paralelo · cerrar prospectos de julio ({julio.filter((j) => !j.cerrado).length} abiertos)</span>{verJulio ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <span>En paralelo · tus prospectos de julio ({julio.filter((j) => !j.cerrado).length} abiertos)</span>{verJulio ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
             {verJulio && (
               <div className="border-t border-black/5 p-3 space-y-2">
-                <p className="text-[12px] text-muted">Base compartida (Luna + Damián). Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo).</p>
+                <p className="text-[12px] text-muted">Tus contactos de julio ({feed.prospLabel}). Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo). Cada "Enviar" queda registrado como actividad.</p>
                 {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : (
                   <DrillClientes rows={julio.map((j) => ({ ...j, cod: j.codigo ?? String(j.id) })) as unknown as DrillRow[]} renderItem={(r) => {
                     const j = r as unknown as PJ
@@ -239,7 +258,7 @@ export default function ProspeccionCampo() {
                           <p className={`text-[13px] font-medium truncate ${j.cerrado ? 'line-through text-muted' : ''}`}>{j.nombre}</p>
                           <p className="text-[10px] text-faint">{j.codigo}{j.localidad ? ` · ${j.localidad}` : ''}{j.compartido ? ' · ½ compartido' : ''}</p>
                         </div>
-                        {waLink(j.telefono) && <a href={waLink(j.telefono)!} target="_blank" rel="noreferrer" className="shrink-0 w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center text-emerald-700"><PhoneCall size={13} /></a>}
+                        <button onClick={() => enviarJulio(j)} className={`shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 ${enviado[j.id] ? 'bg-emerald-100 text-emerald-700' : 'bg-brand text-white'}`}><Send size={12} />{enviado[j.id] ? 'Enviado' : 'Enviar'}</button>
                         {j.es_interior && <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-[#8F6A34]/10 text-[#8F6A34]">INT</span>}
                       </div>
                     )
