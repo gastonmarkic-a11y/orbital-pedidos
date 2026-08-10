@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History, Flame } from 'lucide-react'
+import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History, Flame, Sparkles, Trash2, Send } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
@@ -64,6 +64,7 @@ const labelDia = (n: number) => {
 }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
+interface Evento { id: number; dia_num: number; hora: string | null; lugar: string | null; cliente: string | null; nota: string | null }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
@@ -226,6 +227,69 @@ function HistorialModal({ r, onClose }: { r: Row; onClose: () => void }) {
 }
 const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Martin: 'Martín', Corporativo: 'Corporativo' }
 
+// Asistente IA: reacomoda la agenda del vendedor por un pedido en lenguaje natural.
+function AjusteIAAgenda({ ven, onAplicado }: { ven: string; onAplicado: () => void }) {
+  const [abierto, setAbierto] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [hist, setHist] = useState<{ role: string; content: string }[]>([])
+  const [enviando, setEnviando] = useState(false)
+  const [aplicado, setAplicado] = useState<string[]>([])
+
+  async function enviar() {
+    const texto = msg.trim(); if (!texto || enviando) return
+    setEnviando(true); setMsg(''); setAplicado([])
+    const nuevoHist = [...hist, { role: 'user', content: texto }]
+    setHist(nuevoHist)
+    try {
+      const { data } = await supabase.functions.invoke('agenda-ajuste-ia', { body: { vendedor: ven, mensaje: texto, historial: hist } })
+      const r = data as { reply?: string; aplicado?: string[] } | null
+      setHist([...nuevoHist, { role: 'assistant', content: r?.reply ?? 'Listo.' }])
+      const apl = r?.aplicado ?? []
+      setAplicado(apl)
+      if (apl.length) onAplicado()
+    } catch { setHist([...nuevoHist, { role: 'assistant', content: 'No pude procesar el pedido, probá de nuevo.' }]) }
+    setEnviando(false)
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-brand/10 to-white border border-brand/30 rounded-2xl overflow-hidden">
+      <button onClick={() => setAbierto((o) => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+        <Sparkles size={18} className="text-brand shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-brandDark">Ajuste IA de agenda</p>
+          <p className="text-[11px] text-muted truncate">Pedile reacomodar el día por una reunión, turno o imprevisto</p>
+        </div>
+        <ChevronDown size={18} className={`text-faint transition ${abierto ? 'rotate-180' : ''}`} />
+      </button>
+      {abierto && (
+        <div className="px-4 pb-4 space-y-2">
+          {hist.length > 0 && (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {hist.map((m, i) => (
+                <div key={i} className={`text-[13px] rounded-lg px-3 py-2 ${m.role === 'user' ? 'bg-ink text-white ml-8' : 'bg-white border border-black/10 mr-8'}`}>{m.content}</div>
+              ))}
+              {aplicado.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mr-8 text-[12px] text-emerald-800 space-y-0.5">
+                  {aplicado.map((a, i) => <div key={i}>{a}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input value={msg} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') enviar() }}
+              placeholder="Ej: el miércoles 13 tengo reunión 10hs en Haedo, reacomodá"
+              className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            <button onClick={enviar} disabled={enviando} className="shrink-0 bg-brand text-white rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-1 disabled:opacity-50">
+              <Send size={14} />{enviando ? '…' : 'Enviar'}
+            </button>
+          </div>
+          <p className="text-[10px] text-faint">Ejemplos: "movéme el día 5 al 8" · "el jueves 14 tengo turno 15hs en Quilmes con Óptica X". Si algo no está claro, te pregunta.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AgendaCampo() {
   const { codigoEfectivo } = useAuth()
   const navigate = useNavigate()
@@ -241,17 +305,22 @@ export default function AgendaCampo() {
   const [dragDia, setDragDia] = useState<number | null>(null)
   const [salv, setSalv] = useState<Record<number, Bienv[]>>({})
   const [salvLoad, setSalvLoad] = useState<number | null>(null)
+  const [eventos, setEventos] = useState<Evento[]>([])
 
   async function cargar() {
     setLoading(true)
-    const [{ data: plan }, { data: tur }] = await Promise.all([
+    const [{ data: plan }, { data: tur }, { data: evs }] = await Promise.all([
       supabase.rpc('agenda_campo_plan', { p_vendedor: ven }),
       supabase.from('agenda_turnos').select('*').eq('vendedor', ven),
+      supabase.from('agenda_eventos').select('*').eq('vendedor', ven).order('dia_num'),
     ])
     setRows((plan as Row[]) ?? [])
     setTurnos((tur as Turno[]) ?? [])
+    setEventos((evs as Evento[]) ?? [])
     setLoading(false)
   }
+  const eventosDe = (d: number) => eventos.filter((e) => e.dia_num === d)
+  async function borrarEvento(id: number) { await supabase.from('agenda_eventos').delete().eq('id', id); cargar() }
   useEffect(() => { cargar() /* eslint-disable-next-line */ }, [ven])
 
   const baGba = useMemo(() => rows.filter((r) => r.bloque === 'ba_gba'), [rows])
@@ -301,6 +370,8 @@ export default function AgendaCampo() {
           ))}
         </div>
       </div>
+
+      <AjusteIAAgenda ven={ven} onAplicado={cargar} />
 
       {loading ? <p className="text-sm text-muted p-4">Cargando…</p> : dias.length === 0 ? (
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">No hay plan de campo generado para {ven}.</p>
@@ -366,6 +437,7 @@ export default function AgendaCampo() {
                       <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-blue-100 text-blue-700">{recupN} recuperar</span>
                       <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${faltanPros > 0 ? 'bg-[#8F6A34]/10 text-[#8F6A34]' : 'bg-emerald-100 text-emerald-700'}`}>{turnosDia.length}/{sugeridos} prospección</span>
                       {hayFuego && <span className="inline-flex items-center gap-1.5 text-[10px]"><FuegosMini {...fuegos} /></span>}
+                      {eventosDe(d).length > 0 && <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-brand/15 text-brandDark inline-flex items-center gap-1"><CalendarClock size={11} />{eventosDe(d).length} turno{eventosDe(d).length === 1 ? '' : 's'} fijo{eventosDe(d).length === 1 ? '' : 's'}</span>}
                     </div>
                   </div>
                   {open ? <ChevronDown size={18} className="text-faint shrink-0" /> : <ChevronRight size={18} className="text-faint shrink-0" />}
@@ -373,6 +445,17 @@ export default function AgendaCampo() {
 
                 {open && (
                   <div className="px-3 pb-3 space-y-3 border-t border-black/5 pt-3">
+                    {/* Eventos fijos (reuniones/turnos puestos por el Ajuste IA) */}
+                    {eventosDe(d).map((e) => (
+                      <div key={e.id} className="flex items-start gap-2 bg-brand/5 border border-brand/20 rounded-xl p-2.5">
+                        <CalendarClock size={15} className="text-brand shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1 text-[12px]">
+                          <p className="font-semibold text-brandDark">{[e.hora, e.lugar].filter(Boolean).join(' · ') || 'Turno fijo'}</p>
+                          {(e.cliente || e.nota) && <p className="text-muted">{[e.cliente, e.nota].filter(Boolean).join(' — ')}</p>}
+                        </div>
+                        <button onClick={() => borrarEvento(e.id)} className="shrink-0 text-faint hover:text-red-600 p-1"><Trash2 size={14} /></button>
+                      </div>
+                    ))}
                     {/* Mover el día en bloque */}
                     <button onClick={() => posponer(d)} disabled={posponiendo === d}
                       className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-brandDark border border-dashed border-brand/40 rounded-lg py-2 disabled:opacity-50">
