@@ -173,6 +173,27 @@ export default function DashboardVentas() {
   const progreso = objetivo > 0 ? Math.round((cur.ars / objetivo) * 100) : null
   const dPctFact = delta(cur.ars, cmp?.ars)
 
+  // Presets de comparación
+  const añoAnterior = porMes.has(`${+y - 1}-${m}`) ? `${+y - 1}-${m}` : ''
+  const idxNuevo = meses.indexOf(mesNuevo)
+  const mesPrevio = idxNuevo > 0 ? meses[idxNuevo - 1] : ''
+
+  // Acumulado del año (YTD): suma ene→mes elegido, y año completo, con su par del año anterior.
+  const acum = (anio: string, hastaMM?: string) => {
+    const pref = `${anio}-`
+    const r = { ars: 0, u: 0, ops: 0 }
+    for (const am of meses) {
+      if (!am.startsWith(pref)) continue
+      if (hastaMM && am.slice(5) > hastaMM) continue
+      const p = porMes.get(am)!; r.ars += p.ars; r.u += p.u; r.ops += p.ops
+    }
+    return r
+  }
+  const ytdCur = acum(y, m)
+  const ytdPrev = acum(String(+y - 1), m)
+  const ytdFullCur = acum(y)
+  const ytdFullPrev = acum(String(+y - 1))
+
   // ---- UI helpers ----
   const Delta = ({ pct }: { pct: number | null }) => pct == null ? <span className="text-faint">—</span>
     : <span className={pct >= 0 ? 'text-emerald-600' : 'text-red-600'}>{pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}%</span>
@@ -283,7 +304,7 @@ export default function DashboardVentas() {
         </div>
       </div>
 
-      {/* Mes + versus */}
+      {/* Mes + versus (cruce específico) */}
       <div className="bg-white rounded-xl p-3 border border-black/10 flex items-center gap-3 flex-wrap text-sm">
         <label className="flex items-center gap-1.5"><span className="text-[11px] text-muted">Mes</span>
           <select value={mesSel} onChange={(e) => setMesSel(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
@@ -291,11 +312,48 @@ export default function DashboardVentas() {
           </select>
         </label>
         <span className="text-faint">vs</span>
-        <label className="flex items-center gap-1.5"><span className="text-[11px] text-muted">Comparar con</span>
+        <label className="flex items-center gap-1.5"><span className="text-[11px] text-muted">Cruce específico</span>
           <select value={mesCmp} onChange={(e) => setMesCmp(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
             {[...meses].reverse().map((am) => <option key={am} value={am}>{etiqueta(am)}</option>)}
           </select>
         </label>
+        {/* Presets rápidos de comparación */}
+        <div className="flex gap-1 ml-auto">
+          {añoAnterior && (
+            <button onClick={() => setMesCmp(añoAnterior)} className={`text-[11px] px-2 py-1 rounded-lg border ${mesCmp === añoAnterior ? 'bg-brandDark text-white border-brandDark' : 'bg-white text-muted border-black/10'}`}>
+              Año vs año ({etiqueta(añoAnterior)})
+            </button>
+          )}
+          {mesPrevio && (
+            <button onClick={() => setMesCmp(mesPrevio)} className={`text-[11px] px-2 py-1 rounded-lg border ${mesCmp === mesPrevio ? 'bg-brandDark text-white border-brandDark' : 'bg-white text-muted border-black/10'}`}>
+              Mes anterior
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Acumulado del año (YTD) — la venta acumulada como dato */}
+      <div className="rounded-xl p-3 border border-black/10 bg-[#F7F5F0] grid grid-cols-2 md:grid-cols-4 gap-3 items-center">
+        <div className="col-span-2 md:col-span-1">
+          <p className="text-[10px] text-faint uppercase tracking-wide">Acumulado {y} · ene–{MESN[+m - 1]}</p>
+          <p className="text-2xl font-bold text-brandDark leading-tight">{kAr(ytdCur.ars)}</p>
+          <p className="text-[11px] text-muted">{ent.format(ytdCur.u)} u · {ent.format(ytdCur.ops)} {esGeneral ? 'oper.' : 'clientes'}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-faint uppercase tracking-wide">Mismo tramo {+y - 1}</p>
+          <p className="text-lg font-semibold text-ink leading-tight">{ytdPrev.ars ? kAr(ytdPrev.ars) : '—'}</p>
+          <p className="text-[11px]">{ytdPrev.ars ? <Delta pct={delta(ytdCur.ars, ytdPrev.ars)} /> : <span className="text-faint">sin base</span>}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-faint uppercase tracking-wide">Año completo {y}</p>
+          <p className="text-lg font-semibold text-ink leading-tight">{kAr(ytdFullCur.ars)}</p>
+          <p className="text-[11px] text-muted">{ent.format(ytdFullCur.u)} u</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-faint uppercase tracking-wide">Año completo {+y - 1}</p>
+          <p className="text-lg font-semibold text-ink leading-tight">{ytdFullPrev.ars ? kAr(ytdFullPrev.ars) : '—'}</p>
+          <p className="text-[11px]">{ytdFullPrev.ars ? <Delta pct={delta(ytdFullCur.ars, ytdFullPrev.ars)} /> : <span className="text-faint">—</span>}</p>
+        </div>
       </div>
 
       {/* HERO impacto: facturación + acelerador + donut de canal */}
