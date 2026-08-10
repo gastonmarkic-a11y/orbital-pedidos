@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History } from 'lucide-react'
+import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History, Flame } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
@@ -26,7 +26,14 @@ function fuegoDe(u: number): { color: string; tier: string } | null {
 }
 function Fuego({ u }: { u: number }) {
   const f = fuegoDe(u); if (!f) return null
-  return <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 inline-flex items-center gap-0.5" style={{ background: f.color + '1a', color: f.color }}>🔥 {u}</span>
+  return <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 inline-flex items-center gap-0.5" style={{ background: f.color + '1a', color: f.color }}><Flame size={11} color={f.color} fill={f.color} /> {u}</span>
+}
+// Conteo de fuegos con el ícono en color (rojo/naranja/azul), sin texto
+function FuegosMini({ rojo, naranja, azul }: { rojo: number; naranja: number; azul: number }) {
+  const items: [number, string][] = [[rojo, '#dc2626'], [naranja, '#ea580c'], [azul, '#2563eb']]
+  return <>{items.filter(([n]) => n > 0).map(([n, c], i) => (
+    <span key={i} className="inline-flex items-center gap-0.5 font-bold" style={{ color: c }}><Flame size={12} color={c} fill={c} />{n}</span>
+  ))}</>
 }
 
 // Fecha real del día N: días hábiles desde el 11/8/2026 (saltea sábados y domingos).
@@ -320,7 +327,7 @@ export default function AgendaCampo() {
             const faltanPros = Math.max(0, sugeridos - turnosDia.length)
             const fuegos = { rojo: 0, naranja: 0, azul: 0 }
             delDia.forEach((r) => { const f = fuegoDe(r.unidades); if (f) fuegos[f.tier as 'rojo' | 'naranja' | 'azul']++ })
-            const fuegoResumen = [fuegos.rojo && `${fuegos.rojo}×🔥 rojo`, fuegos.naranja && `${fuegos.naranja}×🔥 naranja`, fuegos.azul && `${fuegos.azul}×🔥 azul`].filter(Boolean).join(' · ')
+            const hayFuego = fuegos.rojo + fuegos.naranja + fuegos.azul > 0
             return (
               <div key={d}
                 draggable
@@ -342,7 +349,7 @@ export default function AgendaCampo() {
                       <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-700">{canjeN} canje</span>
                       <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-blue-100 text-blue-700">{recupN} recuperar</span>
                       <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${faltanPros > 0 ? 'bg-[#8F6A34]/10 text-[#8F6A34]' : 'bg-emerald-100 text-emerald-700'}`}>{turnosDia.length}/{sugeridos} prospección</span>
-                      {fuegoResumen && <span className="text-[10px] font-semibold">{fuegoResumen}</span>}
+                      {hayFuego && <span className="inline-flex items-center gap-1.5 text-[10px]"><FuegosMini {...fuegos} /></span>}
                     </div>
                   </div>
                   {open ? <ChevronDown size={18} className="text-faint shrink-0" /> : <ChevronRight size={18} className="text-faint shrink-0" />}
@@ -360,7 +367,7 @@ export default function AgendaCampo() {
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Clientes de la zona ({delDia.length})</p>
                       <div className="text-[11px] text-brandDark bg-brand/5 rounded-lg px-2.5 py-2 space-y-0.5">
-                        <p><b>Resumen del día:</b> {delDia.length} visitas · {canjeN} canje · {recupN} recuperar{fuegoResumen ? ` · ${fuegoResumen}` : ''}</p>
+                        <p className="inline-flex items-center gap-1.5 flex-wrap"><b>Resumen del día:</b> {delDia.length} visitas · {canjeN} canje · {recupN} recuperar {hayFuego && <FuegosMini {...fuegos} />}</p>
                         {delDia.length > 1 && <p>🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b></p>}
                         <p className="text-faint">Potencial del día: {delDia.reduce((s, r) => s + (r.unidades || 0), 0)} unidades históricas.</p>
                       </div>
