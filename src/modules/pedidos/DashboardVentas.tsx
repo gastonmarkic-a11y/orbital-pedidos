@@ -173,10 +173,22 @@ export default function DashboardVentas() {
   const progreso = objetivo > 0 ? Math.round((cur.ars / objetivo) * 100) : null
   const dPctFact = delta(cur.ars, cmp?.ars)
 
-  // Presets de comparación
-  const añoAnterior = porMes.has(`${+y - 1}-${m}`) ? `${+y - 1}-${m}` : ''
+  // Selector por botones: año base = año del mes elegido; años disponibles (desc).
+  const añoBase = mesSel.slice(0, 4)
+  const años = [...new Set(meses.map((am) => am.slice(0, 4)))].sort((a, b) => b.localeCompare(a))
   const idxNuevo = meses.indexOf(mesNuevo)
   const mesPrevio = idxNuevo > 0 ? meses[idxNuevo - 1] : ''
+  // Elegir mes+año: fija el mes primario y compara automático contra el mismo mes del año anterior
+  // (si no hay base del año anterior, cae al mes inmediato anterior de la serie).
+  const elegirMesAño = (mm: string, an: string) => {
+    const exacto = `${an}-${mm}`
+    const disp = porMes.has(exacto) ? exacto : (meses.filter((am) => am.startsWith(`${an}-`)).slice(-1)[0] ?? mesSel)
+    setMesSel(disp)
+    const prev = `${+disp.slice(0, 4) - 1}-${disp.slice(5)}`
+    if (porMes.has(prev)) { setMesCmp(prev); return }
+    const i = meses.indexOf(disp)
+    if (i > 0) setMesCmp(meses[i - 1])
+  }
 
   // Acumulado del año (YTD): suma ene→mes elegido, y año completo, con su par del año anterior.
   const acum = (anio: string, hastaMM?: string) => {
@@ -304,29 +316,49 @@ export default function DashboardVentas() {
         </div>
       </div>
 
-      {/* Mes + versus (cruce específico) */}
-      <div className="bg-white rounded-xl p-3 border border-black/10 flex items-center gap-3 flex-wrap text-sm">
-        <label className="flex items-center gap-1.5"><span className="text-[11px] text-muted">Mes</span>
-          <select value={mesSel} onChange={(e) => setMesSel(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
-            {[...meses].reverse().map((am) => <option key={am} value={am}>{etiqueta(am)}</option>)}
-          </select>
-        </label>
-        <span className="text-faint">vs</span>
-        <label className="flex items-center gap-1.5"><span className="text-[11px] text-muted">Cruce específico</span>
-          <select value={mesCmp} onChange={(e) => setMesCmp(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
-            {[...meses].reverse().map((am) => <option key={am} value={am}>{etiqueta(am)}</option>)}
-          </select>
-        </label>
-        {/* Presets rápidos de comparación */}
-        <div className="flex gap-1 ml-auto">
-          {añoAnterior && (
-            <button onClick={() => setMesCmp(añoAnterior)} className={`text-[11px] px-2 py-1 rounded-lg border ${mesCmp === añoAnterior ? 'bg-brandDark text-white border-brandDark' : 'bg-white text-muted border-black/10'}`}>
-              Año vs año ({etiqueta(añoAnterior)})
-            </button>
-          )}
+      {/* Botones de meses + año → compara automático contra el mismo mes del año anterior */}
+      <div className="bg-white rounded-xl p-3 border border-black/10 space-y-2.5 text-sm">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-muted">Año</span>
+          <div className="flex bg-[#F1EDE4] rounded-lg p-0.5">
+            {años.map((an) => (
+              <button key={an} onClick={() => elegirMesAño(m, an)}
+                className={`text-xs px-2.5 py-1 rounded-md font-medium ${añoBase === an ? 'bg-brandDark text-white' : 'text-muted'}`}>{an}</button>
+            ))}
+          </div>
+          <span className="text-[10px] text-faint ml-1">al elegir mes compara contra {+añoBase - 1}</span>
+        </div>
+        <div className="grid grid-cols-6 md:grid-cols-12 gap-1">
+          {MESN.map((nombre, i) => {
+            const mm = String(i + 1).padStart(2, '0')
+            const am = `${añoBase}-${mm}`
+            const hay = porMes.has(am)
+            const activo = mesSel === am
+            return (
+              <button key={mm} disabled={!hay} onClick={() => elegirMesAño(mm, añoBase)}
+                className={`text-xs py-1.5 rounded-lg font-medium capitalize ${activo ? 'bg-brand text-white' : hay ? 'bg-[#F7F5F0] text-ink hover:bg-[#EFE9DD]' : 'bg-transparent text-faint/40 cursor-not-allowed'}`}>
+                {nombre}
+              </button>
+            )
+          })}
+        </div>
+        {/* Cruce específico: elegir libremente los dos meses a comparar */}
+        <div className="flex items-center gap-3 flex-wrap pt-1 border-t border-black/5">
+          <span className="text-[11px] text-muted font-medium">Cruce específico</span>
+          <label className="flex items-center gap-1.5"><span className="text-[11px] text-faint">Mes</span>
+            <select value={mesSel} onChange={(e) => setMesSel(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
+              {[...meses].reverse().map((am) => <option key={am} value={am}>{etiqueta(am)}</option>)}
+            </select>
+          </label>
+          <span className="text-faint">vs</span>
+          <label className="flex items-center gap-1.5"><span className="text-[11px] text-faint">contra</span>
+            <select value={mesCmp} onChange={(e) => setMesCmp(e.target.value)} className="bg-white border border-black/10 rounded-lg px-2 py-1">
+              {[...meses].reverse().map((am) => <option key={am} value={am}>{etiqueta(am)}</option>)}
+            </select>
+          </label>
           {mesPrevio && (
-            <button onClick={() => setMesCmp(mesPrevio)} className={`text-[11px] px-2 py-1 rounded-lg border ${mesCmp === mesPrevio ? 'bg-brandDark text-white border-brandDark' : 'bg-white text-muted border-black/10'}`}>
-              Mes anterior
+            <button onClick={() => setMesCmp(mesPrevio)} className={`text-[11px] px-2 py-1 rounded-lg border ml-auto ${mesCmp === mesPrevio ? 'bg-brandDark text-white border-brandDark' : 'bg-white text-muted border-black/10'}`}>
+              vs mes anterior
             </button>
           )}
         </div>
