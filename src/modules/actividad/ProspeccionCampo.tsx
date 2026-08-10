@@ -11,6 +11,7 @@ import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall } fro
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
 interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; localidad: string | null; es_interior: boolean }
+interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
 // prospector code -> vendedor que alimenta
 const FEED: Record<string, { vendedor: string; label: string; prospLabel: string }> = {
@@ -39,6 +40,7 @@ export default function ProspeccionCampo() {
   const [diaSel, setDiaSel] = useState<number | null>(null)
   const [verJulio, setVerJulio] = useState(false)
   const [julio, setJulio] = useState<PJ[]>([])
+  const [zonaProsp, setZonaProsp] = useState<Bienv[]>([])
   // form
   const [cli, setCli] = useState('')
   const [tel, setTel] = useState('')
@@ -74,6 +76,20 @@ export default function ProspeccionCampo() {
     return dias[Math.min(i + 2, dias.length - 1)] ?? hoyVendedor
   }, [dias, hoyVendedor])
   const diaActivo = diaSel ?? objetivo
+
+  useEffect(() => {
+    if (!diaActivo) return
+    supabase.rpc('bienvenida_cerca', { p_vendedor: feed.vendedor, p_dia: diaActivo, p_limit: 12 }).then(({ data }) => setZonaProsp((data as Bienv[]) ?? []))
+  }, [diaActivo, feed.vendedor])
+
+  async function confirmarTurno(b: Bienv) {
+    const { data } = await supabase.from('agenda_turnos').insert({
+      vendedor: feed.vendedor, dia_num: diaActivo, cliente: b.nombre, cod_cliente: b.cod,
+      telefono: b.telefono, localidad: b.zona, cargado_por: codigoEfectivo, nota: 'Confirmado: va a pasar el vendedor',
+    }).select().single()
+    if (data) setTurnos((t) => [...t, data as Turno])
+    setZonaProsp((z) => z.filter((x) => x.cod !== b.cod))
+  }
 
   const zonaDe = (d: number) => Array.from(new Set(rows.filter((r) => r.dia_num === d).map((r) => r.localidad).filter(Boolean)))
   const zonaActiva = zonaDe(diaActivo)
@@ -140,9 +156,27 @@ export default function ProspeccionCampo() {
             })}
           </div>
 
-          {/* Alta de turno */}
+          {/* Ópticas de prospección EN ESA ZONA para confirmar la visita */}
           <div className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Cargar turno en {zonaActiva[0] ?? 'la zona'} ({labelDia(diaActivo)})</p>
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Ópticas de la zona para confirmar ({zonaProsp.length})</p>
+            <p className="text-[11px] text-faint -mt-1">Llamá, confirmá que va a pasar {feed.label}, y tocá "Confirmar turno".</p>
+            {zonaProsp.length === 0 ? <p className="text-[11px] text-faint">No hay ópticas de prospección sin agendar en esta zona.</p> : zonaProsp.map((b) => (
+              <div key={b.cod} className="rounded-xl border border-black/10 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0"><p className="text-[13px] font-medium truncate">{b.nombre}</p><p className="text-[10px] text-faint">{[b.zona, b.direccion].filter(Boolean).join(' · ')}{b.dist != null ? ` · ${b.dist}km` : ''}</p></div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {waLink(b.telefono) && <a href={waLink(b.telefono)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
+                  {b.telefono && <a href={`tel:${b.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink">Llamar</a>}
+                  <button onClick={() => confirmarTurno(b)} className="flex-1 text-[11px] font-semibold rounded-lg bg-brand text-white py-1.5">✓ Confirmar turno</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Alta de turno manual (otro contacto) */}
+          <div className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Otro contacto (manual) — {zonaActiva[0] ?? 'la zona'} ({labelDia(diaActivo)})</p>
             <input value={cli} onChange={(e) => setCli(e.target.value)} placeholder="Óptica / contacto *" className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
             <div className="grid grid-cols-2 gap-2">
               <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="Teléfono / WhatsApp" className="rounded-lg border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
