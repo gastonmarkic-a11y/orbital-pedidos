@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall, Send } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
+import PreparacionEnvio from '../envios/PreparacionEnvio'
+import { Cliente, ObjetivoMes } from '../../lib/types'
+import { monthKey, habilesDelMes, habilesTranscurridos } from '../../lib/dates'
 
 // Pantalla de PROSPECCIÓN de campo para Luna (Marketing) y Damián.
 // Objetivo OBLIGATORIO del día: conseguir 5 turnos en la zona del próximo recorrido
@@ -85,6 +88,23 @@ export default function ProspeccionCampo() {
     await supabase.from('prospectos_julio').update({ cerrado: v }).eq('id', id)
   }
 
+  // Performance del prospector: objetivo del mes + acumulado + objetivo diario.
+  const [obj, setObj] = useState<ObjetivoMes | null>(null)
+  const [perf, setPerf] = useState<{ mesTot: number; mesProp: number; hoyTot: number }>({ mesTot: 0, mesProp: 0, hoyTot: 0 })
+  useEffect(() => {
+    const mes = monthKey()
+    const hoyStr = new Date().toISOString().slice(0, 10)
+    ;(async () => {
+      const [{ data: o }, { data: act }] = await Promise.all([
+        supabase.from('objetivos_mes').select('*').eq('vendedor', codigoEfectivo).eq('mes_anio', mes).maybeSingle(),
+        supabase.from('actividad_diaria').select('fecha, propuesta_enviada_id').eq('vendedor', codigoEfectivo).gte('fecha', `${mes}-01`),
+      ])
+      setObj(o as ObjetivoMes | null)
+      const rows = (act ?? []) as { fecha: string; propuesta_enviada_id: number | null }[]
+      setPerf({ mesTot: rows.length, mesProp: rows.filter((r) => r.propuesta_enviada_id != null).length, hoyTot: rows.filter((r) => r.fecha === hoyStr).length })
+    })()
+  }, [codigoEfectivo])
+
   // Registro de actividad SIEMPRE (envíos, turnos, confirmaciones) → actividad_diaria.
   async function registrarActividad(p: { cod: string; nombre: string | null; telefono: string | null; localidad: string | null; origen: string; desarrollo: string; resultado?: string }) {
     const hoy = new Date().toISOString().slice(0, 10)
@@ -94,12 +114,16 @@ export default function ProspeccionCampo() {
       resultado_contacto: p.resultado ?? 'contacto', actividad_desarrollo: p.desarrollo,
     })
   }
-  const [enviado, setEnviado] = useState<Record<number, boolean>>({})
-  async function enviarJulio(j: PJ) {
-    await registrarActividad({ cod: j.codigo ?? String(j.id), nombre: j.nombre, telefono: j.telefono, localidad: j.localidad, origen: 'prospeccion_julio', desarrollo: 'Envío de catálogo/propuesta por WhatsApp (prospección julio)' })
-    setEnviado((e) => ({ ...e, [j.id]: true }))
-    const link = waLink(j.telefono)
-    if (link) window.open(link, '_blank')
+  // "Enviar" abre el modal de acción (PreparacionEnvio, el mismo de Cartera): propuesta +
+  // material + mensaje + WhatsApp/Llamar/Mail/Recordatorio/Reunión, y registra la actividad.
+  const [enviarCli, setEnviarCli] = useState<Cliente | null>(null)
+  function abrirEnvio(j: PJ) {
+    setEnviarCli({
+      cod: j.codigo ?? String(j.id), nomcomerc: j.nombre, razon: j.nombre,
+      whatsapp: j.telefono, telefono: j.telefono, email: null, contacto: null,
+      localidad: j.localidad, provincia: j.provincia,
+      clasificacion_recupero: 'sin_historial', unidades_2025: 0,
+    } as unknown as Cliente)
   }
 
   const dias = useMemo(() => Array.from(new Set(rows.map((r) => r.dia_num))).sort((a, b) => a - b), [rows])
@@ -156,6 +180,33 @@ export default function ProspeccionCampo() {
         <h1 className="text-lg font-bold">Prospección de campo</h1>
         <p className="text-xs text-muted">Conseguí turnos en la zona del recorrido de {feed.label}</p>
       </div>
+
+      {/* Performance del prospector: objetivo diario + mensual + acumulado */}
+      {(() => {
+        const objMes = obj?.objetivo_propuestas ?? 0
+        const habMes = habilesDelMes(); const habT = habilesTranscurridos()
+        const objDia = objMes > 0 && habMes > 0 ? Math.ceil(objMes / habMes) : META
+        const proy = habT > 0 ? Math.round((perf.mesProp / habT) * habMes) : 0
+        const pctMes = objMes > 0 ? Math.min(100, Math.round((perf.mesProp / objMes) * 100)) : 0
+        const enLinea = objMes > 0 && proy >= objMes
+        return (
+          <div className="bg-ink text-white rounded-2xl p-4">
+            <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Tu performance de agenda · {feed.prospLabel}</p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div><p className="text-2xl font-bold text-gold">{perf.hoyTot}<span className="text-sm text-white/50">/{objDia}</span></p><p className="text-[10px] text-white/60">acciones hoy · objetivo diario</p></div>
+              <div><p className="text-2xl font-bold">{perf.mesProp}<span className="text-sm text-white/50">/{objMes || '—'}</span></p><p className="text-[10px] text-white/60">propuestas del mes</p></div>
+              <div><p className={`text-2xl font-bold ${enLinea ? 'text-emerald-300' : 'text-white'}`}>{proy}</p><p className="text-[10px] text-white/60">proyección a fin de mes</p></div>
+            </div>
+            {objMes > 0 && (
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex-1 h-2 bg-white/15 rounded-full overflow-hidden"><div className={`h-full ${enLinea ? 'bg-emerald-400' : 'bg-gold'}`} style={{ width: `${pctMes}%` }} /></div>
+                <span className="text-sm font-bold">{pctMes}%</span>
+              </div>
+            )}
+            <p className="text-[10px] text-white/40 mt-1.5">Acumulado del mes: {perf.mesTot} acciones · {perf.mesProp} propuestas enviadas{objMes ? ` · objetivo mensual ${objMes}` : ' · sin objetivo mensual cargado'}.</p>
+          </div>
+        )
+      })()}
 
       {loading ? <p className="text-sm text-muted p-4">Cargando…</p> : dias.length === 0 ? (
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">Todavía no hay recorrido de campo generado para {feed.label}.</p>
@@ -258,7 +309,7 @@ export default function ProspeccionCampo() {
                           <p className={`text-[13px] font-medium truncate ${j.cerrado ? 'line-through text-muted' : ''}`}>{j.nombre}</p>
                           <p className="text-[10px] text-faint">{j.codigo}{j.localidad ? ` · ${j.localidad}` : ''}{j.compartido ? ' · ½ compartido' : ''}</p>
                         </div>
-                        <button onClick={() => enviarJulio(j)} className={`shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 ${enviado[j.id] ? 'bg-emerald-100 text-emerald-700' : 'bg-brand text-white'}`}><Send size={12} />{enviado[j.id] ? 'Enviado' : 'Enviar'}</button>
+                        <button onClick={() => abrirEnvio(j)} className="shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 bg-brand text-white"><Send size={12} />Enviar</button>
                         {j.es_interior && <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-[#8F6A34]/10 text-[#8F6A34]">INT</span>}
                       </div>
                     )
@@ -269,6 +320,8 @@ export default function ProspeccionCampo() {
           </div>
         </>
       )}
+
+      {enviarCli && <PreparacionEnvio cliente={enviarCli} onClose={() => setEnviarCli(null)} onListo={() => { setEnviarCli(null); cargarJulio() }} />}
     </div>
   )
 }

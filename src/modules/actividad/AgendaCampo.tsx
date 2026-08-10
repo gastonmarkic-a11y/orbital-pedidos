@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History, Flame, Sparkles, Trash2, Send } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
+import PreparacionEnvio from '../envios/PreparacionEnvio'
+import { Cliente } from '../../lib/types'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -80,8 +82,7 @@ function CohorteChip({ c }: { c: string }) {
   return <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${canje ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{canje ? 'Canje' : 'A recuperar'}</span>
 }
 
-function ClienteCard({ r, onRegistrar, onHistorial }: { r: Row; onRegistrar: (r: Row) => void; onHistorial: (r: Row) => void }) {
-  const wa = waLink(r.telefono)
+function ClienteCard({ r, onRegistrar, onHistorial, onEnviar }: { r: Row; onRegistrar: (r: Row) => void; onHistorial: (r: Row) => void; onEnviar: (r: Row) => void }) {
   const maps = mapsLink(r.direccion, r.localidad)
   return (
     <div className={`bg-white rounded-xl border p-3 transition ${r.visitado ? 'border-emerald-200' : 'border-black/10'}`}>
@@ -98,7 +99,7 @@ function ClienteCard({ r, onRegistrar, onHistorial }: { r: Row; onRegistrar: (r:
         </div>
       </div>
       <div className="flex gap-2 mt-2">
-        {wa && <a href={wa} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
+        <button onClick={() => onEnviar(r)} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-emerald-500/30 py-1.5 text-emerald-700 flex items-center justify-center gap-1"><Send size={12} />Enviar</button>
         {r.telefono && <a href={`tel:${r.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar</a>}
         {maps && <a href={maps} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-brandDark flex items-center justify-center gap-1"><Navigation size={12} />Ruta</a>}
       </div>
@@ -321,6 +322,17 @@ export default function AgendaCampo() {
   }
   const eventosDe = (d: number) => eventos.filter((e) => e.dia_num === d)
   async function borrarEvento(id: number) { await supabase.from('agenda_eventos').delete().eq('id', id); cargar() }
+
+  // "Enviar" abre el mismo modal de acción que Cartera (propuesta+material+mensaje) y registra la actividad.
+  const [enviarCli, setEnviarCli] = useState<Cliente | null>(null)
+  function abrirEnvioCliente(r: Row) {
+    setEnviarCli({
+      cod: r.cod, nomcomerc: r.nombre, razon: r.nombre,
+      whatsapp: r.telefono, telefono: r.telefono, email: null, contacto: null,
+      localidad: r.localidad, direccion: r.direccion,
+      clasificacion_recupero: r.cohorte === 'canje' ? '2024' : '2021_o_antes', unidades_2025: 0,
+    } as unknown as Cliente)
+  }
   useEffect(() => { cargar() /* eslint-disable-next-line */ }, [ven])
 
   const baGba = useMemo(() => rows.filter((r) => r.bloque === 'ba_gba'), [rows])
@@ -470,7 +482,7 @@ export default function AgendaCampo() {
                         {delDia.length > 1 && <p>🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b></p>}
                         <p className="text-faint">Potencial del día: {delDia.reduce((s, r) => s + (r.unidades || 0), 0)} unidades históricas.</p>
                       </div>
-                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} onHistorial={setHistCli} />)}
+                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} onHistorial={setHistCli} onEnviar={abrirEnvioCliente} />)}
                     </div>
 
                     {/* Prospección */}
@@ -551,6 +563,7 @@ export default function AgendaCampo() {
 
       {visitar && <VisitaModal r={visitar} vendedor={ven} onClose={() => setVisitar(null)} onSaved={onVisitaSaved} onCargarPedido={() => navigate('/pedidos/nuevo')} />}
       {histCli && <HistorialModal r={histCli} onClose={() => setHistCli(null)} />}
+      {enviarCli && <PreparacionEnvio cliente={enviarCli} onClose={() => setEnviarCli(null)} onListo={() => { setEnviarCli(null); cargar() }} />}
     </div>
   )
 }
