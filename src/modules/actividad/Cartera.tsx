@@ -91,7 +91,9 @@ export default function Cartera() {
   const [loading, setLoading] = useState(true)
   const [segmento, setSegmento] = useState<Segmento>('canje')
   const [busqueda, setBusqueda] = useState('')
-  const [zonaFiltro, setZonaFiltro] = useState('')
+  const [regF, setRegF] = useState('')   // escalafón: zona/región
+  const [provF, setProvF] = useState('') // provincia
+  const [ciudadF, setCiudadF] = useState('') // ciudad/barrio
   const [corpFiltro, setCorpFiltro] = useState('')
   const [orden, setOrden] = useState<{ col: ColOrden; dir: 1 | -1 } | null>(null)
   const [historial, setHistorial] = useState<Cliente | null>(null)
@@ -235,24 +237,24 @@ export default function Cartera() {
   const bienvenida = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'bienvenida'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
   const fidelizados = useMemo(() => clientes.filter((c) => cohorteDe(c) === 'fidelizacion'), [clientes, cohorte]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const zonas = useMemo(() => {
-    const set = new Set<string>()
-    for (const c of clientes) if (c.zona) set.add(c.zona)
-    return [...set].sort()
-  }, [clientes])
-
   const segmentoRows =
     segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : segmento === 'fidelizacion' ? fidelizados : bienvenida
 
-  // Desglose por región de la base seleccionada (ej: CUYO 4 · NOA 3 · Buenos Aires 20).
-  const zonasSeg = useMemo(() => {
+  // Escalafón desplegable: zona → provincia → ciudad/barrio → clientes.
+  const regionDe = (c: Cliente) => regionDeProvincia((c as { provincia?: string | null }).provincia ?? c.zona)
+  const provDe = (c: Cliente) => ((c as { provincia?: string | null }).provincia || '(sin provincia)')
+  const ciudadDe = (c: Cliente) => ((c as { barrio?: string | null }).barrio || c.localidad || '(sin ciudad)')
+  const escalNivel = !regF ? 'region' : !provF ? 'provincia' : 'ciudad'
+  const escalChips = useMemo(() => {
+    let rows = segmentoRows
+    if (regF) rows = rows.filter((c) => regionDe(c) === regF)
+    if (provF) rows = rows.filter((c) => provDe(c) === provF)
+    const key = escalNivel === 'region' ? regionDe : escalNivel === 'provincia' ? provDe : ciudadDe
     const m = new Map<string, number>()
-    for (const c of segmentoRows) {
-      const z = regionDeProvincia((c as { provincia?: string | null }).provincia ?? c.zona)
-      m.set(z, (m.get(z) ?? 0) + 1)
-    }
+    for (const c of rows) m.set(key(c), (m.get(key(c)) ?? 0) + 1)
     return [...m.entries()].sort((a, b) => b[1] - a[1])
-  }, [segmentoRows])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentoRows, regF, provF, escalNivel])
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -267,7 +269,9 @@ export default function Cartera() {
           (c.localidad || '').toLowerCase().includes(q) ||
           (c.nota || '').toLowerCase().includes(q)
       )
-    if (zonaFiltro) base = base.filter((c) => (c.zona || '') === zonaFiltro)
+    if (regF) base = base.filter((c) => regionDe(c) === regF)
+    if (provF) base = base.filter((c) => provDe(c) === provF)
+    if (ciudadF) base = base.filter((c) => ciudadDe(c) === ciudadF)
     if (corpFiltro && codigoActivo === 'Corporativo') base = base.filter((c) => (c.segmento_corporativo || '') === corpFiltro)
     // Filtro por quién lo viene trabajando: 'libre' = sin contactar o con la reserva vencida
     if (filtroTrabaja.size > 0)
@@ -305,7 +309,7 @@ export default function Cartera() {
     }
     return ordenadas.map((c) => ({ c, maxCanje }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segmentoRows, clientes, busqueda, zonaFiltro, corpFiltro, codigoActivo, orden, ultimaAct, ultimaActPor, filtroTrabaja])
+  }, [segmentoRows, clientes, busqueda, regF, provF, ciudadF, corpFiltro, codigoActivo, orden, ultimaAct, ultimaActPor, filtroTrabaja])
 
   function toggleOrden(col: ColOrden) {
     setOrden((prev) => (prev?.col === col ? (prev.dir === 1 ? { col, dir: -1 } : null) : { col, dir: 1 }))
@@ -577,10 +581,26 @@ export default function Cartera() {
             <p className="text-base font-semibold">{PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
             <p className="text-[11px] text-white/70">{PROPUESTA[segmento].d}</p>
           </div>
-          {zonasSeg.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 md:justify-end">
-              {zonasSeg.slice(0, 8).map(([z, n]) => (
-                <span key={z} className="text-[11px] rounded-full bg-white/10 px-2 py-0.5 whitespace-nowrap">{z} <b>{n}</b></span>
+        </div>
+      )}
+
+      {/* Escalafón: zona → provincia → ciudad/barrio (chips clickeables que filtran) */}
+      {!buscando && (
+        <div className="bg-white rounded-xl border border-black/10 p-2.5 space-y-2">
+          <div className="flex items-center gap-1.5 text-[12px] flex-wrap">
+            <span className="text-[10px] text-faint uppercase tracking-wide mr-1">
+              {escalNivel === 'region' ? 'Zona' : escalNivel === 'provincia' ? 'Provincia' : 'Ciudad/Barrio'}
+            </span>
+            <button onClick={() => { setRegF(''); setProvF(''); setCiudadF('') }} className={`font-medium ${regF ? 'text-brandDark' : 'text-ink'}`}>Todas</button>
+            {regF && <><span className="text-faint">›</span><button onClick={() => { setProvF(''); setCiudadF('') }} className={`font-medium ${provF ? 'text-brandDark' : 'text-ink'}`}>{regF}</button></>}
+            {provF && <><span className="text-faint">›</span><button onClick={() => setCiudadF('')} className={`font-medium ${ciudadF ? 'text-brandDark' : 'text-ink'}`}>{provF}</button></>}
+            {ciudadF && <><span className="text-faint">›</span><span className="text-ink font-medium">{ciudadF}</span></>}
+          </div>
+          {!ciudadF && (
+            <div className="flex flex-wrap gap-1.5">
+              {escalChips.slice(0, 24).map(([z, n]) => (
+                <button key={z} onClick={() => { if (escalNivel === 'region') setRegF(z); else if (escalNivel === 'provincia') setProvF(z); else setCiudadF(z) }}
+                  className="text-[11px] rounded-full border border-black/10 px-2.5 py-1 text-muted hover:border-brand/40 whitespace-nowrap">{z} <b className="text-ink">{n}</b></button>
               ))}
             </div>
           )}
@@ -606,18 +626,6 @@ export default function Cartera() {
             <option value="exterior">🌎 Exterior</option>
           </select>
         )}
-        <select
-          value={zonaFiltro}
-          onChange={(e) => setZonaFiltro(e.target.value)}
-          className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm text-muted max-w-[180px]"
-        >
-          <option value="">Todas las zonas</option>
-          {zonas.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
       </div>
 
       {buscando && (
