@@ -36,9 +36,10 @@ function FuegosMini({ rojo, naranja, azul }: { rojo: number; naranja: number; az
   ))}</>
 }
 
-// Fecha real del día N, anclada al calendario: el día de trabajo actual (hoyDia = primer día
-// pendiente) cae en HOY real (o el próximo hábil), y el resto suma/resta días hábiles.
+// La agenda corre a partir de una fecha FIJA (11/8/2026). El día N es el N-ésimo día hábil
+// desde ese inicio; la etiqueta se calcula relativa a HOY real (Hoy / Mañana / DíaSem d/m).
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const INICIO_AGENDA: [number, number, number] = [2026, 7, 11] // 11/8/2026
 function sumarHabiles(base: Date, k: number): Date {
   const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   const paso = k >= 0 ? 1 : -1
@@ -46,13 +47,21 @@ function sumarHabiles(base: Date, k: number): Date {
   while (rem > 0) { d.setDate(d.getDate() + paso); if (d.getDay() !== 0 && d.getDay() !== 6) rem-- }
   return d
 }
-function fechaDeDia(n: number, hoyDia: number): Date {
-  const base = new Date()
-  const b = new Date(base.getFullYear(), base.getMonth(), base.getDate())
-  while (b.getDay() === 0 || b.getDay() === 6) b.setDate(b.getDate() + 1) // si hoy es finde, próximo hábil
-  return sumarHabiles(b, n - hoyDia)
+function fechaDeDia(n: number): Date {
+  const b = new Date(INICIO_AGENDA[0], INICIO_AGENDA[1], INICIO_AGENDA[2])
+  while (b.getDay() === 0 || b.getDay() === 6) b.setDate(b.getDate() + 1)
+  return sumarHabiles(b, n - 1)
 }
-const labelDia = (n: number, hoyDia: number) => { const d = fechaDeDia(n, hoyDia); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
+function hoy0(): Date { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()) }
+function mismaFecha(a: Date, b: Date): boolean { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate() }
+const labelDia = (n: number) => {
+  const f = fechaDeDia(n)
+  const fmt = `${DIAS_SEM[f.getDay()]} ${f.getDate()}/${f.getMonth() + 1}`
+  const h = hoy0(); const man = new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1)
+  if (mismaFecha(f, h)) return `Hoy · ${fmt}`
+  if (mismaFecha(f, man)) return `Mañana · ${fmt}`
+  return fmt
+}
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
@@ -347,7 +356,7 @@ export default function AgendaCampo() {
                   <GripVertical size={16} className="text-faint shrink-0 cursor-grab" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? `Hoy · ${labelDia(d, hoy)}` : labelDia(d, hoy)}</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{labelDia(d)}</span>
                       {completo && <span className="text-[10px] text-emerald-600 font-medium">✓ completo</span>}
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate">{zona || 'Zona'}</p>
