@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical } from 'lucide-react'
+import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical, History } from 'lucide-react'
 import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
@@ -44,7 +44,7 @@ function CohorteChip({ c }: { c: string }) {
   return <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${canje ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{canje ? 'Canje' : 'A recuperar'}</span>
 }
 
-function ClienteCard({ r, onRegistrar }: { r: Row; onRegistrar: (r: Row) => void }) {
+function ClienteCard({ r, onRegistrar, onHistorial }: { r: Row; onRegistrar: (r: Row) => void; onHistorial: (r: Row) => void }) {
   const wa = waLink(r.telefono)
   const maps = mapsLink(r.direccion, r.localidad)
   return (
@@ -65,9 +65,12 @@ function ClienteCard({ r, onRegistrar }: { r: Row; onRegistrar: (r: Row) => void
         {r.telefono && <a href={`tel:${r.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar</a>}
         {maps && <a href={maps} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-brandDark flex items-center justify-center gap-1"><Navigation size={12} />Ruta</a>}
       </div>
-      <button onClick={() => onRegistrar(r)} className={`w-full mt-2 rounded-lg py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 ${r.visitado ? 'border border-black/10 text-muted' : 'bg-ink text-white'}`}>
-        <ClipboardCheck size={14} />{r.visitado ? 'Editar visita' : 'Registrar visita'}
-      </button>
+      <div className="flex gap-2 mt-2">
+        <button onClick={() => onRegistrar(r)} className={`flex-1 rounded-lg py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 ${r.visitado ? 'border border-black/10 text-muted' : 'bg-ink text-white'}`}>
+          <ClipboardCheck size={14} />{r.visitado ? 'Editar visita' : 'Registrar visita'}
+        </button>
+        <button onClick={() => onHistorial(r)} title="Historial de contactos" className="shrink-0 rounded-lg py-2 px-3 text-[12px] font-medium border border-black/10 text-brandDark flex items-center gap-1"><History size={14} />Historial</button>
+      </div>
     </div>
   )
 }
@@ -146,6 +149,47 @@ function VisitaModal({ r, vendedor, onClose, onSaved, onCargarPedido }: {
   )
 }
 
+// Historial de contactos + qué se le envió (sin salir de la agenda)
+interface Act { id: number; fecha: string | null; vendedor: string | null; resultado_contacto: string | null; actividad_desarrollo: string | null; actividad_futura: string | null; proximo_paso_fecha: string | null; nota_contexto: string | null; monto_vendido: number | null; unidades_vendidas: number | null }
+function HistorialModal({ r, onClose }: { r: Row; onClose: () => void }) {
+  const [items, setItems] = useState<Act[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    supabase.from('actividad_diaria')
+      .select('id,fecha,vendedor,resultado_contacto,actividad_desarrollo,actividad_futura,proximo_paso_fecha,nota_contexto,monto_vendido,unidades_vendidas')
+      .eq('cod_cliente', r.cod).order('fecha', { ascending: false }).limit(60)
+      .then(({ data }) => { setItems((data as Act[]) ?? []); setLoading(false) })
+  }, [r.cod])
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[88vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
+          <div><h2 className="text-base font-bold truncate">{r.nombre}</h2><p className="text-[11px] text-faint">Historial de contactos y envíos</p></div>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+        </div>
+        <div className="p-3 space-y-2">
+          {loading ? <p className="text-sm text-muted p-4 text-center">Cargando…</p> : items.length === 0 ? (
+            <p className="text-sm text-faint text-center py-8">Sin contactos registrados todavía.</p>
+          ) : items.map((a) => (
+            <div key={a.id} className="bg-[#F6F4EF] rounded-xl p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] font-semibold">{a.fecha}</span>
+                <span className="text-[10px] text-faint">{a.vendedor ? (NOMBRE_OP[a.vendedor] || a.vendedor) : ''}{a.resultado_contacto ? ` · ${RESULTADOS[a.resultado_contacto] ?? a.resultado_contacto}` : ''}</span>
+              </div>
+              {a.actividad_desarrollo && <p className="text-[12px] mt-1">{a.actividad_desarrollo}</p>}
+              {(a.monto_vendido || a.unidades_vendidas) ? <p className="text-[11px] text-emerald-700 mt-0.5">🟢 {a.unidades_vendidas ?? 0} u · {a.monto_vendido ? '$' + Math.round(a.monto_vendido).toLocaleString('es-AR') : ''}</p> : null}
+              {a.actividad_futura && <p className="text-[11px] text-brandDark mt-0.5">→ {a.actividad_futura}{a.proximo_paso_fecha ? ` (${a.proximo_paso_fecha})` : ''}</p>}
+              {a.nota_contexto && <p className="text-[11px] text-muted mt-0.5 italic">{a.nota_contexto}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Martin: 'Martín', Corporativo: 'Corporativo' }
+
 export default function AgendaCampo() {
   const { codigoEfectivo } = useAuth()
   const navigate = useNavigate()
@@ -157,6 +201,7 @@ export default function AgendaCampo() {
   const [verInterior, setVerInterior] = useState(false)
   const [posponiendo, setPosponiendo] = useState<number | null>(null)
   const [visitar, setVisitar] = useState<Row | null>(null)
+  const [histCli, setHistCli] = useState<Row | null>(null)
   const [dragDia, setDragDia] = useState<number | null>(null)
   const [salv, setSalv] = useState<Record<number, Bienv[]>>({})
   const [salvLoad, setSalvLoad] = useState<number | null>(null)
@@ -302,7 +347,7 @@ export default function AgendaCampo() {
                           🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b>
                         </p>
                       )}
-                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} />)}
+                      {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} onHistorial={setHistCli} />)}
                     </div>
 
                     {/* Prospección */}
@@ -382,6 +427,7 @@ export default function AgendaCampo() {
       )}
 
       {visitar && <VisitaModal r={visitar} vendedor={ven} onClose={() => setVisitar(null)} onSaved={onVisitaSaved} onCargarPedido={() => navigate('/pedidos/nuevo')} />}
+      {histCli && <HistorialModal r={histCli} onClose={() => setHistCli(null)} />}
     </div>
   )
 }
