@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, ClipboardCheck, GripVertical } from 'lucide-react'
+import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -205,15 +206,6 @@ export default function AgendaCampo() {
     setSalvLoad(null)
   }
 
-  const interiorPorRegion = useMemo(() => {
-    const m: Record<string, Record<string, Row[]>> = {}
-    for (const r of interior) {
-      const reg = r.region ?? 'Otros'; const prov = r.provincia ?? '(sin provincia)'
-      ;((m[reg] ??= {})[prov] ??= []).push(r)
-    }
-    const tot = (p: Record<string, Row[]>) => Object.values(p).reduce((s, rs) => s + rs.length, 0)
-    return Object.entries(m).sort((a, b) => tot(b[1]) - tot(a[1]))
-  }, [interior])
 
   return (
     <div className="space-y-4 text-ink">
@@ -372,29 +364,16 @@ export default function AgendaCampo() {
               </button>
               {verInterior && (
                 <div className="border-t border-black/5 p-3 space-y-3">
-                  <p className="text-[11px] text-faint">No entran en el recorrido diario. Se cubren con viajes concentrados o vía prospección/catálogo.</p>
-                  {interiorPorRegion.map(([reg, provs]) => {
-                    const provList = Object.entries(provs).sort((a, b) => b[1].length - a[1].length)
-                    const totReg = provList.reduce((s, [, rs]) => s + rs.length, 0)
+                  <p className="text-[11px] text-faint">Para viaje. Entrá por zona → provincia → ciudad.</p>
+                  <DrillClientes rows={interior as unknown as DrillRow[]} renderItem={(r) => {
+                    const wa = waLink(r.telefono as string | null)
                     return (
-                      <div key={reg}>
-                        <p className="text-[12px] font-bold text-brandDark uppercase tracking-wide mb-1">{reg} · {totReg} clientes</p>
-                        {provList.map(([prov, rs]) => (
-                          <div key={prov} className="mb-2 ml-1">
-                            <p className="text-[11px] font-semibold text-muted mb-1">{prov} ({rs.length})</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                              {rs.map((r) => (
-                                <div key={r.cod} className="flex items-center justify-between gap-2 bg-[#F6F4EF] rounded-lg px-2.5 py-1.5">
-                                  <span className="text-[12px] truncate">{r.nombre}</span>
-                                  <span className="text-[10px] text-faint shrink-0">{r.localidad}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                      <div key={r.cod} className="flex items-center justify-between gap-2 bg-[#F6F4EF] rounded-lg px-2.5 py-2">
+                        <div className="min-w-0"><span className="text-[12px] font-medium truncate block">{r.nombre}</span><span className="text-[10px] text-faint">{r.localidad as string}{r.cohorte ? ` · ${r.cohorte}` : ''}</span></div>
+                        {wa && <a href={wa} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-medium rounded-lg border border-black/10 bg-white py-1 px-2.5 text-emerald-700">WhatsApp</a>}
                       </div>
                     )
-                  })}
+                  }} />
                 </div>
               )}
             </div>

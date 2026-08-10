@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall } from 'lucide-react'
+import DrillClientes, { DrillRow } from './DrillClientes'
 
 // Pantalla de PROSPECCIÓN de campo para Luna (Marketing) y Damián.
 // Objetivo OBLIGATORIO del día: conseguir 5 turnos en la zona del próximo recorrido
@@ -10,7 +11,7 @@ import { Target, Plus, Trash2, Check, ChevronDown, ChevronRight, PhoneCall } fro
 
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
-interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; localidad: string | null; es_interior: boolean }
+interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
 // prospector code -> vendedor que alimenta
@@ -58,7 +59,8 @@ export default function ProspeccionCampo() {
     setLoading(false)
   }
   async function cargarJulio() {
-    const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: codigoEfectivo })
+    // Base de prospección COMPARTIDA (Luna + Damián): traemos toda la base de julio.
+    const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: null })
     setJulio((data as PJ[]) ?? [])
   }
   useEffect(() => { cargar(); cargarJulio() /* eslint-disable-next-line */ }, [codigoEfectivo])
@@ -211,17 +213,23 @@ export default function ProspeccionCampo() {
             </button>
             {verJulio && (
               <div className="border-t border-black/5 p-3 space-y-2">
-                <p className="text-[12px] text-muted">Cerrá los prospectos que generaste en julio. <b>Interior primero</b> (venta por catálogo).</p>
-                {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : julio.map((j) => (
-                  <div key={j.id} className={`flex items-center gap-2 rounded-xl border p-2 ${j.cerrado ? 'border-emerald-200 opacity-60' : 'border-black/10'}`}>
-                    <button onClick={() => cerrarJulio(j.id, !j.cerrado)} className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border ${j.cerrado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-black/15 text-faint'}`}><Check size={15} /></button>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-[13px] font-medium truncate ${j.cerrado ? 'line-through text-muted' : ''}`}>{j.nombre}</p>
-                      <p className="text-[10px] text-faint">{j.codigo}{j.localidad ? ` · ${j.localidad}` : ''}{j.compartido ? ' · ½ compartido' : ''}</p>
-                    </div>
-                    {j.es_interior && <span className="shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 bg-[#8F6A34]/10 text-[#8F6A34]">INTERIOR</span>}
-                  </div>
-                ))}
+                <p className="text-[12px] text-muted">Base compartida (Luna + Damián). Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo).</p>
+                {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : (
+                  <DrillClientes rows={julio.map((j) => ({ ...j, cod: j.codigo ?? String(j.id) })) as unknown as DrillRow[]} renderItem={(r) => {
+                    const j = r as unknown as PJ
+                    return (
+                      <div key={j.id} className={`flex items-center gap-2 rounded-xl border p-2 ${j.cerrado ? 'border-emerald-200 opacity-60' : 'border-black/10'}`}>
+                        <button onClick={() => cerrarJulio(j.id, !j.cerrado)} className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border ${j.cerrado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-black/15 text-faint'}`}><Check size={15} /></button>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-[13px] font-medium truncate ${j.cerrado ? 'line-through text-muted' : ''}`}>{j.nombre}</p>
+                          <p className="text-[10px] text-faint">{j.codigo}{j.localidad ? ` · ${j.localidad}` : ''}{j.compartido ? ' · ½ compartido' : ''}</p>
+                        </div>
+                        {waLink(j.telefono) && <a href={waLink(j.telefono)!} target="_blank" rel="noreferrer" className="shrink-0 w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center text-emerald-700"><PhoneCall size={13} /></a>}
+                        {j.es_interior && <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-[#8F6A34]/10 text-[#8F6A34]">INT</span>}
+                      </div>
+                    )
+                  }} />
+                )}
               </div>
             )}
           </div>
