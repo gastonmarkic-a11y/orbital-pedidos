@@ -13,9 +13,21 @@ import DrillClientes, { DrillRow } from './DrillClientes'
 interface Row {
   dia_num: number; orden_en_dia: number; bloque: string; cohorte: string
   region: string | null; localidad: string | null; provincia: string | null; cod: string
-  nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean; resultado: string | null
+  nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean; resultado: string | null; unidades: number
 }
 const RESULTADOS: Record<string, string> = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' }
+
+// Potencial por volumen histórico de compra: 🔥 rojo >200 · naranja 100-200 · azul 50-100
+function fuegoDe(u: number): { color: string; tier: string } | null {
+  if (u > 200) return { color: '#dc2626', tier: 'rojo' }
+  if (u >= 100) return { color: '#ea580c', tier: 'naranja' }
+  if (u >= 50) return { color: '#2563eb', tier: 'azul' }
+  return null
+}
+function Fuego({ u }: { u: number }) {
+  const f = fuegoDe(u); if (!f) return null
+  return <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 inline-flex items-center gap-0.5" style={{ background: f.color + '1a', color: f.color }}>🔥 {u}</span>
+}
 
 // Fecha real del día N: días hábiles desde el 11/8/2026 (saltea sábados y domingos).
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -54,6 +66,7 @@ function ClienteCard({ r, onRegistrar, onHistorial }: { r: Row; onRegistrar: (r:
           <p className={`text-sm font-semibold truncate ${r.visitado ? 'text-muted' : 'text-ink'}`}>{r.nombre}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <CohorteChip c={r.cohorte} />
+            <Fuego u={r.unidades} />
             {r.localidad && <span className="text-[10px] text-faint">{r.localidad}</span>}
             {r.visitado && <span className="text-[10px] font-medium text-emerald-700">{RESULTADOS[r.resultado ?? ''] ?? '✓ visitado'}</span>}
           </div>
@@ -305,6 +318,9 @@ export default function AgendaCampo() {
             const recupN = delDia.filter((r) => r.cohorte === 'recuperar').length
             const sugeridos = Math.max(0, META_DIA - delDia.length) // prospección sugerida para llegar a ~12/día
             const faltanPros = Math.max(0, sugeridos - turnosDia.length)
+            const fuegos = { rojo: 0, naranja: 0, azul: 0 }
+            delDia.forEach((r) => { const f = fuegoDe(r.unidades); if (f) fuegos[f.tier as 'rojo' | 'naranja' | 'azul']++ })
+            const fuegoResumen = [fuegos.rojo && `${fuegos.rojo}×🔥 rojo`, fuegos.naranja && `${fuegos.naranja}×🔥 naranja`, fuegos.azul && `${fuegos.azul}×🔥 azul`].filter(Boolean).join(' · ')
             return (
               <div key={d}
                 draggable
@@ -326,6 +342,7 @@ export default function AgendaCampo() {
                       <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-700">{canjeN} canje</span>
                       <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-blue-100 text-blue-700">{recupN} recuperar</span>
                       <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${faltanPros > 0 ? 'bg-[#8F6A34]/10 text-[#8F6A34]' : 'bg-emerald-100 text-emerald-700'}`}>{turnosDia.length}/{sugeridos} prospección</span>
+                      {fuegoResumen && <span className="text-[10px] font-semibold">{fuegoResumen}</span>}
                     </div>
                   </div>
                   {open ? <ChevronDown size={18} className="text-faint shrink-0" /> : <ChevronRight size={18} className="text-faint shrink-0" />}
@@ -342,11 +359,11 @@ export default function AgendaCampo() {
                     {/* Clientes propios */}
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Clientes de la zona ({delDia.length})</p>
-                      {delDia.length > 1 && (
-                        <p className="text-[11px] text-brandDark bg-brand/5 rounded-lg px-2.5 py-1.5">
-                          🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b>
-                        </p>
-                      )}
+                      <div className="text-[11px] text-brandDark bg-brand/5 rounded-lg px-2.5 py-2 space-y-0.5">
+                        <p><b>Resumen del día:</b> {delDia.length} visitas · {canjeN} canje · {recupN} recuperar{fuegoResumen ? ` · ${fuegoResumen}` : ''}</p>
+                        {delDia.length > 1 && <p>🧭 Empezá por <b>{delDia[0].nombre}</b> · terminá en <b>{delDia[delDia.length - 1].nombre}</b></p>}
+                        <p className="text-faint">Potencial del día: {delDia.reduce((s, r) => s + (r.unidades || 0), 0)} unidades históricas.</p>
+                      </div>
                       {delDia.map((r) => <ClienteCard key={r.cod} r={r} onRegistrar={setVisitar} onHistorial={setHistCli} />)}
                     </div>
 
