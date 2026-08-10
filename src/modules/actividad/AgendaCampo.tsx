@@ -19,7 +19,7 @@ const RESULTADOS: Record<string, string> = { vendio: '🟢 Vendió', visito: '�
 
 // Potencial por volumen histórico de compra: 🔥 rojo >200 · naranja 100-200 · azul 50-100
 function fuegoDe(u: number): { color: string; tier: string } | null {
-  if (u > 200) return { color: '#dc2626', tier: 'rojo' }
+  if (u > 200) return { color: '#16a34a', tier: 'rojo' }
   if (u >= 100) return { color: '#ea580c', tier: 'naranja' }
   if (u >= 50) return { color: '#2563eb', tier: 'azul' }
   return null
@@ -30,22 +30,29 @@ function Fuego({ u }: { u: number }) {
 }
 // Conteo de fuegos con el ícono en color (rojo/naranja/azul), sin texto
 function FuegosMini({ rojo, naranja, azul }: { rojo: number; naranja: number; azul: number }) {
-  const items: [number, string][] = [[rojo, '#dc2626'], [naranja, '#ea580c'], [azul, '#2563eb']]
+  const items: [number, string][] = [[rojo, '#16a34a'], [naranja, '#ea580c'], [azul, '#2563eb']]
   return <>{items.filter(([n]) => n > 0).map(([n, c], i) => (
     <span key={i} className="inline-flex items-center gap-0.5 font-bold" style={{ color: c }}><Flame size={12} color={c} fill={c} />{n}</span>
   ))}</>
 }
 
-// Fecha real del día N: días hábiles desde el 11/8/2026 (saltea sábados y domingos).
+// Fecha real del día N, anclada al calendario: el día de trabajo actual (hoyDia = primer día
+// pendiente) cae en HOY real (o el próximo hábil), y el resto suma/resta días hábiles.
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-function fechaDeDia(n: number): Date {
-  const d = new Date(2026, 7, 11)
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
-  let added = 1
-  while (added < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) added++ }
+function sumarHabiles(base: Date, k: number): Date {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  const paso = k >= 0 ? 1 : -1
+  let rem = Math.abs(k)
+  while (rem > 0) { d.setDate(d.getDate() + paso); if (d.getDay() !== 0 && d.getDay() !== 6) rem-- }
   return d
 }
-const labelDia = (n: number) => { const d = fechaDeDia(n); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
+function fechaDeDia(n: number, hoyDia: number): Date {
+  const base = new Date()
+  const b = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  while (b.getDay() === 0 || b.getDay() === 6) b.setDate(b.getDate() + 1) // si hoy es finde, próximo hábil
+  return sumarHabiles(b, n - hoyDia)
+}
+const labelDia = (n: number, hoyDia: number) => { const d = fechaDeDia(n, hoyDia); return `${DIAS_SEM[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null; estado: string }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
@@ -340,7 +347,7 @@ export default function AgendaCampo() {
                   <GripVertical size={16} className="text-faint shrink-0 cursor-grab" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? `Hoy · ${labelDia(d)}` : labelDia(d)}</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${esHoy ? 'bg-ink text-white' : 'bg-black/5 text-muted'}`}>{esHoy ? `Hoy · ${labelDia(d, hoy)}` : labelDia(d, hoy)}</span>
                       {completo && <span className="text-[10px] text-emerald-600 font-medium">✓ completo</span>}
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate">{zona || 'Zona'}</p>
