@@ -15,11 +15,20 @@ export interface DrillRow {
 const NIVELES = ['region', 'provincia', 'localidad'] as const
 const NIVEL_LABEL = ['Zona', 'Provincia', 'Ciudad/Barrio']
 
+// Normalización para AGRUPAR: colapsa espacios, saca acentos y case → misma clave para
+// "mendoza"/"Mendoza"/"MENDOZA " o "Lanús"/"LANUS". Así el escalafón no se parte por tipeo.
+const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim()
+const canon = (s: string | null | undefined) => norm(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') || '—'
+const esPlaceholder = (s: string) => /^\(|^—$|^sin (zona|provincia|ciudad)/i.test(s)
+// Etiqueta legible: Title Case, salvo placeholders "(sin …)" / "Sin zona" que se dejan igual.
+const titulo = (s: string) => esPlaceholder(s) ? s : s.replace(/\p{L}[\p{L}'’]*/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+
 export default function DrillClientes({ rows, renderItem }: { rows: DrillRow[]; renderItem: (r: DrillRow) => ReactNode }) {
+  // path guarda las claves CANÓNICAS (case-insensitive) de cada nivel
   const [path, setPath] = useState<string[]>([])
   const nivel = path.length
-  const val = (r: DrillRow, k: (typeof NIVELES)[number]) => (r[k] as string) || '—'
-  const filtrados = rows.filter((r) => path.every((v, i) => val(r, NIVELES[i]) === v))
+  const canonOf = (r: DrillRow, k: (typeof NIVELES)[number]) => canon(r[k] as string)
+  const filtrados = rows.filter((r) => path.every((v, i) => canonOf(r, NIVELES[i]) === v))
 
   const breadcrumb = (
     <div className="flex items-center gap-1.5 text-[12px] flex-wrap mb-2">
@@ -27,7 +36,7 @@ export default function DrillClientes({ rows, renderItem }: { rows: DrillRow[]; 
       {path.map((p, i) => (
         <span key={i} className="flex items-center gap-1.5">
           <ChevronRight size={12} className="text-faint" />
-          <button onClick={() => setPath(path.slice(0, i + 1))} className={`font-medium ${i === nivel - 1 ? 'text-ink' : 'text-brandDark'}`}>{p}</button>
+          <button onClick={() => setPath(path.slice(0, i + 1))} className={`font-medium ${i === nivel - 1 ? 'text-ink' : 'text-brandDark'}`}>{titulo(p)}</button>
         </span>
       ))}
       {nivel > 0 && <button onClick={() => setPath(path.slice(0, -1))} className="ml-2 text-[11px] text-brandDark font-medium">← Volver</button>}
@@ -36,18 +45,21 @@ export default function DrillClientes({ rows, renderItem }: { rows: DrillRow[]; 
 
   if (nivel < NIVELES.length) {
     const key = NIVELES[nivel]
-    const m: Record<string, DrillRow[]> = {}
-    for (const r of filtrados) { const k = val(r, key); (m[k] ??= []).push(r) }
-    const entries = Object.entries(m).sort((a, b) => b[1].length - a[1].length)
+    const m: Record<string, { display: string; rows: DrillRow[] }> = {}
+    for (const r of filtrados) {
+      const c = canonOf(r, key)
+      ;(m[c] ??= { display: titulo(norm(r[key] as string) || '—'), rows: [] }).rows.push(r)
+    }
+    const entries = Object.entries(m).sort((a, b) => b[1].rows.length - a[1].rows.length)
     return (
       <div>
         {breadcrumb}
         <p className="text-[10px] text-faint uppercase tracking-wide mb-1.5">{NIVEL_LABEL[nivel]} · tocá para entrar</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {entries.map(([k, rs]) => (
-            <button key={k} onClick={() => setPath([...path, k])} className="text-left bg-white rounded-xl border border-black/10 p-3 transition hover:border-brand/40">
-              <p className="text-sm font-semibold text-ink truncate">{k}</p>
-              <p className="text-[11px] text-muted mt-0.5">{rs.length} cliente{rs.length !== 1 ? 's' : ''}</p>
+          {entries.map(([c, g]) => (
+            <button key={c} onClick={() => setPath([...path, c])} className="text-left bg-white rounded-xl border border-black/10 p-3 transition hover:border-brand/40">
+              <p className="text-sm font-semibold text-ink truncate">{g.display}</p>
+              <p className="text-[11px] text-muted mt-0.5">{g.rows.length} cliente{g.rows.length !== 1 ? 's' : ''}</p>
             </button>
           ))}
         </div>
