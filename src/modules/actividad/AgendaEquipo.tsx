@@ -9,7 +9,7 @@ import { ChevronDown, ChevronRight, CalendarDays, Plane, MapPin } from 'lucide-r
 
 interface Row { dia_num: number; bloque: string; cohorte: string; localidad: string | null; provincia?: string | null; region?: string | null; cod: string; nombre: string | null; visitado: boolean; resultado: string | null; unidades?: number | null }
 interface Turno { vendedor: string; dia_num: number; cargado_por: string | null; cliente?: string | null; localidad?: string | null }
-interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null }
+interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null; origen?: string | null }
 interface PJ { prospector: string; cerrado: boolean; nombre: string | null; codigo: string | null; localidad?: string | null }
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián', prosp: 'Luna', prospCod: 'Marketing' }, { cod: 'Martin', label: 'Martín', prosp: 'Damián', prospCod: 'Damian' }]
@@ -78,6 +78,7 @@ export default function AgendaEquipo() {
   const [planes, setPlanes] = useState<Record<string, Row[]>>({})
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [actHoy, setActHoy] = useState<Act[]>([])
+  const [todoHoy, setTodoHoy] = useState<Act[]>([])
   const [julio, setJulio] = useState<PJ[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -85,16 +86,19 @@ export default function AgendaEquipo() {
     async function cargar() {
       setLoading(true)
       const hoy = new Date().toISOString().slice(0, 10)
-      const [a, m, t, ah] = await Promise.all([
+      const [a, m, t, ah, th] = await Promise.all([
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Adrian' }),
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Martin' }),
         supabase.from('agenda_turnos').select('vendedor,dia_num,cargado_por,cliente,localidad'),
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas').eq('origen', 'agenda_campo').eq('fecha', hoy),
+        // TODAS las actividades del día (cualquier origen): ventas generales + aporte de prospección
+        supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas,origen').eq('fecha', hoy),
       ])
       const pj = await supabase.from('prospectos_julio').select('prospector,cerrado,nombre,codigo,localidad')
       setPlanes({ Adrian: (a.data as Row[]) ?? [], Martin: (m.data as Row[]) ?? [] })
       setTurnos((t.data as Turno[]) ?? [])
       setActHoy((ah.data as Act[]) ?? [])
+      setTodoHoy((th.data as Act[]) ?? [])
       setJulio((pj.data as PJ[]) ?? [])
       setLoading(false)
     }
@@ -120,15 +124,41 @@ export default function AgendaEquipo() {
         const vh = actHoy.length, ventas = actHoy.filter((a) => a.resultado_contacto === 'vendio')
         const monto = ventas.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
         const conv = vh ? Math.round((ventas.length / vh) * 100) : 0
+        // Ventas GENERALES del día: cualquier venta cargada hoy (recorrido + prospección + otras), no solo agenda_campo.
+        const ventasGral = todoHoy.filter((a) => a.resultado_contacto === 'vendio')
+        const montoGral = ventasGral.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
+        const unidadesGral = ventasGral.reduce((s, a) => s + (a.unidades_vendidas ?? 0), 0)
+        // Aporte de los prospectores a los vendedores: turnos agendados + prospección cargada hoy.
+        const prospHoy = todoHoy.filter((a) => (a.origen ?? '').startsWith('prospeccion')).length
+        // Check-in del día: de los clientes planificados para HOY (día activo de cada vendedor), cuántos se registraron.
+        let planHoy = 0
+        for (const v of VEND) {
+          const bg = (planes[v.cod] ?? []).filter((r) => r.bloque === 'ba_gba')
+          const dias = Array.from(new Set(bg.map((r) => r.dia_num))).sort((x, y) => x - y)
+          const hd = dias.find((d) => bg.some((r) => r.dia_num === d && !r.visitado)) ?? dias[0] ?? 1
+          planHoy += bg.filter((r) => r.dia_num === hd).length
+        }
+        const checkinPct = planHoy ? Math.round((vh / planHoy) * 100) : 0
         return (
-          <div className="bg-ink text-white rounded-2xl p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Resumen general — hoy</p>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div><p className="text-2xl font-bold">{vh}</p><p className="text-[10px] text-white/60">visitas hoy</p></div>
-              <div><p className="text-2xl font-bold text-emerald-300">{ventas.length}</p><p className="text-[10px] text-white/60">ventas hoy</p></div>
-              <div><p className="text-lg font-bold text-emerald-300">{kAr(monto)}</p><p className="text-[10px] text-white/60">facturado hoy</p></div>
-              <div><p className="text-2xl font-bold text-gold">{conv}%</p><p className="text-[10px] text-white/60">conversión</p></div>
-              <div><p className="text-2xl font-bold">{visit}<span className="text-sm text-white/50">/{total}</span></p><p className="text-[10px] text-white/60">avance total</p></div>
+          <div className="bg-ink text-white rounded-2xl p-4 space-y-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Resumen general — hoy</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div><p className="text-2xl font-bold">{vh}</p><p className="text-[10px] text-white/60">visitas hoy</p></div>
+                <div><p className="text-2xl font-bold text-emerald-300">{ventas.length}</p><p className="text-[10px] text-white/60">ventas del recorrido</p></div>
+                <div><p className="text-lg font-bold text-emerald-300">{kAr(monto)}</p><p className="text-[10px] text-white/60">$ del recorrido</p></div>
+                <div><p className="text-2xl font-bold text-gold">{conv}%</p><p className="text-[10px] text-white/60">conversión</p></div>
+                <div><p className="text-2xl font-bold">{visit}<span className="text-sm text-white/50">/{total}</span></p><p className="text-[10px] text-white/60">avance total</p></div>
+              </div>
+            </div>
+            <div className="border-t border-white/10 pt-3">
+              <p className="text-[11px] uppercase tracking-wide text-white/60 mb-2">Ventas generales · prospección · check-in</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div><p className="text-lg font-bold text-emerald-300">{kAr(montoGral)}</p><p className="text-[10px] text-white/60">ventas del día (todas)</p></div>
+                <div><p className="text-2xl font-bold text-emerald-300">{ventasGral.length}<span className="text-sm text-white/50"> · {unidadesGral}u</span></p><p className="text-[10px] text-white/60">operaciones · unidades</p></div>
+                <div><p className="text-2xl font-bold text-gold">{turnos.length}<span className="text-sm text-white/50"> · {prospHoy}</span></p><p className="text-[10px] text-white/60">turnos · cargadas hoy (prospección)</p></div>
+                <div><p className="text-2xl font-bold">{vh}<span className="text-sm text-white/50">/{planHoy}</span> <span className="text-sm text-gold">{checkinPct}%</span></p><p className="text-[10px] text-white/60">check-in de visitas de hoy</p></div>
+              </div>
             </div>
           </div>
         )
