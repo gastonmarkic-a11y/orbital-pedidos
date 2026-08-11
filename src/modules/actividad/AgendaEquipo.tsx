@@ -80,6 +80,7 @@ export default function AgendaEquipo() {
   const [actHoy, setActHoy] = useState<Act[]>([])
   const [julio, setJulio] = useState<PJ[]>([])
   const [loading, setLoading] = useState(true)
+  const [semana, setSemana] = useState<number | null>(null)
 
   useEffect(() => {
     async function cargar() {
@@ -131,6 +132,102 @@ export default function AgendaEquipo() {
               <div><p className="text-2xl font-bold">{visit}<span className="text-sm text-white/50">/{total}</span></p><p className="text-[10px] text-white/60">avance total</p></div>
             </div>
           </div>
+        )
+      })()}
+
+      {/* ===== ALERTAS + LÍNEA DE TIEMPO (Gantt) + SELECTOR DE SEMANA ===== */}
+      {(() => {
+        const vendData = VEND.map((v) => {
+          const baGba = (planes[v.cod] ?? []).filter((r) => r.bloque === 'ba_gba')
+          const dias = Array.from(new Set(baGba.map((r) => r.dia_num))).sort((a, b) => a - b)
+          const hoyDia = dias.find((d) => baGba.some((r) => r.dia_num === d && !r.visitado)) ?? dias[0] ?? 1
+          const perDay = dias.map((d) => {
+            const del = baGba.filter((r) => r.dia_num === d)
+            return { d, n: del.length, vis: del.filter((r) => r.visitado).length, turnos: turnos.filter((t) => t.vendedor === v.cod && t.dia_num === d).length, flojo: del.length < 4, zona: Array.from(new Set(del.map((r) => r.localidad).filter(Boolean))).slice(0, 2).join(' · ') }
+          })
+          return { v, dias, hoyDia, perDay }
+        })
+        const maxDia = Math.max(1, ...vendData.flatMap((x) => x.dias))
+        const semanas = Math.max(1, Math.ceil(maxDia / 5))
+        const curWeek = Math.max(1, Math.ceil(Math.min(...vendData.map((x) => x.hoyDia)) / 5))
+        const semSel = Math.min(semana ?? curWeek, semanas)
+        const maxN = Math.max(1, ...vendData.flatMap((x) => x.perDay.map((p) => p.n)))
+        const enSemana = (d: number) => Math.ceil(d / 5) === semSel
+        // Alertas: prospección faltante en los próximos 3 días + días flojos
+        const alertas: { color: string; txt: string }[] = []
+        for (const vd of vendData) {
+          for (const p of vd.perDay) {
+            if (p.d >= vd.hoyDia && p.d <= vd.hoyDia + 2 && p.turnos < 5)
+              alertas.push({ color: 'amber', txt: `${vd.v.label} · ${labelDia(p.d)}: faltan ${5 - p.turnos} turnos de ${vd.v.prosp} (prospección)` })
+          }
+          const flojos = vd.perDay.filter((p) => p.flojo)
+          if (flojos.length) alertas.push({ color: 'red', txt: `${vd.v.label}: ${flojos.length} día(s) flojo(s) con menos de 4 clientes (${flojos.slice(0, 3).map((p) => labelDia(p.d)).join(', ')}${flojos.length > 3 ? '…' : ''})` })
+        }
+        const colAl = (c: string) => c === 'red' ? 'border-red-400 bg-red-50 text-red-700' : 'border-amber-400 bg-amber-50 text-amber-800'
+        return (
+          <>
+            {alertas.length > 0 && (
+              <div className="bg-white rounded-2xl border border-black/10 p-4">
+                <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">⚠ Alertas de gestión ({alertas.length})</p>
+                <div className="space-y-1.5">
+                  {alertas.map((a, i) => (
+                    <div key={i} className={`text-[12px] rounded-lg border-l-4 px-3 py-1.5 ${colAl(a.color)}`}>{a.txt}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl border border-black/10 p-4">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <p className="text-sm font-bold">Línea de tiempo · carga por día</p>
+                <div className="flex items-center gap-1.5 text-[12px]">
+                  <button onClick={() => setSemana(Math.max(1, semSel - 1))} disabled={semSel <= 1} className="w-7 h-7 rounded-lg border border-black/10 disabled:opacity-30">‹</button>
+                  <span className="font-semibold w-24 text-center">Semana {semSel}/{semanas}</span>
+                  <button onClick={() => setSemana(Math.min(semanas, semSel + 1))} disabled={semSel >= semanas} className="w-7 h-7 rounded-lg border border-black/10 disabled:opacity-30">›</button>
+                  <button onClick={() => setSemana(curWeek)} className="ml-1 text-[11px] text-brandDark font-medium">hoy</button>
+                </div>
+              </div>
+              {/* Gantt: una fila por vendedor, un bar por día. Semana elegida resaltada. */}
+              <div className="space-y-2 overflow-x-auto">
+                {vendData.map((vd) => (
+                  <div key={vd.v.cod} className="flex items-end gap-[3px] min-w-max">
+                    <span className="w-14 shrink-0 text-[11px] font-semibold text-muted self-center">{vd.v.label}</span>
+                    {vd.perDay.map((p) => {
+                      const completo = p.vis >= p.n && p.n > 0
+                      const color = completo ? 'bg-emerald-500' : p.flojo ? 'bg-red-400' : p.turnos < 5 && p.d <= vd.hoyDia + 2 ? 'bg-amber-400' : 'bg-brand'
+                      return (
+                        <button key={p.d} onClick={() => setSemana(Math.ceil(p.d / 5))} title={`${labelDia(p.d)} · ${p.zona || 'zona'} · ${p.n} clientes · ${p.turnos} prosp. · ${p.vis} visitados`}
+                          className={`w-[13px] rounded-t transition-all ${color} ${enSemana(p.d) ? 'ring-2 ring-ink/40 opacity-100' : 'opacity-55 hover:opacity-90'}`}
+                          style={{ height: `${8 + (p.n / maxN) * 40}px` }} />
+                      )
+                    })}
+                  </div>
+                ))}
+                <div className="flex items-center gap-3 pl-14 text-[9px] text-faint pt-1 min-w-max">
+                  <span>Día {(semSel - 1) * 5 + 1}–{Math.min(semSel * 5, maxDia)}</span>
+                  <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-emerald-500 inline-block" />completo</span>
+                  <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-brand inline-block" />ok</span>
+                  <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-amber-400 inline-block" />falta prosp.</span>
+                  <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-red-400 inline-block" />flojo</span>
+                </div>
+              </div>
+              {/* Resumen de la semana elegida */}
+              <div className="grid gap-2 md:grid-cols-2 mt-3">
+                {vendData.map((vd) => {
+                  const dSem = vd.perDay.filter((p) => enSemana(p.d))
+                  const cli = dSem.reduce((s, p) => s + p.n, 0)
+                  const vis = dSem.reduce((s, p) => s + p.vis, 0)
+                  const tur = dSem.reduce((s, p) => s + p.turnos, 0)
+                  return (
+                    <div key={vd.v.cod} className="bg-[#F6F4EF] rounded-lg p-2.5 text-[12px] flex items-center justify-between">
+                      <span className="font-semibold">{vd.v.label} · sem {semSel}</span>
+                      <span className="text-muted">{dSem.length} días · {cli} clientes · {vis} visit. · <b className="text-[#8F6A34]">{tur}</b> turnos prosp.</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
         )
       })()}
 
