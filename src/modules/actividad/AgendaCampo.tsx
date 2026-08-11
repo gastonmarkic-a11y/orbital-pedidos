@@ -6,6 +6,7 @@ import { Phone, ChevronDown, ChevronRight, Navigation, Plane, CalendarClock, X, 
 import DrillClientes, { DrillRow } from './DrillClientes'
 import PreparacionEnvio from '../envios/PreparacionEnvio'
 import { Cliente } from '../../lib/types'
+import { parseTelefonos } from '../../lib/telefono'
 
 // Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -84,6 +85,8 @@ function CohorteChip({ c }: { c: string }) {
 
 function ClienteCard({ r, onRegistrar, onHistorial, onEnviar }: { r: Row; onRegistrar: (r: Row) => void; onHistorial: (r: Row) => void; onEnviar: (r: Row) => void }) {
   const maps = mapsLink(r.direccion, r.localidad)
+  const tels = parseTelefonos(r.telefono) // separa el campo en números individuales
+  const [showTels, setShowTels] = useState(false)
   return (
     <div className={`bg-white rounded-xl border p-3 transition ${r.visitado ? 'border-emerald-200' : 'border-black/10'}`}>
       <div className="flex items-start justify-between gap-2">
@@ -100,7 +103,27 @@ function ClienteCard({ r, onRegistrar, onHistorial, onEnviar }: { r: Row; onRegi
       </div>
       <div className="flex gap-2 mt-2">
         <button onClick={() => onEnviar(r)} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-emerald-500/30 py-1.5 text-emerald-700 flex items-center justify-center gap-1"><Send size={12} />Enviar</button>
-        {r.telefono && <a href={`tel:${r.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar</a>}
+        {tels.length === 1 && (
+          <a href={tels[0].telHref} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar</a>
+        )}
+        {tels.length > 1 && (
+          <div className="flex-1 relative">
+            <button onClick={() => setShowTels((o) => !o)} className="w-full text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1"><Phone size={12} />Llamar ({tels.length}) <ChevronDown size={11} /></button>
+            {showTels && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowTels(false)} />
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-black/10 rounded-lg shadow-lg p-1 space-y-0.5">
+                  <p className="text-[9px] text-faint px-2 pt-0.5 uppercase tracking-wide">Elegí a cuál llamar</p>
+                  {tels.map((t, i) => (
+                    <a key={i} href={t.telHref} onClick={() => setShowTels(false)} className="flex items-center gap-1.5 text-[12px] px-2 py-1.5 rounded-md hover:bg-black/5 text-ink tabular-nums">
+                      <span>{t.tipo === 'celular' ? '📱' : '☎️'}</span>{t.nacional}
+                    </a>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {maps && <a href={maps} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-brandDark flex items-center justify-center gap-1"><Navigation size={12} />Ruta</a>}
       </div>
       <div className="flex gap-2 mt-2">
