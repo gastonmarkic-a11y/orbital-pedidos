@@ -82,6 +82,8 @@ function razonSocial(cliente: string | null, cod: string | null): string {
 
 // Precio neto unitario tal como lo calcula la app (lista + descuentos, o preventa, o Shopify).
 function precioNetoUnitario(it: PedidoItem, stockMap: Map<string, number>, nroLista: number, dc: number, df: number): number {
+  // Sin cargo (bonificación): va $0 al remito.
+  if (it.regalo) return 0
   if (it.precio !== undefined && it.precio !== null) {
     // Shopify: el precio ya incluye IVA y no lleva descuentos comerciales.
     return Math.round(it.precio / 1.21)

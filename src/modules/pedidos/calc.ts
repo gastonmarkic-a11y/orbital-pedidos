@@ -21,6 +21,8 @@ export function calcImporte(
   let bruto = 0
   let esShopify = false
   for (const item of items ?? []) {
+    // Sin cargo (bonificación): suma $0 y NO cambia el modo del pedido (no lo vuelve "Shopify").
+    if (item.regalo) continue
     if (item.precio !== undefined && item.precio !== null) {
       // Precio real ya pagado por el cliente (pedidos de Shopify) — no se reescala por lista de Orbital.
       esShopify = true

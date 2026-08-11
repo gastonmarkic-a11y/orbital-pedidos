@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass } from './calc'
+import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte } from './calc'
 
 interface Cuota {
   dias: number
@@ -291,6 +291,19 @@ export default function NuevoPedido() {
 
   const cartKeys = Object.keys(cart).filter((k) => cart[k] > 0)
   const totalUnidades = cartKeys.reduce((a, k) => a + cart[k], 0)
+  // Monto REAL del pedido en vivo: usa el mismo cálculo que el remito (lista + descuentos,
+  // preventa, sin cargo = $0). Así el resumen coincide exacto con lo que se factura/remite.
+  const itemsPreview: PedidoItem[] = cartKeys.map((k) => {
+    const info = stock.find((x) => x.codigo === k)
+    const esRegalo = regaloSel.has(k)
+    const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
+    return {
+      codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
+      ...(esRegalo ? { regalo: true, precio: 0 } : {}),
+      ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
+    }
+  })
+  const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
   const pendientesCarrito = cartKeys.reduce((a, k) => a + pendienteDe(k), 0)
   const totalCuotas = cuotas.reduce((a, c) => a + (c.pct || 0), 0)
@@ -879,9 +892,9 @@ export default function NuevoPedido() {
                         className={`mt-0.5 ml-1 inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 border ${
                           regaloSel.has(k) ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-300 text-emerald-700'
                         }`}
-                        title="Marcar como regalo/bonificación (precio 0)"
+                        title="Marcar sin cargo (bonificación, precio 0)"
                       >
-                        {regaloSel.has(k) ? '✓ ' : '🎁 '}Regalo $0
+                        {regaloSel.has(k) ? '✓ ' : ''}Sin cargo
                       </button>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -899,6 +912,20 @@ export default function NuevoPedido() {
                   </div>
                 )
               })
+            )}
+            {cartKeys.length > 0 && (
+              <div className="border-t border-black/10 pt-2 mt-1 space-y-0.5">
+                {(parseFloat(dtoComercial || '') > 0 || parseFloat(dtoFinanciero || '') > 0) && (
+                  <div className="flex items-center justify-between text-[11px] text-faint">
+                    <span>Bruto (lista/preventa)</span><span>{formatPrecio(montoPreview.bruto)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm font-bold">
+                  <span>Neto a facturar{(parseFloat(dtoComercial || '') > 0 || parseFloat(dtoFinanciero || '') > 0) ? ' (con dto.)' : ''}</span>
+                  <span className="text-gold">{formatPrecio(montoPreview.neto)}</span>
+                </div>
+                <p className="text-[10px] text-faint">Sin IVA · coincide con el remito. Sin cargo = $0; preventa y descuentos ya aplicados.</p>
+              </div>
             )}
           </div>
 
