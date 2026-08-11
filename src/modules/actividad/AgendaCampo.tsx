@@ -71,6 +71,22 @@ interface Evento { id: number; dia_num: number; hora: string | null; lugar: stri
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
+// Feriados nacionales AR (editar según calendario oficial).
+const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
+// Días hábiles que quedan en el mes (desde hoy inclusive), sin sáb/dom ni feriados.
+function diasHabilesRestantes(): number {
+  const now = new Date(); const y = now.getFullYear(), mo = now.getMonth()
+  const fin = new Date(y, mo + 1, 0).getDate()
+  let c = 0
+  for (let d = now.getDate(); d <= fin; d++) {
+    const dow = new Date(y, mo, d).getDay()
+    if (dow === 0 || dow === 6) continue
+    const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (FERIADOS_AR.includes(iso)) continue
+    c++
+  }
+  return Math.max(1, c)
+}
 const soloDigitos = (t: string | null) => (t ? t.replace(/\D/g, '') : '')
 const waLink = (t: string | null) => { const d = soloDigitos(t); return d ? `https://wa.me/${d.length <= 10 ? '54' + d : d}` : null }
 const mapsLink = (dir: string | null, loc: string | null) => {
@@ -345,6 +361,23 @@ export default function AgendaCampo() {
 
   const totalPend = baGba.filter((r) => !r.visitado).length
 
+  // OBJETIVO INTERIOR: contactar toda la cartera de interior en el mes (venta telefónica/catálogo).
+  // Cupo del día = cartera de interior ÷ días hábiles restantes, ordenado por zona.
+  const diasRest = diasHabilesRestantes()
+  const interiorDia = Math.max(1, Math.ceil(interior.length / diasRest))
+  const interiorHoy = useMemo(
+    () => [...interior].filter((r) => !r.visitado).sort((a, b) => (a.region || a.localidad || '').localeCompare(b.region || b.localidad || '')).slice(0, interiorDia),
+    [interior, interiorDia]
+  )
+  // Conflicto en un contacto de interior: lo marca (no atiende / número malo), registra actividad
+  // y lo saca de la lista → entra el siguiente. Se refleja en la Cartera (misma tabla).
+  async function marcarConflictoInterior(r: Row) {
+    setRows((rs) => rs.map((x) => (x.cod === r.cod ? { ...x, visitado: true, resultado: 'conflicto' } : x)))
+    const h = new Date().toISOString().slice(0, 10)
+    await supabase.from('actividad_diaria').insert({ fecha: h, vendedor: ven, cod_cliente: r.cod, nombre_comercio: r.nombre, telefono: r.telefono, localidad: r.localidad, origen: 'agenda_interior', resultado_contacto: 'conflicto', actividad_desarrollo: 'Conflicto: no atiende / número incorrecto' })
+    await supabase.from('agenda_campo').update({ visitado: true, resultado: 'conflicto' }).eq('vendedor', ven).eq('cod_cliente', r.cod)
+  }
+
   function onVisitaSaved(cod: string, resultado: string) {
     setRows((rs) => rs.map((r) => (r.cod === cod ? { ...r, visitado: true, resultado } : r)))
     setVisitar(null)
@@ -537,15 +570,33 @@ export default function AgendaCampo() {
             )
           })}
 
-          {/* Interior encapsulado */}
+          {/* OBJETIVO 2 del vendedor · Interior (venta telefónica / catálogo) */}
           {interior.length > 0 && (
             <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
-              <button onClick={() => setVerInterior((v) => !v)} className="w-full flex items-center justify-between p-3.5 text-sm font-medium">
-                <span className="flex items-center gap-2"><Plane size={15} className="text-brandDark" />Interior — para viajes ({interior.length})</span>{verInterior ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <button onClick={() => setVerInterior((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
+                <span className="min-w-0 flex items-center gap-2"><Plane size={15} className="text-brandDark shrink-0" /><span>Interior · venta telefónica / catálogo
+                  <span className="block text-[11px] text-faint font-normal">Hoy: contactá <b className="text-ink">{interiorDia}</b> por zona ({interior.length} en cartera ÷ {diasRest} días hábiles)</span>
+                </span></span>{verInterior ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
               </button>
               {verInterior && (
                 <div className="border-t border-black/5 p-3 space-y-3">
-                  <p className="text-[11px] text-faint">Para viaje. Entrá por zona → provincia → ciudad.</p>
+                  {/* A CONTACTAR HOY: el cupo del día por zona. Conflicto → sale y entra el siguiente. */}
+                  <div className="rounded-xl border border-brand/30 bg-brand/5 p-2.5 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-brandDark uppercase tracking-wide">🎯 A contactar hoy · {interiorHoy.length}/{interiorDia}</p>
+                    {interiorHoy.length === 0 ? <p className="text-[11px] text-faint">Interior al día 🎉</p> : interiorHoy.map((r) => (
+                      <div key={r.cod} className="flex items-center gap-2 rounded-lg border border-black/10 bg-white p-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium truncate">{r.nombre}</p>
+                          <p className="text-[10px] text-faint">{[r.localidad, r.region].filter(Boolean).join(' · ')}{r.cohorte ? ` · ${r.cohorte}` : ''}</p>
+                        </div>
+                        <LlamarBtn telefono={r.telefono} whatsapp={r.whatsapp} className="w-20 shrink-0" />
+                        <button onClick={() => abrirEnvioCliente(r)} className="shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 bg-brand text-white"><Send size={12} />Enviar</button>
+                        <button onClick={() => marcarConflictoInterior(r)} title="No atiende / número incorrecto" className="shrink-0 rounded-lg px-2 h-7 text-[11px] font-medium border border-red-200 text-red-600">⚠</button>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-faint">"Enviar" manda el catálogo; ⚠ = no atiende/número malo → entra el siguiente. Ordenado por zona; se refleja en la Cartera.</p>
+                  </div>
+                  <p className="text-[11px] text-faint">Toda tu cartera de interior por zona → provincia → ciudad (también para armar viajes):</p>
                   <DrillClientes rows={interior as unknown as DrillRow[]} renderItem={(r) => {
                     const wa = waLink(r.telefono as string | null)
                     return (
