@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Phone, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { telefonosCliente } from './telefono'
 
 // Botón "Llamar" que junta TODOS los números del cliente (WhatsApp + línea, sin duplicar):
@@ -10,12 +10,16 @@ export default function LlamarBtn({ telefono, whatsapp, className = '' }: { tele
   const [open, setOpen] = useState(false)
   if (tels.length === 0) return null
   const base = 'text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1'
+  const emoji = (tipo: string) => (tipo === 'celular' ? '📱' : '☎️') // 📱 celular/WhatsApp · ☎️ línea
   if (tels.length === 1) {
-    return <a href={tels[0].telHref} className={`${base} ${className}`}><Phone size={12} />Llamar</a>
+    const t = tels[0]
+    return <a href={t.telHref} title={t.tipo === 'celular' ? 'Celular / WhatsApp' : 'Teléfono de línea'} className={`${base} ${className}`}><span className="text-[13px] leading-none">{emoji(t.tipo)}</span>Llamar</a>
   }
+  // Si hay varios, el botón muestra los tipos que hay (📱/☎️) para que el operador sepa qué va a encontrar.
+  const tipos = Array.from(new Set(tels.map((t) => emoji(t.tipo)))).join(' ')
   return (
     <div className={`relative ${className}`}>
-      <button onClick={() => setOpen((o) => !o)} className={`w-full ${base}`}><Phone size={12} />Llamar ({tels.length}) <ChevronDown size={11} /></button>
+      <button onClick={() => setOpen((o) => !o)} className={`w-full ${base}`}><span className="text-[13px] leading-none">{tipos}</span>Llamar ({tels.length}) <ChevronDown size={11} /></button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
