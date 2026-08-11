@@ -15,7 +15,7 @@ import LlamarBtn from '../../lib/LlamarBtn'
 
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; cod_cliente?: string | null; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
-interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
+interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; conflicto: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; whatsapp: string | null; zona: string | null; dist: number | null }
 
 // prospector code -> vendedor que alimenta
@@ -106,6 +106,13 @@ export default function ProspeccionCampo() {
   async function cerrarJulio(id: number, v: boolean) {
     setJulio((js) => js.map((j) => (j.id === id ? { ...j, cerrado: v } : j)))
     await supabase.from('prospectos_julio').update({ cerrado: v }).eq('id', id)
+  }
+  // Conflicto: no atiende / número incorrecto → sale de la lista de hoy y entra el siguiente.
+  // Queda registrado como actividad para que también se refleje en la Cartera.
+  async function marcarConflicto(j: PJ) {
+    setJulio((js) => js.map((x) => (x.id === j.id ? { ...x, conflicto: true } : x)))
+    await supabase.from('prospectos_julio').update({ conflicto: true }).eq('id', j.id)
+    await registrarActividad({ cod: j.codigo ?? String(j.id), nombre: j.nombre, telefono: j.telefono, localidad: j.localidad, origen: 'prospeccion_julio', desarrollo: 'Conflicto: no atiende / número incorrecto', resultado: 'conflicto' })
   }
 
   // Performance del prospector: objetivo del mes + acumulado + objetivo diario.
@@ -206,10 +213,12 @@ export default function ProspeccionCampo() {
 
   // Cupos diarios de los TRES objetivos (mensual ÷ días hábiles restantes). Los 5 turnos de zona
   // ya son "agenda activada" y van aparte — NO entran en la prospección nueva de bienvenida.
-  const julioAbiertos = julio.filter((j) => !j.cerrado).length
+  const julioAbiertos = julio.filter((j) => !j.cerrado && !j.conflicto).length
   const diasRest = diasHabilesRestantes()
-  const julioDia = Math.ceil(julioAbiertos / diasRest)
+  const julioDia = Math.max(1, Math.ceil(julioAbiertos / diasRest))
   const nuevosDia = Math.ceil(META_NUEVOS_MES / diasRest)
+  // Lista puntual "a llamar hoy": el cupo del día tomando los abiertos sin conflicto, interior/zona primero (orden de la RPC).
+  const julioHoy = julio.filter((j) => !j.cerrado && !j.conflicto).slice(0, julioDia)
 
   return (
     <div className="space-y-4 text-ink">
@@ -351,8 +360,26 @@ export default function ProspeccionCampo() {
             {verJulio && (
               <div className="border-t border-black/5 p-3 space-y-2">
                 <p className="text-[12px] text-muted">Contactá <b>{julioDia} por día</b> ({julioAbiertos} abiertos ÷ {diasRest} días hábiles) para cerrar julio este mes. Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo). Cada "Enviar" queda registrado como actividad.</p>
+
+                {/* A LLAMAR HOY: el cupo del día, elegido por zona/relevancia. Conflicto → sale y entra el siguiente. */}
+                <div className="rounded-xl border border-brand/30 bg-brand/5 p-2.5 space-y-1.5">
+                  <p className="text-[11px] font-semibold text-brandDark uppercase tracking-wide">🎯 A llamar hoy · {julioHoy.length}/{julioDia}</p>
+                  {julioHoy.length === 0 ? <p className="text-[11px] text-faint">Sin contactos de julio pendientes 🎉</p> : julioHoy.map((j) => (
+                    <div key={j.id} className="flex items-center gap-2 rounded-lg border border-black/10 bg-white p-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium truncate">{j.nombre}</p>
+                        <p className="text-[10px] text-faint">{[j.localidad, j.provincia].filter(Boolean).join(' · ')}{j.es_interior ? ' · INT' : ''}</p>
+                      </div>
+                      <LlamarBtn telefono={j.telefono} whatsapp={j.telefono} className="w-20 shrink-0" />
+                      <button onClick={() => abrirEnvio(j)} className="shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 bg-brand text-white"><Send size={12} />Enviar</button>
+                      <button onClick={() => marcarConflicto(j)} title="No atiende / número incorrecto" className="shrink-0 rounded-lg px-2 h-7 text-[11px] font-medium border border-red-200 text-red-600">⚠</button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-faint">Tocá ⚠ si no atiende o el número está mal → sale de hoy y entra el siguiente. Abajo tenés toda tu base por zona.</p>
+                </div>
+
                 {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : (
-                  <DrillClientes rows={julio.map((j) => ({ ...j, cod: j.codigo ?? String(j.id) })) as unknown as DrillRow[]} renderItem={(r) => {
+                  <DrillClientes rows={julio.filter((j) => !j.conflicto).map((j) => ({ ...j, cod: j.codigo ?? String(j.id) })) as unknown as DrillRow[]} renderItem={(r) => {
                     const j = r as unknown as PJ
                     return (
                       <div key={j.id} className={`flex items-center gap-2 rounded-xl border p-2 ${j.cerrado ? 'border-emerald-200 opacity-60' : 'border-black/10'}`}>
