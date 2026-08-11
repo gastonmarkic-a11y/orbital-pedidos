@@ -75,6 +75,7 @@ export default function ProspeccionCampo() {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [loading, setLoading] = useState(true)
   const [diaSel, setDiaSel] = useState<number | null>(null)
+  const [verZona, setVerZona] = useState(true)
   const [verJulio, setVerJulio] = useState(false)
   const [verNuevos, setVerNuevos] = useState(false)
   const [julio, setJulio] = useState<PJ[]>([])
@@ -248,23 +249,24 @@ export default function ProspeccionCampo() {
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">Todavía no hay recorrido de campo generado para {feed.label}.</p>
       ) : (
         <>
-          {/* OBJETIVO OBLIGATORIO */}
-          <div className="bg-ink text-white rounded-2xl p-4">
-            <div className="flex items-center gap-2 text-gold">
-              <Target size={16} /><span className="text-[11px] font-bold uppercase tracking-wide">Objetivo obligatorio de hoy</span>
-            </div>
-            <p className="text-base font-semibold mt-2 leading-snug">
-              Conseguí <b>{META} turnos</b> en <b>{zonaActiva.slice(0, 3).join(' · ') || 'la zona'}</b> para pasarle a <b>{feed.label}</b>.
-            </p>
-            <p className="text-[11px] text-white/60 mt-1">Va a recorrer esa zona el {labelDia(diaActivo)}. Avisales: "va a pasar {feed.label} a saludarte".</p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="flex-1 h-2 bg-white/15 rounded-full overflow-hidden">
-                <div className="h-full bg-gold" style={{ width: `${(turnosDia.length / META) * 100}%` }} />
-              </div>
-              <span className="text-sm font-bold">{turnosDia.length}/{META}</span>
-            </div>
-            {faltan === 0 && <p className="text-[12px] text-emerald-300 font-medium mt-2 flex items-center gap-1"><Check size={14} />¡Objetivo cumplido!</p>}
-          </div>
+          {/* OBJETIVO 1 · Turnos de visita para el vendedor (colapsable) */}
+          <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
+            <button onClick={() => setVerZona((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
+              <span className="min-w-0 flex items-center gap-1.5"><Target size={15} className="text-gold shrink-0" /><span>Turnos de visita para {feed.label}
+                <span className="block text-[11px] text-faint font-normal">Hoy: conseguí <b className="text-ink">{META}</b> en {zonaActiva.slice(0, 2).join(' · ') || 'la zona'} · llevás <b className="text-ink">{turnosDia.length}/{META}</b>{faltan === 0 ? ' ✓' : ''}</span>
+              </span></span>{verZona ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+            </button>
+            {verZona && (
+              <div className="border-t border-black/5 p-3 space-y-3">
+                <div className="bg-ink text-white rounded-xl p-3">
+                  <p className="text-sm font-semibold leading-snug">Conseguí <b>{META} turnos</b> en <b>{zonaActiva.slice(0, 3).join(' · ') || 'la zona'}</b> para pasarle a <b>{feed.label}</b>.</p>
+                  <p className="text-[11px] text-white/60 mt-1">Va a recorrer esa zona el {labelDia(diaActivo)}. Avisales: "va a pasar {feed.label} a saludarte".</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-white/15 rounded-full overflow-hidden"><div className="h-full bg-gold" style={{ width: `${(turnosDia.length / META) * 100}%` }} /></div>
+                    <span className="text-sm font-bold">{turnosDia.length}/{META}</span>
+                  </div>
+                  {faltan === 0 && <p className="text-[12px] text-emerald-300 font-medium mt-2 flex items-center gap-1"><Check size={14} />¡Objetivo cumplido!</p>}
+                </div>
 
           {/* Selector de día del recorrido */}
           <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -335,12 +337,15 @@ export default function ProspeccionCampo() {
               </div>
             ))}
           </div>
+              </div>
+            )}
+          </div>
 
           {/* OBJETIVO 2 · Potenciá el contacto generado en julio */}
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
             <button onClick={() => setVerJulio((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
               <span className="min-w-0">🔥 Potenciá el contacto generado en julio
-                <span className="block text-[11px] text-faint font-normal">{julioAbiertos} abiertos · objetivo de hoy: <b className="text-ink">{julioDia}/día</b> para cerrarlos este mes</span>
+                <span className="block text-[11px] text-faint font-normal">Hoy: contactá <b className="text-ink">{julioDia}</b> para cerrar tus contactos de julio ({julioAbiertos} abiertos)</span>
               </span>{verJulio ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
             </button>
             {verJulio && (
@@ -370,7 +375,7 @@ export default function ProspeccionCampo() {
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
             <button onClick={() => setVerNuevos((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
               <span className="min-w-0">🆕 Prospectos nuevos · Paquete de Bienvenida
-                <span className="block text-[11px] text-faint font-normal">objetivo de hoy: <b className="text-ink">{nuevosDia}/día</b> ({META_NUEVOS_MES}/mes ÷ {diasRest} días hábiles)</span>
+                <span className="block text-[11px] text-faint font-normal">Hoy: enviá <b className="text-ink">{nuevosDia}</b> propuestas de bienvenida a nuevos contactos ({META_NUEVOS_MES}/mes)</span>
               </span>{verNuevos ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
             </button>
             {verNuevos && (
