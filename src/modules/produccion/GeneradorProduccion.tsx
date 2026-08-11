@@ -10,11 +10,12 @@ import { useToast } from '../../lib/toast'
 interface Params {
   alarma_min: number
   lote_min: number
+  lote_max: number
   cap_sku_pct: number
   cobertura_objetivo_dias: number
   ventana_dias: number
 }
-const DEF_PARAMS: Params = { alarma_min: 25, lote_min: 100, cap_sku_pct: 0.45, cobertura_objetivo_dias: 75, ventana_dias: 75 }
+const DEF_PARAMS: Params = { alarma_min: 25, lote_min: 100, lote_max: 300, cap_sku_pct: 0.45, cobertura_objetivo_dias: 75, ventana_dias: 75 }
 
 interface SkuRow {
   sku: string
@@ -190,7 +191,11 @@ export default function GeneradorProduccion() {
         sumDeficits = conDeficit.reduce((a, i) => a + i.deficit, 0)
       }
       if (sumDeficits <= 0) continue
-      const loteTotal = Math.max(params.lote_min, Math.ceil(sumDeficits / params.lote_min) * params.lote_min)
+      // Redondea el déficit al lote mínimo, pero NUNCA supera el tope realista por familia.
+      const loteTotal = Math.min(
+        params.lote_max,
+        Math.max(params.lote_min, Math.ceil(sumDeficits / params.lote_min) * params.lote_min)
+      )
       const capUnits = loteTotal * params.cap_sku_pct
       const asign = repartir(conDeficit.map((i) => ({ sku: i.sku, deficit: i.deficit })), loteTotal, capUnits)
       const itemsProp: ItemProp[] = conDeficit
@@ -263,7 +268,7 @@ export default function GeneradorProduccion() {
         <div>
           <h2 className="text-base font-semibold">🏭 Órdenes de producción</h2>
           <p className="text-[11px] text-faint">
-            {propuestas.length} familias propuestas · {ent.format(totalUnidades)} u. · podés ajustar cada SKU antes de generar · lote {params.lote_min} · alarma ≤{params.alarma_min} · cobertura {params.cobertura_objetivo_dias}d
+            {propuestas.length} familias propuestas · {ent.format(totalUnidades)} u. · podés ajustar cada SKU antes de generar · lote {params.lote_min}–{params.lote_max} · alarma ≤{params.alarma_min} · cobertura {params.cobertura_objetivo_dias}d
           </p>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted">
