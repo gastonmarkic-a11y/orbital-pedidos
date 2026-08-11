@@ -41,6 +41,25 @@ const PRIO_COLORS: Record<string, string> = {
 // operador ve el aviso antes de volver a contactarlo, para no duplicar el contacto.
 const RESERVA_DIAS = 15
 
+// Bienvenida: objetivo de largo plazo = cubrir todos los fríos. Ritmo = 150 por mes por prospector.
+const META_NUEVOS_MES = 150
+// Feriados nacionales AR (editar según calendario oficial / feriados con fines turísticos).
+const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
+// Días hábiles que quedan en el mes (desde hoy inclusive), sin sáb/dom ni feriados.
+function diasHabilesRestantes(): number {
+  const now = new Date(); const y = now.getFullYear(), mo = now.getMonth()
+  const fin = new Date(y, mo + 1, 0).getDate()
+  let c = 0
+  for (let d = now.getDate(); d <= fin; d++) {
+    const dow = new Date(y, mo, d).getDay()
+    if (dow === 0 || dow === 6) continue
+    const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (FERIADOS_AR.includes(iso)) continue
+    c++
+  }
+  return Math.max(1, c)
+}
+
 // Color por operador: de un vistazo se ve quién está trabajando cada contacto.
 const COLOR_OPERADOR: Record<string, { barra: string; pill: string }> = {
   Marketing: { barra: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' }, // Luna
@@ -583,6 +602,38 @@ export default function Cartera() {
           </div>
         </div>
       )}
+
+      {/* Objetivo de HOY de bienvenida: cupo diario (150/mes ÷ días hábiles) + avance del pool frío */}
+      {!buscando && segmento === 'bienvenida' && (() => {
+        const diasHab = diasHabilesRestantes()
+        const cupoDia = Math.ceil(META_NUEVOS_MES / diasHab)
+        const hoyStr = new Date().toISOString().slice(0, 10)
+        const total = bienvenida.length
+        const cubiertos = bienvenida.filter((c) => ultimaAct[c.cod]).length
+        const sinContactar = total - cubiertos
+        const hoyHechos = bienvenida.filter((c) => ultimaAct[c.cod] === hoyStr).length
+        const pct = total ? Math.round((cubiertos / total) * 100) : 0
+        const falta = Math.max(0, cupoDia - hoyHechos)
+        return (
+          <div className="bg-white rounded-xl border border-red-200 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-bold">🎯 Bienvenida — objetivo de hoy: <span className="text-red-600">{cupoDia} fríos</span></p>
+              <span className="text-[11px] text-faint">{META_NUEVOS_MES}/mes ÷ {diasHab} días hábiles restantes</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-[#F7F5F0] rounded-lg p-2"><p className="text-lg font-bold tabular-nums">{hoyHechos}<span className="text-[11px] text-faint">/{cupoDia}</span></p><p className="text-[9px] text-muted">contactados hoy</p></div>
+              <div className="bg-[#F7F5F0] rounded-lg p-2"><p className="text-lg font-bold tabular-nums text-red-600">{sinContactar.toLocaleString('es-AR')}</p><p className="text-[9px] text-muted">sin contactar</p></div>
+              <div className="bg-[#F7F5F0] rounded-lg p-2"><p className="text-lg font-bold tabular-nums text-emerald-700">{pct}%</p><p className="text-[9px] text-muted">pool cubierto</p></div>
+            </div>
+            <div className="h-1.5 bg-black/5 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
+            <p className="text-[10px] text-muted">
+              {falta > 0
+                ? <>Te faltan <b className="text-ink">{falta}</b> para el cupo de hoy. Trabajá <b>por zona</b> (chips de abajo) y priorizá los <b>“Libre”</b> para no pisar.</>
+                : <>✅ Cupo de hoy cubierto. Podés <b>adelantar</b> contactos de mañana o <b>sumar</b> más — todo suma al objetivo.</>}
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Escalafón: zona → provincia → ciudad/barrio (chips clickeables que filtran) */}
       {!buscando && (
