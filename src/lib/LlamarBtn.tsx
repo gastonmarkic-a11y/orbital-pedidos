@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Phone, ChevronDown } from 'lucide-react'
-import { parseTelefonos } from './telefono'
+import { telefonosCliente } from './telefono'
 
-// Botón "Llamar" que respeta múltiples teléfonos: si el cliente tiene más de un número,
-// abre un selector para elegir a cuál llamar (en vez de marcar los números pegados).
-export default function LlamarBtn({ telefono, className = '' }: { telefono: string | null | undefined; className?: string }) {
-  const tels = parseTelefonos(telefono)
+// Botón "Llamar" que junta TODOS los números del cliente (WhatsApp + línea, sin duplicar):
+// si hay más de uno, abre un selector para elegir a cuál llamar. Así se puede llamar también
+// al celular de WhatsApp, no solo al teléfono de línea.
+export default function LlamarBtn({ telefono, whatsapp, className = '' }: { telefono: string | null | undefined; whatsapp?: string | null; className?: string }) {
+  const tels = telefonosCliente(whatsapp, telefono)
   const [open, setOpen] = useState(false)
   if (tels.length === 0) return null
   const base = 'text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink flex items-center justify-center gap-1'

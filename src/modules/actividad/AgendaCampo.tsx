@@ -16,7 +16,7 @@ import LlamarBtn from '../../lib/LlamarBtn'
 interface Row {
   dia_num: number; orden_en_dia: number; bloque: string; cohorte: string
   region: string | null; localidad: string | null; provincia: string | null; cod: string
-  nombre: string | null; direccion: string | null; telefono: string | null; visitado: boolean; resultado: string | null; unidades: number
+  nombre: string | null; direccion: string | null; telefono: string | null; whatsapp: string | null; visitado: boolean; resultado: string | null; unidades: number
 }
 const RESULTADOS: Record<string, string> = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' }
 
@@ -101,7 +101,7 @@ function ClienteCard({ r, onRegistrar, onHistorial, onEnviar }: { r: Row; onRegi
       </div>
       <div className="flex gap-2 mt-2">
         <button onClick={() => onEnviar(r)} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-emerald-500/30 py-1.5 text-emerald-700 flex items-center justify-center gap-1"><Send size={12} />Enviar</button>
-        <LlamarBtn telefono={r.telefono} className="flex-1" />
+        <LlamarBtn telefono={r.telefono} whatsapp={r.whatsapp} className="flex-1" />
         {maps && <a href={maps} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-brandDark flex items-center justify-center gap-1"><Navigation size={12} />Ruta</a>}
       </div>
       <div className="flex gap-2 mt-2">

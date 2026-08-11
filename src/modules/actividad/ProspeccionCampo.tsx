@@ -16,7 +16,7 @@ import LlamarBtn from '../../lib/LlamarBtn'
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; cod_cliente?: string | null; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
 interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
-interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
+interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; whatsapp: string | null; zona: string | null; dist: number | null }
 
 // prospector code -> vendedor que alimenta
 const FEED: Record<string, { vendedor: string; label: string; prospLabel: string }> = {
@@ -267,7 +267,7 @@ export default function ProspeccionCampo() {
                 </div>
                 <div className="flex gap-2 mt-2">
                   {waLink(b.telefono) && <a href={waLink(b.telefono)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
-                  <LlamarBtn telefono={b.telefono} className="flex-1" />
+                  <LlamarBtn telefono={b.telefono} whatsapp={b.whatsapp} className="flex-1" />
                   {confirmado ? (
                     <div className="flex-1 flex gap-1.5">
                       <span className="flex-1 text-center text-[11px] font-semibold rounded-lg bg-emerald-600 text-white py-1.5 flex items-center justify-center gap-1"><Check size={13} />Confirmado</span>
