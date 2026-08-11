@@ -17,6 +17,7 @@ export default function Cobranzas() {
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('')
+  const [tipo, setTipo] = useState('') // '' todos · 'b2c' consumidor final (Tienda) · 'b2b' mayorista
 
   const cargar = useCallback(async () => {
     let q = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
@@ -39,10 +40,14 @@ export default function Cobranzas() {
     let logs = [...pedidos]
     if (filtro === 'cobrado') logs = logs.filter((l) => l.cobrado)
     if (filtro === 'pendiente') logs = logs.filter((l) => !l.cobrado)
+    // Tipo de cliente: consumidor final = pedidos de la Tienda (Shopify); mayorista = el resto (ópticas).
+    const esTienda = (l: Pedido) => (l.vendedor || '').toLowerCase() === 'tienda'
+    if (tipo === 'b2c') logs = logs.filter(esTienda)
+    if (tipo === 'b2b') logs = logs.filter((l) => !esTienda(l))
     const q = busqueda.toLowerCase().trim()
     if (q) logs = logs.filter((l) => (l.cliente || '').toLowerCase().includes(q))
     return logs
-  }, [pedidos, filtro, busqueda])
+  }, [pedidos, filtro, tipo, busqueda])
 
   const totalCobrado = filas.filter((l) => l.cobrado).reduce((a, l) => a + importeDe(l, stock), 0)
   const totalPendiente = filas.filter((l) => !l.cobrado).reduce((a, l) => a + importeDe(l, stock), 0)
@@ -74,13 +79,23 @@ export default function Cobranzas() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <input
           placeholder="Buscar cliente..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="flex-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
         />
+        <select
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value)}
+          className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm"
+          title="Tipo de cliente"
+        >
+          <option value="">Todos los clientes</option>
+          <option value="b2b">🏪 Mayorista (ópticas)</option>
+          <option value="b2c">🛍️ Consumidor final (Tienda)</option>
+        </select>
         <select
           value={filtro}
           onChange={(e) => setFiltro(e.target.value)}
