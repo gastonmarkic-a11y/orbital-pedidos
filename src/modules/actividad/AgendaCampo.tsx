@@ -316,6 +316,7 @@ export default function AgendaCampo() {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [loading, setLoading] = useState(true)
   const [abierto, setAbierto] = useState<number | null>(null)
+  const [verCampo, setVerCampo] = useState(false)
   const [verInterior, setVerInterior] = useState(false)
   const [posponiendo, setPosponiendo] = useState<number | null>(null)
   const [visitar, setVisitar] = useState<Row | null>(null)
@@ -422,6 +423,21 @@ export default function AgendaCampo() {
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">No hay plan de campo generado para {ven}.</p>
       ) : (
         <div className="space-y-2.5">
+          {/* AGENDA DE CAMPO · desplegable general (cerrado por defecto) */}
+          <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
+            {(() => {
+              const delHoy = baGba.filter((r) => r.dia_num === hoy)
+              const zonaHoy = Array.from(new Set(delHoy.map((r) => r.localidad).filter(Boolean))).slice(0, 2).join(' · ')
+              return (
+                <button onClick={() => setVerCampo((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
+                  <span className="min-w-0 flex items-center gap-2"><Navigation size={15} className="text-brandDark shrink-0" /><span>Agenda de campo · recorrido diario
+                    <span className="block text-[11px] text-faint font-normal">Hoy ({labelDia(hoy)}): {delHoy.length} visitas en {zonaHoy || 'la zona'} · {dias.length} días · faltan {totalPend}</span>
+                  </span></span>{verCampo ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+                </button>
+              )
+            })()}
+            {verCampo && (
+              <div className="border-t border-black/5 p-3 space-y-2.5">
           {/* Resumen de performance del vendedor */}
           {(() => {
             const vis = baGba.filter((r) => r.visitado)
@@ -568,6 +584,9 @@ export default function AgendaCampo() {
               </div>
             )
           })}
+              </div>
+            )}
+          </div>
 
           {/* OBJETIVO 2 del vendedor · Interior (venta telefónica / catálogo) */}
           {interior.length > 0 && (
