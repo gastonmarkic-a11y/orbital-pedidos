@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte } from './calc'
+import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, netoUnitario, descuentoItemPct } from './calc'
 
 interface Cuota {
   dias: number
@@ -304,6 +304,31 @@ export default function NuevoPedido() {
     }
   })
   const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
+  const dcN = parseFloat(dtoComercial || '') || 0
+  const dfN = parseFloat(dtoFinanciero || '') || 0
+  // Info por línea: precio neto unitario + etiqueta clara del descuento que aplicó el sistema.
+  function lineaInfo(k: string): { net: number; total: number; tag: string } {
+    const info = stock.find((x) => x.codigo === k)
+    const esRegalo = regaloSel.has(k)
+    const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
+    const item: PedidoItem = {
+      codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
+      ...(esRegalo ? { regalo: true, precio: 0 } : {}),
+      ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
+    }
+    const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN)
+    const pct = descuentoItemPct(item, dcN, dfN)
+    let tag: string
+    if (esRegalo) tag = 'sin cargo (100% bonif.)'
+    else if (esPreventa) tag = dfN > 0 ? `preventa · −${dfN}% fin.` : 'preventa (precio fijo)'
+    else {
+      const partes: string[] = []
+      if (dcN > 0) partes.push(`−${dcN}% com.`)
+      if (dfN > 0) partes.push(`−${dfN}% fin.`)
+      tag = partes.length ? `${partes.join(' · ')} (−${pct}%)` : 'precio de lista'
+    }
+    return { net, total: net * cart[k], tag }
+  }
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
   const pendientesCarrito = cartKeys.reduce((a, k) => a + pendienteDe(k), 0)
   const totalCuotas = cuotas.reduce((a, c) => a + (c.pct || 0), 0)
@@ -896,6 +921,11 @@ export default function NuevoPedido() {
                       >
                         {regaloSel.has(k) ? '✓ ' : ''}Sin cargo
                       </button>
+                      {(() => { const li = lineaInfo(k); return (
+                        <p className="text-[10px] text-muted mt-0.5">
+                          {formatPrecio(li.net)}/u · <span className="text-brandDark">{li.tag}</span> · <b className="text-ink">{formatPrecio(li.total)}</b>
+                        </p>
+                      )})()}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => changeQty(k, -1)} className="w-6 h-6 rounded border border-black/10 text-xs">

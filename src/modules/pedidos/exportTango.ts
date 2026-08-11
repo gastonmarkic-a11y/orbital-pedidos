@@ -1,6 +1,6 @@
 import type { Pedido, PedidoItem } from '../../lib/types'
 import { supabase } from '../../lib/supabase'
-import { getPrecioLista } from './calc'
+import { netoUnitario } from './calc'
 
 // Exporta pedidos al formato "Novedades para pedidos" de Tango (Pedidos automáticos).
 // Genera DOS archivos: Plenorius (parte blanca) y Ejemplar (parte negra).
@@ -80,23 +80,10 @@ function razonSocial(cliente: string | null, cod: string | null): string {
   return cliente.replace(/^\s*[\w-]+\s*-\s*/, '') || cod || ''
 }
 
-// Precio neto unitario tal como lo calcula la app (lista + descuentos, o preventa, o Shopify).
+// Precio neto unitario: idéntico al del resumen del pedido (misma función netoUnitario).
+// Sin cargo = $0; preventa = solo dto financiero (no comercial); lista = comercial + financiero; Shopify = precio/1,21.
 function precioNetoUnitario(it: PedidoItem, stockMap: Map<string, number>, nroLista: number, dc: number, df: number): number {
-  // Sin cargo (bonificación): va $0 al remito.
-  if (it.regalo) return 0
-  if (it.precio !== undefined && it.precio !== null) {
-    // Shopify: el precio ya incluye IVA y no lleva descuentos comerciales.
-    return Math.round(it.precio / 1.21)
-  }
-  let base: number
-  if (it.preventa && it.precio_pv != null) {
-    base = it.precio_pv
-  } else {
-    const b = stockMap.get(it.codigo) ?? 0
-    base = b > 0 ? getPrecioLista(b, nroLista) : 0
-  }
-  const neto = base * (1 - dc / 100) * (1 - df / 100)
-  return Math.round(neto)
+  return netoUnitario(it, stockMap.get(it.codigo) ?? 0, nroLista, dc, df)
 }
 
 // Reparte las líneas en blanco/negro por monto, acercándose al target de la parte blanca.

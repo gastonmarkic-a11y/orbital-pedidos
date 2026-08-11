@@ -11,6 +11,33 @@ export function getPrecioLista(precioBase: number, nroLista: number | null): num
   return Math.round(precioBase * factor)
 }
 
+// Precio BRUTO unitario (antes de descuentos): lista, o preventa, o Shopify-neto. Sin cargo = 0.
+export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null): number {
+  if (item.regalo) return 0
+  if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA)
+  if (item.preventa && item.precio_pv != null) return item.precio_pv
+  return precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
+}
+
+// Descuento efectivo aplicado a un ítem, en %. Sirve para MOSTRAR en cada línea qué descontó el sistema.
+// Reglas: sin cargo = 100%; preventa = SOLO financiero (no comercial); lista = comercial + financiero; Shopify = 0.
+export function descuentoItemPct(item: PedidoItem, dc: number, df: number): number {
+  if (item.regalo) return 100
+  if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
+  if (item.preventa && item.precio_pv != null) return df // preventa: solo financiero
+  return Math.round((1 - (1 - dc / 100) * (1 - df / 100)) * 100)
+}
+
+// Precio NETO unitario (después de descuentos), idéntico en resumen y remito.
+// Preventa: se le aplica SOLO el descuento financiero (pronto pago), NO el comercial.
+export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number): number {
+  if (item.regalo) return 0
+  if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
+  if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv * (1 - df / 100)) // preventa: solo financiero
+  const precioLista = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
+  return Math.round(precioLista * (1 - dc / 100) * (1 - df / 100))
+}
+
 export function calcImporte(
   items: PedidoItem[] | null,
   stock: StockItem[],
@@ -18,35 +45,25 @@ export function calcImporte(
   dtoFin: string | null,
   nroLista?: number | null
 ): { bruto: number; neto: number } {
-  let bruto = 0
-  let esShopify = false
-  for (const item of items ?? []) {
-    // Sin cargo (bonificación): suma $0 y NO cambia el modo del pedido (no lo vuelve "Shopify").
-    if (item.regalo) continue
-    if (item.precio !== undefined && item.precio !== null) {
-      // Precio real ya pagado por el cliente (pedidos de Shopify) — no se reescala por lista de Orbital.
-      esShopify = true
-      bruto += item.precio * item.cantidad
-      continue
-    }
-    // Preventa: el vendedor eligió el precio especial para este ítem (no se reescala por lista).
-    if (item.preventa && item.precio_pv != null) {
-      bruto += item.precio_pv * item.cantidad
-      continue
-    }
-    const s = stock.find((x) => x.codigo === item.codigo)
-    const precioBase = s ? s.precio || 0 : 0
-    const precio = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
-    bruto += precio * item.cantidad
-  }
+  const lista = items ?? []
+  // Pedido de Shopify: precio ya cerrado (con IVA), sin descuentos comerciales.
+  const esShopify = lista.some((i) => !i.regalo && i.precio !== undefined && i.precio !== null)
   if (esShopify) {
-    // El precio de Shopify ya incluye IVA (venta 100% blanco): el neto es el bruto sin ese 21%,
-    // no bruto menos descuento comercial/financiero (esos no aplican a una venta ya cerrada).
+    let bruto = 0
+    for (const it of lista) if (!it.regalo && it.precio != null) bruto += it.precio * it.cantidad
     return { bruto: Math.round(bruto), neto: Math.round(bruto / 1.21) }
   }
+  // Pedido B2B: se suma línea por línea (mismo redondeo que el remito de Tango).
   const dc = parseFloat(dtoCom || '') || 0
   const df = parseFloat(dtoFin || '') || 0
-  const neto = bruto * (1 - dc / 100) * (1 - df / 100)
+  let bruto = 0
+  let neto = 0
+  for (const item of lista) {
+    if (item.regalo) continue
+    const precioBase = stock.find((x) => x.codigo === item.codigo)?.precio || 0
+    bruto += brutoUnitario(item, precioBase, nroLista ?? 5) * item.cantidad
+    neto += netoUnitario(item, precioBase, nroLista ?? 5, dc, df) * item.cantidad
+  }
   return { bruto: Math.round(bruto), neto: Math.round(neto) }
 }
 
