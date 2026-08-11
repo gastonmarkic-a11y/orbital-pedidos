@@ -17,6 +17,7 @@ interface Row { dia_num: number; bloque: string; localidad: string | null; regio
 interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; cod_cliente?: string | null; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
 interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; conflicto: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; whatsapp: string | null; zona: string | null; dist: number | null }
+interface Nuevo { cod: string; nombre: string | null; telefono: string | null; whatsapp: string | null; zona: string | null; localidad: string | null }
 
 // prospector code -> vendedor que alimenta
 const FEED: Record<string, { vendedor: string; label: string; prospLabel: string }> = {
@@ -80,6 +81,7 @@ export default function ProspeccionCampo() {
   const [verNuevos, setVerNuevos] = useState(false)
   const [julio, setJulio] = useState<PJ[]>([])
   const [zonaProsp, setZonaProsp] = useState<Bienv[]>([])
+  const [nuevos, setNuevos] = useState<Nuevo[]>([])
   // form
   const [cli, setCli] = useState('')
   const [tel, setTel] = useState('')
@@ -101,7 +103,12 @@ export default function ProspeccionCampo() {
     const { data } = await supabase.rpc('prospectos_julio_lista', { p_prospector: codigoEfectivo ?? null })
     setJulio((data as PJ[]) ?? [])
   }
-  useEffect(() => { cargar(); cargarJulio() /* eslint-disable-next-line */ }, [codigoEfectivo])
+  // Pool de bienvenida (fríos sin ventas) a contactar, ya excluidos los activados y los contactados.
+  async function cargarNuevos() {
+    const { data } = await supabase.rpc('bienvenida_a_llamar', { p_limit: 60 })
+    setNuevos((data as Nuevo[]) ?? [])
+  }
+  useEffect(() => { cargar(); cargarJulio(); cargarNuevos() /* eslint-disable-next-line */ }, [codigoEfectivo])
 
   async function cerrarJulio(id: number, v: boolean) {
     setJulio((js) => js.map((j) => (j.id === id ? { ...j, cerrado: v } : j)))
@@ -151,6 +158,19 @@ export default function ProspeccionCampo() {
       localidad: j.localidad, provincia: j.provincia,
       clasificacion_recupero: 'sin_historial', unidades_2025: 0,
     } as unknown as Cliente)
+  }
+  function abrirEnvioNuevo(n: Nuevo) {
+    setEnviarCli({
+      cod: n.cod, nomcomerc: n.nombre, razon: n.nombre,
+      whatsapp: n.whatsapp ?? n.telefono, telefono: n.telefono, email: null, contacto: null,
+      localidad: n.localidad, provincia: null,
+      clasificacion_recupero: 'sin_historial', unidades_2025: 0,
+    } as unknown as Cliente)
+  }
+  // Conflicto en un frío nuevo: registra actividad (lo saca del pool en la próxima carga) y lo quita ya.
+  async function marcarConflictoNuevo(n: Nuevo) {
+    setNuevos((ns) => ns.filter((x) => x.cod !== n.cod))
+    await registrarActividad({ cod: n.cod, nombre: n.nombre, telefono: n.telefono ?? n.whatsapp, localidad: n.localidad, origen: 'prospeccion_bienvenida', desarrollo: 'Conflicto: no atiende / número incorrecto', resultado: 'conflicto' })
   }
 
   const dias = useMemo(() => Array.from(new Set(rows.map((r) => r.dia_num))).sort((a, b) => a - b), [rows])
@@ -219,6 +239,7 @@ export default function ProspeccionCampo() {
   const nuevosDia = Math.ceil(META_NUEVOS_MES / diasRest)
   // Lista puntual "a llamar hoy": el cupo del día tomando los abiertos sin conflicto, interior/zona primero (orden de la RPC).
   const julioHoy = julio.filter((j) => !j.cerrado && !j.conflicto).slice(0, julioDia)
+  const nuevosHoy = nuevos.slice(0, nuevosDia)
 
   return (
     <div className="space-y-4 text-ink">
@@ -406,17 +427,30 @@ export default function ProspeccionCampo() {
               </span>{verNuevos ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
             </button>
             {verNuevos && (
-              <div className="border-t border-black/5 p-3 space-y-2 text-[12px] text-muted">
-                <p>Contactos en <b>frío</b> de tu cartera para ofrecerles la bienvenida Orbital por WhatsApp. Objetivo de largo plazo: cubrir <b>todos</b> los fríos; el ritmo es {META_NUEVOS_MES}/mes por prospector.</p>
-                <p className="text-[11px] text-faint">⚠️ Esto es <b>aparte</b> de los 5 turnos de zona del día (esos ya son <b>agenda activada</b> para el vendedor y no se cuentan acá).</p>
-                <p className="text-[11px]">La lista concreta por zona está en <b>Cartera → Paquete de Bienvenida</b> (con el cupo de hoy y el avance del pool). El motor por día con "a quién llamar" acá lo estamos armando.</p>
+              <div className="border-t border-black/5 p-3 space-y-2">
+                <p className="text-[12px] text-muted">Fríos <b>sin ventas</b> a los que enviarles la bienvenida por WhatsApp. Objetivo de largo plazo: cubrir <b>todos</b>. <b>Aparte</b> de los 5 turnos de zona (esos ya son agenda activada).</p>
+                <div className="rounded-xl border border-brand/30 bg-brand/5 p-2.5 space-y-1.5">
+                  <p className="text-[11px] font-semibold text-brandDark uppercase tracking-wide">🎯 A contactar hoy · {nuevosHoy.length}/{nuevosDia}</p>
+                  {nuevosHoy.length === 0 ? <p className="text-[11px] text-faint">No hay fríos nuevos pendientes en tu pool 🎉</p> : nuevosHoy.map((n) => (
+                    <div key={n.cod} className="flex items-center gap-2 rounded-lg border border-black/10 bg-white p-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium truncate">{n.nombre ?? n.cod}</p>
+                        <p className="text-[10px] text-faint">{[n.zona, n.localidad].filter(Boolean).join(' · ')}</p>
+                      </div>
+                      <LlamarBtn telefono={n.telefono} whatsapp={n.whatsapp} className="w-20 shrink-0" />
+                      <button onClick={() => abrirEnvioNuevo(n)} className="shrink-0 rounded-lg px-2.5 h-7 text-[11px] font-medium flex items-center gap-1 bg-brand text-white"><Send size={12} />Enviar</button>
+                      <button onClick={() => marcarConflictoNuevo(n)} title="No atiende / número incorrecto" className="shrink-0 rounded-lg px-2 h-7 text-[11px] font-medium border border-red-200 text-red-600">⚠</button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-faint">"Enviar" manda la bienvenida y lo saca del pool. ⚠ = no atiende/número malo → entra otro. Ordenados por zona; todo se refleja en la Cartera.</p>
+                </div>
               </div>
             )}
           </div>
         </>
       )}
 
-      {enviarCli && <PreparacionEnvio cliente={enviarCli} onClose={() => setEnviarCli(null)} onListo={() => { setEnviarCli(null); cargarJulio() }} />}
+      {enviarCli && <PreparacionEnvio cliente={enviarCli} onClose={() => setEnviarCli(null)} onListo={() => { setEnviarCli(null); cargarJulio(); cargarNuevos() }} />}
     </div>
   )
 }
