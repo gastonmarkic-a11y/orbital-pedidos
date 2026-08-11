@@ -6,6 +6,7 @@ import DrillClientes, { DrillRow } from './DrillClientes'
 import PreparacionEnvio from '../envios/PreparacionEnvio'
 import { Cliente, ObjetivoMes } from '../../lib/types'
 import { monthKey, habilesDelMes, habilesTranscurridos } from '../../lib/dates'
+import LlamarBtn from '../../lib/LlamarBtn'
 
 // Pantalla de PROSPECCIÓN de campo para Luna (Marketing) y Damián.
 // Objetivo OBLIGATORIO del día: conseguir 5 turnos en la zona del próximo recorrido
@@ -266,7 +267,7 @@ export default function ProspeccionCampo() {
                 </div>
                 <div className="flex gap-2 mt-2">
                   {waLink(b.telefono) && <a href={waLink(b.telefono)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
-                  {b.telefono && <a href={`tel:${b.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink">Llamar</a>}
+                  <LlamarBtn telefono={b.telefono} className="flex-1" />
                   {confirmado ? (
                     <div className="flex-1 flex gap-1.5">
                       <span className="flex-1 text-center text-[11px] font-semibold rounded-lg bg-emerald-600 text-white py-1.5 flex items-center justify-center gap-1"><Check size={13} />Confirmado</span>
