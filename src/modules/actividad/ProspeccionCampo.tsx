@@ -24,6 +24,23 @@ const FEED: Record<string, { vendedor: string; label: string; prospLabel: string
   Damian: { vendedor: 'Martin', label: 'Martín', prospLabel: 'Damián' },
 }
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
+const META_NUEVOS_MES = 150 // prospectos nuevos (bienvenida) por mes — objetivo de largo plazo
+// Feriados nacionales AR (editar según calendario oficial).
+const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
+// Días hábiles que quedan en el mes (desde hoy inclusive), sin sáb/dom ni feriados.
+function diasHabilesRestantes(): number {
+  const now = new Date(); const y = now.getFullYear(), mo = now.getMonth()
+  const fin = new Date(y, mo + 1, 0).getDate()
+  let c = 0
+  for (let d = now.getDate(); d <= fin; d++) {
+    const dow = new Date(y, mo, d).getDay()
+    if (dow === 0 || dow === 6) continue
+    const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (FERIADOS_AR.includes(iso)) continue
+    c++
+  }
+  return Math.max(1, c)
+}
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const INICIO_AGENDA: [number, number, number] = [2026, 7, 11] // 11/8/2026 (fijo, igual que AgendaCampo)
 function sumarHabiles(base: Date, k: number): Date {
@@ -59,6 +76,7 @@ export default function ProspeccionCampo() {
   const [loading, setLoading] = useState(true)
   const [diaSel, setDiaSel] = useState<number | null>(null)
   const [verJulio, setVerJulio] = useState(false)
+  const [verNuevos, setVerNuevos] = useState(false)
   const [julio, setJulio] = useState<PJ[]>([])
   const [zonaProsp, setZonaProsp] = useState<Bienv[]>([])
   // form
@@ -184,6 +202,13 @@ export default function ProspeccionCampo() {
     setTurnos((t) => t.filter((x) => x.id !== id))
     await supabase.from('agenda_turnos').delete().eq('id', id)
   }
+
+  // Cupos diarios de los TRES objetivos (mensual ÷ días hábiles restantes). Los 5 turnos de zona
+  // ya son "agenda activada" y van aparte — NO entran en la prospección nueva de bienvenida.
+  const julioAbiertos = julio.filter((j) => !j.cerrado).length
+  const diasRest = diasHabilesRestantes()
+  const julioDia = Math.ceil(julioAbiertos / diasRest)
+  const nuevosDia = Math.ceil(META_NUEVOS_MES / diasRest)
 
   return (
     <div className="space-y-4 text-ink">
@@ -311,14 +336,16 @@ export default function ProspeccionCampo() {
             ))}
           </div>
 
-          {/* Tarea paralela: prospectos de julio */}
+          {/* OBJETIVO 2 · Potenciá el contacto generado en julio */}
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
-            <button onClick={() => setVerJulio((v) => !v)} className="w-full flex items-center justify-between p-3.5 text-sm font-medium">
-              <span>En paralelo · tus prospectos de julio ({julio.filter((j) => !j.cerrado).length} abiertos)</span>{verJulio ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <button onClick={() => setVerJulio((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
+              <span className="min-w-0">🔥 Potenciá el contacto generado en julio
+                <span className="block text-[11px] text-faint font-normal">{julioAbiertos} abiertos · objetivo de hoy: <b className="text-ink">{julioDia}/día</b> para cerrarlos este mes</span>
+              </span>{verJulio ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
             </button>
             {verJulio && (
               <div className="border-t border-black/5 p-3 space-y-2">
-                <p className="text-[12px] text-muted">Tus contactos de julio ({feed.prospLabel}). Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo). Cada "Enviar" queda registrado como actividad.</p>
+                <p className="text-[12px] text-muted">Contactá <b>{julioDia} por día</b> ({julioAbiertos} abiertos ÷ {diasRest} días hábiles) para cerrar julio este mes. Entrá por zona → provincia → ciudad. <b>Interior primero</b> (catálogo). Cada "Enviar" queda registrado como actividad.</p>
                 {julio.length === 0 ? <p className="text-[11px] text-faint">Sin base de julio cargada.</p> : (
                   <DrillClientes rows={julio.map((j) => ({ ...j, cod: j.codigo ?? String(j.id) })) as unknown as DrillRow[]} renderItem={(r) => {
                     const j = r as unknown as PJ
@@ -335,6 +362,22 @@ export default function ProspeccionCampo() {
                     )
                   }} />
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* OBJETIVO 3 · Prospectos nuevos (Paquete de Bienvenida) — aparte de los 5 turnos de zona */}
+          <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
+            <button onClick={() => setVerNuevos((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
+              <span className="min-w-0">🆕 Prospectos nuevos · Paquete de Bienvenida
+                <span className="block text-[11px] text-faint font-normal">objetivo de hoy: <b className="text-ink">{nuevosDia}/día</b> ({META_NUEVOS_MES}/mes ÷ {diasRest} días hábiles)</span>
+              </span>{verNuevos ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+            </button>
+            {verNuevos && (
+              <div className="border-t border-black/5 p-3 space-y-2 text-[12px] text-muted">
+                <p>Contactos en <b>frío</b> de tu cartera para ofrecerles la bienvenida Orbital por WhatsApp. Objetivo de largo plazo: cubrir <b>todos</b> los fríos; el ritmo es {META_NUEVOS_MES}/mes por prospector.</p>
+                <p className="text-[11px] text-faint">⚠️ Esto es <b>aparte</b> de los 5 turnos de zona del día (esos ya son <b>agenda activada</b> para el vendedor y no se cuentan acá).</p>
+                <p className="text-[11px]">La lista concreta por zona está en <b>Cartera → Paquete de Bienvenida</b> (con el cupo de hoy y el avance del pool). El motor por día con "a quién llamar" acá lo estamos armando.</p>
               </div>
             )}
           </div>
