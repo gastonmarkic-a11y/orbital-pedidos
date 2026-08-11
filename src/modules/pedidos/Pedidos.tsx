@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass } from './calc'
+import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
@@ -701,7 +701,8 @@ export default function Pedidos() {
                     )}
                     {(l.items ?? []).map((i) => {
                       const s = stock.find((x) => x.codigo === i.codigo)
-                      const precio = s?.precio ?? 0
+                      // Precio NETO real del ítem (lista + descuentos, o preventa, o precio fijo, o sin cargo).
+                      const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, parseFloat(l.dto_comercial || '') || 0, parseFloat(l.dto_financiero || '') || 0)
                       const picked = (l.picking ?? []).includes(i.codigo)
                       const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion'
                       return (
@@ -723,7 +724,9 @@ export default function Pedidos() {
                           </span>
                           <span className="shrink-0 text-right">
                             <b>{i.cantidad} uds</b>
-                            {precio > 0 ? ' · ' + formatPrecio(precio * i.cantidad) : ''}
+                            {i.regalo ? <span className="text-emerald-700"> · sin cargo</span>
+                              : pu > 0 ? <span className="text-muted"> · {formatPrecio(pu)}/u · <b className="text-emerald-600">{formatPrecio(pu * i.cantidad)}</b></span>
+                              : ''}
                             {(i.pendiente ?? 0) > 0 && (
                               <span className="block text-[10px] text-violet-700 font-medium">
                                 {i.cantidad - (i.pendiente ?? 0)} listas · 🏭 {i.pendiente} en producción
