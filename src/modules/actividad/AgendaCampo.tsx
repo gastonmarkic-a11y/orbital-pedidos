@@ -356,8 +356,7 @@ export default function AgendaCampo() {
   const interior = useMemo(() => rows.filter((r) => r.bloque === 'interior'), [rows])
   const dias = useMemo(() => Array.from(new Set(baGba.map((r) => r.dia_num))).sort((a, b) => a - b), [baGba])
   const hoy = useMemo(() => dias.find((d) => baGba.some((r) => r.dia_num === d && !r.visitado)) ?? dias[0] ?? 1, [dias, baGba])
-  // abrir "hoy" por defecto cuando cargan los datos
-  useEffect(() => { if (!loading && abierto === null) setAbierto(hoy) /* eslint-disable-next-line */ }, [loading, hoy])
+  // Todos los días arrancan CERRADOS (nada pre-abierto): así se ve claro el objetivo de cada día en su header.
 
   const totalPend = baGba.filter((r) => !r.visitado).length
 
