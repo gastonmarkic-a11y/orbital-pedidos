@@ -13,7 +13,7 @@ import { monthKey, habilesDelMes, habilesTranscurridos } from '../../lib/dates'
 // En paralelo: cerrar/seguir los prospectos generados por ellos en julio.
 
 interface Row { dia_num: number; bloque: string; localidad: string | null; region: string | null; visitado: boolean; cod: string }
-interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
+interface Turno { id: number; vendedor: string; dia_num: number; cliente: string; cod_cliente?: string | null; telefono: string | null; localidad: string | null; cargado_por: string | null; nota: string | null }
 interface PJ { id: number; nombre: string | null; codigo: string | null; compartido: boolean; cerrado: boolean; region: string | null; provincia: string | null; localidad: string | null; telefono: string | null; es_interior: boolean }
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 
@@ -147,7 +147,17 @@ export default function ProspeccionCampo() {
     }).select().single()
     if (data) setTurnos((t) => [...t, data as Turno])
     await registrarActividad({ cod: b.cod, nombre: b.nombre, telefono: b.telefono, localidad: b.zona, origen: 'prospeccion_turno', desarrollo: `Confirmado: va a pasar ${feed.label}` })
-    setZonaProsp((z) => z.filter((x) => x.cod !== b.cod))
+    // NO se oculta: queda visible en verde como "Confirmado" (agenda activada), con opción de deshacer.
+  }
+  // Deshacer una confirmación (por si el operador se equivocó): borra el turno y su registro de hoy.
+  async function desconfirmarTurno(b: Bienv) {
+    const t = turnos.find((x) => x.cod_cliente === b.cod && x.dia_num === diaActivo)
+    if (t) {
+      await supabase.from('agenda_turnos').delete().eq('id', t.id)
+      setTurnos((ts) => ts.filter((x) => x.id !== t.id))
+    }
+    const hoyStr = new Date().toISOString().slice(0, 10)
+    await supabase.from('actividad_diaria').delete().eq('cod_cliente', b.cod).eq('origen', 'prospeccion_turno').eq('fecha', hoyStr).ilike('actividad_desarrollo', '%va a pasar%')
   }
 
   const zonaDe = (d: number) => Array.from(new Set(rows.filter((r) => r.dia_num === d).map((r) => r.localidad).filter(Boolean)))
@@ -247,18 +257,27 @@ export default function ProspeccionCampo() {
           <div className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">Ópticas de la zona para confirmar ({zonaProsp.length})</p>
             <p className="text-[11px] text-faint -mt-1">Llamá, confirmá que va a pasar {feed.label}, y tocá "Confirmar turno".</p>
-            {zonaProsp.length === 0 ? <p className="text-[11px] text-faint">No hay ópticas de prospección sin agendar en esta zona.</p> : zonaProsp.map((b) => (
-              <div key={b.cod} className="rounded-xl border border-black/10 p-2.5">
+            {zonaProsp.length === 0 ? <p className="text-[11px] text-faint">No hay ópticas de prospección sin agendar en esta zona.</p> : zonaProsp.map((b) => {
+              const confirmado = turnos.some((t) => t.cod_cliente === b.cod && t.dia_num === diaActivo)
+              return (
+              <div key={b.cod} className={`rounded-xl border p-2.5 ${confirmado ? 'border-emerald-300 bg-emerald-50/40' : 'border-black/10'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0"><p className="text-[13px] font-medium truncate">{b.nombre}</p><p className="text-[10px] text-faint">{[b.zona, b.direccion].filter(Boolean).join(' · ')}{b.dist != null ? ` · ${b.dist}km` : ''}</p></div>
+                  <div className="min-w-0"><p className="text-[13px] font-medium truncate">{b.nombre}</p><p className="text-[10px] text-faint">{[b.zona, b.direccion].filter(Boolean).join(' · ')}{b.dist != null ? ` · ${b.dist}km` : ''}{confirmado ? ' · ✓ agenda activada' : ''}</p></div>
                 </div>
                 <div className="flex gap-2 mt-2">
                   {waLink(b.telefono) && <a href={waLink(b.telefono)!} target="_blank" rel="noreferrer" className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-emerald-700">WhatsApp</a>}
                   {b.telefono && <a href={`tel:${b.telefono}`} className="flex-1 text-center text-[11px] font-medium rounded-lg border border-black/10 py-1.5 text-ink">Llamar</a>}
-                  <button onClick={() => confirmarTurno(b)} className="flex-1 text-[11px] font-semibold rounded-lg bg-brand text-white py-1.5">✓ Confirmar turno</button>
+                  {confirmado ? (
+                    <div className="flex-1 flex gap-1.5">
+                      <span className="flex-1 text-center text-[11px] font-semibold rounded-lg bg-emerald-600 text-white py-1.5 flex items-center justify-center gap-1"><Check size={13} />Confirmado</span>
+                      <button onClick={() => desconfirmarTurno(b)} title="Deshacer la confirmación (por si te equivocaste)" className="shrink-0 text-[11px] font-medium rounded-lg border border-black/15 text-muted px-2.5 py-1.5">Deshacer</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => confirmarTurno(b)} className="flex-1 text-[11px] font-semibold rounded-lg bg-brand text-white py-1.5">✓ Confirmar turno</button>
+                  )}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
 
           {/* Alta de turno manual (otro contacto) */}
