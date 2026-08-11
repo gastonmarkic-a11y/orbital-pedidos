@@ -9,8 +9,19 @@ import { ChevronDown, ChevronRight, CalendarDays, Plane, MapPin } from 'lucide-r
 
 interface Row { dia_num: number; bloque: string; cohorte: string; localidad: string | null; provincia?: string | null; region?: string | null; cod: string; nombre: string | null; visitado: boolean; resultado: string | null; unidades?: number | null }
 interface Turno { vendedor: string; dia_num: number; cargado_por: string | null; cliente?: string | null; localidad?: string | null }
-interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null; origen?: string | null }
+interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null; origen?: string | null; propuesta_enviada_id?: number | null }
 interface PJ { prospector: string; cerrado: boolean; nombre: string | null; codigo: string | null; localidad?: string | null }
+interface Obj { vendedor: string; objetivo_contactos: number; objetivo_propuestas: number; objetivo_ventas: number }
+
+// Personas del resumen del día, con su objetivo propio. Luna prospecta la zona de Adrián; Damián la de Martín.
+const ACTORES = [
+  { code: 'Adrian', label: 'Adrián', rol: 'Vendedor · campo', tipo: 'vend' as const, para: null as string | null, paraLabel: '' },
+  { code: 'Martin', label: 'Martín', rol: 'Vendedor · campo', tipo: 'vend' as const, para: null as string | null, paraLabel: '' },
+  { code: 'Marketing', label: 'Luna', rol: 'Prospección · zona de Adrián', tipo: 'prosp' as const, para: 'Adrian' as string | null, paraLabel: 'Adrián' },
+  { code: 'Damian', label: 'Damián', rol: 'Prospección · zona de Martín', tipo: 'prosp' as const, para: 'Martin' as string | null, paraLabel: 'Martín' },
+  { code: 'Corporativo', label: 'Corporativo', rol: 'Cuentas corporativas', tipo: 'corp' as const, para: null as string | null, paraLabel: '' },
+]
+const DIAS_HABILES_MES = 22 // para bajar el objetivo mensual a diario
 
 const VEND = [{ cod: 'Adrian', label: 'Adrián', prosp: 'Luna', prospCod: 'Marketing' }, { cod: 'Martin', label: 'Martín', prosp: 'Damián', prospCod: 'Damian' }]
 const RES = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' } as const
@@ -79,6 +90,7 @@ export default function AgendaEquipo() {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [actHoy, setActHoy] = useState<Act[]>([])
   const [todoHoy, setTodoHoy] = useState<Act[]>([])
+  const [objs, setObjs] = useState<Obj[]>([])
   const [julio, setJulio] = useState<PJ[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -91,14 +103,19 @@ export default function AgendaEquipo() {
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Martin' }),
         supabase.from('agenda_turnos').select('vendedor,dia_num,cargado_por,cliente,localidad'),
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas').eq('origen', 'agenda_campo').eq('fecha', hoy),
-        // TODAS las actividades del día (cualquier origen): ventas generales + aporte de prospección
-        supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas,origen').eq('fecha', hoy),
+        // TODAS las actividades del día (cualquier origen y persona): contactos, ventas y propuestas por persona
+        supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas,origen,propuesta_enviada_id').eq('fecha', hoy),
       ])
-      const pj = await supabase.from('prospectos_julio').select('prospector,cerrado,nombre,codigo,localidad')
+      const mesAnio = hoy.slice(0, 7)
+      const [pj, ob] = await Promise.all([
+        supabase.from('prospectos_julio').select('prospector,cerrado,nombre,codigo,localidad'),
+        supabase.from('objetivos_mes').select('vendedor,objetivo_contactos,objetivo_propuestas,objetivo_ventas').eq('mes_anio', mesAnio),
+      ])
       setPlanes({ Adrian: (a.data as Row[]) ?? [], Martin: (m.data as Row[]) ?? [] })
       setTurnos((t.data as Turno[]) ?? [])
       setActHoy((ah.data as Act[]) ?? [])
       setTodoHoy((th.data as Act[]) ?? [])
+      setObjs((ob.data as Obj[]) ?? [])
       setJulio((pj.data as PJ[]) ?? [])
       setLoading(false)
     }
@@ -163,6 +180,50 @@ export default function AgendaEquipo() {
           </div>
         )
       })()}
+
+      {/* ===== RESUMEN DEL DÍA POR PERSONA (objetivos propios) ===== */}
+      <div className="bg-white rounded-2xl border border-black/10 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-muted mb-3">Resumen del día por persona · objetivo propio</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {ACTORES.map((ac) => {
+            const filas = todoHoy.filter((x) => x.vendedor === ac.code)
+            const contactos = filas.length
+            const ventas = filas.filter((x) => x.resultado_contacto === 'vendio')
+            const monto = ventas.reduce((s, x) => s + (x.monto_vendido ?? 0), 0)
+            const propuestas = filas.filter((x) => x.propuesta_enviada_id != null).length
+            const o = objs.find((x) => x.vendedor === ac.code)
+            const objDiaC = o ? Math.round(o.objetivo_contactos / DIAS_HABILES_MES) : 0
+            const objDiaP = o ? Math.round(o.objetivo_propuestas / DIAS_HABILES_MES) : 0
+            const checkin = actHoy.filter((x) => x.vendedor === ac.code).length
+            const turnosZona = ac.para ? turnos.filter((t) => t.vendedor === ac.para).length : 0
+            const julioAb = julio.filter((j) => j.prospector === ac.code && !j.cerrado).length
+            const julioTot = julio.filter((j) => j.prospector === ac.code).length
+            return (
+              <div key={ac.code} className="bg-[#F7F5F0] rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold">{ac.label}</p>
+                  <span className="text-[10px] text-faint text-right">{ac.rol}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 text-center">
+                  <div className="bg-white rounded-lg p-1.5"><p className="text-base font-bold tabular-nums">{contactos}<span className="text-[10px] text-faint">/{objDiaC || '—'}</span></p><p className="text-[9px] text-muted">contactos hoy</p></div>
+                  <div className="bg-white rounded-lg p-1.5"><p className="text-base font-bold tabular-nums">{propuestas}<span className="text-[10px] text-faint">/{objDiaP || '—'}</span></p><p className="text-[9px] text-muted">propuestas hoy</p></div>
+                  <div className="bg-white rounded-lg p-1.5"><p className="text-base font-bold text-emerald-700 tabular-nums">{ventas.length}</p><p className="text-[9px] text-muted">ventas{monto ? ` · ${kAr(monto)}` : ''}</p></div>
+                </div>
+                {ac.tipo === 'vend' && (
+                  <p className="text-[10px] text-muted">🔵 Campo: <b>{checkin}</b> check-in hoy · 📄 propuestas al interior incluidas arriba</p>
+                )}
+                {ac.tipo === 'prosp' && (
+                  <p className="text-[10px] text-muted">📍 Turnos de zona p/ {ac.paraLabel}: <b>{turnosZona}</b> · 🗂️ Julio abiertos: <b>{julioAb}</b><span className="text-faint">/{julioTot}</span></p>
+                )}
+                {ac.tipo === 'corp' && (
+                  <p className="text-[10px] text-muted">🏢 Objetivo chico del mes: {o?.objetivo_contactos ?? 0} contactos · {o?.objetivo_ventas ?? 0} ventas</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-[10px] text-faint mt-2">Objetivo diario = objetivo mensual ÷ {DIAS_HABILES_MES} días hábiles. Ventas y $ son de cualquier venta cargada hoy por cada persona.</p>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         {VEND.map((v) => {
