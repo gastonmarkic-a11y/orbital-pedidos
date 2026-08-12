@@ -416,19 +416,35 @@ export default function Pedidos() {
     }
   }
 
+  // Export COMERCIAL: una fila por operación (pedido) con todo lo de la venta —
+  // empresa, forma de pago, plazos, descuentos, blanco/negro, montos, cantidad, fecha. Sin datos de entrega.
   function exportarDetalle() {
-    let csv = 'Pedido;Fecha;Cliente;Estado;SKU;Modelo;Color;Cantidad\n'
+    const q = (s: unknown) => `"${String(s ?? '').replace(/"/g, "'")}"`
+    const cols = [
+      'Pedido', 'Fecha', 'Empresa', 'Cod cliente', 'Vendedor', 'Estado', 'Nro factura', 'Cantidad uds',
+      'Forma de pago', 'Plazos', 'Dto comercial %', 'Dto financiero %', 'Blanco %', 'Negro %',
+      'Monto bruto', 'Monto neto sin IVA', 'IVA', 'Total con IVA', 'Lista',
+    ]
+    let csv = cols.join(';') + '\n'
     for (const l of filtrados) {
-      for (const i of l.items ?? []) {
-        csv += `${l.id};"${l.fecha ?? ''}";"${(l.cliente ?? '').replace(/"/g, "'")}";"${estadoLabel(l.estado)}";"${i.codigo}";"${i.modelo}";"${(i.descripcion ?? '').replace(/"/g, "'")}";${i.cantidad}\n`
-      }
+      const cant = (l.items ?? []).reduce((s, i) => s + (i.cantidad || 0), 0)
+      const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+      const iva = calcImporteConIVA(imp.neto, l.blanco_pct ?? 100)
+      const plazos = parseFP(l.cond_pago, l.cuotas_detalle).map((c) => (c.dias === 0 ? 'Contado' : `${c.dias}d ${Math.round(c.pct * 100)}%`)).join(' · ')
+      const medios = l.medios_pago?.length ? labelMedios(l.medios_pago) : ''
+      csv += [
+        l.id, q(l.fecha ?? ''), q(l.cliente ?? ''), q(l.cod_cliente ?? ''), q(l.vendedor ?? ''), q(estadoLabel(l.estado)),
+        q(l.nro_factura ?? ''), cant, q(medios), q(plazos),
+        parseFloat(l.dto_comercial || '') || 0, parseFloat(l.dto_financiero || '') || 0, l.blanco_pct ?? 100, l.negro_pct ?? 0,
+        imp.bruto, imp.neto, iva.ivaImporte, iva.conIVA, l.nro_lista ?? '',
+      ].join(';') + '\n'
     }
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `pedidos_detalle_${filtroEstado || 'todos'}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `operaciones_comercial_${filtroEstado || 'todos'}_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
-    toast(`✓ Exportados ${filtrados.length} pedidos con su detalle`, 'success')
+    toast(`✓ Exportadas ${filtrados.length} operaciones`, 'success')
   }
 
   function toggleAbierto(id: number) {
