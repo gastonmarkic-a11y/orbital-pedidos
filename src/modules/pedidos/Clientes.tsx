@@ -3,12 +3,23 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 
+// Cliente + su cohorte (cartera) que devuelve la búsqueda global.
+type ClienteBusq = Cliente & { cohorte?: string }
+// Rótulos de cartera para saber dónde está derivado/buscarlo.
+const CARTERA: Record<string, { t: string; c: string }> = {
+  fidelizacion: { t: '⭐ Fidelizado', c: 'bg-violet-100 text-violet-700' },
+  canje: { t: '🎯 Canje', c: 'bg-amber-100 text-amber-700' },
+  recuperar: { t: '↩ Recuperar', c: 'bg-orange-100 text-orange-700' },
+  bienvenida: { t: '👋 Bienvenida', c: 'bg-red-100 text-red-700' },
+}
+const carteraLabel = (co?: string) => CARTERA[co ?? ''] ?? { t: '—', c: 'bg-black/5 text-muted' }
+
 export default function Clientes() {
   const toast = useToast()
-  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clientes, setClientes] = useState<ClienteBusq[]>([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
-  const [detalle, setDetalle] = useState<Cliente | null>(null)
+  const [detalle, setDetalle] = useState<ClienteBusq | null>(null)
   const [nuevoAbierto, setNuevoAbierto] = useState(false)
   const [nuevo, setNuevo] = useState({
     cod: '', razon: '', nomcomerc: '', cuit: '', direccion: '', localidad: '', telefono: '', email: '', contacto: '', nro_lista: '5', nota: '',
@@ -50,11 +61,9 @@ export default function Clientes() {
   useEffect(() => {
     const t = setTimeout(async () => {
       setLoading(true)
-      const q = busqueda.trim()
-      let query = supabase.from('clientes').select('*').order('razon').limit(20)
-      if (q) query = supabase.from('clientes').select('*').or(`cod.ilike.%${q}%,razon.ilike.%${q}%,cuit.ilike.%${q}%,nomcomerc.ilike.%${q}%`).order('razon').limit(20)
-      const { data } = await query
-      setClientes((data as Cliente[]) ?? [])
+      // Búsqueda GLOBAL (todos los usuarios ven todos los clientes) + la cartera de cada uno.
+      const { data } = await supabase.rpc('buscar_clientes', { p_q: busqueda.trim(), p_limit: 30 })
+      setClientes((data as ClienteBusq[]) ?? [])
       setLoading(false)
     }, 300)
     return () => clearTimeout(t)
@@ -122,7 +131,7 @@ export default function Clientes() {
       )}
 
       <input
-        placeholder="Buscar por código, razón social, CUIT o nombre comercial..."
+        placeholder="Buscar por código, razón, CUIT, nombre, dirección, localidad o teléfono — todos los clientes"
         value={busqueda}
         onChange={(e) => setBusqueda(e.target.value)}
         className="w-full bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
@@ -137,7 +146,7 @@ export default function Clientes() {
           <table className="w-full min-w-[680px] text-sm border-collapse">
             <thead className="bg-ink text-white">
               <tr>
-                {['Código', 'Razón social', 'CUIT', 'Localidad', 'Teléfono', 'Lista'].map((h) => (
+                {['Código', 'Razón social', 'Cartera', 'Localidad', 'Teléfono', 'Vendedor'].map((h) => (
                   <th key={h} className="text-left text-[10px] uppercase font-semibold px-3 py-2">
                     {h}
                   </th>
@@ -153,14 +162,10 @@ export default function Clientes() {
                 >
                   <td className="px-3 py-2 font-mono text-xs text-muted">{c.cod}</td>
                   <td className="px-3 py-2 font-semibold">{c.razon || ''}</td>
-                  <td className="px-3 py-2 text-muted">{c.cuit || '—'}</td>
+                  <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${carteraLabel(c.cohorte).c}`}>{carteraLabel(c.cohorte).t}</span></td>
                   <td className="px-3 py-2 text-muted">{c.localidad || '—'}</td>
                   <td className="px-3 py-2 text-muted">{c.telefono || '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className="bg-indigo-50 text-indigo-600 rounded-full px-2 py-0.5 text-[10px] font-bold">
-                      L{c.nro_lista ?? 5}
-                    </span>
-                  </td>
+                  <td className="px-3 py-2 text-xs">{c.vendedor_asignado || <span className="text-red-500 font-medium">sin asignar</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -168,7 +173,7 @@ export default function Clientes() {
         </div>
       )}
       <p className="text-[11px] text-faint text-center">
-        Mostrando {clientes.length} clientes{busqueda.trim() ? ` para "${busqueda.trim()}"` : ' (los primeros 20 — usá el buscador)'}
+        Mostrando {clientes.length} clientes de TODA la base{busqueda.trim() ? ` para "${busqueda.trim()}"` : ' (los primeros 30 — usá el buscador)'}
       </p>
 
       {detalle && (
@@ -192,7 +197,8 @@ export default function Clientes() {
                   ['Mail', detalle.email],
                   ['Contacto', detalle.contacto],
                   ['Lista', `L${detalle.nro_lista ?? 5}`],
-                  ['Vendedor asignado', detalle.vendedor_asignado],
+                  ['Cartera (dónde buscarlo)', carteraLabel(detalle.cohorte).t],
+                  ['Vendedor asignado', detalle.vendedor_asignado || 'sin asignar'],
                   ['Nota', detalle.nota],
                 ] as const
               ).map(([label, val]) => (
