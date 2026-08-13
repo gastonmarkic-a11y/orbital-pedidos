@@ -32,6 +32,7 @@ export default function Pedidos() {
   const esLogistica = rol === 'logistica'
   const esAdministracion = rol === 'administracion'
   const esVendedor = rol === 'vendedor'
+  const esRevendedor = rol === 'revendedor'
   const esTienda = rol === 'tienda'
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -78,7 +79,7 @@ export default function Pedidos() {
 
   const filtrados = useMemo(() => {
     let logs = [...pedidos]
-    if (esVendedor || esTienda) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
+    if (esVendedor || esTienda || esRevendedor) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
     if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (esAdministracion) logs = logs.filter((l) => ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
@@ -91,7 +92,7 @@ export default function Pedidos() {
           (l.items || []).some((i) => (i.modelo || '').toLowerCase().includes(q))
       )
     return logs
-  }, [pedidos, esVendedor, esTienda, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
+  }, [pedidos, esVendedor, esRevendedor, esTienda, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
 
   async function asignarCodigo() {
     if (!asignarPed) return
@@ -518,7 +519,7 @@ export default function Pedidos() {
           onChange={(e) => setBusqueda(e.target.value)}
           className="flex-1 min-w-[160px] bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
         />
-        {!esVendedor && (
+        {!esVendedor && !esRevendedor && (
           <select
             value={filtroVendedor}
             onChange={(e) => setFiltroVendedor(e.target.value)}

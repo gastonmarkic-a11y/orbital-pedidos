@@ -121,9 +121,9 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Usuario de solo-contenido: únicamente la carpeta de material de marketing, nada más.
   if (rol === 'contenido')
     return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
-  // Revendedor: solo Cartera (ver su zona) y Pedidos (generar). No agenda, no reasignar, nada más.
+  // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
-    return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }], secundarios: [], menu: [] }
+    return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -386,6 +386,7 @@ function Layout() {
             <>
               <Route path="/cartera" element={<Cartera />} />
               <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
+              <Route path="/marketing" element={<Marketing />} />
             </>
           )}
           {rol !== 'contenido' && <Route path="/pedidos" element={<Pedidos />} />}
