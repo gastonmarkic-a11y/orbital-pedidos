@@ -26,6 +26,9 @@ const FEED: Record<string, { vendedor: string; label: string; prospLabel: string
 }
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
 const META_NUEVOS_MES = 150 // prospectos nuevos (bienvenida) por mes — objetivo de largo plazo
+// Turnos de zona PAUSADOS para Adrián/Martín: el objetivo se muestra en gris al final, sin poder activarlo.
+// Poné en false para reactivarlo.
+const PAUSA_TURNOS = true
 // Feriados nacionales AR (editar según calendario oficial).
 const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
 // Días hábiles que quedan en el mes (desde hoy inclusive), sin sáb/dom ni feriados.
@@ -279,7 +282,8 @@ export default function ProspeccionCampo() {
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">Todavía no hay recorrido de campo generado para {feed.label}.</p>
       ) : (
         <>
-          {/* OBJETIVO 1 · Turnos de visita para el vendedor (colapsable) */}
+          {/* OBJETIVO 1 · Turnos de visita — PAUSADO (se muestra en gris al final) */}
+          {!PAUSA_TURNOS && (
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
             <button onClick={() => setVerZona((v) => !v)} className="w-full flex items-center justify-between gap-2 p-3.5 text-sm font-medium text-left">
               <span className="min-w-0 flex items-center gap-1.5"><Target size={15} className="text-gold shrink-0" /><span>Turnos de visita para {feed.label}
@@ -370,6 +374,7 @@ export default function ProspeccionCampo() {
               </div>
             )}
           </div>
+          )}
 
           {/* OBJETIVO 2 · Potenciá el contacto generado en julio */}
           <div className="bg-white rounded-2xl border border-black/10 overflow-hidden">
@@ -447,6 +452,17 @@ export default function ProspeccionCampo() {
               </div>
             )}
           </div>
+          {/* OBJETIVO PAUSADO · Turnos de zona — al final, en gris, no accionable */}
+          {PAUSA_TURNOS && (
+            <div className="bg-black/[.03] border border-black/10 rounded-2xl p-3.5 opacity-70 select-none cursor-not-allowed" title="Objetivo pausado — no disponible por ahora" aria-disabled="true">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 flex items-center gap-2"><Target size={15} className="text-faint shrink-0" /><span className="font-medium text-muted">Turnos de visita para {feed.label}
+                  <span className="block text-[11px] text-faint font-normal">⏸ En pausa — por ahora enfocate en Julio y Bienvenida</span>
+                </span></span>
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-black/10 text-muted">En pausa</span>
+              </div>
+            </div>
+          )}
         </>
       )}
 
