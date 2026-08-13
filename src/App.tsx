@@ -20,6 +20,7 @@ import MisResultados from './modules/actividad/MisResultados'
 import CoachFlotante from './modules/actividad/CoachFlotante'
 import Marketing from './modules/actividad/Marketing'
 import GuionesContacto from './modules/actividad/GuionesContacto'
+import ProspeccionSocial from './modules/actividad/ProspeccionSocial'
 import AdminActividad from './modules/actividad/AdminActividad'
 import AdminMarketing from './modules/actividad/AdminMarketing'
 
@@ -124,7 +125,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
-    return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
+    return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }, { to: '/prospeccion-social', label: 'Prospección social' }], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -153,6 +154,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
     { to: '/guiones', label: 'Guiones' },
+    { to: '/prospeccion-social', label: 'Prospección social' },
     { to: '/conversaciones', label: 'Conversaciones' },
   ]
   const menu: NavItem[] = []
@@ -175,7 +177,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/actividad-admin', label: 'Equipo' },
       { to: '/agenda-equipo', label: 'Agenda equipo (campo)' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
-      { to: '/guiones', label: 'Guiones de contacto' }
+      { to: '/guiones', label: 'Guiones de contacto' },
+      { to: '/prospeccion-social', label: 'Cola de prospección social' }
     )
   }
   return { principales, secundarios, menu }
@@ -421,6 +424,7 @@ function Layout() {
           <Route path="/conversaciones" element={<Conversaciones />} />
           <Route path="/derivaciones" element={<Conversaciones />} />
           <Route path="/guiones" element={<GuionesContacto />} />
+          <Route path="/prospeccion-social" element={<ProspeccionSocial />} />
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
