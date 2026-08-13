@@ -26,6 +26,48 @@ export default function Clientes() {
   })
   const [pendientes, setPendientes] = useState<Cliente[]>([])
   const [recargaPend, setRecargaPend] = useState(0)
+  // Unificar duplicados (Administración)
+  const [unifOpen, setUnifOpen] = useState(false)
+  const [uq, setUq] = useState('')
+  const [ures, setUres] = useState<ClienteBusq[]>([])
+  const [uA, setUA] = useState<ClienteBusq | null>(null)
+  const [uB, setUB] = useState<ClienteBusq | null>(null)
+  const [opsA, setOpsA] = useState<Record<string, number> | null>(null)
+  const [opsB, setOpsB] = useState<Record<string, number> | null>(null)
+  const [keepCod, setKeepCod] = useState('')
+  const [unificando, setUnificando] = useState(false)
+
+  useEffect(() => {
+    if (!unifOpen) return
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc('buscar_clientes', { p_q: uq.trim(), p_limit: 12 })
+      setUres((data as ClienteBusq[]) ?? [])
+    }, 300)
+    return () => clearTimeout(t)
+  }, [uq, unifOpen])
+
+  async function pickU(c: ClienteBusq) {
+    const { data } = await supabase.rpc('cliente_ops', { p_cod: c.cod })
+    const ops = data as Record<string, number>
+    if (!uA) {
+      setUA(c); setOpsA(ops); if (!c.cod.startsWith('TMP')) setKeepCod(c.cod)
+    } else if (!uB && c.cod !== uA.cod) {
+      setUB(c); setOpsB(ops); setKeepCod((k) => k || (c.cod.startsWith('TMP') ? uA.cod : c.cod))
+    }
+    setUq(''); setUres([])
+  }
+  function resetUnif() { setUA(null); setUB(null); setOpsA(null); setOpsB(null); setKeepCod(''); setUq(''); setUres([]) }
+  async function unificar() {
+    if (!uA || !uB || !keepCod) return
+    const drop = keepCod === uA.cod ? uB.cod : uA.cod
+    if (!window.confirm(`Se mueve TODO (pedidos, ventas, actividad…) de ${drop} a ${keepCod} y se borra ${drop}. Esto no se puede deshacer. ¿Confirmás?`)) return
+    setUnificando(true)
+    const { error } = await supabase.rpc('unificar_clientes', { p_keep: keepCod, p_drop: drop })
+    setUnificando(false)
+    if (error) { toast('No se pudo unificar: ' + error.message, 'error'); return }
+    toast(`✓ Unificados en ${keepCod}`, 'success')
+    setUnifOpen(false); resetUnif(); setBusqueda(keepCod)
+  }
 
   useEffect(() => {
     supabase
@@ -99,11 +141,14 @@ export default function Clientes() {
 
   return (
     <div className="space-y-3 text-ink">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">👥 Clientes</h2>
-        <button onClick={() => setNuevoAbierto(true)} className="text-xs font-medium bg-emerald-600 text-white rounded-lg px-3 py-1.5">
-          + Nuevo cliente
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setUnifOpen(true)} className="text-xs font-medium border border-black/15 text-brandDark rounded-lg px-3 py-1.5">🔗 Unificar duplicados</button>
+          <button onClick={() => setNuevoAbierto(true)} className="text-xs font-medium bg-emerald-600 text-white rounded-lg px-3 py-1.5">
+            + Nuevo cliente
+          </button>
+        </div>
       </div>
 
       {pendientes.length > 0 && (
@@ -259,6 +304,60 @@ export default function Clientes() {
               </button>
               <button onClick={guardarNuevo} className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold">
                 + Guardar Cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unifOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setUnifOpen(false); resetUnif() }}>
+          <div className="bg-white rounded-2xl border border-black/10 w-full max-w-lg p-4 max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold">🔗 Unificar clientes duplicados</p>
+              <button onClick={() => { setUnifOpen(false); resetUnif() }} className="text-sm text-muted">✕</button>
+            </div>
+            <p className="text-[11px] text-faint mb-3">Elegí los dos clientes duplicados. Se mueve TODO (pedidos, ventas, actividad, agenda, propuestas) al que quede y se borra el otro. No se puede deshacer.</p>
+
+            {(!uA || !uB) && (
+              <>
+                <input value={uq} onChange={(e) => setUq(e.target.value)} placeholder="Buscar cliente (código, razón, CUIT, dirección…)" className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm mb-2" />
+                <div className="space-y-1 max-h-56 overflow-y-auto">
+                  {ures.filter((c) => c.cod !== uA?.cod).map((c) => (
+                    <button key={c.cod} onClick={() => pickU(c)} className="w-full text-left flex items-center justify-between gap-2 border border-black/10 rounded-lg px-2.5 py-1.5 hover:bg-[#F6F4EF]">
+                      <span className="min-w-0"><span className="text-[13px] font-medium truncate block">{c.razon || c.nomcomerc}</span><span className="text-[10px] text-faint">{c.cod} · {c.localidad || '—'} · {c.vendedor_asignado || 'sin asignar'}</span></span>
+                      <span className="text-[10px] font-semibold text-emerald-700 shrink-0">Elegir</span>
+                    </button>
+                  ))}
+                  {uq.trim() && ures.length === 0 && <p className="text-[11px] text-faint text-center py-3">Sin resultados</p>}
+                </div>
+              </>
+            )}
+
+            {(uA || uB) && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {[uA, uB].map((c, i) => {
+                  const ops = i === 0 ? opsA : opsB
+                  if (!c) return <div key={i} className="border border-dashed border-black/15 rounded-xl p-3 text-[11px] text-faint text-center flex items-center justify-center">Elegí el 2º cliente arriba</div>
+                  return (
+                    <label key={c.cod} className={`border rounded-xl p-3 cursor-pointer ${keepCod === c.cod ? 'border-emerald-500 bg-emerald-50/50' : 'border-black/10'}`}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <input type="radio" name="keep" checked={keepCod === c.cod} onChange={() => setKeepCod(c.cod)} />
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${keepCod === c.cod ? 'text-emerald-700' : 'text-red-500'}`}>{keepCod === c.cod ? 'Queda éste' : 'Se borra'}</span>
+                      </div>
+                      <p className="text-[13px] font-semibold truncate">{c.razon || c.nomcomerc}</p>
+                      <p className="text-[10px] text-faint">{c.cod} · {c.vendedor_asignado || 'sin asignar'}</p>
+                      {ops && <p className="text-[11px] text-muted mt-1">{ops.pedidos} pedidos · {ops.ventas} ventas · {ops.actividad} activ.</p>}
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-3">
+              <button onClick={() => { setUnifOpen(false); resetUnif() }} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">Cancelar</button>
+              <button onClick={unificar} disabled={!uA || !uB || !keepCod || unificando} className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold disabled:opacity-40">
+                {unificando ? 'Unificando…' : keepCod ? `Unificar en ${keepCod}` : 'Elegí cuál queda'}
               </button>
             </div>
           </div>
