@@ -140,8 +140,10 @@ export default function Cartera() {
 
   // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
   const mostrarPedido = !esProspOperador || modoCartera === 'venta_directa'
-  // Derivar disponible para todos los roles (vendedores, prospección y corporativo)
-  const mostrarDerivar = true
+  // Derivar disponible para todos MENOS el revendedor (no puede reasignar/cambiar cartera).
+  const mostrarDerivar = !esRevendedor
+  // El revendedor es de SOLO LECTURA sobre el cliente: no edita datos, no borra, no agrega nota.
+  const puedeMutarCliente = !esRevendedor
 
   // La reserva y los colores solo tienen sentido en el pool compartido de prospección
   // (Luna y Damián sobre la misma cartera). En la cartera propia de un vendedor no
@@ -817,19 +819,23 @@ export default function Cartera() {
                     Pedido
                   </button>
                 )}
-                <button onClick={() => abrirNota(c)} className="flex-1 rounded-lg border border-black/10 py-1.5 text-[11px] text-muted" title="Agregar nota o recordatorio">
-                  Nota
-                </button>
+                {puedeMutarCliente && (
+                  <button onClick={() => abrirNota(c)} className="flex-1 rounded-lg border border-black/10 py-1.5 text-[11px] text-muted" title="Agregar nota o recordatorio">
+                    Nota
+                  </button>
+                )}
                 <button onClick={() => setHistorial(c)} className="flex-1 rounded-lg border border-black/10 py-1.5 text-[11px] text-muted">
                   Historial
                 </button>
-                <button
-                  onClick={() => setBorrar(c)}
-                  className="rounded-lg border border-red-200 text-red-600 px-2 py-1.5 text-[11px]"
-                  title="Eliminar contacto"
-                >
-                  🗑
-                </button>
+                {puedeMutarCliente && (
+                  <button
+                    onClick={() => setBorrar(c)}
+                    className="rounded-lg border border-red-200 text-red-600 px-2 py-1.5 text-[11px]"
+                    title="Eliminar contacto"
+                  >
+                    🗑
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -918,10 +924,14 @@ export default function Cartera() {
                     )}
                   </td>
                   <td className="px-2.5 py-2 text-xs max-w-[130px]">
-                    <button onClick={() => abrirDatos(c)} className="text-left w-full" title="Editar datos de contacto">
-                      <span className={`block truncate ${c.contacto ? 'text-ink' : 'text-faint'}`}>{c.contacto || '— agregar'}</span>
-                      <span className="text-[10px] text-brandDark">✏️ editar</span>
-                    </button>
+                    {puedeMutarCliente ? (
+                      <button onClick={() => abrirDatos(c)} className="text-left w-full" title="Editar datos de contacto">
+                        <span className={`block truncate ${c.contacto ? 'text-ink' : 'text-faint'}`}>{c.contacto || '— agregar'}</span>
+                        <span className="text-[10px] text-brandDark">✏️ editar</span>
+                      </button>
+                    ) : (
+                      <span className={`block truncate ${c.contacto ? 'text-ink' : 'text-faint'}`}>{c.contacto || '—'}</span>
+                    )}
                   </td>
                   <td className="px-2.5 py-2 text-xs max-w-[150px]">
                     {c.email ? (
@@ -940,9 +950,11 @@ export default function Cartera() {
                   <td className="px-2.5 py-2">
                     <div className="flex items-start gap-1">
                       <TelefonoAcciones whatsapp={c.whatsapp} telefono={c.telefono} compact />
-                      <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark shrink-0" title="Editar teléfono">
-                        ✏️
-                      </button>
+                      {puedeMutarCliente && (
+                        <button onClick={() => abrirDatos(c)} className="text-[10px] text-brandDark shrink-0" title="Editar teléfono">
+                          ✏️
+                        </button>
+                      )}
                     </div>
                   </td>
                   {mostrarCanjeCols && (
@@ -1013,15 +1025,19 @@ export default function Cartera() {
                           Pedido
                         </button>
                       )}
-                      <button onClick={() => abrirNota(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
-                        📝 Nota
-                      </button>
+                      {puedeMutarCliente && (
+                        <button onClick={() => abrirNota(c)} className="text-[11px] text-brandDark font-medium whitespace-nowrap">
+                          📝 Nota
+                        </button>
+                      )}
                       <button onClick={() => setHistorial(c)} className="text-[11px] text-muted font-medium whitespace-nowrap">
                         Historial
                       </button>
-                      <button onClick={() => setBorrar(c)} className="text-[11px] text-red-600 font-medium whitespace-nowrap">
-                        Eliminar
-                      </button>
+                      {puedeMutarCliente && (
+                        <button onClick={() => setBorrar(c)} className="text-[11px] text-red-600 font-medium whitespace-nowrap">
+                          Eliminar
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
