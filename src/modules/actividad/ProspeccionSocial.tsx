@@ -34,6 +34,22 @@ export default function ProspeccionSocial() {
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [nv, setNv] = useState({ canal: 'ig' as 'ig' | 'linkedin', nombre: '', perfil: '', url: '', rubro: 'opticas', zona: '' })
   const [guardando, setGuardando] = useState(false)
+  const [dcCiudad, setDcCiudad] = useState('')
+  const [dcRubro, setDcRubro] = useState('opticas')
+  const [buscando, setBuscando] = useState(false)
+
+  const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
+
+  async function buscarCiudad() {
+    if (!dcCiudad.trim()) { toast('Poné una ciudad', 'error'); return }
+    setBuscando(true)
+    const { data, error } = await supabase.functions.invoke('descubridor-social', { body: { ciudad: dcCiudad.trim(), rubro: dcRubro } })
+    setBuscando(false)
+    const r = data as { insertados?: number; duplicados?: number; error?: string } | null
+    if (error || r?.error) { toast(r?.error ?? 'No se pudo buscar', 'error'); return }
+    toast(`✓ ${r?.insertados ?? 0} nuevos de ${dcCiudad} (${r?.duplicados ?? 0} ya estaban)`, 'success')
+    setDcCiudad(''); cargar()
+  }
 
   async function cargar() {
     setLoading(true)
@@ -68,7 +84,7 @@ export default function ProspeccionSocial() {
   }
 
   async function copiar(it: Item) {
-    try { await navigator.clipboard.writeText(it.mensaje ?? ''); setCopiado(it.id); toast('✓ Mensaje copiado', 'success'); setTimeout(() => setCopiado(null), 1500) } catch { toast('No se pudo copiar', 'error') }
+    try { await navigator.clipboard.writeText(msgDe(it)); setCopiado(it.id); toast('✓ Mensaje copiado', 'success'); setTimeout(() => setCopiado(null), 1500) } catch { toast('No se pudo copiar', 'error') }
   }
   async function setEstado(it: Item, estado: string, extra: Partial<Item> = {}) {
     setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, estado, ...extra } : x)))
@@ -86,6 +102,19 @@ export default function ProspeccionSocial() {
           <p className="text-xs text-muted">Cada contacto con su mensaje listo. Copiás, abrís el perfil y enviás — 2 clics.</p>
         </div>
         <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>
+      </div>
+
+      {/* Descubridor: busca negocios por ciudad (Google Maps) y llena la cola solo */}
+      <div className="bg-white rounded-2xl border border-black/10 p-3">
+        <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🔎 Descubrir por ciudad (Google Maps)</p>
+        <div className="flex flex-wrap gap-2">
+          <input value={dcCiudad} onChange={(e) => setDcCiudad(e.target.value)} placeholder="Ciudad (ej: Mendoza, Santa Fe, San Juan)" className="flex-1 min-w-[160px] border border-black/10 rounded-lg px-3 py-2 text-sm" />
+          <select value={dcRubro} onChange={(e) => setDcRubro(e.target.value)} className="border border-black/10 rounded-lg px-2 py-2 text-sm">
+            {RUBROS.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.nombre}</option>)}
+          </select>
+          <button onClick={buscarCiudad} disabled={buscando} className="bg-ink text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscando ? 'Buscando…' : 'Buscar y llenar cola'}</button>
+        </div>
+        <p className="text-[10px] text-faint mt-1.5">Trae los negocios del rubro en esa ciudad, con el mensaje listo. Cada uno queda en "A enviar".</p>
       </div>
 
       {/* Alta manual (mientras el descubridor sea manual) */}
@@ -132,7 +161,7 @@ export default function ProspeccionSocial() {
                 </div>
                 <span className={`shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
               </div>
-              <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{it.mensaje}</p>
+              <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>
               <div className="flex flex-wrap gap-1.5">
                 <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>
                 {it.url && <a href={it.url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark"><ExternalLink size={13} />Abrir perfil</a>}
