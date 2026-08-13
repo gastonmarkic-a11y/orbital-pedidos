@@ -100,6 +100,7 @@ export default function Cartera() {
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
   // Operador de prospección (Luna=Marketing, Damián=ProspeccionVenta) logueado directamente
   const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian')
+  const esRevendedor = rolEfectivo === 'revendedor'
   const [modoCartera, setModoCartera] = useState<'prospectos' | 'venta_directa'>('prospectos')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cohorte, setCohorte] = useState<Record<string, { v2026: boolean; v2025: boolean; ultimoAnio: number | null; u2025: number }>>({})
@@ -182,6 +183,9 @@ export default function Cartera() {
             modoCartera === 'venta_directa'
               ? q.eq('vendedor_asignado', 'ProspeccionVenta')
               : q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+        } else if (esRevendedor) {
+          // Revendedor: sin filtro de vendedor. La RLS lo acota a su zona (Cuyo/Santa Fe) y a
+          // prospección/Martín/propios, ocultando Corporativo y Adrián.
         } else {
           q =
             codigoActivo === 'Marketing'
