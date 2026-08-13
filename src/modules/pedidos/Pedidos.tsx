@@ -416,28 +416,39 @@ export default function Pedidos() {
     }
   }
 
-  // Export COMERCIAL: una fila por operación (pedido) con todo lo de la venta —
-  // empresa, forma de pago, plazos, descuentos, blanco/negro, montos, cantidad, fecha. Sin datos de entrega.
+  // Export COMPLETO: una fila por ÍTEM con TODO el contexto comercial de la operación
+  // (empresa, forma de pago, plazos, descuentos, blanco/negro) + el detalle del producto (SKU, modelo,
+  // color, cantidad, precio unitario, subtotal) + los totales de la operación. Sin datos de entrega.
   function exportarDetalle() {
     const q = (s: unknown) => `"${String(s ?? '').replace(/"/g, "'")}"`
     const cols = [
-      'Pedido', 'Fecha', 'Empresa', 'Cod cliente', 'Vendedor', 'Estado', 'Nro factura', 'Cantidad uds',
-      'Forma de pago', 'Plazos', 'Dto comercial %', 'Dto financiero %', 'Blanco %', 'Negro %',
-      'Monto bruto', 'Monto neto sin IVA', 'IVA', 'Total con IVA', 'Lista',
+      'Pedido', 'Fecha', 'Empresa', 'Cod cliente', 'Vendedor', 'Estado', 'Nro factura',
+      'Forma de pago', 'Plazos', 'Dto comercial %', 'Dto financiero %', 'Blanco %', 'Negro %', 'Lista',
+      'SKU', 'Modelo', 'Color', 'Cantidad', 'Precio unit neto', 'Subtotal neto',
+      'Total operacion neto', 'Total operacion con IVA',
     ]
     let csv = cols.join(';') + '\n'
     for (const l of filtrados) {
-      const cant = (l.items ?? []).reduce((s, i) => s + (i.cantidad || 0), 0)
+      const dc = parseFloat(l.dto_comercial || '') || 0
+      const df = parseFloat(l.dto_financiero || '') || 0
       const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
       const iva = calcImporteConIVA(imp.neto, l.blanco_pct ?? 100)
       const plazos = parseFP(l.cond_pago, l.cuotas_detalle).map((c) => (c.dias === 0 ? 'Contado' : `${c.dias}d ${Math.round(c.pct * 100)}%`)).join(' · ')
       const medios = l.medios_pago?.length ? labelMedios(l.medios_pago) : ''
-      csv += [
+      const base = [
         l.id, q(l.fecha ?? ''), q(l.cliente ?? ''), q(l.cod_cliente ?? ''), q(l.vendedor ?? ''), q(estadoLabel(l.estado)),
-        q(l.nro_factura ?? ''), cant, q(medios), q(plazos),
-        parseFloat(l.dto_comercial || '') || 0, parseFloat(l.dto_financiero || '') || 0, l.blanco_pct ?? 100, l.negro_pct ?? 0,
-        imp.bruto, imp.neto, iva.ivaImporte, iva.conIVA, l.nro_lista ?? '',
-      ].join(';') + '\n'
+        q(l.nro_factura ?? ''), q(medios), q(plazos),
+        dc, df, l.blanco_pct ?? 100, l.negro_pct ?? 0, l.nro_lista ?? '',
+      ]
+      const items = l.items ?? []
+      if (items.length === 0) {
+        csv += [...base, '', '', '', 0, 0, 0, imp.neto, iva.conIVA].join(';') + '\n'
+        continue
+      }
+      for (const i of items) {
+        const pu = netoUnitario(i, stock.find((x) => x.codigo === i.codigo)?.precio ?? 0, l.nro_lista, dc, df)
+        csv += [...base, q(i.codigo), q(i.modelo), q(i.descripcion ?? ''), i.cantidad, pu, pu * i.cantidad, imp.neto, iva.conIVA].join(';') + '\n'
+      }
     }
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a')
