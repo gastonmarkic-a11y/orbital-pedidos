@@ -100,7 +100,7 @@ export default function GestionClientes() {
   }
 
   // ── 1. Nuevo prospecto ──
-  const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
+  const [np, setNp] = useState({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', direccion: '', localidad: '', zona: '', nota: '' })
   const [npSaving, setNpSaving] = useState(false)
 
   async function guardarProspecto(e: FormEvent) {
@@ -116,6 +116,7 @@ export default function GestionClientes() {
       telefono: np.telefono.trim() || null,
       whatsapp: np.telefono.trim() || null,
       email: np.email.trim() || null,
+      direccion: np.direccion.trim() || null,
       localidad: np.localidad.trim() || null,
       zona: np.zona.trim() || null,
       origen: 'propio',
@@ -128,7 +129,7 @@ export default function GestionClientes() {
       toast('No se pudo crear: ' + error.message, 'error')
       return
     }
-    setNp({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', localidad: '', zona: '', nota: '' })
+    setNp({ nomcomerc: '', razon: '', contacto: '', telefono: '', email: '', direccion: '', localidad: '', zona: '', nota: '' })
     toast('✓ Prospecto creado en tu cartera — Administración le asigna el código de cliente', 'success')
   }
 
@@ -368,6 +369,7 @@ export default function GestionClientes() {
               ['contacto', 'Nombre de contacto'],
               ['telefono', 'Teléfono / WhatsApp'],
               ['email', 'Mail'],
+              ['direccion', 'Dirección'],
               ['localidad', 'Localidad'],
               ['zona', 'Zona'],
               ['nota', 'Nota'],
