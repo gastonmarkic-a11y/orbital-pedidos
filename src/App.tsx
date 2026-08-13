@@ -268,6 +268,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:Damian', label: 'Damián (prospección)' },
   { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
+  { value: 'revendedor', label: 'Revendedor Cuyo/SF' },
   { value: 'deposito', label: 'Depósito' },
   { value: 'produccion', label: 'Producción' },
   { value: 'tienda', label: 'Tienda online' },

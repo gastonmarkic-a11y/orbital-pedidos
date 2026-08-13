@@ -175,25 +175,25 @@ export default function Cartera() {
     if (!vendedor || !codigoActivo) return
     setLoading(true)
     async function cargar() {
-      const rows = await fetchPaged<Cliente>(() => {
-        let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
-        if (esProspOperador) {
-          // Luna y Damián comparten la misma cartera: Prospectos (leads) o Venta directa (vendidos)
-          q =
-            modoCartera === 'venta_directa'
-              ? q.eq('vendedor_asignado', 'ProspeccionVenta')
-              : q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-        } else if (esRevendedor) {
-          // Revendedor: sin filtro de vendedor. La RLS lo acota a su zona (Cuyo/Santa Fe) y a
-          // prospección/Martín/propios, ocultando Corporativo y Adrián.
-        } else {
-          q =
-            codigoActivo === 'Marketing'
-              ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
-              : q.eq('vendedor_asignado', codigoActivo)
-        }
-        return q
-      })
+      // Revendedor: carga por función (zona Cuyo/Santa Fe · prospección/Martín/propios · sin Corp/Adrián).
+      // Sirve igual para la vista previa del admin ("Ver como").
+      const rows = esRevendedor
+        ? (((await supabase.rpc('cartera_revendedor')).data as Cliente[]) ?? [])
+        : await fetchPaged<Cliente>(() => {
+            let q = supabase.from('clientes').select('*').not('origen', 'is', null).order('cod')
+            if (esProspOperador) {
+              q =
+                modoCartera === 'venta_directa'
+                  ? q.eq('vendedor_asignado', 'ProspeccionVenta')
+                  : q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+            } else {
+              q =
+                codigoActivo === 'Marketing'
+                  ? q.or('vendedor_asignado.eq.Marketing,vendedor_asignado.is.null')
+                  : q.eq('vendedor_asignado', codigoActivo)
+            }
+            return q
+          })
       setClientes(rows)
       const codsSet = new Set(rows.map((c) => c.cod))
       // Cohorte por ventas reales (histórico): 2026=fidelizado, 2025=con ventas/canje, previas=recuperar, sin ventas=bienvenida.
@@ -232,7 +232,7 @@ export default function Cartera() {
       setLoading(false)
     }
     cargar()
-  }, [vendedor, codigoActivo, recarga, esProspOperador, modoCartera])
+  }, [vendedor, codigoActivo, recarga, esProspOperador, esRevendedor, modoCartera])
 
   // Si el celular recargó la página al volver de WhatsApp/mail, reabrimos el popup
   // en el mismo contacto para poder confirmar la acción sin rehacer todo.
