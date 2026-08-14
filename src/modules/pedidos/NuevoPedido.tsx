@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, netoUnitario, descuentoItemPct } from './calc'
+import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, calcFinanciero, netoUnitario, descuentoItemPct } from './calc'
 
 interface Cuota {
   dias: number
@@ -304,6 +304,7 @@ export default function NuevoPedido() {
     }
   })
   const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
+  const financieroPreview = calcFinanciero(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
   const dcN = parseFloat(dtoComercial || '') || 0
   const dfN = parseFloat(dtoFinanciero || '') || 0
   // Info por línea: precio neto unitario + etiqueta clara del descuento que aplicó el sistema.
@@ -316,17 +317,13 @@ export default function NuevoPedido() {
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
       ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
     }
+    // El precio neto de la línea lleva SOLO el descuento comercial (el financiero es una NC condicional aparte).
     const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN)
-    const pct = descuentoItemPct(item, dcN, dfN)
+    const pct = descuentoItemPct(item, dcN, dfN) // comercial
     let tag: string
     if (esRegalo) tag = 'sin cargo (100% bonif.)'
-    else if (esPreventa) tag = dfN > 0 ? `preventa · −${dfN}% fin.` : 'preventa (precio fijo)'
-    else {
-      const partes: string[] = []
-      if (dcN > 0) partes.push(`−${dcN}% com.`)
-      if (dfN > 0) partes.push(`−${dfN}% fin.`)
-      tag = partes.length ? `${partes.join(' · ')} (−${pct}%)` : 'precio de lista'
-    }
+    else if (esPreventa) tag = 'preventa (precio fijo)'
+    else tag = pct > 0 ? `−${pct}% comercial` : 'precio de lista'
     return { net, total: net * cart[k], tag }
   }
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
@@ -945,16 +942,28 @@ export default function NuevoPedido() {
             )}
             {cartKeys.length > 0 && (
               <div className="border-t border-black/10 pt-2 mt-1 space-y-0.5">
-                {(parseFloat(dtoComercial || '') > 0 || parseFloat(dtoFinanciero || '') > 0) && (
-                  <div className="flex items-center justify-between text-[11px] text-faint">
-                    <span>Bruto (lista/preventa)</span><span>{formatPrecio(montoPreview.bruto)}</span>
-                  </div>
+                {dcN > 0 && (
+                  <>
+                    <div className="flex items-center justify-between text-[11px] text-faint">
+                      <span>Bruto (lista/preventa)</span><span>{formatPrecio(montoPreview.bruto)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-rose-600">
+                      <span>− Dto comercial {dcN}%</span><span>− {formatPrecio(montoPreview.bruto - montoPreview.neto)}</span>
+                    </div>
+                  </>
                 )}
                 <div className="flex items-center justify-between text-sm font-bold">
-                  <span>Neto a facturar{(parseFloat(dtoComercial || '') > 0 || parseFloat(dtoFinanciero || '') > 0) ? ' (con dto.)' : ''}</span>
+                  <span>Neto a facturar{dcN > 0 ? ' (con dto. comercial)' : ''}</span>
                   <span className="text-gold">{formatPrecio(montoPreview.neto)}</span>
                 </div>
-                <p className="text-[10px] text-faint">Sin IVA · coincide con el remito. Sin cargo = $0; preventa y descuentos ya aplicados.</p>
+                {dfN > 0 && financieroPreview > 0 && (
+                  <div className="mt-1.5 rounded-lg bg-amber-50 border border-amber-200 p-2 text-[10px] text-amber-900 leading-snug">
+                    💳 <b>Dto financiero {dfN}%</b> = {formatPrecio(financieroPreview)} — <b>condicional al pago pactado</b> (efectivo/transferencia).
+                    NO baja esta factura: Administración genera una <b>NC "Diferencia de Precios"</b> al confirmar el cobro.
+                    <span className="block mt-0.5">Total con financiero si cumple: <b>{formatPrecio(montoPreview.neto - financieroPreview)}</b> · comercial + financiero no se suman.</span>
+                  </div>
+                )}
+                <p className="text-[10px] text-faint">Neto sin IVA · coincide con el remito y Tango. Sin cargo = $0; el financiero va aparte como NC condicional.</p>
               </div>
             )}
           </div>

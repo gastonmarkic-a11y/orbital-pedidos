@@ -1,6 +1,6 @@
 import type { Pedido, PedidoItem } from '../../lib/types'
 import { supabase } from '../../lib/supabase'
-import { netoUnitario } from './calc'
+import { netoUnitario, brutoUnitario, descuentoItemPct } from './calc'
 
 // Exporta pedidos al formato "Novedades para pedidos" de Tango (Pedidos automáticos).
 // Genera DOS archivos: Plenorius (parte blanca) y Ejemplar (parte negra).
@@ -60,8 +60,10 @@ export interface ResultadoExport {
 
 interface Linea {
   it: PedidoItem
-  precio: number // neto unitario (precio de la app)
-  monto: number // precio * cantidad
+  bruto: number // precio de lista unitario (bruto), va a la columna "Precio" de Tango
+  bonif: number // % de descuento COMERCIAL, va a la columna "Bonificación" (el financiero NO se manda)
+  precio: number // neto comercial unitario (solo para repartir blanco/negro por monto)
+  monto: number // neto * cantidad
 }
 
 // "3/8/2026, 06:43:40" | "03/08/2026" -> "03/08/2026"
@@ -117,8 +119,8 @@ function fila(l: Linea, fecha: string, rs: string, p: Pedido, emp: ConfigEmpresa
     '', // Kit completo
     '', // UM (Tango toma la del artículo)
     l.it.cantidad, // Cantidad pedida
-    l.precio, // Precio (neto de la app; el IVA lo pone Tango)
-    '', // Bonificación (ya está aplicada en el precio)
+    l.bruto, // Precio de lista (bruto); Tango le aplica la Bonificación y el IVA
+    l.bonif, // Bonificación = SOLO el descuento comercial (el financiero va como NC "Diferencia de Precios")
     p.cod_cliente ?? '', // Código de cliente
     rs, // Razón social de cliente
     emp.codigoModelo, // Código de modelo
@@ -160,8 +162,11 @@ export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango):
     const lineas: Linea[] = (p.items ?? [])
       .filter((it) => it.codigo && it.cantidad)
       .map((it) => {
-        const precio = precioNetoUnitario(it, stockMap, nroLista, dc, df)
-        return { it, precio, monto: precio * it.cantidad }
+        const precioBase = stockMap.get(it.codigo) ?? 0
+        const bruto = brutoUnitario(it, precioBase, nroLista)
+        const bonif = descuentoItemPct(it, dc, df) // solo comercial
+        const precio = precioNetoUnitario(it, stockMap, nroLista, dc, df) // neto comercial (para repartir por monto)
+        return { it, bruto, bonif, precio, monto: precio * it.cantidad }
       })
     if (!lineas.length) {
       omitidos++

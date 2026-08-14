@@ -19,23 +19,56 @@ export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: nu
   return precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
 }
 
-// Descuento efectivo aplicado a un ítem, en %. Sirve para MOSTRAR en cada línea qué descontó el sistema.
-// Reglas: sin cargo = 100%; preventa = SOLO financiero (no comercial); lista = comercial + financiero; Shopify = 0.
-export function descuentoItemPct(item: PedidoItem, dc: number, df: number): number {
+// Descuento COMERCIAL del ítem, en %. Es el único que se hornea en el precio (define el neto a remitir/facturar).
+// El financiero NO entra acá: va aparte como NC "Diferencia de Precios" (ver financieroUnitario).
+// Reglas: sin cargo = 100%; preventa = 0 (precio fijo, sin comercial); lista = comercial; Shopify = 0.
+export function descuentoItemPct(item: PedidoItem, dc: number, _df: number): number {
   if (item.regalo) return 100
   if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
-  if (item.preventa && item.precio_pv != null) return df // preventa: solo financiero
-  return Math.round((1 - (1 - dc / 100) * (1 - df / 100)) * 100)
+  if (item.preventa && item.precio_pv != null) return 0 // preventa: precio fijo, sin comercial
+  return Math.round(dc)
 }
 
-// Precio NETO unitario (después de descuentos), idéntico en resumen y remito.
-// Preventa: se le aplica SOLO el descuento financiero (pronto pago), NO el comercial.
-export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number): number {
+// Precio NETO unitario (después del descuento COMERCIAL), idéntico en resumen, remito, factura y Tango.
+// El descuento FINANCIERO NO se hornea acá: es condicional al pago y se materializa como NC posterior.
+// Preventa: precio fijo (precio_pv), sin comercial ni financiero horneado.
+export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, _df: number): number {
   if (item.regalo) return 0
   if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
-  if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv * (1 - df / 100)) // preventa: solo financiero
+  if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv) // preventa: precio fijo
   const precioLista = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
-  return Math.round(precioLista * (1 - dc / 100) * (1 - df / 100))
+  return Math.round(precioLista * (1 - dc / 100)) // solo comercial
+}
+
+// Descuento FINANCIERO por unidad. NO se hornea en el precio ni va a la factura.
+// Es condicional al cumplimiento del pago pactado (efectivo/transferencia): Administración genera
+// una NC "Diferencia de Precios" por este monto cuando el cobro se cumple.
+// Se calcula SOBRE el neto comercial → por eso comercial + financiero NO se suman (cascada).
+export function financieroUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number): number {
+  if (df <= 0 || item.regalo) return 0
+  if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado, sin financiero
+  const netoCom = netoUnitario(item, precioBase, nroLista, dc, df)
+  return Math.round(netoCom * (df / 100))
+}
+
+// Total del descuento financiero de un pedido = monto de la NC "Diferencia de Precios" (si cumple el pago).
+export function calcFinanciero(
+  items: PedidoItem[] | null,
+  stock: StockItem[],
+  dtoCom: string | null,
+  dtoFin: string | null,
+  nroLista?: number | null
+): number {
+  const df = parseFloat(dtoFin || '') || 0
+  if (df <= 0) return 0
+  const dc = parseFloat(dtoCom || '') || 0
+  let total = 0
+  for (const it of items ?? []) {
+    if (it.regalo) continue
+    const precioBase = stock.find((x) => x.codigo === it.codigo)?.precio || 0
+    total += financieroUnitario(it, precioBase, nroLista ?? 5, dc, df) * it.cantidad
+  }
+  return Math.round(total)
 }
 
 export function calcImporte(

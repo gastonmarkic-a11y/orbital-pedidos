@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { calcImporte, calcImporteConIVA, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario } from './calc'
+import { calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
@@ -44,7 +44,6 @@ export default function Pedidos() {
   const [abiertos, setAbiertos] = useState<Set<number>>(new Set())
 
   // Modales
-  const [modalRemito, setModalRemito] = useState<Pedido | null>(null)
   const [nroRemito, setNroRemito] = useState('')
   const [modalFactura, setModalFactura] = useState<{ pedido: Pedido; importe: number } | null>(null)
   const [nroFactura, setNroFactura] = useState('')
@@ -229,19 +228,6 @@ export default function Pedidos() {
       toast('⚠ Pedido observado — vendedor notificado', 'error')
   }
 
-  async function confirmarRemito() {
-    if (!modalRemito) return
-    if (!nroRemito.trim()) {
-      toast('Ingresá el número de remito', 'error')
-      return
-    }
-    const nro = nroRemito.trim().toUpperCase()
-    if (await cambiarEstado(modalRemito.id, 'listo', { nro_remito: nro })) {
-      setModalRemito(null)
-      toast(`✓ Listo para facturar — Remito ${nro}`, 'success')
-    }
-  }
-
   async function confirmarFactura() {
     if (!modalFactura) return
     if (!nroFactura.trim()) {
@@ -253,6 +239,8 @@ export default function Pedidos() {
         nro_factura: nroFactura.trim(),
         fecha_factura: fechaFactura,
         importe_neto: modalFactura.importe,
+        // El N° de remito lo genera Tango; Administración lo carga acá al facturar (opcional).
+        ...(nroRemito.trim() ? { nro_remito: nroRemito.trim().toUpperCase() } : {}),
       })
     ) {
       setModalFactura(null)
@@ -426,7 +414,7 @@ export default function Pedidos() {
       'Pedido', 'Fecha', 'Empresa', 'Cod cliente', 'Vendedor', 'Estado', 'Nro factura',
       'Forma de pago', 'Plazos', 'Dto comercial %', 'Dto financiero %', 'Blanco %', 'Negro %', 'Lista',
       'SKU', 'Modelo', 'Color', 'Cantidad', 'Precio unit neto', 'Subtotal neto',
-      'Total operacion neto', 'Total operacion con IVA',
+      'Total operacion neto', 'Total operacion con IVA', 'Financiero NC condicional',
     ]
     let csv = cols.join(';') + '\n'
     for (const l of filtrados) {
@@ -434,6 +422,8 @@ export default function Pedidos() {
       const df = parseFloat(l.dto_financiero || '') || 0
       const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
       const iva = calcImporteConIVA(imp.neto, l.blanco_pct ?? 100)
+      // Descuento financiero = NC "Diferencia de Precios" que aplica Administración si se cumple el pago (no está en el neto/IVA).
+      const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
       const plazos = parseFP(l.cond_pago, l.cuotas_detalle).map((c) => (c.dias === 0 ? 'Contado' : `${c.dias}d ${Math.round(c.pct * 100)}%`)).join(' · ')
       const medios = l.medios_pago?.length ? labelMedios(l.medios_pago) : ''
       const base = [
@@ -443,12 +433,12 @@ export default function Pedidos() {
       ]
       const items = l.items ?? []
       if (items.length === 0) {
-        csv += [...base, '', '', '', 0, 0, 0, imp.neto, iva.conIVA].join(';') + '\n'
+        csv += [...base, '', '', '', 0, 0, 0, imp.neto, iva.conIVA, financieroNC].join(';') + '\n'
         continue
       }
       for (const i of items) {
         const pu = netoUnitario(i, stock.find((x) => x.codigo === i.codigo)?.precio ?? 0, l.nro_lista, dc, df)
-        csv += [...base, q(i.codigo), q(i.modelo), q(i.descripcion ?? ''), i.cantidad, pu, pu * i.cantidad, imp.neto, iva.conIVA].join(';') + '\n'
+        csv += [...base, q(i.codigo), q(i.modelo), q(i.descripcion ?? ''), i.cantidad, pu, pu * i.cantidad, imp.neto, iva.conIVA, financieroNC].join(';') + '\n'
       }
     }
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -556,7 +546,15 @@ export default function Pedidos() {
           {filtrados.map((l) => {
             const estado = (l.estado ?? 'pendiente') as EstadoPedido
             const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
-            const impNeto = imp.neto || l.importe_neto || 0
+            // Pedidos ya facturados: se respeta el neto que realmente se facturó (importe_neto congelado, lógica vieja).
+            // Pedidos en curso: se recalcula en vivo con el criterio nuevo (neto = solo comercial; financiero = NC aparte).
+            const yaFacturado = ['facturado', 'listo_despachar', 'despachado'].includes(estado)
+            const impNeto = yaFacturado && l.importe_neto ? l.importe_neto : (imp.neto || l.importe_neto || 0)
+            const dcPed = parseFloat(l.dto_comercial || '') || 0
+            const dfPed = parseFloat(l.dto_financiero || '') || 0
+            // Monto del descuento financiero = NC "Diferencia de Precios" condicional al pago (no va en la factura).
+            // Solo para pedidos en curso; los ya facturados se dejan como se emitieron.
+            const financieroNC = yaFacturado ? 0 : calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
             const abierto = abiertos.has(l.id)
             const color = ESTADO_COLORS[estado] ?? '#999'
             const pendienteTotal = (l.items ?? []).reduce((a, i) => a + (i.pendiente ?? 0), 0)
@@ -701,14 +699,21 @@ export default function Pedidos() {
                       )}
                       {imp.bruto > 0 && (
                         <div>
-                          <span className="text-faint uppercase text-[10px] font-semibold">Importe bruto</span>
+                          <span className="text-faint uppercase text-[10px] font-semibold">Importe bruto (lista)</span>
                           <br />
                           {formatPrecio(imp.bruto)}
                         </div>
                       )}
+                      {dcPed > 0 && imp.bruto > 0 && (
+                        <div>
+                          <span className="text-faint uppercase text-[10px] font-semibold">Dto comercial {dcPed}%</span>
+                          <br />
+                          <span className="text-rose-600">− {formatPrecio(imp.bruto - impNeto)}</span>
+                        </div>
+                      )}
                       {impNeto > 0 && (
                         <div>
-                          <span className="text-faint uppercase text-[10px] font-semibold">Importe neto</span>
+                          <span className="text-faint uppercase text-[10px] font-semibold">Importe neto (a facturar)</span>
                           <br />
                           <b className="text-emerald-600">{formatPrecio(impNeto)}</b>
                         </div>
@@ -720,6 +725,15 @@ export default function Pedidos() {
                           {l.obs}
                         </div>
                       )}
+                      {/* Financiero: NO se descuenta en la factura. Es una NC condicional que aplica Administración.
+                          Depósito no lo ve (solo le importa el comercial para remitir). */}
+                      {dfPed > 0 && financieroNC > 0 && !esDeposito && (
+                        <div className="col-span-2 bg-amber-50 border border-amber-200 rounded-lg p-2 text-[11px] text-amber-900 leading-snug">
+                          💳 <b>Dto financiero {dfPed}%</b> = <b>{formatPrecio(financieroNC)}</b> — <b>condicional al pago pactado</b> (efectivo/transferencia).
+                          Lo aplica Administración como <b>NC "Diferencia de Precios"</b> al confirmar el cobro. <u>No se descuenta en la factura.</u>
+                          <span className="block text-amber-800 mt-0.5">Total con financiero (si cumple): <b>{formatPrecio(impNeto - financieroNC)}</b> · comercial + financiero no se suman (descuento real {Math.round((1 - (impNeto - financieroNC) / imp.bruto) * 100)}%).</span>
+                        </div>
+                      )}
                     </div>
 
                     {(esDeposito || esAdmin) && estado === 'en_preparacion' && (
@@ -729,8 +743,9 @@ export default function Pedidos() {
                     )}
                     {(l.items ?? []).map((i) => {
                       const s = stock.find((x) => x.codigo === i.codigo)
-                      // Precio NETO real del ítem (lista + descuentos, o preventa, o precio fijo, o sin cargo).
-                      const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, parseFloat(l.dto_comercial || '') || 0, parseFloat(l.dto_financiero || '') || 0)
+                      // Precio NETO real del ítem = lista − comercial (o preventa/precio fijo/sin cargo). El financiero NO entra acá.
+                      const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, dcPed, dfPed)
+                      const bu = brutoUnitario(i, s?.precio ?? 0, l.nro_lista) // precio de lista, para mostrar el bruto tachado
                       const picked = (l.picking ?? []).includes(i.codigo)
                       const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion'
                       return (
@@ -753,7 +768,7 @@ export default function Pedidos() {
                           <span className="shrink-0 text-right">
                             <b>{i.cantidad} uds</b>
                             {i.regalo ? <span className="text-emerald-700"> · sin cargo</span>
-                              : pu > 0 ? <span className="text-muted"> · {formatPrecio(pu)}/u · <b className="text-emerald-600">{formatPrecio(pu * i.cantidad)}</b></span>
+                              : pu > 0 ? <span className="text-muted"> · {bu > pu ? <span className="text-faint line-through mr-0.5">{formatPrecio(bu)}</span> : null}{formatPrecio(pu)}/u · <b className="text-emerald-600">{formatPrecio(pu * i.cantidad)}</b></span>
                               : ''}
                             {(i.pendiente ?? 0) > 0 && (
                               <span className="block text-[10px] text-violet-700 font-medium">
@@ -826,10 +841,7 @@ export default function Pedidos() {
                       {(esDeposito || esAdmin) && estado === 'en_preparacion' && (
                         <>
                           <button
-                            onClick={() => {
-                              setModalRemito(l)
-                              setNroRemito('')
-                            }}
+                            onClick={() => cambiarEstado(l.id, 'listo').then((ok) => ok && toast('✓ Listo — se pasa a Tango y Administración factura con el remito', 'success'))}
                             className="w-full rounded-lg bg-emerald-600 text-white py-2 text-xs font-bold"
                           >
                             ✓ Marcar Listo p/facturar
@@ -874,9 +886,12 @@ export default function Pedidos() {
                         <>
                           <div className="bg-[#f0f4ff] rounded-lg p-2.5 text-[11px] space-y-0.5">
                             <p className="font-bold text-[#4a4adf]">💰 Para facturar</p>
-                            {l.nro_remito && <p className="font-bold text-emerald-600">📋 Remito a buscar: {l.nro_remito}</p>}
-                            <p>Precio s/IVA: {formatPrecio(imp.bruto)}</p>
-                            <p className="font-bold text-emerald-600">Neto s/IVA: {formatPrecio(impNeto)}</p>
+                            {l.nro_remito
+                              ? <p className="font-bold text-emerald-600">📋 Remito Tango: {l.nro_remito}</p>
+                              : <p className="text-faint">📋 Pasá el pedido a Tango (genera el remito) y cargá ese N° al facturar. Pedido N° {l.id} · {(l.cliente || '').replace(/^\d+ - /, '')}</p>}
+                            <p>Bruto s/IVA (lista): {formatPrecio(imp.bruto)}</p>
+                            {dcPed > 0 && <p className="text-rose-600">− Dto comercial {dcPed}%: {formatPrecio(imp.bruto - impNeto)}</p>}
+                            <p className="font-bold text-emerald-600">Neto a facturar s/IVA: {formatPrecio(impNeto)}</p>
                             {(() => {
                               const iv = calcImporteConIVA(impNeto, l.blanco_pct ?? 100)
                               return iv.ivaImporte > 0 ? (
@@ -886,6 +901,11 @@ export default function Pedidos() {
                                 </>
                               ) : null
                             })()}
+                            {dfPed > 0 && financieroNC > 0 && (
+                              <p className="text-amber-800 font-semibold pt-1 border-t border-amber-200 mt-1">
+                                💳 Si cumple el pago pactado (efectivo/transf.): generar <b>NC "Diferencia de Precios"</b> por {formatPrecio(financieroNC)} ({dfPed}%). No va en esta factura.
+                              </p>
+                            )}
                             <p className="text-muted pt-1">
                               Vencimientos estimados:
                               <br />
@@ -906,6 +926,7 @@ export default function Pedidos() {
                               }
                               setModalFactura({ pedido: l, importe: impNeto })
                               setNroFactura('')
+                              setNroRemito(l.nro_remito ?? '')
                               setFechaFactura(new Date().toISOString().split('T')[0])
                             }}
                             disabled={l.cod_cliente?.startsWith('TMP-')}
@@ -1056,24 +1077,6 @@ export default function Pedidos() {
         </Modal>
       )}
 
-      {modalRemito && (
-        <Modal onClose={() => setModalRemito(null)} titulo="✓ Cerrar preparación">
-          <p className="text-xs text-muted mb-2">
-            Ingresá el número de remito para que Administración pueda facturar el pedido.
-          </p>
-          <input
-            value={nroRemito}
-            onChange={(e) => setNroRemito(e.target.value)}
-            placeholder="N° de remito"
-            autoFocus
-            className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm mb-3"
-          />
-          <button onClick={confirmarRemito} className="w-full rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold">
-            Confirmar — Listo p/facturar
-          </button>
-        </Modal>
-      )}
-
       {/* MODAL FACTURA */}
       {modalFactura && (
         <Modal onClose={() => setModalFactura(null)} titulo="📄 Registrar factura">
@@ -1085,6 +1088,12 @@ export default function Pedidos() {
             onChange={(e) => setNroFactura(e.target.value)}
             placeholder="N° de factura"
             autoFocus
+            className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm mb-2"
+          />
+          <input
+            value={nroRemito}
+            onChange={(e) => setNroRemito(e.target.value)}
+            placeholder="N° de remito (de Tango, opcional)"
             className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm mb-2"
           />
           <input
