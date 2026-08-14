@@ -123,6 +123,9 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Usuario de solo-contenido: únicamente la carpeta de material de marketing, nada más.
   if (rol === 'contenido')
     return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
+  // Prospección social (piloto): solo la Cola de prospección + Guiones + Marketing (material). Nada más.
+  if (rol === 'social')
+    return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }], secundarios: [], menu: [] }
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
     return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }, { to: '/prospeccion-social', label: 'Prospección social' }], menu: [] }
@@ -154,7 +157,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
     { to: '/guiones', label: 'Guiones' },
-    { to: '/prospeccion-social', label: 'Prospección social' },
     { to: '/conversaciones', label: 'Conversaciones' },
   ]
   const menu: NavItem[] = []
@@ -187,6 +189,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
 function homeFor(rol: Rol): string {
   if (rol === 'produccion') return '/produccion'
   if (rol === 'contenido') return '/marketing'
+  if (rol === 'social') return '/prospeccion-social'
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   return '/hoy'
@@ -275,6 +278,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'revendedor', label: 'Revendedor Cuyo/SF' },
+  { value: 'social', label: 'Prospección social (piloto)' },
   { value: 'deposito', label: 'Depósito' },
   { value: 'produccion', label: 'Producción' },
   { value: 'tienda', label: 'Tienda online' },
@@ -387,7 +391,7 @@ function Layout() {
               <Route path="/gestion-clientes" element={<GestionClientes />} />
             </>
           )}
-          {rol === 'contenido' && <Route path="/marketing" element={<Marketing />} />}
+          {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
           {rol === 'revendedor' && (
             <>
               <Route path="/cartera" element={<Cartera />} />
