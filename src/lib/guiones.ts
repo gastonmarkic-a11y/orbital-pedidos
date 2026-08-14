@@ -12,6 +12,9 @@ export interface RubroGuion {
 
 const CTA = 'Diseño actual, +80 modelos con entrega inmediata. ¿Te paso catálogo y precios por WhatsApp? 👉'
 
+// Link a la propuesta de Triple Protección (landing). Cambiar acá cuando esté en el dominio propio (orbitaleyewear.com).
+export const LINK_TP = 'https://claude.ai/code/artifact/43f0e2d7-d284-4d1c-b10c-70621eab85a8'
+
 export const RUBROS: RubroGuion[] = [
   {
     id: 'opticas', emoji: '🕶️', nombre: 'Ópticas', angulo: 'Negocio principal · Argentina y Sudamérica',
@@ -43,5 +46,6 @@ export const RUBROS: RubroGuion[] = [
 export function mensajePara(rubroId: string, canal: 'ig' | 'linkedin', nombre?: string): string {
   const r = RUBROS.find((x) => x.id === rubroId) ?? RUBROS[0]
   const t = canal === 'linkedin' ? r.linkedin : r.ig
-  return (nombre && nombre.trim()) ? t.replace('{nombre}', nombre.trim()) : t.replace('{nombre}', '')
+  const base = (nombre && nombre.trim()) ? t.replace('{nombre}', nombre.trim()) : t.replace('{nombre}', '')
+  return `${base}\n\n🔗 La propuesta completa (Triple Protección): ${LINK_TP}`
 }
