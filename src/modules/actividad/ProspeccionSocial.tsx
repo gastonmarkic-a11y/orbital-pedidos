@@ -12,6 +12,7 @@ interface Item {
   id: number; canal: 'ig' | 'linkedin'; nombre: string | null; perfil: string | null; url: string | null
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
+  telefono: string | null; web: string | null; instagram: string | null
 }
 
 const ESTADOS: Record<string, { t: string; c: string }> = {
@@ -39,6 +40,8 @@ export default function ProspeccionSocial() {
   const [buscando, setBuscando] = useState(false)
 
   const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
+  // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
+  const waLink = (it: Item) => `https://wa.me/${(it.telefono ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(msgDe(it))}`
 
   async function buscarCiudad() {
     if (!dcCiudad.trim()) { toast('Poné una ciudad', 'error'); return }
@@ -167,7 +170,13 @@ export default function ProspeccionSocial() {
               <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>
               <div className="flex flex-wrap gap-1.5">
                 <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>
-                {it.url && <a href={it.url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark"><ExternalLink size={13} />Abrir perfil</a>}
+                {it.telefono && (
+                  <a href={waLink(it)} target="_blank" rel="noreferrer" onClick={() => { if (it.estado === 'nuevo') marcarEnviado(it) }}
+                     className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5 flex items-center gap-1"><Send size={13} />WhatsApp</a>
+                )}
+                {it.instagram && <a href={it.instagram} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">📷 IG</a>}
+                {it.web && <a href={it.web} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">🌐 Web</a>}
+                {it.url && <a href={it.url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark"><ExternalLink size={13} />{it.url.includes('maps') ? 'Maps' : 'Perfil'}</a>}
                 {it.estado === 'nuevo' && (
                   <>
                     <button onClick={() => marcarEnviado(it)} className="text-[11px] font-semibold rounded-lg bg-brand text-white px-2.5 py-1.5 flex items-center gap-1"><Send size={13} />Marqué enviado</button>
