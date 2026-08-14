@@ -136,7 +136,10 @@ export default function ProspeccionSocial() {
             <input value={nv.url} onChange={(e) => setNv({ ...nv, url: e.target.value })} placeholder="Link al perfil (opcional)" className="border border-black/10 rounded-lg px-3 py-2 text-sm col-span-2" />
             <input value={nv.zona} onChange={(e) => setNv({ ...nv, zona: e.target.value })} placeholder="Zona (opcional)" className="border border-black/10 rounded-lg px-3 py-2 text-sm col-span-2" />
           </div>
-          <p className="text-[10px] text-faint">El mensaje se arma solo según el rubro y el canal.</p>
+          <div className="bg-[#F6F4EF] rounded-lg p-2.5 border border-black/5">
+            <p className="text-[10px] font-semibold text-faint uppercase tracking-wide mb-1">Mensaje que se va a usar ({nv.canal === 'linkedin' ? 'LinkedIn' : 'Instagram'})</p>
+            <p className="text-[12px] text-muted whitespace-pre-wrap">{mensajePara(nv.rubro, nv.canal, nv.nombre)}</p>
+          </div>
           <button onClick={agregar} disabled={guardando} className="w-full bg-brand text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">{guardando ? 'Agregando…' : '+ Sumar a la cola'}</button>
         </div>
       )}
