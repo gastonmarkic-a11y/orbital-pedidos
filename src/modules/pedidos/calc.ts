@@ -1,14 +1,13 @@
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 
-export const LISTA_FACTORES: Record<number, number> = {
-  0: 0.7, 1: 0.75, 2: 0.8, 3: 0.85, 4: 0.9,
-  5: 1.0, 6: 1.05, 7: 1.1, 8: 1.15,
-  10: 1.2, 13: 1.3, 99: 0.6,
-}
+// Modelo de precios real: el precio de stock ES el precio ÓPTICO (lista 5) y se aplica a TODOS los clientes.
+// Los únicos con precio distinto son los DISTRIBUIDORES (nro_lista = 1), que pagan el óptico ÷ 1,41.
+// Shopify va por precio público (item.precio) y no pasa por esta función.
+export const FACTOR_DISTRIBUIDOR = 1.41
 
 export function getPrecioLista(precioBase: number, nroLista: number | null): number {
-  const factor = LISTA_FACTORES[nroLista ?? 5] ?? 1.0
-  return Math.round(precioBase * factor)
+  if (nroLista === 1) return Math.round(precioBase / FACTOR_DISTRIBUIDOR) // distribuidor
+  return Math.round(precioBase) // óptico (lista 5) para todos los demás
 }
 
 // Precio BRUTO unitario (antes de descuentos): lista, o preventa, o Shopify-neto. Sin cargo = 0.
