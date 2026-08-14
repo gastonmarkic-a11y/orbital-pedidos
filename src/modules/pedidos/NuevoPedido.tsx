@@ -39,6 +39,8 @@ export default function NuevoPedido() {
   const [busquedaCliente, setBusquedaCliente] = useState('')
   const [sugerencias, setSugerencias] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
+  // Precios especiales del cliente (lista especial por cliente). Clave = modelo en MAYÚSCULAS.
+  const [preciosEsp, setPreciosEsp] = useState<Record<string, number>>({})
   const [busquedaStock, setBusquedaStock] = useState('')
   const [filtroModelo, setFiltroModelo] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -130,6 +132,17 @@ export default function NuevoPedido() {
       })
       setCdEditando(false)
     }
+  }, [cliente?.cod])
+
+  // Precios especiales del cliente (lista especial por cliente): reemplazan la lista al cotizar.
+  useEffect(() => {
+    if (!cliente?.cod) { setPreciosEsp({}); return }
+    supabase.from('cliente_precio_especial').select('modelo, precio_neto').eq('cod_cliente', cliente.cod)
+      .then(({ data }) => {
+        const m: Record<string, number> = {}
+        for (const r of (data as { modelo: string; precio_neto: number }[]) ?? []) m[r.modelo.trim().toUpperCase()] = Number(r.precio_neto)
+        setPreciosEsp(m)
+      })
   }, [cliente?.cod])
 
   // Cliente preseleccionado desde Cartera / Agenda
@@ -293,14 +306,20 @@ export default function NuevoPedido() {
   const totalUnidades = cartKeys.reduce((a, k) => a + cart[k], 0)
   // Monto REAL del pedido en vivo: usa el mismo cálculo que el remito (lista + descuentos,
   // preventa, sin cargo = $0). Así el resumen coincide exacto con lo que se factura/remite.
+  // Precio especial del cliente para un modelo (o undefined si no tiene lista especial para ese modelo).
+  const espDe = (modelo: string | null | undefined): number | undefined =>
+    modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined
+
   const itemsPreview: PedidoItem[] = cartKeys.map((k) => {
     const info = stock.find((x) => x.codigo === k)
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
+    const esp = espDe(info?.modelo)
     return {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
       ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
+      ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
     }
   })
   const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
@@ -312,16 +331,19 @@ export default function NuevoPedido() {
     const info = stock.find((x) => x.codigo === k)
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
+    const esp = espDe(info?.modelo)
     const item: PedidoItem = {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
       ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
+      ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
     }
     // El precio neto de la línea lleva SOLO el descuento comercial (el financiero es una NC condicional aparte).
     const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN)
     const pct = descuentoItemPct(item, dcN, dfN) // comercial
     let tag: string
     if (esRegalo) tag = 'sin cargo (100% bonif.)'
+    else if (esp != null) tag = '★ precio especial'
     else if (esPreventa) tag = 'preventa (precio fijo)'
     else tag = pct > 0 ? `−${pct}% comercial` : 'precio de lista'
     return { net, total: net * cart[k], tag }
@@ -431,6 +453,7 @@ export default function NuevoPedido() {
         const pendiente = Math.max(0, cart[k] - disponible)
         const esRegalo = regaloSel.has(k)
         const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
+        const esp = espDe(p?.modelo ?? info?.modelo)
         return {
           codigo: k,
           modelo: p?.modelo ?? info?.modelo ?? k,
@@ -439,6 +462,7 @@ export default function NuevoPedido() {
           ...(pendiente > 0 ? { pendiente } : {}),
           ...(esRegalo ? { regalo: true, precio: 0 } : {}),
           ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
+          ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
         }
       })
       const totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)

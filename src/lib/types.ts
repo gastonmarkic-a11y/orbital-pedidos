@@ -145,6 +145,9 @@ export interface PedidoItem {
   precio_pv?: number
   /** Ítem marcado como regalo/bonificación: va a precio 0 (lo ve depósito y va 0 a Tango) */
   regalo?: boolean
+  /** Precio NETO especial pactado con el cliente (lista especial por cliente, ej. GAFAS LUXURY).
+   *  Es FINAL: reemplaza la lista, sin comercial/financiero, con IVA aparte. */
+  precio_esp?: number | null
 }
 
 export type EstadoPedido =

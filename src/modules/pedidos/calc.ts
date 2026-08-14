@@ -13,6 +13,7 @@ export function getPrecioLista(precioBase: number, nroLista: number | null): num
 // Precio BRUTO unitario (antes de descuentos): lista, o preventa, o Shopify-neto. Sin cargo = 0.
 export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null): number {
   if (item.regalo) return 0
+  if (item.precio_esp != null) return Math.round(item.precio_esp) // precio especial por cliente (neto final, sin dtos)
   if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA)
   if (item.preventa && item.precio_pv != null) return item.precio_pv
   return precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
@@ -23,6 +24,7 @@ export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: nu
 // Reglas: sin cargo = 100%; preventa = 0 (precio fijo, sin comercial); lista = comercial; Shopify = 0.
 export function descuentoItemPct(item: PedidoItem, dc: number, _df: number): number {
   if (item.regalo) return 100
+  if (item.precio_esp != null) return 0 // precio especial: sin descuentos
   if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
   if (item.preventa && item.precio_pv != null) return 0 // preventa: precio fijo, sin comercial
   return Math.round(dc)
@@ -33,6 +35,7 @@ export function descuentoItemPct(item: PedidoItem, dc: number, _df: number): num
 // Preventa: precio fijo (precio_pv), sin comercial ni financiero horneado.
 export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, _df: number): number {
   if (item.regalo) return 0
+  if (item.precio_esp != null) return Math.round(item.precio_esp) // precio especial por cliente (neto final, sin dtos)
   if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
   if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv) // preventa: precio fijo
   const precioLista = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
@@ -45,6 +48,7 @@ export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: num
 // Se calcula SOBRE el neto comercial → por eso comercial + financiero NO se suman (cascada).
 export function financieroUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number): number {
   if (df <= 0 || item.regalo) return 0
+  if (item.precio_esp != null) return 0 // precio especial: final, sin financiero
   if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado, sin financiero
   const netoCom = netoUnitario(item, precioBase, nroLista, dc, df)
   return Math.round(netoCom * (df / 100))
