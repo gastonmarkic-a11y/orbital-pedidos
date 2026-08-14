@@ -12,8 +12,9 @@ export interface RubroGuion {
 
 const CTA = 'Diseño actual, +80 modelos con entrega inmediata. ¿Te paso catálogo y precios por WhatsApp? 👉'
 
-// Link a la propuesta de Triple Protección (landing). Cambiar acá cuando esté en el dominio propio (orbitaleyewear.com).
-export const LINK_TP = 'https://claude.ai/code/artifact/43f0e2d7-d284-4d1c-b10c-70621eab85a8'
+// Link a la propuesta de Triple Protección (landing). Link corto que oculta la URL larga del Artifact.
+// Cambiar acá cuando esté en el dominio propio (ej. orbitaleyewear.com/proteccion) para un link de marca.
+export const LINK_TP = 'https://tinyurl.com/2aardntr'
 
 export const RUBROS: RubroGuion[] = [
   {
@@ -47,5 +48,5 @@ export function mensajePara(rubroId: string, canal: 'ig' | 'linkedin', nombre?: 
   const r = RUBROS.find((x) => x.id === rubroId) ?? RUBROS[0]
   const t = canal === 'linkedin' ? r.linkedin : r.ig
   const base = (nombre && nombre.trim()) ? t.replace('{nombre}', nombre.trim()) : t.replace('{nombre}', '')
-  return `${base}\n\n🔗 La propuesta completa (Triple Protección): ${LINK_TP}`
+  return `${base}\n\n👉 Ver más información: ${LINK_TP}`
 }
