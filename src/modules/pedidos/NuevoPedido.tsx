@@ -48,6 +48,9 @@ export default function NuevoPedido() {
   const [filtroTratam, setFiltroTratam] = useState('')
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [cart, setCart] = useState<Record<string, number>>({})
+  // Precargas de foto (IRIS leyó un pedido por WhatsApp → acá se activa).
+  type Precarga = { conversacion_id: string; cod_cliente: string | null; cliente_razon: string | null; vendedor: string | null; items: { sku: string | null; modelo: string | null; color: string | null; cantidad: number; estado: string }[] }
+  const [precargas, setPrecargas] = useState<Precarga[]>([])
   // SKUs para los que el vendedor eligió el precio de preventa
   const [preventaSel, setPreventaSel] = useState<Set<string>>(new Set())
   // SKUs marcados como regalo/bonificación (precio 0)
@@ -154,6 +157,35 @@ export default function NuevoPedido() {
       if (c.telefono) setWsp(c.telefono)
     }
   }, [location.state])
+
+  // Precargas de foto pendientes (IRIS leyó un pedido por WhatsApp y quedó listo para activar).
+  useEffect(() => {
+    supabase.from('bot_foto_pedido').select('conversacion_id, cod_cliente, cliente_razon, vendedor, items')
+      .eq('estado', 'listo').order('updated_at', { ascending: false }).limit(10)
+      .then(({ data }) => setPrecargas((data ?? []) as Precarga[]))
+  }, [])
+
+  // Carga una precarga en el formulario: fija el cliente y llena el carrito con lo que leyó IRIS.
+  async function cargarPrecarga(p: Precarga) {
+    if (p.cod_cliente) {
+      const { data: c } = await supabase.from('clientes').select('*').eq('cod', p.cod_cliente).maybeSingle()
+      if (c) { setCliente(c as Cliente); if ((c as Cliente).email) setMail((c as Cliente).email!); if ((c as Cliente).telefono) setWsp((c as Cliente).telefono!) }
+    }
+    const nuevo: Record<string, number> = {}
+    let faltantes = 0
+    for (const it of p.items || []) {
+      if (it.sku) nuevo[it.sku] = (nuevo[it.sku] || 0) + (it.cantidad || 1)
+      else faltantes++
+    }
+    setCart(nuevo)
+    await supabase.from('bot_foto_pedido').update({ estado: 'cargado' }).eq('conversacion_id', p.conversacion_id)
+    setPrecargas((prev) => prev.filter((x) => x.conversacion_id !== p.conversacion_id))
+    toast(`📸 Precarga cargada${faltantes ? ` · ${faltantes} sin match (agregalos a mano)` : ''}. Revisá los sin stock, poné condiciones y confirmá.`, 'success')
+  }
+  async function descartarPrecarga(p: Precarga) {
+    await supabase.from('bot_foto_pedido').update({ estado: 'descartado' }).eq('conversacion_id', p.conversacion_id)
+    setPrecargas((prev) => prev.filter((x) => x.conversacion_id !== p.conversacion_id))
+  }
 
   // Búsqueda de cliente
   useEffect(() => {
@@ -556,6 +588,24 @@ export default function NuevoPedido() {
   return (
     <div className="space-y-4 text-ink">
       <h2 className="text-base font-semibold">Nuevo Pedido</h2>
+
+      {precargas.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-emerald-800">📸 Precargas de foto (leídas por IRIS)</p>
+          {precargas.map((p) => (
+            <div key={p.conversacion_id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-emerald-100 p-2">
+              <div className="min-w-0 text-xs">
+                <b>{p.cliente_razon ?? p.cod_cliente ?? 'Sin cliente'}</b> · {(p.items?.length ?? 0)} modelos
+                {p.vendedor ? <span className="text-muted"> · {p.vendedor}</span> : null}
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button onClick={() => cargarPrecarga(p)} className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5">Cargar</button>
+                <button onClick={() => descartarPrecarga(p)} className="text-[11px] rounded-lg border border-black/10 px-2 py-1.5 text-muted">Descartar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* CLIENTE */}
       <div className="bg-white rounded-xl p-4 border border-black/10 space-y-2">
