@@ -546,15 +546,14 @@ export default function Pedidos() {
           {filtrados.map((l) => {
             const estado = (l.estado ?? 'pendiente') as EstadoPedido
             const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
-            // Pedidos ya facturados: se respeta el neto que realmente se facturó (importe_neto congelado, lógica vieja).
-            // Pedidos en curso: se recalcula en vivo con el criterio nuevo (neto = solo comercial; financiero = NC aparte).
-            const yaFacturado = ['facturado', 'listo_despachar', 'despachado'].includes(estado)
-            const impNeto = yaFacturado && l.importe_neto ? l.importe_neto : (imp.neto || l.importe_neto || 0)
+            // Criterio nuevo para TODOS los pedidos (incluidos los facturados): las facturas reales se
+            // emitieron por Tango, así que la app siempre muestra el neto = solo comercial y el financiero
+            // como NC "Diferencia de Precios" aparte. Se recalcula en vivo desde los descuentos.
+            const impNeto = imp.neto || l.importe_neto || 0
             const dcPed = parseFloat(l.dto_comercial || '') || 0
             const dfPed = parseFloat(l.dto_financiero || '') || 0
             // Monto del descuento financiero = NC "Diferencia de Precios" condicional al pago (no va en la factura).
-            // Solo para pedidos en curso; los ya facturados se dejan como se emitieron.
-            const financieroNC = yaFacturado ? 0 : calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+            const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
             const abierto = abiertos.has(l.id)
             const color = ESTADO_COLORS[estado] ?? '#999'
             const pendienteTotal = (l.items ?? []).reduce((a, i) => a + (i.pendiente ?? 0), 0)
