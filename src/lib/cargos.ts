@@ -72,20 +72,28 @@ export function parseLinkedinContactos(texto: string): LkContacto[] {
   const out: LkContacto[] = []
   for (let i = 0; i < lines.length; i++) {
     if (!esGrado(lines[i])) continue
-    const nombre = lines[i].split('•')[0].trim()
+    // Nombre: lo previo al •, sin el badge de verificado ni símbolos finales.
+    let nombre = lines[i].split('•')[0].replace(/[|].*$/, '').trim()
+    nombre = nombre.replace(/[^\p{L}\p{M}.\-'\s]+$/u, '').trim()
     if (nombre.length < 3 || /conectar|seguir/i.test(nombre)) continue
     let cargo: string | null = null, empresa: string | null = null, ubicacion: string | null = null
-    for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+    for (let j = i + 1; j < Math.min(i + 7, lines.length); j++) {
       const l = lines[j]
       if (esGrado(l)) break
-      if (/^actual:/i.test(l) || /contactos.*en com[uú]n/i.test(l) || /^conectar$/i.test(l)) continue
-      if (/ en /i.test(l) && !cargo) {
-        const idx = l.toLowerCase().lastIndexOf(' en ')
-        cargo = l.slice(0, idx).trim()
-        empresa = l.slice(idx + 4).trim()
-      } else if (!ubicacion && cargo) {
-        ubicacion = l
+      if (/contactos.*en com[uú]n|seguidores|^conectar$/i.test(l)) continue
+      const isActual = /^actual:/i.test(l)
+      const cont = l.replace(/^actual:\s*/i, '')
+      if (/ en /i.test(cont)) {
+        // La línea "Actual: Cargo en Empresa" es la más confiable; si aparece, pisa.
+        if (isActual || !cargo) {
+          const idx = cont.toLowerCase().lastIndexOf(' en ')
+          cargo = cont.slice(0, idx).trim()
+          empresa = cont.slice(idx + 4).trim()
+        }
+        continue
       }
+      // Ubicación: línea corta sin cargo-soup (sin pipes) ni "Actual:".
+      if (!ubicacion && !isActual && !/\|/.test(l) && l.length < 60) ubicacion = l
     }
     out.push({ nombre, cargo, empresa, ubicacion })
   }
