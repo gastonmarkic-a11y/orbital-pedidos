@@ -31,6 +31,10 @@ export default function ProspeccionSocial() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<'pend' | 'enviado' | 'respondio' | 'todos'>('pend')
+  const [fZona, setFZona] = useState('')
+  const [fWa, setFWa] = useState(false)
+  const [fIg, setFIg] = useState(false)
+  const [fWeb, setFWeb] = useState(false)
   const [copiado, setCopiado] = useState<number | null>(null)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [nv, setNv] = useState({ canal: 'ig' as 'ig' | 'linkedin', nombre: '', perfil: '', url: '', rubro: 'opticas', zona: '' })
@@ -62,12 +66,19 @@ export default function ProspeccionSocial() {
   }
   useEffect(() => { cargar() }, [])
 
+  const zonas = useMemo(() => [...new Set(items.map((i) => i.zona).filter(Boolean))].sort() as string[], [items])
+
   const filtrados = useMemo(() => {
-    if (filtro === 'pend') return items.filter((i) => i.estado === 'nuevo')
-    if (filtro === 'enviado') return items.filter((i) => i.estado === 'enviado')
-    if (filtro === 'respondio') return items.filter((i) => ['respondio', 'whatsapp'].includes(i.estado))
-    return items.filter((i) => i.estado !== 'descartado')
-  }, [items, filtro])
+    let base = items.filter((i) => i.estado !== 'descartado')
+    if (filtro === 'pend') base = base.filter((i) => i.estado === 'nuevo')
+    else if (filtro === 'enviado') base = base.filter((i) => i.estado === 'enviado')
+    else if (filtro === 'respondio') base = base.filter((i) => ['respondio', 'whatsapp'].includes(i.estado))
+    if (fZona) base = base.filter((i) => (i.zona ?? '') === fZona)
+    if (fWa) base = base.filter((i) => !!i.telefono?.trim())
+    if (fIg) base = base.filter((i) => !!i.instagram?.trim())
+    if (fWeb) base = base.filter((i) => !!i.web?.trim())
+    return base
+  }, [items, filtro, fZona, fWa, fIg, fWeb])
 
   const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -152,6 +163,18 @@ export default function ProspeccionSocial() {
         {([['pend', `A enviar (${cuenta('nuevo')})`], ['enviado', `Enviados (${cuenta('enviado')})`], ['respondio', `Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setFiltro(k)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${filtro === k ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>{l}</button>
         ))}
+      </div>
+
+      {/* Filtros por zona / contacto */}
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <select value={fZona} onChange={(e) => setFZona(e.target.value)} className="shrink-0 text-[12px] rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-brandDark">
+          <option value="">📍 Todas las zonas</option>
+          {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+        <button onClick={() => setFWa(!fWa)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWa ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10 text-muted'}`}>📲 WhatsApp</button>
+        <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
+        <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
+        <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
       </div>
 
       {loading ? <p className="text-sm text-muted p-4">Cargando…</p> : filtrados.length === 0 ? (
