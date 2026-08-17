@@ -59,6 +59,41 @@ export function webTeamUrl(web: string | null): string | null {
   return `https://www.google.com/search?q=${encodeURIComponent(`site:${host} (equipo OR nosotros OR contacto OR staff OR "quiénes somos")`)}`
 }
 
+export interface LkContacto { nombre: string; cargo: string | null; empresa: string | null; ubicacion: string | null }
+
+/**
+ * Parsea el texto copiado de una búsqueda de personas de LinkedIn.
+ * NO scrapea: solo ordena el texto que el usuario copió a mano (legal, sin riesgo de ban).
+ * Se ancla en el grado de conexión (• 1º / • 2º / • 3er) para detectar cada persona.
+ */
+export function parseLinkedinContactos(texto: string): LkContacto[] {
+  const lines = texto.split('\n').map((l) => l.trim()).filter(Boolean)
+  const esGrado = (l: string) => /•\s*(1|2|3)/.test(l)
+  const out: LkContacto[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!esGrado(lines[i])) continue
+    const nombre = lines[i].split('•')[0].trim()
+    if (nombre.length < 3 || /conectar|seguir/i.test(nombre)) continue
+    let cargo: string | null = null, empresa: string | null = null, ubicacion: string | null = null
+    for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+      const l = lines[j]
+      if (esGrado(l)) break
+      if (/^actual:/i.test(l) || /contactos.*en com[uú]n/i.test(l) || /^conectar$/i.test(l)) continue
+      if (/ en /i.test(l) && !cargo) {
+        const idx = l.toLowerCase().lastIndexOf(' en ')
+        cargo = l.slice(0, idx).trim()
+        empresa = l.slice(idx + 4).trim()
+      } else if (!ubicacion && cargo) {
+        ubicacion = l
+      }
+    }
+    out.push({ nombre, cargo, empresa, ubicacion })
+  }
+  // Dedup por nombre+empresa
+  const vistos = new Set<string>()
+  return out.filter((c) => { const k = `${c.nombre}|${c.empresa}`.toLowerCase(); if (vistos.has(k)) return false; vistos.add(k); return true })
+}
+
 /** Extrae el dominio de una URL o string. */
 export function dominioDe(web: string | null): string | null {
   if (!web) return null

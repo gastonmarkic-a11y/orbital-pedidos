@@ -4,7 +4,9 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Copy, Check, ExternalLink, Send, Plus, Trash2 } from 'lucide-react'
 import { RUBROS, mensajePara } from '../../lib/guiones'
-import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, linkedinEmpresaUrl, googleEmpresaUrl, type CargoCat } from '../../lib/cargos'
+import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, linkedinEmpresaUrl, googleEmpresaUrl, parseLinkedinContactos, type CargoCat } from '../../lib/cargos'
+
+interface LkRow { id: number; nombre: string; cargo: string | null; empresa: string | null; ubicacion: string | null; estado: string }
 
 interface Persona { id: number; empresa_id: number; nombre: string | null; cargo: string | null; categoria: string | null; relevance_score: number | null; linkedin_url: string | null; estado: string }
 
@@ -51,6 +53,10 @@ export default function ProspeccionSocial() {
   const [buscandoApify, setBuscandoApify] = useState(false)
   const [gastoApify, setGastoApify] = useState<number | null>(null)
   const [enriqueciendo, setEnriqueciendo] = useState(false)
+  const [lkOpen, setLkOpen] = useState(false)
+  const [lkTexto, setLkTexto] = useState('')
+  const [lkRows, setLkRows] = useState<LkRow[]>([])
+  const [lkGuardando, setLkGuardando] = useState(false)
   const TOPE_APIFY = 4.5
 
   const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
@@ -105,6 +111,26 @@ export default function ProspeccionSocial() {
     cargar()
   }
 
+  // Pegá lo copiado de LinkedIn → el sistema lo separa y lo guarda (vos copiás, no scrapea nada).
+  async function procesarLinkedin() {
+    const cs = parseLinkedinContactos(lkTexto)
+    if (!cs.length) { toast('No encontré contactos. Copiá los resultados de LinkedIn (nombre + cargo) y pegalos.', 'error'); return }
+    setLkGuardando(true)
+    const { error } = await supabase.from('contacto_linkedin').insert(cs.map((c) => ({ ...c, operador: codigoEfectivo, estado: 'nuevo' })))
+    setLkGuardando(false)
+    if (error) { toast('No se pudo guardar', 'error'); return }
+    toast(`✓ ${cs.length} contactos guardados en la base`, 'success')
+    setLkTexto(''); cargarLk()
+  }
+  async function cargarLk() {
+    const { data } = await supabase.from('contacto_linkedin').select('id, nombre, cargo, empresa, ubicacion, estado').neq('estado', 'descartado').order('created_at', { ascending: false }).limit(200)
+    setLkRows((data as LkRow[]) ?? [])
+  }
+  async function descartarLk(id: number) {
+    await supabase.from('contacto_linkedin').update({ estado: 'descartado' }).eq('id', id)
+    setLkRows((prev) => prev.filter((x) => x.id !== id))
+  }
+
   async function cargar() {
     setLoading(true)
     const { data } = await supabase.from('prospeccion_social').select('*').order('created_at', { ascending: false }).limit(400)
@@ -115,7 +141,7 @@ export default function ProspeccionSocial() {
     setPersonas(map)
     setLoading(false)
   }
-  useEffect(() => { cargar(); cargarGasto() }, [])
+  useEffect(() => { cargar(); cargarGasto(); cargarLk() }, [])
 
   const ciudadDe = (it: Item) => (it.zona ?? '').split(',')[0].trim()
   function toggleBuscar(id: number) {
@@ -241,6 +267,39 @@ export default function ProspeccionSocial() {
           <button onClick={traerContactos} disabled={enriqueciendo} className="bg-emerald-600 text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{enriqueciendo ? 'Leyendo webs…' : 'Traer emails ahora'}</button>
           <span className="text-[10px] text-faint">Gratis · entra a la web de cada óptica y saca email/WhatsApp/IG. Además corre solo cada hora.</span>
         </div>
+      </div>
+
+      {/* Pegar contactos de LinkedIn: vos copiás los resultados, el sistema los ordena y guarda (no scrapea). */}
+      <div className="bg-white rounded-2xl border border-black/10 p-3">
+        <button onClick={() => setLkOpen((v) => !v)} className="w-full flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">📋 Pegar contactos de LinkedIn{lkRows.length ? ` · ${lkRows.length} en la base` : ''}</span>
+          <span className="text-[11px] text-faint">{lkOpen ? '▲' : '▼'}</span>
+        </button>
+        {lkOpen && (
+          <div className="mt-2 space-y-2">
+            <p className="text-[11px] text-muted">Buscá las ópticas en LinkedIn, <b>seleccioná los resultados y copiálos</b> (Ctrl+C), y pegá acá. El sistema separa nombre · cargo · empresa solo. <span className="text-faint">No entra a LinkedIn ni scrapea: solo ordena lo que copiaste.</span></p>
+            <textarea value={lkTexto} onChange={(e) => setLkTexto(e.target.value)} rows={5} placeholder={'Pegá acá lo copiado de LinkedIn, ej:\nHernan Gabriel Staszczuk • 2º\nJefe de logística en Ópticas LAM\nBuenos Aires y alrededores'} className="w-full border border-black/10 rounded-lg px-3 py-2 text-sm font-mono" />
+            <button onClick={procesarLinkedin} disabled={lkGuardando || !lkTexto.trim()} className="bg-[#0a66c2] text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{lkGuardando ? 'Guardando…' : 'Procesar y guardar'}</button>
+            {lkRows.length > 0 && (
+              <div className="mt-1 border-t border-black/10 pt-2 space-y-1 max-h-72 overflow-y-auto">
+                {lkRows.map((c) => (
+                  <div key={c.id} className="flex items-start justify-between gap-2 text-[12px]">
+                    <div>
+                      <b>{c.nombre}</b>
+                      {c.cargo && <span className="text-muted"> · {c.cargo}</span>}
+                      {c.empresa && <span className="text-brandDark"> · {c.empresa}</span>}
+                      {c.ubicacion && <span className="text-faint"> · {c.ubicacion}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a href={`https://www.google.com/search?q=${encodeURIComponent(`site:linkedin.com/in "${c.nombre}" ${c.empresa ?? ''}`)}`} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-1.5 py-0.5 text-brandDark">buscar</a>
+                      <button onClick={() => descartarLk(c.id)} className="text-red-400 font-bold">×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Alta manual (mientras el descubridor sea manual) */}
