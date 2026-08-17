@@ -47,6 +47,10 @@ export default function ProspeccionSocial() {
   const [dcCiudad, setDcCiudad] = useState('')
   const [dcRubro, setDcRubro] = useState('opticas')
   const [buscando, setBuscando] = useState(false)
+  const [dcLimite, setDcLimite] = useState(30)
+  const [buscandoApify, setBuscandoApify] = useState(false)
+  const [gastoApify, setGastoApify] = useState<number | null>(null)
+  const TOPE_APIFY = 4.5
 
   const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
   // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
@@ -63,6 +67,31 @@ export default function ProspeccionSocial() {
     setDcCiudad(''); cargar()
   }
 
+  // Gasto Apify del mes en curso (para mostrar cuánto queda del crédito gratis ~$5).
+  async function cargarGasto() {
+    const inicio = new Date(); inicio.setUTCDate(1); inicio.setUTCHours(0, 0, 0, 0)
+    const { data } = await supabase.from('apify_uso').select('costo_estimado_usd').gte('created_at', inicio.toISOString())
+    const total = (data ?? []).reduce((a: number, r: { costo_estimado_usd: number }) => a + Number(r.costo_estimado_usd || 0), 0)
+    setGastoApify(total)
+  }
+
+  // ApifyProvider: descubre por ciudad vía Apify (Google Maps). Cuesta crédito → tope + confirmación.
+  async function buscarApify(confirmar = false) {
+    if (!dcCiudad.trim()) { toast('Poné una ciudad', 'error'); return }
+    setBuscandoApify(true)
+    const { data, error } = await supabase.functions.invoke('apify-buscar', { body: { ciudad: dcCiudad.trim(), rubro: dcRubro, limite: dcLimite, confirmar } })
+    setBuscandoApify(false)
+    const r = data as { insertados?: number; duplicados?: number; error?: string; requiere_confirmacion?: boolean; motivo?: string; costo_corrida_usd?: number; gasto_mes_usd?: number } | null
+    if (error) { toast('No se pudo conectar con Apify', 'error'); return }
+    if (r?.requiere_confirmacion) {
+      if (window.confirm(`${r.motivo}\n\n¿Igual la corro?`)) return buscarApify(true)
+      return
+    }
+    if (r?.error) { toast(r.error, 'error'); cargarGasto(); return }
+    toast(`✓ ${r?.insertados ?? 0} nuevos de ${dcCiudad} · gastaste ~$${(r?.costo_corrida_usd ?? 0).toFixed(2)} (mes: $${(r?.gasto_mes_usd ?? 0).toFixed(2)})`, 'success')
+    setDcCiudad(''); cargar(); cargarGasto()
+  }
+
   async function cargar() {
     setLoading(true)
     const { data } = await supabase.from('prospeccion_social').select('*').order('created_at', { ascending: false }).limit(400)
@@ -73,7 +102,7 @@ export default function ProspeccionSocial() {
     setPersonas(map)
     setLoading(false)
   }
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar(); cargarGasto() }, [])
 
   const ciudadDe = (it: Item) => (it.zona ?? '').split(',')[0].trim()
   function toggleBuscar(id: number) {
@@ -155,9 +184,30 @@ export default function ProspeccionSocial() {
           <select value={dcRubro} onChange={(e) => setDcRubro(e.target.value)} className="border border-black/10 rounded-lg px-2 py-2 text-sm">
             {RUBROS.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.nombre}</option>)}
           </select>
-          <button onClick={buscarCiudad} disabled={buscando} className="bg-ink text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscando ? 'Buscando…' : 'Buscar y llenar cola'}</button>
+          <button onClick={buscarCiudad} disabled={buscando} className="bg-ink text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscando ? 'Buscando…' : 'Buscar (gratis · Google)'}</button>
         </div>
         <p className="text-[10px] text-faint mt-1.5">Trae los negocios del rubro en esa ciudad, con el mensaje listo. Cada uno queda en "A enviar".</p>
+
+        {/* ApifyProvider: más lugares y mejor contacto. Usa crédito (tope ~$5/mes gratis). */}
+        <div className="mt-3 pt-3 border-t border-black/10">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">⚡ Apify (más lugares + contacto)</p>
+            {gastoApify !== null && (
+              <span className={`text-[10px] font-medium ${gastoApify >= TOPE_APIFY ? 'text-red-600' : 'text-faint'}`}>
+                crédito: ${gastoApify.toFixed(2)} / ${TOPE_APIFY.toFixed(2)} del mes
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-[11px] text-muted flex items-center gap-1">
+              Cantidad
+              <input type="number" min={5} max={120} value={dcLimite} onChange={(e) => setDcLimite(Math.max(5, Math.min(120, Number(e.target.value) || 30)))} className="w-16 border border-black/10 rounded-lg px-2 py-2 text-sm" />
+            </label>
+            <span className="text-[10px] text-faint">≈ ${(dcLimite * 0.007).toFixed(2)} esta corrida</span>
+            <button onClick={() => buscarApify(false)} disabled={buscandoApify} className="bg-brandDark text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscandoApify ? 'Buscando…' : 'Buscar con Apify'}</button>
+          </div>
+          <p className="text-[10px] text-faint mt-1.5">Usa el crédito gratis de Apify (~$5/mes). Tope duro: 120 por corrida y avisa antes de pasarte del mes.</p>
+        </div>
       </div>
 
       {/* Alta manual (mientras el descubridor sea manual) */}
