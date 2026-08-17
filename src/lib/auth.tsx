@@ -18,6 +18,7 @@ interface AuthCtx {
   /** Cambiar la cuenta activa entre las que comparten el login */
   setCuenta: (codigo: string) => void
   signInWithEmail: (email: string) => Promise<{ error: string | null }>
+  signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -122,6 +123,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function signInWithPassword(email: string, password: string) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) {
+        if (/invalid login credentials/i.test(error.message)) return { error: 'Email o contraseña incorrectos.' }
+        return { error: error.message || 'No se pudo entrar. Probá de nuevo.' }
+      }
+      return { error: null }
+    } catch {
+      return { error: 'No se pudo entrar. Revisá tu conexión y probá de nuevo.' }
+    }
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
@@ -155,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         cuentas,
         setCuenta,
         signInWithEmail,
+        signInWithPassword,
         signOut,
       }}
     >

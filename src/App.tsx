@@ -196,8 +196,10 @@ function homeFor(rol: Rol): string {
 }
 
 function Login() {
-  const { signInWithEmail } = useAuth()
+  const { signInWithEmail, signInWithPassword } = useAuth()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [modo, setModo] = useState<'pass' | 'mail'>('pass')
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -206,10 +208,17 @@ function Login() {
     e.preventDefault()
     setSending(true)
     setError(null)
-    const { error: err } = await signInWithEmail(email.trim())
-    setSending(false)
-    if (err) setError(err)
-    else setSent(true)
+    if (modo === 'mail') {
+      const { error: err } = await signInWithEmail(email.trim())
+      setSending(false)
+      if (err) setError(err)
+      else setSent(true)
+    } else {
+      const { error: err } = await signInWithPassword(email.trim(), password)
+      setSending(false)
+      if (err) setError(err)
+      // Si entra bien, el listener de sesión re-renderiza la app ya logueada.
+    }
   }
 
   return (
@@ -235,13 +244,30 @@ function Login() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg bg-white border border-black/10 px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-brand"
             />
+            {modo === 'pass' && (
+              <input
+                type="password"
+                required
+                placeholder="Contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg bg-white border border-black/10 px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-brand"
+              />
+            )}
             {error && <p className="text-sm text-red-600">{error}</p>}
             <button
               type="submit"
               disabled={sending}
               className="w-full rounded-lg bg-brand text-white py-2 text-sm font-medium disabled:opacity-50"
             >
-              {sending ? 'Enviando...' : 'Enviarme el link de acceso'}
+              {sending ? (modo === 'pass' ? 'Entrando...' : 'Enviando...') : modo === 'pass' ? 'Entrar' : 'Enviarme el link de acceso'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setModo(modo === 'pass' ? 'mail' : 'pass'); setError(null) }}
+              className="w-full text-xs text-muted underline"
+            >
+              {modo === 'pass' ? '¿No tenés contraseña? Entrá con un link por mail' : 'Entrar con email y contraseña'}
             </button>
           </form>
         )}
