@@ -15,7 +15,7 @@ interface Item {
   id: number; canal: 'ig' | 'linkedin'; nombre: string | null; perfil: string | null; url: string | null
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
-  telefono: string | null; web: string | null; instagram: string | null
+  telefono: string | null; web: string | null; instagram: string | null; email: string | null
 }
 
 const ESTADOS: Record<string, { t: string; c: string }> = {
@@ -50,6 +50,7 @@ export default function ProspeccionSocial() {
   const [dcLimite, setDcLimite] = useState(30)
   const [buscandoApify, setBuscandoApify] = useState(false)
   const [gastoApify, setGastoApify] = useState<number | null>(null)
+  const [enriqueciendo, setEnriqueciendo] = useState(false)
   const TOPE_APIFY = 4.5
 
   const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
@@ -90,6 +91,18 @@ export default function ProspeccionSocial() {
     if (r?.error) { toast(r.error, 'error'); cargarGasto(); return }
     toast(`✓ ${r?.insertados ?? 0} nuevos de ${dcCiudad} · gastaste ~$${(r?.costo_corrida_usd ?? 0).toFixed(2)} (mes: $${(r?.gasto_mes_usd ?? 0).toFixed(2)})`, 'success')
     setDcCiudad(''); cargar(); cargarGasto()
+  }
+
+  // Robot GRATIS: entra a la web de las ópticas pendientes y trae email + WhatsApp + IG solo.
+  async function traerContactos() {
+    setEnriqueciendo(true)
+    const { data, error } = await supabase.functions.invoke('enriquecer-web', { body: { limite: 40 } })
+    setEnriqueciendo(false)
+    const r = data as { procesados?: number; con_email?: number; error?: string; mensaje?: string } | null
+    if (error || r?.error) { toast(r?.error ?? 'No se pudo', 'error'); return }
+    if (r?.mensaje) { toast(r.mensaje, 'success'); return }
+    toast(`🤖 ${r?.con_email ?? 0} emails nuevos de ${r?.procesados ?? 0} ópticas leídas`, 'success')
+    cargar()
   }
 
   async function cargar() {
@@ -221,6 +234,13 @@ export default function ProspeccionSocial() {
           </div>
           <p className="text-[10px] text-faint mt-1.5">Usa el crédito gratis de Apify (~$5/mes). Tope duro: 120 por corrida y avisa antes de pasarte del mes.</p>
         </div>
+
+        {/* Robot GRATIS: lee la web de cada óptica y trae el contacto directo (corre solo cada hora). */}
+        <div className="mt-3 pt-3 border-t border-black/10 flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">🤖 Robot de contactos</p>
+          <button onClick={traerContactos} disabled={enriqueciendo} className="bg-emerald-600 text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{enriqueciendo ? 'Leyendo webs…' : 'Traer emails ahora'}</button>
+          <span className="text-[10px] text-faint">Gratis · entra a la web de cada óptica y saca email/WhatsApp/IG. Además corre solo cada hora.</span>
+        </div>
       </div>
 
       {/* Alta manual (mientras el descubridor sea manual) */}
@@ -334,6 +354,7 @@ export default function ProspeccionSocial() {
                   <a href={waLink(it)} target="_blank" rel="noreferrer" onClick={() => { if (it.estado === 'nuevo') marcarEnviado(it) }}
                      className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5 flex items-center gap-1"><Send size={13} />WhatsApp</a>
                 )}
+                {it.email && <a href={`mailto:${it.email}`} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">✉️ {it.email}</a>}
                 {it.instagram && <a href={it.instagram} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">📷 IG</a>}
                 {it.web && <a href={it.web} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">🌐 Web</a>}
                 {it.url && <a href={it.url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark"><ExternalLink size={13} />{it.url.includes('maps') ? 'Maps' : 'Perfil'}</a>}
