@@ -4,6 +4,9 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Copy, Check, ExternalLink, Send, Plus, Trash2 } from 'lucide-react'
 import { RUBROS, mensajePara } from '../../lib/guiones'
+import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, type CargoCat } from '../../lib/cargos'
+
+interface Persona { id: number; empresa_id: number; nombre: string | null; cargo: string | null; categoria: string | null; relevance_score: number | null; linkedin_url: string | null; estado: string }
 
 // Cola de prospección social: cada contacto con su mensaje ya armado y un botón para marcar enviado.
 // El sistema arma el mensaje; la persona copia, abre el perfil y envía (2 clics), y queda todo registrado.
@@ -35,6 +38,8 @@ export default function ProspeccionSocial() {
   const [fWa, setFWa] = useState(false)
   const [fIg, setFIg] = useState(false)
   const [fWeb, setFWeb] = useState(false)
+  const [personas, setPersonas] = useState<Record<number, Persona[]>>({})
+  const [buscarOpen, setBuscarOpen] = useState<Set<number>>(new Set())
   const [copiado, setCopiado] = useState<number | null>(null)
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [nv, setNv] = useState({ canal: 'ig' as 'ig' | 'linkedin', nombre: '', perfil: '', url: '', rubro: 'opticas', zona: '' })
@@ -62,9 +67,33 @@ export default function ProspeccionSocial() {
     setLoading(true)
     const { data } = await supabase.from('prospeccion_social').select('*').order('created_at', { ascending: false }).limit(400)
     setItems((data as Item[]) ?? [])
+    const { data: pers } = await supabase.from('prospecto_persona').select('id, empresa_id, nombre, cargo, categoria, relevance_score, linkedin_url, estado').neq('estado', 'descartado').order('relevance_score', { ascending: false })
+    const map: Record<number, Persona[]> = {}
+    for (const p of ((pers ?? []) as Persona[])) { (map[p.empresa_id] ??= []).push(p) }
+    setPersonas(map)
     setLoading(false)
   }
   useEffect(() => { cargar() }, [])
+
+  const ciudadDe = (it: Item) => (it.zona ?? '').split(',')[0].trim()
+  function toggleBuscar(id: number) {
+    setBuscarOpen((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  async function agregarPersona(it: Item, cat: CargoCat, url: string) {
+    const nombre = window.prompt(`¿Qué persona encontraste como ${cat.label} en ${it.nombre}? (nombre y apellido)`)
+    if (!nombre || !nombre.trim()) return
+    const { data, error } = await supabase.from('prospecto_persona').insert({
+      empresa_id: it.id, nombre: nombre.trim(), cargo: cat.label, categoria: cat.id,
+      relevance_score: cat.prioridad, fuente: 'manual', source_url: url, operador: codigoEfectivo, estado: 'nuevo',
+    }).select('id, empresa_id, nombre, cargo, categoria, relevance_score, linkedin_url, estado').single()
+    if (error) { toast('No se pudo guardar', 'error'); return }
+    setPersonas((prev) => ({ ...prev, [it.id]: [...(prev[it.id] ?? []), data as Persona] }))
+    toast(`✓ ${nombre.trim()} guardado como ${cat.label}`, 'success')
+  }
+  async function descartarPersona(p: Persona) {
+    await supabase.from('prospecto_persona').update({ estado: 'descartado' }).eq('id', p.id)
+    setPersonas((prev) => ({ ...prev, [p.empresa_id]: (prev[p.empresa_id] ?? []).filter((x) => x.id !== p.id) }))
+  }
 
   const zonas = useMemo(() => [...new Set(items.map((i) => i.zona).filter(Boolean))].sort() as string[], [items])
 
@@ -191,6 +220,39 @@ export default function ProspeccionSocial() {
                 <span className={`shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
               </div>
               <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>
+
+              {/* Buscar contactos (decisores) — genera búsquedas, no scrapea */}
+              <div>
+                <button onClick={() => toggleBuscar(it.id)} className="text-[11px] font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-2.5 py-1.5">
+                  🔎 Buscar contactos{personas[it.id]?.length ? ` · ${personas[it.id].length} guardados` : ''}
+                </button>
+                {(personas[it.id]?.length ?? 0) > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {personas[it.id].map((p) => (
+                      <span key={p.id} className="text-[11px] bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 flex items-center gap-1">
+                        <b>{p.nombre}</b><span className="text-muted">· {p.cargo}</span>
+                        <button onClick={() => descartarPersona(p)} className="text-red-400 font-bold ml-0.5">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {buscarOpen.has(it.id) && (
+                  <div className="mt-2 bg-indigo-50/60 border border-indigo-100 rounded-lg p-2 space-y-1.5">
+                    <p className="text-[10px] text-indigo-800 font-semibold">Abrí la búsqueda del decisor y guardalo (no scrapea nada):</p>
+                    {CARGOS.map((cat) => (
+                      <div key={cat.id} className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-medium w-36 shrink-0">{cat.emoji} {cat.label}</span>
+                        <a href={linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">in</a>
+                        <a href={googleLinkedinUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G·in</a>
+                        <a href={googleWebUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G</a>
+                        <button onClick={() => agregarPersona(it, cat, linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it)))} className="text-[10px] rounded border border-emerald-300 text-emerald-700 px-2 py-1">＋ guardar</button>
+                      </div>
+                    ))}
+                    {webTeamUrl(it.web) && <a href={webTeamUrl(it.web)!} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-700 underline inline-block">🌐 Ver equipo/contacto en su web</a>}
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-1.5">
                 <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>
                 {it.telefono && (
