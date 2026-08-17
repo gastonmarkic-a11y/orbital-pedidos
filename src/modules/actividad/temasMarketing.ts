@@ -16,7 +16,8 @@ export const TEMAS: TemaMeta[] = [
   { key: 'recuperar', icono: '📋', label: 'Clientes a Recuperar', desc: 'Guías de diagnóstico y propuesta segmentada' },
   { key: 'catalogos', icono: '📖', label: 'Catálogos', desc: 'Catálogos por línea: Sol, Receta, ZN, Be Rabbit, Sport' },
   { key: 'listas-precios', icono: '💲', label: 'Lista de precios', desc: 'Listas de precios vigentes y de postventa' },
-  { key: 'cristales', icono: '🔬', label: 'Cristales y materialidad', desc: 'Blue cut, infrarrojo, triple protección y materiales de marcos' },
+  { key: 'speech-etapas', icono: '🎯', label: 'Speech por etapas (embudo)', desc: 'Qué decir en cada etapa: Presentación → Interacción → Evaluación → Conversión' },
+  { key: 'cristales', icono: '🔬', label: 'Cristales y Triple Protección', desc: 'Blue Cut, Infrarrojo, UV400 (Triple Protección) y materiales de marcos' },
   { key: 'herramientas', icono: '🧰', label: 'Herramientas comerciales', desc: 'Guiones de secuencia, objeciones y logo' },
   { key: 'general', icono: '📚', label: 'Material general', desc: 'Material sin clasificar' },
 ]

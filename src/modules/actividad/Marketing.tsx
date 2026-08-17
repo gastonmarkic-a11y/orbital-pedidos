@@ -178,6 +178,16 @@ export default function Marketing() {
                       {copiado === p.id ? '✓ Copiado' : 'Copiar texto'}
                     </button>
                   )}
+                  {p.contenido_texto && (
+                    <a href={`https://wa.me/?text=${encodeURIComponent(p.contenido_texto.replace(/[«»]/g, ''))}`} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-600">
+                      📲 Enviar WhatsApp
+                    </a>
+                  )}
+                  {p.contenido_texto && (
+                    <a href={`mailto:?body=${encodeURIComponent(p.contenido_texto.replace(/[«»]/g, ''))}`} className="text-xs font-medium text-brandDark">
+                      ✉️ Enviar mail
+                    </a>
+                  )}
                   {p.url && (
                     <button
                       onClick={() => abrir(p.id, p.url!)}
