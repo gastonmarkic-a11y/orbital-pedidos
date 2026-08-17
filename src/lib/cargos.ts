@@ -40,6 +40,18 @@ export function googleWebUrl(empresa: string, cat: CargoCat, ciudad?: string): s
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`
 }
 
+/** Búsqueda GENERAL: toda la gente de la empresa en LinkedIn (sin filtrar por cargo). */
+export function linkedinEmpresaUrl(empresa: string, ciudad?: string): string {
+  const kw = limpio(`${empresa} ${ciudad ?? ''}`)
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(kw)}`
+}
+
+/** Búsqueda GENERAL vía Google: todos los perfiles de LinkedIn ligados a la empresa. */
+export function googleEmpresaUrl(empresa: string, ciudad?: string): string {
+  const q = limpio(`site:linkedin.com/in "${empresa}" ${ciudad ?? ''}`)
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
+
 /** Busca el equipo/contacto en la web del negocio (dato público). */
 export function webTeamUrl(web: string | null): string | null {
   const host = dominioDe(web)

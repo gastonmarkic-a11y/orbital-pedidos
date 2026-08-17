@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Copy, Check, ExternalLink, Send, Plus, Trash2 } from 'lucide-react'
 import { RUBROS, mensajePara } from '../../lib/guiones'
-import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, type CargoCat } from '../../lib/cargos'
+import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, linkedinEmpresaUrl, googleEmpresaUrl, type CargoCat } from '../../lib/cargos'
 
 interface Persona { id: number; empresa_id: number; nombre: string | null; cargo: string | null; categoria: string | null; relevance_score: number | null; linkedin_url: string | null; estado: string }
 
@@ -118,6 +118,19 @@ export default function ProspeccionSocial() {
     if (error) { toast('No se pudo guardar', 'error'); return }
     setPersonas((prev) => ({ ...prev, [it.id]: [...(prev[it.id] ?? []), data as Persona] }))
     toast(`✓ ${nombre.trim()} guardado como ${cat.label}`, 'success')
+  }
+  // Guardar desde la búsqueda general: pide nombre y cargo libre (el que viste en el perfil).
+  async function agregarPersonaGeneral(it: Item, url: string) {
+    const nombre = window.prompt(`¿Qué persona encontraste en ${it.nombre}? (nombre y apellido)`)
+    if (!nombre || !nombre.trim()) return
+    const cargo = (window.prompt('¿Qué cargo tiene? (ej: Dueño, Compras, Gerente…)') ?? '').trim() || 'Contacto'
+    const { data, error } = await supabase.from('prospecto_persona').insert({
+      empresa_id: it.id, nombre: nombre.trim(), cargo, categoria: 'general',
+      relevance_score: 90, fuente: 'manual', source_url: url, operador: codigoEfectivo, estado: 'nuevo',
+    }).select('id, empresa_id, nombre, cargo, categoria, relevance_score, linkedin_url, estado').single()
+    if (error) { toast('No se pudo guardar', 'error'); return }
+    setPersonas((prev) => ({ ...prev, [it.id]: [...(prev[it.id] ?? []), data as Persona] }))
+    toast(`✓ ${nombre.trim()} guardado`, 'success')
   }
   async function descartarPersona(p: Persona) {
     await supabase.from('prospecto_persona').update({ estado: 'descartado' }).eq('id', p.id)
@@ -287,18 +300,30 @@ export default function ProspeccionSocial() {
                   </div>
                 )}
                 {buscarOpen.has(it.id) && (
-                  <div className="mt-2 bg-indigo-50/60 border border-indigo-100 rounded-lg p-2 space-y-1.5">
-                    <p className="text-[10px] text-indigo-800 font-semibold">Abrí la búsqueda del decisor y guardalo (no scrapea nada):</p>
-                    {CARGOS.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-medium w-36 shrink-0">{cat.emoji} {cat.label}</span>
-                        <a href={linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">in</a>
-                        <a href={googleLinkedinUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G·in</a>
-                        <a href={googleWebUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G</a>
-                        <button onClick={() => agregarPersona(it, cat, linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it)))} className="text-[10px] rounded border border-emerald-300 text-emerald-700 px-2 py-1">＋ guardar</button>
+                  <div className="mt-2 bg-indigo-50/60 border border-indigo-100 rounded-lg p-2.5 space-y-2">
+                    {/* Búsqueda GENERAL: un clic → toda la gente de la óptica */}
+                    <p className="text-[10px] text-indigo-800 font-semibold">Abrí la gente de la óptica y guardá al que decide (no scrapea nada):</p>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <a href={linkedinEmpresaUrl(it.nombre ?? '', ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg bg-[#0a66c2] text-white px-2.5 py-1.5">in · Ver equipo</a>
+                      <a href={googleEmpresaUrl(it.nombre ?? '', ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 text-brandDark">🔍 Google</a>
+                      {webTeamUrl(it.web) && <a href={webTeamUrl(it.web)!} target="_blank" rel="noreferrer" className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 text-brandDark">🌐 Su web</a>}
+                      <button onClick={() => agregarPersonaGeneral(it, linkedinEmpresaUrl(it.nombre ?? '', ciudadDe(it)))} className="text-[11px] font-semibold rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 px-2.5 py-1.5">＋ guardar contacto</button>
+                    </div>
+                    {/* Por cargo puntual (opcional, plegado) */}
+                    <details className="mt-1">
+                      <summary className="text-[10px] text-indigo-700 cursor-pointer select-none">🎯 Buscar por cargo puntual (opcional)</summary>
+                      <div className="mt-1.5 space-y-1.5">
+                        {CARGOS.map((cat) => (
+                          <div key={cat.id} className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-medium w-36 shrink-0">{cat.emoji} {cat.label}</span>
+                            <a href={linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">in</a>
+                            <a href={googleLinkedinUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G·in</a>
+                            <a href={googleWebUrl(it.nombre ?? '', cat, ciudadDe(it))} target="_blank" rel="noreferrer" className="text-[10px] rounded border border-black/10 px-2 py-1 text-brandDark">G</a>
+                            <button onClick={() => agregarPersona(it, cat, linkedinSearchUrl(it.nombre ?? '', cat, ciudadDe(it)))} className="text-[10px] rounded border border-emerald-300 text-emerald-700 px-2 py-1">＋ guardar</button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {webTeamUrl(it.web) && <a href={webTeamUrl(it.web)!} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-700 underline inline-block">🌐 Ver equipo/contacto en su web</a>}
+                    </details>
                   </div>
                 )}
               </div>
