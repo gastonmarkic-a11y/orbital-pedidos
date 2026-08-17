@@ -104,11 +104,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function signInWithEmail(email: string) {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    })
-    return { error: error?.message ?? null }
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin },
+      })
+      if (error) {
+        const m = error.message || ''
+        if (/sending.*email|confirmation email|rate limit|rate_limit/i.test(m)) {
+          return { error: 'No pudimos enviar el email de acceso ahora mismo. Esperá unos minutos y probá de nuevo, o pedile el link al administrador.' }
+        }
+        return { error: m || 'No se pudo enviar el link. Probá de nuevo.' }
+      }
+      return { error: null }
+    } catch {
+      return { error: 'No se pudo enviar el link. Revisá tu conexión y probá de nuevo.' }
+    }
   }
 
   async function signOut() {
