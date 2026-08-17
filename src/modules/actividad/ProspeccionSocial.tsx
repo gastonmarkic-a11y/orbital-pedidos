@@ -48,11 +48,11 @@ export default function ProspeccionSocial() {
   const [guardando, setGuardando] = useState(false)
   const [dcCiudad, setDcCiudad] = useState('')
   const [dcRubro, setDcRubro] = useState('opticas')
-  const [buscando, setBuscando] = useState(false)
   const [dcLimite, setDcLimite] = useState(30)
   const [buscandoApify, setBuscandoApify] = useState(false)
   const [gastoApify, setGastoApify] = useState<number | null>(null)
   const [enriqueciendo, setEnriqueciendo] = useState(false)
+  const [completando, setCompletando] = useState(false)
   const [lkOpen, setLkOpen] = useState(false)
   const [lkTexto, setLkTexto] = useState('')
   const [lkRows, setLkRows] = useState<LkRow[]>([])
@@ -62,17 +62,6 @@ export default function ProspeccionSocial() {
   const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
   // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
   const waLink = (it: Item) => `https://wa.me/${(it.telefono ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(msgDe(it))}`
-
-  async function buscarCiudad() {
-    if (!dcCiudad.trim()) { toast('Poné una ciudad', 'error'); return }
-    setBuscando(true)
-    const { data, error } = await supabase.functions.invoke('descubridor-social', { body: { ciudad: dcCiudad.trim(), rubro: dcRubro } })
-    setBuscando(false)
-    const r = data as { insertados?: number; duplicados?: number; error?: string } | null
-    if (error || r?.error) { toast(r?.error ?? 'No se pudo buscar', 'error'); return }
-    toast(`✓ ${r?.insertados ?? 0} nuevos de ${dcCiudad} (${r?.duplicados ?? 0} ya estaban)`, 'success')
-    setDcCiudad(''); cargar()
-  }
 
   // Gasto Apify del mes en curso (para mostrar cuánto queda del crédito gratis ~$5).
   async function cargarGasto() {
@@ -129,6 +118,21 @@ export default function ProspeccionSocial() {
   async function descartarLk(id: number) {
     await supabase.from('contacto_linkedin').update({ estado: 'descartado' }).eq('id', id)
     setLkRows((prev) => prev.filter((x) => x.id !== id))
+  }
+
+  // UN botón: descubre las ópticas de la ciudad (gratis) y después el robot les completa el email.
+  async function buscarYCompletar() {
+    if (!dcCiudad.trim()) { toast('Poné una ciudad', 'error'); return }
+    setCompletando(true)
+    const { data: d1, error: e1 } = await supabase.functions.invoke('descubridor-social', { body: { ciudad: dcCiudad.trim(), rubro: dcRubro } })
+    const r1 = d1 as { insertados?: number; duplicados?: number; error?: string } | null
+    if (e1 || r1?.error) { setCompletando(false); toast(r1?.error ?? 'No se pudo buscar', 'error'); return }
+    // El robot completa el email de las nuevas (y de cualquier pendiente).
+    const { data: d2 } = await supabase.functions.invoke('enriquecer-web', { body: { limite: 40 } })
+    const r2 = d2 as { con_email?: number } | null
+    setCompletando(false)
+    toast(`✓ ${r1?.insertados ?? 0} ópticas nuevas de ${dcCiudad} · ${r2?.con_email ?? 0} con email`, 'success')
+    setDcCiudad(''); cargar()
   }
 
   async function cargar() {
@@ -228,45 +232,35 @@ export default function ProspeccionSocial() {
         <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>
       </div>
 
-      {/* Descubridor: busca negocios por ciudad (Google Maps) y llena la cola solo */}
+      {/* Buscar ópticas: UN botón hace todo (descubre + robot completa el email). */}
       <div className="bg-white rounded-2xl border border-black/10 p-3">
-        <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🔎 Descubrir por ciudad (Google Maps)</p>
+        <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🔎 Buscar ópticas por ciudad</p>
         <div className="flex flex-wrap gap-2">
           <input value={dcCiudad} onChange={(e) => setDcCiudad(e.target.value)} placeholder="Ciudad (ej: Mendoza, Santa Fe, San Juan)" className="flex-1 min-w-[160px] border border-black/10 rounded-lg px-3 py-2 text-sm" />
           <select value={dcRubro} onChange={(e) => setDcRubro(e.target.value)} className="border border-black/10 rounded-lg px-2 py-2 text-sm">
             {RUBROS.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.nombre}</option>)}
           </select>
-          <button onClick={buscarCiudad} disabled={buscando} className="bg-ink text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscando ? 'Buscando…' : 'Buscar (gratis · Google)'}</button>
+          <button onClick={buscarYCompletar} disabled={completando} className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50">{completando ? 'Buscando y completando…' : '🔎 Buscar ópticas'}</button>
         </div>
-        <p className="text-[10px] text-faint mt-1.5">Trae los negocios del rubro en esa ciudad, con el mensaje listo. Cada uno queda en "A enviar".</p>
+        <p className="text-[10px] text-faint mt-1.5">Un solo botón: busca las ópticas de esa ciudad <b>y les completa el email/WhatsApp solo</b>. Quedan en "A enviar". Es gratis.</p>
 
-        {/* ApifyProvider: más lugares y mejor contacto. Usa crédito (tope ~$5/mes gratis). */}
-        <div className="mt-3 pt-3 border-t border-black/10">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">⚡ Apify (más lugares + contacto)</p>
-            {gastoApify !== null && (
-              <span className={`text-[10px] font-medium ${gastoApify >= TOPE_APIFY ? 'text-red-600' : 'text-faint'}`}>
-                crédito: ${gastoApify.toFixed(2)} / ${TOPE_APIFY.toFixed(2)} del mes
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Más opciones (avanzado): Apify para traer más resultados. Usa crédito. */}
+        <details className="mt-3 pt-3 border-t border-black/10">
+          <summary className="text-[11px] text-muted cursor-pointer select-none flex items-center justify-between">
+            <span>⚙️ ¿Pocos resultados? Traer más con Apify (usa crédito)</span>
+            {gastoApify !== null && <span className={`text-[10px] font-medium ${gastoApify >= TOPE_APIFY ? 'text-red-600' : 'text-faint'}`}>crédito: ${gastoApify.toFixed(2)} / ${TOPE_APIFY.toFixed(2)}</span>}
+          </summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <label className="text-[11px] text-muted flex items-center gap-1">
               Cantidad
               <input type="number" min={5} max={120} value={dcLimite} onChange={(e) => setDcLimite(Math.max(5, Math.min(120, Number(e.target.value) || 30)))} className="w-16 border border-black/10 rounded-lg px-2 py-2 text-sm" />
             </label>
-            <span className="text-[10px] text-faint">≈ ${(dcLimite * 0.007).toFixed(2)} esta corrida</span>
-            <button onClick={() => buscarApify(false)} disabled={buscandoApify} className="bg-brandDark text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscandoApify ? 'Buscando…' : 'Buscar con Apify'}</button>
+            <span className="text-[10px] text-faint">≈ ${(dcLimite * 0.007).toFixed(2)}</span>
+            <button onClick={() => buscarApify(false)} disabled={buscandoApify} className="bg-brandDark text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{buscandoApify ? 'Buscando…' : 'Traer más con Apify'}</button>
+            <button onClick={traerContactos} disabled={enriqueciendo} className="text-[11px] rounded-lg border border-emerald-300 text-emerald-700 px-2.5 py-2 font-medium disabled:opacity-50">{enriqueciendo ? 'Leyendo…' : '🤖 Reintentar emails'}</button>
           </div>
-          <p className="text-[10px] text-faint mt-1.5">Usa el crédito gratis de Apify (~$5/mes). Tope duro: 120 por corrida y avisa antes de pasarte del mes.</p>
-        </div>
-
-        {/* Robot GRATIS: lee la web de cada óptica y trae el contacto directo (corre solo cada hora). */}
-        <div className="mt-3 pt-3 border-t border-black/10 flex flex-wrap items-center gap-2">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">🤖 Robot de contactos</p>
-          <button onClick={traerContactos} disabled={enriqueciendo} className="bg-emerald-600 text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50">{enriqueciendo ? 'Leyendo webs…' : 'Traer emails ahora'}</button>
-          <span className="text-[10px] text-faint">Gratis · entra a la web de cada óptica y saca email/WhatsApp/IG. Además corre solo cada hora.</span>
-        </div>
+          <p className="text-[10px] text-faint mt-1.5">Apify trae más lugares (hasta 120) usando el crédito gratis ~$5/mes. El robot de emails igual corre solo cada hora.</p>
+        </details>
       </div>
 
       {/* Pegar contactos de LinkedIn: vos copiás los resultados, el sistema los ordena y guarda (no scrapea). */}
