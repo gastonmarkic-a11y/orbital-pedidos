@@ -17,8 +17,18 @@ interface Item {
   id: number; canal: 'ig' | 'linkedin'; nombre: string | null; perfil: string | null; url: string | null
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
-  telefono: string | null; web: string | null; instagram: string | null; email: string | null
+  telefono: string | null; web: string | null; instagram: string | null; email: string | null; etapa: string
 }
+
+// Embudo PECA: etapas + cadencia (días hasta el próximo toque al avanzar).
+const EMBUDO: { id: string; label: string; emoji: string; c: string; dias: number }[] = [
+  { id: 'presentacion', label: 'Presentación', emoji: '1️⃣', c: 'bg-slate-100 text-slate-700', dias: 3 },
+  { id: 'interaccion', label: 'Interacción', emoji: '2️⃣', c: 'bg-sky-100 text-sky-700', dias: 2 },
+  { id: 'evaluacion', label: 'Evaluación', emoji: '3️⃣', c: 'bg-amber-100 text-amber-700', dias: 3 },
+  { id: 'conversion', label: 'Conversión', emoji: '4️⃣', c: 'bg-orange-100 text-orange-700', dias: 2 },
+  { id: 'cliente', label: 'Cliente', emoji: '✅', c: 'bg-emerald-100 text-emerald-700', dias: 30 },
+]
+const etapaIdx = (id: string) => Math.max(0, EMBUDO.findIndex((e) => e.id === id))
 
 const ESTADOS: Record<string, { t: string; c: string }> = {
   nuevo: { t: 'A enviar', c: 'bg-amber-100 text-amber-700' },
@@ -53,6 +63,7 @@ export default function ProspeccionSocial() {
   const [gastoApify, setGastoApify] = useState<number | null>(null)
   const [enriqueciendo, setEnriqueciendo] = useState(false)
   const [completando, setCompletando] = useState(false)
+  const [fEtapa, setFEtapa] = useState('')
   const [expandido, setExpandido] = useState<Set<number>>(new Set())
   const [ordenPrioridad, setOrdenPrioridad] = useState(true)
   const [lkOpen, setLkOpen] = useState(false)
@@ -208,9 +219,10 @@ export default function ProspeccionSocial() {
     if (fWa) base = base.filter((i) => !!i.telefono?.trim())
     if (fIg) base = base.filter((i) => !!i.instagram?.trim())
     if (fWeb) base = base.filter((i) => !!i.web?.trim())
+    if (fEtapa) base = base.filter((i) => (i.etapa || 'presentacion') === fEtapa)
     if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, filtro, fZona, fWa, fIg, fWeb, ordenPrioridad, personas])
+  }, [items, filtro, fZona, fWa, fIg, fWeb, fEtapa, ordenPrioridad, personas])
 
   const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -237,6 +249,14 @@ export default function ProspeccionSocial() {
     await supabase.from('prospeccion_social').update({ estado, ...extra }).eq('id', it.id)
   }
   const marcarEnviado = (it: Item) => setEstado(it, 'enviado', { enviado_at: new Date().toISOString(), proximo_toque: hoyMas(4) })
+
+  // Mueve la óptica de etapa del embudo y agenda el próximo toque según la cadencia PECA.
+  async function moverEtapa(it: Item, etapaId: string) {
+    const meta = EMBUDO.find((e) => e.id === etapaId)
+    const px = meta ? hoyMas(meta.dias) : null
+    setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, etapa: etapaId, proximo_toque: px } : x)))
+    await supabase.from('prospeccion_social').update({ etapa: etapaId, proximo_toque: px }).eq('id', it.id)
+  }
 
   const rubroLabel = (id: string | null) => RUBROS.find((r) => r.id === id)?.nombre ?? id ?? '—'
 
@@ -341,6 +361,25 @@ export default function ProspeccionSocial() {
         </div>
       )}
 
+      {/* Embudo PECA: cuántas ópticas en cada etapa (tocá para filtrar) */}
+      <div className="bg-white rounded-2xl border border-black/10 p-2.5">
+        <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🎯 Embudo</p>
+        <div className="grid grid-cols-5 gap-1.5">
+          {EMBUDO.map((e) => {
+            const n = items.filter((i) => i.estado !== 'descartado' && (i.etapa || 'presentacion') === e.id).length
+            const activo = fEtapa === e.id
+            return (
+              <button key={e.id} onClick={() => setFEtapa(activo ? '' : e.id)}
+                className={`rounded-xl px-1.5 py-2 text-center border transition-colors ${activo ? 'border-ink ring-1 ring-ink' : 'border-black/10'} ${e.c}`}>
+                <div className="text-base font-bold leading-none">{n}</div>
+                <div className="text-[9px] font-medium mt-1 leading-tight">{e.emoji} {e.label}</div>
+              </button>
+            )
+          })}
+        </div>
+        {fEtapa && <button onClick={() => setFEtapa('')} className="text-[10px] text-brandDark mt-1.5">✕ Ver todas las etapas</button>}
+      </div>
+
       {/* Filtros */}
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {([['pend', `A enviar (${cuenta('nuevo')})`], ['enviado', `Enviados (${cuenta('enviado')})`], ['respondio', `Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as const).map(([k, l]) => (
@@ -424,6 +463,15 @@ export default function ProspeccionSocial() {
                     </details>
                   </div>
                 )}
+              </div>
+
+              <div className="flex items-center gap-1 flex-wrap bg-[#F6F4EF] rounded-lg px-2 py-1.5">
+                <span className="text-[10px] text-faint mr-0.5">Etapa:</span>
+                {EMBUDO.map((e) => (
+                  <button key={e.id} onClick={() => moverEtapa(it, e.id)} title={e.label}
+                    className={`text-[11px] rounded px-1.5 py-1 border ${(it.etapa || 'presentacion') === e.id ? `${e.c} border-transparent font-bold` : 'border-black/10 text-muted'}`}>{e.emoji}</button>
+                ))}
+                <span className="text-[10px] text-muted ml-1">{EMBUDO[etapaIdx(it.etapa || 'presentacion')].label}{it.proximo_toque ? ` · próx. ${it.proximo_toque}` : ''}</span>
               </div>
 
               <div className="flex flex-wrap gap-1.5">
