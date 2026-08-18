@@ -64,6 +64,9 @@ export default function ProspeccionSocial() {
   const [enriqueciendo, setEnriqueciendo] = useState(false)
   const [completando, setCompletando] = useState(false)
   const [fEtapa, setFEtapa] = useState('')
+  const [campanaLista, setCampanaLista] = useState<Item[]>([])
+  const [campanaIdx, setCampanaIdx] = useState(0)
+  const [campanaOpen, setCampanaOpen] = useState(false)
   const [expandido, setExpandido] = useState<Set<number>>(new Set())
   const [ordenPrioridad, setOrdenPrioridad] = useState(true)
   const [lkOpen, setLkOpen] = useState(false)
@@ -250,6 +253,24 @@ export default function ProspeccionSocial() {
   }
   const marcarEnviado = (it: Item) => setEstado(it, 'enviado', { enviado_at: new Date().toISOString(), proximo_toque: hoyMas(4) })
 
+  // Campaña asistida: recorre las ópticas con WhatsApp sin enviar, de a una, 1 toque cada una.
+  function iniciarCampana() {
+    const lista = filtrados.filter((i) => i.telefono?.trim() && i.estado === 'nuevo')
+    if (!lista.length) { toast('No hay ópticas con WhatsApp sin enviar en esta vista', 'error'); return }
+    setCampanaLista(lista); setCampanaIdx(0); setCampanaOpen(true)
+  }
+  function siguienteCampana(nuevoIdx: number) {
+    if (nuevoIdx >= campanaLista.length) { setCampanaOpen(false); toast('✓ Campaña terminada', 'success'); return }
+    setCampanaIdx(nuevoIdx)
+  }
+  function campanaEnviar() {
+    const it = campanaLista[campanaIdx]
+    if (!it) return
+    window.open(waLink(it), '_blank', 'noreferrer')
+    marcarEnviado(it)
+    siguienteCampana(campanaIdx + 1)
+  }
+
   // Mueve la óptica de etapa del embudo y agenda el próximo toque según la cadencia PECA.
   async function moverEtapa(it: Item, etapaId: string) {
     const meta = EMBUDO.find((e) => e.id === etapaId)
@@ -397,6 +418,7 @@ export default function ProspeccionSocial() {
         <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
         <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
         <button onClick={() => setOrdenPrioridad(!ordenPrioridad)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${ordenPrioridad ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-black/10 text-muted'}`}>🔝 Prioridad</button>
+        <button onClick={iniciarCampana} className="shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-semibold bg-brand text-white border-brand">📣 Enviar campaña</button>
         <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
       </div>
 
@@ -506,6 +528,32 @@ export default function ProspeccionSocial() {
         </div>
       )}
       <p className="text-[11px] text-faint text-center">Los que responden pasan a WhatsApp, donde IRIS cotiza. Límite sugerido: ~20-30 envíos por día y por cuenta.</p>
+
+      {/* Modo campaña: enviar de a una, 1 toque cada óptica */}
+      {campanaOpen && campanaLista[campanaIdx] && (() => {
+        const it = campanaLista[campanaIdx]
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-3" onClick={() => setCampanaOpen(false)}>
+            <div className="bg-white rounded-2xl w-full max-w-md p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-brand uppercase tracking-wide">📣 Campaña · {campanaIdx + 1} de {campanaLista.length}</p>
+                <button onClick={() => setCampanaOpen(false)} className="text-muted text-lg leading-none">✕</button>
+              </div>
+              <div className="h-1.5 bg-black/5 rounded-full overflow-hidden"><div className="h-full bg-brand" style={{ width: `${(campanaIdx / campanaLista.length) * 100}%` }} /></div>
+              <div>
+                <p className="text-sm font-semibold">{it.nombre}</p>
+                <p className="text-[11px] text-faint">{[rubroLabel(it.rubro), it.zona].filter(Boolean).join(' · ')} · 📲 {it.telefono}</p>
+              </div>
+              <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2.5 whitespace-pre-wrap max-h-52 overflow-y-auto">{msgDe(it)}</p>
+              <div className="flex gap-2">
+                <button onClick={() => siguienteCampana(campanaIdx + 1)} className="flex-1 rounded-lg border border-black/10 py-2.5 text-sm font-medium text-muted">Saltar →</button>
+                <button onClick={campanaEnviar} className="flex-[2] rounded-lg bg-emerald-600 text-white py-2.5 text-sm font-semibold flex items-center justify-center gap-1"><Send size={15} />Enviar por WhatsApp</button>
+              </div>
+              <p className="text-[10px] text-faint text-center">Se abre WhatsApp con el mensaje puesto, se marca enviada y pasa a la siguiente. Mandá ~20-30 por día para cuidar el número.</p>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

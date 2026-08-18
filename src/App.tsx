@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator,
+  BarChart3, Banknote, Calculator, Tag,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -49,6 +49,7 @@ import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
+import PreciosML from './modules/mercadolibre/PreciosML'
 
 interface NavItem {
   to: string
@@ -63,6 +64,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/resultados': TrendingUp,
   '/marketing': Megaphone,
   '/pedidos/stock': Package,
+  '/mercadolibre/precios': Tag,
   '/pedidos/dashboard': PieChart,
   '/pedidos/cobranzas': Wallet,
   '/pedidos/clientes': BookUser,
@@ -172,6 +174,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/clientes', label: 'Clientes' },
       { to: '/produccion', label: 'Producción (órdenes y costos)' },
       { to: '/tienda', label: 'Tienda Shopify' },
+      { to: '/mercadolibre/precios', label: 'Precios Mercado Libre' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/conversaciones', label: 'Conversaciones (bot)' },
       { to: '/liquidacion', label: 'Liquidación prospectores' },
@@ -445,6 +448,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/generar" element={<GeneradorProduccion />} />}
           {(rol === 'admin' || rol === 'produccion') && <Route path="/produccion/pedidos" element={<PedidosProduccion />} />}
           {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
+          {(rol === 'admin' || rol === 'tienda') && <Route path="/mercadolibre/precios" element={<PreciosML />} />}
           {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
