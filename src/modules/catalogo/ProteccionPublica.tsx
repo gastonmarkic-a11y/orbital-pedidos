@@ -6,7 +6,7 @@ import { useState } from 'react'
 const WA = '5491178548316' // WhatsApp de Orbital (IRIS)
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const AZUL = '#1e50ff'
-const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/banners_web-08.png'
+const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
 
 interface Prot { id: string; nombre: string; emoji: string; color: string; tag: string; titulo: string; texto: string }
 
