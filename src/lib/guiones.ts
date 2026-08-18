@@ -14,7 +14,7 @@ const CTA = 'Diseño actual, +80 modelos con entrega inmediata. ¿Te paso catál
 
 // Link a la propuesta de Triple Protección (landing). Link corto que oculta la URL larga del Artifact.
 // Cambiar acá cuando esté en el dominio propio (ej. orbitaleyewear.com/proteccion) para un link de marca.
-export const LINK_TP = 'https://tinyurl.com/2aardntr'
+export const LINK_TP = 'https://orbital-pedidos-zu5qorbital-suite.vercel.app/proteccion'
 
 export const RUBROS: RubroGuion[] = [
   {

@@ -49,6 +49,7 @@ import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
+import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import PreciosML from './modules/mercadolibre/PreciosML'
 
 interface NavItem {
@@ -562,6 +563,14 @@ function Layout() {
 }
 
 export default function App() {
+  // Landing público de Triple Protección: link comercial, sin login.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/proteccion')) {
+    return (
+      <ToastProvider>
+        <ProteccionPublica />
+      </ToastProvider>
+    )
+  }
   // Catálogo B2B público: ruta independiente del login por mail (acceso con clave propia).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/catalogo')) {
     return (
