@@ -53,6 +53,8 @@ export default function ProspeccionSocial() {
   const [gastoApify, setGastoApify] = useState<number | null>(null)
   const [enriqueciendo, setEnriqueciendo] = useState(false)
   const [completando, setCompletando] = useState(false)
+  const [expandido, setExpandido] = useState<Set<number>>(new Set())
+  const [ordenPrioridad, setOrdenPrioridad] = useState(true)
   const [lkOpen, setLkOpen] = useState(false)
   const [lkTexto, setLkTexto] = useState('')
   const [lkRows, setLkRows] = useState<LkRow[]>([])
@@ -180,6 +182,21 @@ export default function ProspeccionSocial() {
     setPersonas((prev) => ({ ...prev, [p.empresa_id]: (prev[p.empresa_id] ?? []).filter((x) => x.id !== p.id) }))
   }
 
+  function toggleExpandido(id: number) {
+    setExpandido((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  // Fase 3 — puntaje simple para priorizar a quién contactar primero (más contacto = más prioridad).
+  function scoreDe(it: Item): number {
+    let s = 0
+    if (it.telefono?.trim()) s += 40
+    if (it.email?.trim()) s += 25
+    if (it.web?.trim()) s += 15
+    if (it.instagram?.trim()) s += 10
+    if (it.rubro === 'opticas') s += 10
+    if ((personas[it.id]?.length ?? 0) > 0) s += 15
+    return s
+  }
+
   const zonas = useMemo(() => [...new Set(items.map((i) => i.zona).filter(Boolean))].sort() as string[], [items])
 
   const filtrados = useMemo(() => {
@@ -191,8 +208,9 @@ export default function ProspeccionSocial() {
     if (fWa) base = base.filter((i) => !!i.telefono?.trim())
     if (fIg) base = base.filter((i) => !!i.instagram?.trim())
     if (fWeb) base = base.filter((i) => !!i.web?.trim())
+    if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, filtro, fZona, fWa, fIg, fWeb])
+  }, [items, filtro, fZona, fWa, fIg, fWeb, ordenPrioridad, personas])
 
   const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -339,6 +357,7 @@ export default function ProspeccionSocial() {
         <button onClick={() => setFWa(!fWa)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWa ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10 text-muted'}`}>📲 WhatsApp</button>
         <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
         <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
+        <button onClick={() => setOrdenPrioridad(!ordenPrioridad)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${ordenPrioridad ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-black/10 text-muted'}`}>🔝 Prioridad</button>
         <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
       </div>
 
@@ -348,13 +367,19 @@ export default function ProspeccionSocial() {
         <div className="space-y-2">
           {filtrados.map((it) => (
             <div key={it.id} className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <button onClick={() => toggleExpandido(it.id)} className="w-full flex items-center justify-between gap-2 text-left">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">{it.canal === 'ig' ? '📷' : '💼'} {it.nombre || it.perfil}</p>
                   <p className="text-[10px] text-faint">{[it.perfil && it.nombre ? it.perfil : null, rubroLabel(it.rubro), it.zona].filter(Boolean).join(' · ')}</p>
                 </div>
-                <span className={`shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
-              </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {ordenPrioridad && <span className="text-[10px] font-bold text-amber-600" title="prioridad">{scoreDe(it)}</span>}
+                  <span className="text-[11px] tracking-tight">{it.telefono ? '📲' : ''}{it.email ? '✉️' : ''}{it.instagram ? '📷' : ''}{it.web ? '🌐' : ''}</span>
+                  <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
+                  <span className="text-faint text-[11px]">{expandido.has(it.id) ? '▲' : '▼'}</span>
+                </div>
+              </button>
+              {expandido.has(it.id) && (<>
               <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>
 
               {/* Buscar contactos (decisores) — genera búsquedas, no scrapea */}
@@ -427,6 +452,7 @@ export default function ProspeccionSocial() {
                   <button onClick={() => setEstado(it, 'cerrado')} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 text-brandDark">Marcar cerrado</button>
                 )}
               </div>
+              </>)}
             </div>
           ))}
         </div>
