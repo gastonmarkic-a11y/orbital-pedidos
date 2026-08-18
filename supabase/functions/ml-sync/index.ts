@@ -1,22 +1,29 @@
 // Sincroniza stock y precio hacia Mercado Libre.
 //
-// Tres reglas que no se negocian:
+// Reglas que no se negocian:
 //
-//  1. Sin foto o sin precio valido, el SKU NO se publica. La regla vive en la
-//     vista ml_publicables (motivo_bloqueo), no aca, para que la pantalla de la
-//     Suite y esta funcion muestren siempre lo mismo.
-//  2. Las publicaciones en Full son PULL, nunca push: el stock esta fisicamente
-//     en deposito de ML y no es stock.cantidad. Empujarle nuestro stock rompe el
-//     inventario de los dos lados. De Full solo leemos la cantidad y empujamos precio.
-//  3. Mientras ml_config.modo_lectura este en true, informa que haria y no escribe.
-//     Se apaga recien cuando el matcheo item_id <-> modelo esta revisado.
+//  1. Se sincroniza POR SKU, nunca por modelo. Hay ~3 publicaciones por modelo (una
+//     por color): empujar el stock del modelo entero a cada una es sobreventa
+//     garantizada. Publicacion sin codigo = no se toca.
+//  2. Sin foto, sin precio valido o sin stock minimo, el SKU no se publica. La regla
+//     vive en la vista ml_publicables (motivo_bloqueo), asi la Suite y esta funcion
+//     dicen siempre lo mismo.
+//  3. Full es PULL, nunca push: el stock esta en deposito de ML y no es stock.cantidad.
+//  4. Reactiva lo que se pauso por falta de stock cuando el stock vuelve. Sin esto las
+//     publicaciones se apagan solas al agotarse y no vuelven nunca — que es
+//     exactamente lo que paso con LONG BEACH, ROMA, SHAKUR y ZETA 11.
+//  5. Goteo de stock: no se expone el stock real. Se publica
+//     min(disponible, stock_publicado_max) y se repone cuando ML baja a
+//     stock_reponer_en o menos. Limita la exposicion ante un desfasaje de inventario
+//     y evita reescribir la publicacion en cada corrida.
+//  6. Con ml_config.modo_lectura en true informa que haria y no escribe.
 
 import { db, getConfig, getToken, ml, json, esFull } from '../_shared/ml.ts'
 
 interface Accion {
   item_id: string
+  codigo: string | null
   modelo: string | null
-  logistica: string | null
   cambios: Record<string, unknown>
   resultado: string
 }
@@ -27,59 +34,62 @@ Deno.serve(async (req) => {
     const cfg = await getConfig(sb)
     const { token } = await getToken(sb)
 
-    // ?escribir=1 fuerza escritura aunque modo_lectura este prendido (para probar
-    // un item puntual sin apagar el candado global).
     const forzar = new URL(req.url).searchParams.get('escribir') === '1'
     const escribe = forzar || !cfg.modo_lectura
 
     const { data: items, error } = await sb
       .from('mapeo_producto_ml')
-      .select('item_id, modelo, logistic_type, estado')
+      .select('item_id, codigo, modelo, logistic_type, estado, available_quantity, precio_actual, decision')
     if (error) return json({ error: error.message }, 500)
-    if (!items?.length) {
-      return json({ ok: true, aviso: 'No hay publicaciones mapeadas todavia. Correr el matcheo primero.' })
-    }
+    if (!items?.length) return json({ ok: true, aviso: 'No hay publicaciones mapeadas. Correr ml-match.' })
 
     const { data: publicables } = await sb
       .from('ml_publicables')
-      .select('codigo, modelo, precio, cantidad_publicable, motivo_bloqueo')
-
-    // Indice por modelo: la publicacion es el modelo, los colores son variantes.
-    const porModelo = new Map<string, typeof publicables>()
-    for (const p of publicables ?? []) {
-      const k = (p.modelo ?? '').toUpperCase().trim()
-      if (!porModelo.has(k)) porModelo.set(k, [])
-      porModelo.get(k)!.push(p)
-    }
+      .select('codigo, modelo, precio, cantidad, cantidad_publicable, motivo_bloqueo')
+    const porCodigo = new Map((publicables ?? []).map((p) => [p.codigo, p]))
 
     const acciones: Accion[] = []
-    let escritos = 0, pausados = 0, saltados = 0, errores = 0
+    let escritos = 0, pausados = 0, reactivados = 0, sinCambio = 0, saltados = 0, errores = 0
 
     for (const item of items) {
-      const clave = (item.modelo ?? '').toUpperCase().trim()
-      const skus = porModelo.get(clave) ?? []
-      const validos = skus.filter((s) => !s.motivo_bloqueo)
-
-      if (!validos.length) {
-        const motivos = [...new Set(skus.map((s) => s.motivo_bloqueo).filter(Boolean))]
-        acciones.push({
-          item_id: item.item_id, modelo: item.modelo, logistica: item.logistic_type,
-          cambios: {}, resultado: `saltado (${motivos.join(', ') || 'sin SKU con stock'})`,
-        })
+      // Sin codigo no sabemos que color es: no se toca.
+      if (!item.codigo) {
         saltados++
+        acciones.push({
+          item_id: item.item_id, codigo: null, modelo: item.modelo, cambios: {},
+          resultado: 'saltada — sin SKU atado',
+        })
         continue
       }
 
-      const full = esFull(item.logistic_type)
-      const markup = 1 + (full ? cfg.markup_pct_full : cfg.markup_pct_propio) / 100
-      // Precio del item: el menor de las variantes validas, redondeado a $100.
-      const base = Math.min(...validos.map((v) => Number(v.precio)))
-      const precio = Math.round((base * markup) / 100) * 100
+      // ML no acepta cambios mientras revisa.
+      // Pausada a proposito por ser duplicada: no se toca nunca. Sin este corte, la
+      // reactivacion por stock las vuelve a prender y el saneamiento de duplicados se
+      // deshace solo en la primera corrida.
+      if (item.decision === 'pausar') {
+        saltados++
+        acciones.push({
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
+          resultado: 'saltada — duplicada, pausada a proposito',
+        })
+        continue
+      }
 
-      const cambios: Record<string, unknown> = { price: precio }
+      if (item.estado === 'under_review' || item.estado === 'closed') {
+        saltados++
+        acciones.push({
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
+          resultado: `saltada — estado ${item.estado}`,
+        })
+        continue
+      }
+
+      const p = porCodigo.get(item.codigo)
+      const full = esFull(item.logistic_type)
+      const cambios: Record<string, unknown> = {}
 
       if (full) {
-        // PULL: leemos lo que ML dice tener y lo dejamos anotado aparte.
+        // PULL: leemos lo que ML dice tener, no le empujamos stock.
         const r = await ml(`/items/${item.item_id}?attributes=available_quantity`, token)
         if (r.ok) {
           const info = await r.json()
@@ -87,20 +97,69 @@ Deno.serve(async (req) => {
             .update({ stock_full: info.available_quantity ?? null })
             .eq('item_id', item.item_id)
         }
-      } else {
-        const cantidad = validos.reduce((a, v) => a + Number(v.cantidad_publicable ?? 0), 0)
-        cambios.available_quantity = cantidad
-        if (cantidad <= 0 && cfg.pausar_si_stock_cero) {
+      }
+
+      // Si el SKU esta bloqueado y la publicacion esta activa, hay que apagarla.
+      if (!p || p.motivo_bloqueo) {
+        if (item.estado === 'active' && cfg.pausar_si_stock_cero) {
           cambios.status = 'paused'
-          delete cambios.available_quantity
           pausados++
+        } else {
+          sinCambio++
+          acciones.push({
+            item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
+            resultado: `sin cambio — ${p?.motivo_bloqueo ?? 'SKU sin stock'}, ya ${item.estado}`,
+          })
+          continue
         }
+      } else {
+        // Publicable: precio siempre, stock solo si no es Full.
+        // El precio solo se toca si hay una politica definida. Ver el comentario de
+        // ml_config.sincronizar_precio: los precios de ML estan cargados a mano sin
+        // regla, asi que sincronizar sin markup definido los destroza.
+        if (cfg.sincronizar_precio) {
+          const markup = 1 + (full ? cfg.markup_pct_full : cfg.markup_pct_propio) / 100
+          const precio = Math.round((Number(p.precio) * markup) / 100) * 100
+          if (Number(item.precio_actual ?? 0) !== precio) cambios.price = precio
+        }
+
+        if (!full) {
+          // Goteo de stock: no se expone el stock real, se publica un tope y se repone
+          // cuando ML baja al umbral. Asi la publicacion no se reescribe en cada corrida
+          // y un numero bajo de disponibles le juega a favor a la conversion.
+          const disponible = Number(p.cantidad_publicable ?? 0)
+          const objetivo = Math.min(disponible, cfg.stock_publicado_max)
+          const enML = Number(item.available_quantity ?? -1)
+
+          // Se toca si hay que reponer, si lo publicado excede el tope (bajo el stock
+          // real o alguien lo cargo a mano de mas), o si la publicacion se esta
+          // reactivando: relanzarla con el resto viejo la deja pidiendo reposicion a
+          // los pocos dias, asi que vuelve al tope.
+          if (enML <= cfg.stock_reponer_en || enML > objetivo || item.estado === 'paused') {
+            cambios.available_quantity = objetivo
+          }
+        }
+
+        // Reactivacion: tiene stock y esta pausada -> vuelve.
+        if (item.estado === 'paused') {
+          cambios.status = 'active'
+          reactivados++
+        }
+      }
+
+      if (!Object.keys(cambios).length) {
+        sinCambio++
+        acciones.push({
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
+          resultado: 'sin cambio — ya estaba al dia',
+        })
+        continue
       }
 
       if (!escribe) {
         acciones.push({
-          item_id: item.item_id, modelo: item.modelo, logistica: item.logistic_type,
-          cambios, resultado: 'modo lectura — no se escribio',
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios,
+          resultado: 'modo lectura — no se escribio',
         })
         continue
       }
@@ -112,25 +171,37 @@ Deno.serve(async (req) => {
 
       if (res.ok) {
         escritos++
-        await sb.from('mapeo_producto_ml')
-          .update({ ultimo_sync: new Date().toISOString(), ultimo_error: null })
-          .eq('item_id', item.item_id)
-        acciones.push({ item_id: item.item_id, modelo: item.modelo, logistica: item.logistic_type, cambios, resultado: 'ok' })
+        const info = await res.json().catch(() => ({}))
+        await sb.from('mapeo_producto_ml').update({
+          estado: info.status ?? (cambios.status as string) ?? item.estado,
+          available_quantity: info.available_quantity ?? item.available_quantity,
+          precio_actual: info.price ?? item.precio_actual,
+          ultimo_sync: new Date().toISOString(),
+          ultimo_error: null,
+        }).eq('item_id', item.item_id)
+        acciones.push({ item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios, resultado: 'ok' })
       } else {
         errores++
-        const detalle = (await res.text()).slice(0, 400)
-        await sb.from('mapeo_producto_ml')
-          .update({ ultimo_error: `${res.status}: ${detalle}` })
-          .eq('item_id', item.item_id)
-        acciones.push({ item_id: item.item_id, modelo: item.modelo, logistica: item.logistic_type, cambios, resultado: `error ${res.status}` })
+        const detalle = (await res.text()).slice(0, 300)
+        await sb.from('mapeo_producto_ml').update({ ultimo_error: `${res.status}: ${detalle}` }).eq('item_id', item.item_id)
+        acciones.push({
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios,
+          resultado: `error ${res.status}: ${detalle}`,
+        })
       }
     }
 
     return json({
       ok: true,
       modo: escribe ? 'escritura' : 'lectura',
-      resumen: { publicaciones: items.length, escritos, pausados, saltados, errores },
-      acciones,
+      resumen: {
+        publicaciones: items.length,
+        con_cambios: acciones.filter((a) => Object.keys(a.cambios).length).length,
+        reactivadas: reactivados, pausadas: pausados,
+        sin_cambio: sinCambio, saltadas_sin_sku: saltados,
+        escritas: escritos, errores,
+      },
+      acciones: acciones.filter((a) => Object.keys(a.cambios).length || a.resultado.startsWith('saltada')),
     })
   } catch (e) {
     return json({ error: String(e) }, 500)
