@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350" role="img" aria-label="Tres protecciones, un cristal: infrarrojo, UV400 y blue cut">
+  <!-- Banner de cabecera para la Tienda Oficial de Mercado Libre.
+       Paleta y orden tomados del landing /proteccion (ProteccionPublica.tsx):
+       infrarrojo primero porque es el diferencial. -->
+  <defs>
+    <pattern id="grilla" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M 44 0 L 0 0 0 44" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.06"/>
+    </pattern>
+    <linearGradient id="cristal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f97316" stop-opacity="0.42"/>
+      <stop offset="0.5" stop-color="#a855f7" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#06b6d4" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="brillo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1080" height="1350" fill="#0a0e1a"/>
+  <rect width="1080" height="1350" fill="url(#grilla)"/>
+  <circle cx="640" cy="600" r="430" fill="url(#halo)"/>
+
+  <!-- marca -->
+  <text x="80" y="112" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="34" font-weight="900" letter-spacing="-1" fill="#FFFFFF">ORBITAL</text>
+  <text x="1000" y="112" text-anchor="end" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="15" letter-spacing="5" fill="rgba(255,255,255,0.4)">EYEWEAR · ARGENTINA</text>
+
+  <!-- ============ el cristal frena las tres ============ -->
+  <g transform="translate(0,168)">
+
+    <g transform="translate(640,470)">
+      <path d="M 0,-256 C 94,-170 94,170 0,256 C 45,170 45,-170 0,-256 Z"
+            fill="url(#cristal)" stroke="rgba(255,255,255,0.35)" stroke-width="2.5"/>
+      <path d="M 0,-256 C 94,-170 94,170 0,256 C 68,153 68,-153 0,-256 Z" fill="url(#brillo)"/>
+    </g>
+
+    <!-- Infrarrojo — el diferencial, va primero -->
+    <g filter="url(#glow)">
+      <path d="M 110,300 L 620,412" stroke="#f97316" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="626" cy="414" r="16" fill="#f97316" opacity="0.3"/>
+    <text x="110" y="268" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="36" font-weight="900" letter-spacing="-0.5" fill="#f97316">INFRARROJO</text>
+    <text x="110" y="300" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="19" letter-spacing="3" fill="rgba(255,255,255,0.45)">EL DIFERENCIAL</text>
+
+    <!-- UV400 -->
+    <g filter="url(#glow)">
+      <path d="M 110,486 L 620,478" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="626" cy="478" r="16" fill="#a855f7" opacity="0.3"/>
+    <text x="110" y="454" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="36" font-weight="900" letter-spacing="-0.5" fill="#a855f7">UV400</text>
+    <text x="110" y="486" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="19" letter-spacing="3" fill="rgba(255,255,255,0.45)">PROTECCIÓN TOTAL</text>
+
+    <!-- Blue Cut -->
+    <g filter="url(#glow)">
+      <path d="M 110,672 L 620,546" stroke="#06b6d4" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="626" cy="544" r="16" fill="#06b6d4" opacity="0.3"/>
+    <text x="110" y="640" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="36" font-weight="900" letter-spacing="-0.5" fill="#06b6d4">BLUE CUT</text>
+    <text x="110" y="672" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="19" letter-spacing="3" fill="rgba(255,255,255,0.45)">PARA EL DÍA A DÍA</text>
+
+    <text x="742" y="466" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="25" font-weight="700" letter-spacing="3" fill="rgba(255,255,255,0.3)">NADA</text>
+    <text x="742" y="502" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="25" font-weight="700" letter-spacing="3" fill="rgba(255,255,255,0.3)">PASA</text>
+  </g>
+
+  <!-- ============ titular ============ -->
+  <text x="80" y="1042" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="98" font-weight="900" letter-spacing="-4.5" fill="#FFFFFF">TRES PROTECCIONES.</text>
+  <text x="80" y="1140" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="98" font-weight="900" letter-spacing="-4.5" fill="#FFFFFF">UN CRISTAL.</text>
+
+  <text x="80" y="1196" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="28" fill="rgba(255,255,255,0.6)">La única línea de Argentina que las tiene las tres.</text>
+
+  <g transform="translate(80,1232)">
+    <rect width="336" height="74" rx="14" fill="#FFFFFF"/>
+    <text x="168" y="48" text-anchor="middle" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="27" font-weight="800" fill="#0a0e1a">Ver la colección</text>
+  </g>
+
+  <text x="1000" y="1282" text-anchor="end" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="20" letter-spacing="1.5" fill="rgba(255,255,255,0.3)">Fabricante argentino</text>
+</svg>

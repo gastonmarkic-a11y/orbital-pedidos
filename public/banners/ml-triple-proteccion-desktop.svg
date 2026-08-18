@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 600" width="1920" height="600" role="img" aria-label="Tres protecciones, un cristal: infrarrojo, UV400 y blue cut">
+  <!-- Versión escritorio del banner de cabecera. Misma paleta y mismo orden que
+       el landing /proteccion: infrarrojo primero, que es el diferencial. -->
+  <defs>
+    <pattern id="grillaD" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M 44 0 L 0 0 0 44" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.06"/>
+    </pattern>
+    <linearGradient id="cristalD" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f97316" stop-opacity="0.42"/>
+      <stop offset="0.5" stop-color="#a855f7" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#06b6d4" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="brilloD" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="haloD" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glowD" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="600" fill="#0a0e1a"/>
+  <rect width="1920" height="600" fill="url(#grillaD)"/>
+  <circle cx="1330" cy="300" r="330" fill="url(#haloD)"/>
+
+  <!-- marca -->
+  <text x="110" y="86" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="28" font-weight="900" letter-spacing="-0.8" fill="#FFFFFF">ORBITAL</text>
+
+  <!-- titular -->
+  <text x="110" y="288" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="78" font-weight="900" letter-spacing="-3.6" fill="#FFFFFF">TRES PROTECCIONES.</text>
+  <text x="110" y="366" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="78" font-weight="900" letter-spacing="-3.6" fill="#FFFFFF">UN CRISTAL.</text>
+  <text x="110" y="416" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="24" fill="rgba(255,255,255,0.6)">La única línea de Argentina que las tiene las tres.</text>
+
+  <g transform="translate(110,452)">
+    <rect width="296" height="64" rx="12" fill="#FFFFFF"/>
+    <text x="148" y="42" text-anchor="middle" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="24" font-weight="800" fill="#0a0e1a">Ver la colección</text>
+  </g>
+
+  <!-- diagrama -->
+  <g transform="translate(800,0)">
+    <g transform="translate(560,300)">
+      <path d="M 0,-196 C 72,-130 72,130 0,196 C 34,130 34,-130 0,-196 Z"
+            fill="url(#cristalD)" stroke="rgba(255,255,255,0.35)" stroke-width="2"/>
+      <path d="M 0,-196 C 72,-130 72,130 0,196 C 52,117 52,-117 0,-196 Z" fill="url(#brilloD)"/>
+    </g>
+
+    <g filter="url(#glowD)">
+      <path d="M 120,176 L 542,256" stroke="#f97316" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M 120,300 L 542,300" stroke="#a855f7" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M 120,424 L 542,344" stroke="#06b6d4" stroke-width="6.5" stroke-linecap="round"/>
+    </g>
+    <circle cx="548" cy="257" r="13" fill="#f97316" opacity="0.32"/>
+    <circle cx="548" cy="300" r="13" fill="#a855f7" opacity="0.32"/>
+    <circle cx="548" cy="343" r="13" fill="#06b6d4" opacity="0.32"/>
+
+    <text x="120" y="152" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="29" font-weight="900" letter-spacing="-0.4" fill="#f97316">INFRARROJO</text>
+    <text x="120" y="276" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="29" font-weight="900" letter-spacing="-0.4" fill="#a855f7">UV400</text>
+    <text x="120" y="400" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="29" font-weight="900" letter-spacing="-0.4" fill="#06b6d4">BLUE CUT</text>
+
+    <text x="642" y="292" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="21" font-weight="700" letter-spacing="2.5" fill="rgba(255,255,255,0.3)">NADA</text>
+    <text x="642" y="322" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="21" font-weight="700" letter-spacing="2.5" fill="rgba(255,255,255,0.3)">PASA</text>
+  </g>
+
+  <text x="1810" y="552" text-anchor="end" font-family="ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif"
+        font-size="18" letter-spacing="1.4" fill="rgba(255,255,255,0.3)">Fabricante argentino</text>
+</svg>
