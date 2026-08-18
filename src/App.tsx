@@ -564,7 +564,8 @@ function Layout() {
 
 export default function App() {
   // Landing público de Triple Protección: link comercial, sin login.
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/proteccion')) {
+  // Se muestra en /proteccion o si se entra por el subdominio proteccion.orbitaleyewear.com.ar
+  if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/proteccion') || window.location.hostname.startsWith('proteccion.'))) {
     return (
       <ToastProvider>
         <ProteccionPublica />
