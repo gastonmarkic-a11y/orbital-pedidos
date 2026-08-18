@@ -6,7 +6,7 @@ import { useState } from 'react'
 const WA = '5491178548316' // WhatsApp de Orbital (IRIS)
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const AZUL = '#1e50ff'
-const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/banners_web-07.png'
+const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/banners_web-08.png'
 
 interface Prot { id: string; nombre: string; emoji: string; color: string; tag: string; titulo: string; texto: string }
 
@@ -42,30 +42,29 @@ export default function ProteccionPublica() {
         </div>
       </div>
 
-      {/* Hero: banner de marca */}
-      <div className="w-full bg-[#0a0e1a]">
-        <img src={HERO} alt="Orbital Eyewear" className="w-full h-auto block" />
+      {/* Hero: texto + foto del modelo (banners_web-08, retrato) */}
+      <div className="max-w-4xl mx-auto px-5 pt-8 grid md:grid-cols-2 gap-6 md:gap-10 md:items-center">
+        <div className="order-2 md:order-1">
+          <span className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-mono font-semibold tracking-wider" style={{ borderColor: AZUL, color: AZUL, background: `${AZUL}0a` }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: AZUL }} />
+            IR · UV400 · BLUE&nbsp;CUT
+          </span>
+          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mt-4 mb-3" style={{ color: AZUL }}>La tecnología</p>
+          <h1 className="text-4xl sm:text-5xl font-black leading-[0.95] tracking-tight" style={{ textWrap: 'balance' } as React.CSSProperties}>
+            Tres protecciones.<br />Un cristal.
+          </h1>
+          <p className="text-black/55 mt-4 text-sm sm:text-base">
+            La única línea de Argentina con las tres protecciones en un mismo cristal. La diferencia real está en lo que el cliente no ve a simple vista.
+          </p>
+        </div>
+        <div className="order-1 md:order-2">
+          <img src={HERO} alt="Orbital Eyewear" className="w-full h-auto rounded-2xl border border-black/10" />
+        </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-5">
-        {/* Chip tech azul (guiño a la estética de campaña) */}
-        <div className="flex items-center gap-2 mt-8 mb-1">
-          <span className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-mono font-semibold tracking-wider" style={{ borderColor: AZUL, color: AZUL, background: `${AZUL}0a` }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: AZUL }} />
-            TRIPLE&nbsp;PROTECCIÓN · IR · UV400 · BLUE&nbsp;CUT
-          </span>
-        </div>
-
-        <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: AZUL }}>La tecnología</p>
-        <h1 className="text-4xl sm:text-6xl font-black leading-[0.95] tracking-tight" style={{ textWrap: 'balance' } as React.CSSProperties}>
-          Tres protecciones.<br />Un cristal.
-        </h1>
-        <p className="text-black/55 mt-4 max-w-xl text-sm sm:text-base">
-          La única línea de Argentina con las tres protecciones en un mismo cristal. La diferencia real está en lo que el cliente no ve a simple vista.
-        </p>
-
         {/* Tabs — Infrarrojo primero */}
-        <div className="flex flex-wrap gap-2.5 mt-8">
+        <div className="flex flex-wrap gap-2.5 mt-10">
           {PROTECCIONES.map((x) => {
             const activo = x.id === sel
             return (
