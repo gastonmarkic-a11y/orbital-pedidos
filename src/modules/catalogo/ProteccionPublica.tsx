@@ -8,6 +8,14 @@ const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(m
 const AZUL = '#1e50ff'
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
 
+// Algunos modelos de la línea (nombres, sin colores). Son ~180 modelos en total.
+const MODELOS = [
+  'PALERMO', 'BUENOS AIRES', 'LE MANS', 'SILVERSTONE', 'LONG BEACH', 'SAN REMO', 'PARIS', 'VARSOVIA',
+  'ADELAIDA', 'ROMA', 'MILANO', 'MARSELLA', 'RODAS', '5TH AVENUE', 'CIVIC CENTER', 'FILADELFIA',
+  'MALTA', 'SIGNATURE', 'SUZUKA', 'VENICE', 'ABU DHABI', 'LONDRES', 'EIVISSA', 'VERSALLES',
+  'BREMEN', 'CRYSTAL', 'VALLETTA', 'BAREIN', 'VELOCITY', 'ALASKA',
+]
+
 interface Prot { id: string; nombre: string; emoji: string; color: string; tag: string; titulo: string; texto: string }
 
 const PROTECCIONES: Prot[] = [
@@ -93,7 +101,7 @@ export default function ProteccionPublica() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-10">
           {[
             { n: 'Fabricantes', d: 'Fábrica en Buenos Aires' },
-            { n: '+80', d: 'Modelos con entrega inmediata' },
+            { n: '+180', d: 'Modelos, con stock propio' },
             { n: 'Premium', d: 'Diseño actual, no se compite por precio' },
             { n: 'Exclusivo', d: 'Posiciones exclusivas por zona' },
           ].map((f) => (
@@ -102,6 +110,18 @@ export default function ProteccionPublica() {
               <div className="text-[11px] text-black/50 mt-1 leading-tight">{f.d}</div>
             </div>
           ))}
+        </div>
+
+        {/* Modelos (nombres, sin colores) */}
+        <div className="mt-12">
+          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: AZUL }}>La línea</p>
+          <h3 className="text-xl font-bold mb-4">Algunos de nuestros modelos</h3>
+          <div className="flex flex-wrap gap-2">
+            {MODELOS.map((m) => (
+              <span key={m} className="text-[12px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 bg-black/[0.02]">{m}</span>
+            ))}
+            <span className="text-[12px] font-semibold rounded-lg px-2.5 py-1.5" style={{ color: AZUL }}>+ muchos más</span>
+          </div>
         </div>
 
         {/* CTA */}
