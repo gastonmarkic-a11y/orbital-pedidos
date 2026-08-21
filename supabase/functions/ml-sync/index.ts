@@ -66,11 +66,16 @@ Deno.serve(async (req) => {
       // Pausada a proposito por ser duplicada: no se toca nunca. Sin este corte, la
       // reactivacion por stock las vuelve a prender y el saneamiento de duplicados se
       // deshace solo en la primera corrida.
-      if (item.decision === 'pausar') {
+      // 'revisar' es lo mismo pero para las recien creadas: nacen pausadas a proposito
+      // para que Gaston mire la foto y el titulo antes de que salgan a la venta. Sin este
+      // corte el cron las prendia a los 30 minutos y la revision no llegaba a existir.
+      if (item.decision === 'pausar' || item.decision === 'revisar') {
         saltados++
         acciones.push({
           item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
-          resultado: 'saltada — duplicada, pausada a proposito',
+          resultado: item.decision === 'revisar'
+            ? 'saltada — recien creada, esperando revision'
+            : 'saltada — duplicada, pausada a proposito',
         })
         continue
       }

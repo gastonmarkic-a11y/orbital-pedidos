@@ -73,9 +73,16 @@ function initcap(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** "Negro Brillo / Gris Degradé" -> { armazon: 'Negro Brillo', cristal: 'Gris Degradé' } */
+/**
+ * "Negro Brillo / Gris Degradé" -> { armazon: 'Negro Brillo', cristal: 'Gris Degradé' }
+ *
+ * El separador se toma con tolerancia porque el catalogo escribe la barra de tres formas
+ * distintas ("Carey / Habano", "Carey/ Habano", "Marron Brillo  / Habano"): 145 de 525
+ * SKUs publicables no usan el " / " canonico. Partiendo solo por " / " esos 145 quedaban
+ * enteros como armazon y el titulo salia con la barra adentro ("Wynwood Ii Carey/ Habano").
+ */
 function partirColor(color: string | null): { armazon: string; cristal: string } {
-  const partes = (color ?? '').split(' / ')
+  const partes = (color ?? '').split(/\s*\/\s*/)
   const armazon = partes[0]?.trim() ?? ''
   let cristal = partes[1]?.trim() ?? ''
   // "Habano / Habano Degradé Flash" -> no repetir el armazon dentro del cristal
@@ -97,7 +104,7 @@ interface Fila {
 }
 
 /** Ficha tecnica del producto, armada desde el catalogo. De aca sale el titulo que genera ML. */
-const BORRAR = ['FRAME_SHAPE', 'COLOR', 'TEMPLE_COLOR', 'DETAILED_MODEL', 'ALPHANUMERIC_MODEL']
+const BORRAR = ['FRAME_SHAPE', 'TEMPLE_COLOR', 'DETAILED_MODEL', 'ALPHANUMERIC_MODEL']
 
 function armarAtributos(row: Fila): { id: string; value_name: string | null }[] {
   const { armazon, cristal } = partirColor(row.color)
@@ -109,17 +116,65 @@ function armarAtributos(row: Fila): { id: string; value_name: string | null }[] 
     // ademas el que no recorta busquedas.
     { id: 'GENDER', value_name: 'Sin género' },
   ]
-  if (armazon) attrs.push({ id: 'FRAME_COLOR', value_name: armazon })
+  // El armazon va en COLOR y no en FRAME_COLOR. ML arma el titulo recorriendo la ficha de
+  // la categoria en SU orden, y en MLA417128 ese orden es COLOR(5) -> LENS_COLOR(6) ->
+  // FRAME_COLOR(10). Con el armazon en FRAME_COLOR el titulo salia con el cristal adelante
+  // ("Le Mans Ocre Negro Brillo"); en COLOR sale "Le Mans Negro Brillo Ocre".
+  // El cristal no se puede omitir para evitarlo: LE MANS tiene 5 variantes con el mismo
+  // armazon y sin el cristal las 5 publicaciones quedarian con el titulo identico.
+  if (armazon) attrs.push({ id: 'COLOR', value_name: armazon })
+  // En receta FRAME_COLOR ademas alimenta el filtro de color de armazon y no ensucia el
+  // titulo (MLA417127 no lo usa para armarlo), asi que ahi se manda tambien.
+  if (armazon && row.tipo === 'receta') attrs.push({ id: 'FRAME_COLOR', value_name: armazon })
   if (cristal) attrs.push({ id: 'LENS_COLOR', value_name: cristal })
   if (row.tratamiento !== 'lentilla') attrs.push({ id: 'WITH_UV_PROTECTION', value_name: 'Sí' })
   // Un PUT de attributes agrega y pisa, pero NO elimina: sin borrarlos, los heredados de
   // la plantilla sobreviven y ensucian el titulo. FRAME_SHAPE se borra porque el catalogo
   // no tiene la forma del armazon y no se inventa.
-  for (const id of BORRAR) attrs.push({ id, value_name: null })
+  const borrar = [...BORRAR]
+  if (row.tipo !== 'receta') borrar.push('FRAME_COLOR')
+  if (!armazon) borrar.push('COLOR')
+  for (const id of borrar) attrs.push({ id, value_name: null })
   return attrs
 }
 
 /** family_name agrupa las variantes: el modelo sin color ni diferencial. */
+
+/** Linea de proteccion segun el tratamiento del cristal. Solo lo verificable. */
+function lineaProteccion(t: string | null): string {
+  switch (t) {
+    case 'Infrarrojo + Blue cut': return 'Triple Proteccion — UV400 + infrarrojo + luz azul en el mismo cristal'
+    case 'Blue cut':              return 'Filtro de luz azul — pensado para pantallas y jornadas largas'
+    case 'polarizado':            return 'Cristal polarizado — corta el reflejo del agua, la nieve y el asfalto · UV400'
+    case 'revo':                  return 'Cristal espejado con proteccion UV400'
+    case 'lentilla':              return 'Armazon para receta — se coloca tu cristal recetado'
+    default:                      return 'Proteccion UV400'
+  }
+}
+
+/**
+ * Descripcion de la publicacion. A diferencia del titulo, ML SI deja escribirla.
+ * Solo entra lo verificable contra el catalogo: color y tratamiento salen de stock;
+ * el resto son las claims de marca que confirmo Gaston como universales.
+ */
+function armarDescripcion(row: Fila): string {
+  const { armazon, cristal } = partirColor(row.color)
+  const color = cristal
+    ? 'Armazon ' + armazon + ' · cristal ' + cristal
+    : 'Armazon ' + armazon
+  return [
+    'Tecnologia XYLON® — armazon liviano, flexible y pensado para todo el dia',
+    '',
+    '◼ ' + lineaProteccion(row.tratamiento),
+    '◼ ' + color,
+    '◼ Con tecnologia ORBITAL VSL™ — mayor contraste y reduccion de reflejos',
+    '◼ Herrajes metalicos de alta calidad — detalle de precision en cada patilla',
+    '◼ Incluye caja, funda acolchada y paño de microfibra',
+    '◼ Hecho en Argentina — diseñado y fabricado con conviccion premium',
+    '◼ Unisex — proporcionado para una amplia variedad de rostros',
+  ].join('\n')
+}
+
 function armarFamilia(row: Fila): string {
   const base = row.tipo === 'receta' ? 'Anteojos Orbital' : 'Anteojos De Sol Orbital'
   return `${base} ${initcap(row.modelo)}`
@@ -178,9 +233,19 @@ Deno.serve(async (req) => {
       // --- Modo correccion: la publicacion ya existe, se le arreglan los atributos ---
       if (yaExiste) {
         if (!arreglar) continue
+        // Se corrigen atributos Y fotos: si el SKU ya tiene foto de su color exacto
+        // (recien importada de Shopify), reemplaza a la generica del modelo.
+        const cambios: Record<string, unknown> = { attributes: atributos }
+        const pics = await fotosDe(sb, p)
+        if (pics.length) cambios.pictures = pics
         const res = await ml(`/items/${yaExiste}`, token, {
-          method: 'PUT', body: JSON.stringify({ attributes: atributos }),
+          method: 'PUT', body: JSON.stringify(cambios),
         })
+        // La descripcion va por su propio endpoint.
+        await ml(`/items/${yaExiste}/description`, token, {
+          method: 'PUT', body: JSON.stringify({ plain_text: armarDescripcion(p) }),
+        })
+
         if (res.ok) {
           const it = await res.json()
           corregidas++
@@ -209,7 +274,9 @@ Deno.serve(async (req) => {
         available_quantity: Math.min(Number(p.cantidad_publicable ?? 0), 20),
         seller_custom_field: p.codigo,
         pictures,
-        attributes: atributos,
+        // Al crear no van los null (esos solo sirven para borrar en el modo correccion)
+        // y si van los fiscales, que la categoria exige.
+        attributes: [...atributos.filter((a) => a.value_name !== null), ...pl.fiscales],
       }
 
       const res = await ml('/items', token, { method: 'POST', body: JSON.stringify(payload) })
@@ -221,6 +288,9 @@ Deno.serve(async (req) => {
 
       const nuevo = await res.json()
       await ml(`/items/${nuevo.id}`, token, { method: 'PUT', body: JSON.stringify({ status: 'paused' }) })
+      await ml(`/items/${nuevo.id}/description`, token, {
+        method: 'PUT', body: JSON.stringify({ plain_text: armarDescripcion(p) }),
+      })
 
       await sb.from('mapeo_producto_ml').upsert({
         item_id: String(nuevo.id),
@@ -234,6 +304,9 @@ Deno.serve(async (req) => {
         permalink: nuevo.permalink ?? null,
         match_origen: 'sku',
         seccion: p.seccion,
+        // Sin esto ml-sync la reactivaba en la corrida siguiente (30 min) y la revision
+        // nunca pasaba. Se limpia a mano cuando Gaston aprueba la foto y el titulo.
+        decision: 'revisar',
       }, { onConflict: 'item_id' })
 
       creadas++

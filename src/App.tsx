@@ -26,6 +26,7 @@ import AdminMarketing from './modules/actividad/AdminMarketing'
 
 import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Pedidos from './modules/pedidos/Pedidos'
+import Devoluciones from './modules/pedidos/Devoluciones'
 import Envios from './modules/envios/Envios'
 import GestionClientes from './modules/actividad/GestionClientes'
 import Conversaciones from './modules/atencion/Conversaciones'
@@ -116,6 +117,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       principales: [
         { to: '/pedidos', label: 'A preparar' },
         { to: '/produccion', label: 'Ingresos' },
+        { to: '/devoluciones', label: 'Devoluciones' },
         { to: '/pedidos/stock', label: 'Stock' },
       ],
       secundarios: [],
@@ -141,6 +143,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
+        { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
         { to: '/envios-ecom', label: 'Envíos' },
@@ -184,7 +187,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/agenda-equipo', label: 'Agenda equipo (campo)' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
       { to: '/guiones', label: 'Guiones de contacto' },
-      { to: '/prospeccion-social', label: 'Cola de prospección social' }
+      { to: '/prospeccion-social', label: 'Cola de prospección social' },
+      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' }
     )
   }
   return { principales, secundarios, menu }
@@ -430,6 +434,7 @@ function Layout() {
             </>
           )}
           {rol !== 'contenido' && <Route path="/pedidos" element={<Pedidos />} />}
+          {(rol === 'admin' || rol === 'administracion' || rol === 'deposito') && <Route path="/devoluciones" element={<Devoluciones />} />}
           {(rol === 'admin' || rol === 'administracion') && (
             <>
               <Route path="/pedidos/dashboard" element={<DashboardHub />} />
