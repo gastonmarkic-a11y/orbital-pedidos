@@ -9,7 +9,7 @@ import { useToast } from '../../lib/toast'
 // Administración después arma la Nota de Crédito (Fase 2).
 
 interface ItemDev { sku: string; modelo: string; color: string; cant_03: number; cant_07: number }
-interface Devol { id: number; cod_cliente: string; cliente_razon: string | null; fecha: string; estado: string; items: ItemDev[]; operador: string | null; created_at: string }
+interface Devol { id: number; cod_cliente: string | null; cliente_razon: string | null; fecha: string; estado: string; items: ItemDev[]; operador: string | null; origen?: string; created_at: string }
 interface Cli { cod: string; razon: string }
 
 const ESTADO: Record<string, { t: string; c: string }> = {
@@ -31,6 +31,7 @@ export default function Devoluciones() {
   const [items, setItems] = useState<ItemDev[]>([])
   const [skuInput, setSkuInput] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
 
   async function cargar() {
     setLoading(true)
@@ -66,18 +67,27 @@ export default function Devoluciones() {
   const total03 = items.reduce((a, i) => a + i.cant_03, 0)
   const total07 = items.reduce((a, i) => a + i.cant_07, 0)
 
+  function abrirParaCompletar(d: Devol) {
+    setCli(d.cod_cliente ? { cod: d.cod_cliente, razon: d.cliente_razon ?? d.cod_cliente } : null)
+    setCliQuery(''); setItems(d.items.map((i) => ({ ...i, cant_03: i.cant_03 || 0, cant_07: i.cant_07 || 0 })))
+    setEditId(d.id); setNuevoOpen(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  function resetForm() { setNuevoOpen(false); setCli(null); setCliQuery(''); setItems([]); setEditId(null) }
+
   async function guardar() {
     if (!cli) { toast('Elegí el cliente', 'error'); return }
-    const validos = items.filter((i) => i.cant_03 + i.cant_07 > 0)
+    const validos = items.filter((i) => i.sku && i.cant_03 + i.cant_07 > 0)
     if (!validos.length) { toast('Agregá al menos un artículo con cantidad', 'error'); return }
     setGuardando(true)
-    const { error } = await supabase.from('devolucion').insert({
-      cod_cliente: cli.cod, cliente_razon: cli.razon, items: validos, estado: 'borrador', operador: codigoEfectivo,
-    })
+    const payload = { cod_cliente: cli.cod, cliente_razon: cli.razon, items: validos }
+    const { error } = editId
+      ? await supabase.from('devolucion').update(payload).eq('id', editId)
+      : await supabase.from('devolucion').insert({ ...payload, estado: 'borrador', operador: codigoEfectivo })
     setGuardando(false)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
-    toast('✓ Devolución guardada', 'success')
-    setNuevoOpen(false); setCli(null); setCliQuery(''); setItems([]); cargar()
+    toast(editId ? '✓ Devolución actualizada' : '✓ Devolución guardada', 'success')
+    resetForm(); cargar()
   }
 
   async function exportarTango(d: Devol) {
@@ -86,8 +96,8 @@ export default function Devoluciones() {
     const rows: (string | number)[][] = [cols]
     for (const it of d.items) {
       const desc = `${it.modelo} ${it.color}`.trim()
-      if (it.cant_03 > 0) rows.push([it.sku, desc, '03', it.cant_03, 0, 'Plan Canje'])
-      if (it.cant_07 > 0) rows.push([it.sku, desc, '07', it.cant_07, 0, 'Plan Canje'])
+      if (it.cant_03 > 0) rows.push([it.sku, desc, '03', it.cant_03, 0, ''])
+      if (it.cant_07 > 0) rows.push([it.sku, desc, '07', it.cant_07, 0, ''])
     }
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Novedades')
@@ -106,10 +116,10 @@ export default function Devoluciones() {
     <div className="space-y-4 text-ink">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">↩️ Ingreso por devolución (Plan Canje)</h2>
+          <h2 className="text-base font-semibold">↩️ Ingreso por devolución</h2>
           <p className="text-xs text-muted">Depósito carga la devolución y reparte entre depósito 03 (venta) y 07 (fallados). Después se exporta a Tango.</p>
         </div>
-        <button onClick={() => setNuevoOpen((v) => !v)} className="text-sm font-semibold rounded-lg bg-brand text-white px-3 py-2">{nuevoOpen ? 'Cerrar' : '+ Nueva devolución'}</button>
+        <button onClick={() => { if (nuevoOpen) { resetForm() } else { resetForm(); setNuevoOpen(true) } }} className="text-sm font-semibold rounded-lg bg-brand text-white px-3 py-2">{nuevoOpen ? 'Cerrar' : '+ Nueva devolución'}</button>
       </div>
 
       {/* Alta de devolución */}
@@ -166,7 +176,7 @@ export default function Devoluciones() {
             </div>
           )}
 
-          <button onClick={guardar} disabled={guardando} className="w-full bg-brand text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50">{guardando ? 'Guardando…' : 'Guardar devolución'}</button>
+          <button onClick={guardar} disabled={guardando} className="w-full bg-brand text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50">{guardando ? 'Guardando…' : (editId ? 'Actualizar devolución' : 'Guardar devolución')}</button>
         </div>
       )}
 
@@ -182,14 +192,18 @@ export default function Devoluciones() {
               <div key={d.id} className="bg-white rounded-2xl border border-black/10 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold truncate">#{d.id} · {d.cliente_razon || d.cod_cliente}</p>
+                    <p className="text-sm font-semibold truncate flex items-center gap-1.5">
+                      #{d.id} · {d.cod_cliente ? (d.cliente_razon || d.cod_cliente) : <span className="text-amber-600">⚠️ sin cliente — completar</span>}
+                      {d.origen === 'iris' && <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5">📸 IRIS</span>}
+                    </p>
                     <p className="text-[11px] text-faint">{d.items.length} artículos · 🟢 {t03} apto (03) · 🔴 {t07} fallado (07) · {new Date(d.created_at).toLocaleDateString('es-AR')}</p>
                   </div>
                   <span className={`shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADO[d.estado]?.c ?? 'bg-black/5'}`}>{ESTADO[d.estado]?.t ?? d.estado}</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
+                  {d.estado === 'borrador' && <button onClick={() => abrirParaCompletar(d)} className="text-[11px] font-semibold rounded-lg bg-brand text-white px-2.5 py-1.5">✏️ {d.cod_cliente ? 'Editar' : 'Completar'}</button>}
                   <button onClick={() => exportarTango(d)} className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5">⬇️ Excel para Tango</button>
-                  {d.estado === 'borrador' && <button onClick={() => cambiarEstado(d, 'cerrada')} className="text-[11px] font-semibold rounded-lg bg-ink text-white px-2.5 py-1.5">Cerrar (lista p/NC)</button>}
+                  {d.estado === 'borrador' && d.cod_cliente && <button onClick={() => cambiarEstado(d, 'cerrada')} className="text-[11px] font-semibold rounded-lg bg-ink text-white px-2.5 py-1.5">Cerrar (lista p/NC)</button>}
                   {esAdmin && d.estado === 'cerrada' && <button onClick={() => cambiarEstado(d, 'nc_hecha')} className="text-[11px] font-semibold rounded-lg border border-emerald-300 text-emerald-700 px-2.5 py-1.5">Marcar NC hecha</button>}
                 </div>
               </div>
