@@ -9,7 +9,7 @@ import { colorLegible, colorSwatch } from './colorLegible'
 
 interface Modelo {
   modelo: string; precio_desde: number | null; caliente: boolean; n_colores: number
-  tipos: string[]; clasificaciones: string[]; tratamientos: string[]; imagen: string | null
+  imagenes: string[]
 }
 interface Variante {
   codigo: string; descripcion: string | null; tipo: string | null; tratamiento: string | null
@@ -17,7 +17,9 @@ interface Variante {
   caliente: boolean; imagen: string | null
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null }
+interface Filtros { tipo: string | null; clasif: string | null; trat: string | null }
 
+// Paleta de la tienda orbitaleyewear.com.ar: blanco/negro, azul eléctrico, tipografía monospace
 const CLAVE_KEY = 'orbital_catalogo_clave'
 const CART_KEY = 'orbital_catalogo_cart'
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
@@ -26,7 +28,7 @@ const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : 
 // Placeholder elegante cuando el producto no tiene foto todavía
 function Placeholder({ label }: { label?: string }) {
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#F1EDE4] to-[#E9E3D6] text-[#B9AE97]">
+    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#F0F0F2] to-[#E4E4E8] text-[#AEAEB6]">
       <svg width="56" height="28" viewBox="0 0 64 30" fill="none" stroke="currentColor" strokeWidth="2.5">
         <circle cx="15" cy="16" r="11" /><circle cx="49" cy="16" r="11" /><path d="M26 14h12M4 12l4-3M60 12l-4-3" />
       </svg>
@@ -35,11 +37,37 @@ function Placeholder({ label }: { label?: string }) {
   )
 }
 
+// Carrusel de fotos en la tarjeta: permite ojear los colores sin abrir el detalle
+function CardCarousel({ imagenes, alt, onOpen }: { imagenes: string[]; alt: string; onOpen: () => void }) {
+  const [i, setI] = useState(0)
+  const n = imagenes?.length ?? 0
+  const go = (e: React.MouseEvent, d: number) => { e.stopPropagation(); setI((p) => (p + d + n) % n) }
+  if (!n) return <button onClick={onOpen} className="aspect-square w-full bg-white block"><Placeholder /></button>
+  return (
+    <div className="group aspect-square bg-white relative">
+      <button onClick={onOpen} className="w-full h-full block">
+        <img src={imagenes[Math.min(i, n - 1)]} alt={alt} className="w-full h-full object-contain" />
+      </button>
+      {n > 1 && (
+        <>
+          <button onClick={(e) => go(e, -1)} aria-label="Anterior" className="absolute left-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronLeft size={16} /></button>
+          <button onClick={(e) => go(e, 1)} aria-label="Siguiente" className="absolute right-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronRight size={16} /></button>
+          <div className="absolute bottom-1.5 inset-x-0 flex items-center justify-center gap-1">
+            {imagenes.map((_, k) => (
+              <span key={k} className={`h-1.5 rounded-full transition-all ${k === Math.min(i, n - 1) ? 'w-3 bg-[#0004FF]' : 'w-1.5 bg-black/20'}`} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function Logo() {
   return (
     <div className="flex items-center gap-2">
       <img src="/logo-orbital.png" alt="Orbital" style={{ height: 22 }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-      <span className="text-[10px] font-bold tracking-[0.3em] text-[#8F6A34] uppercase">Eyewear · B2B</span>
+      <span className="text-[10px] font-bold tracking-[0.3em] text-[#0004FF] uppercase">Eyewear · B2B</span>
     </div>
   )
 }
@@ -58,15 +86,15 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
     else setErr('Clave incorrecta')
   }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F6F4EF] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
       <form onSubmit={probar} className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8">
         <Logo />
-        <div className="h-px bg-gradient-to-r from-[#8F6A34]/60 to-transparent my-4" />
+        <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
         <p className="text-sm text-neutral-600 mb-5">Catálogo mayorista para ópticas. Ingresá la clave que te compartió Orbital.</p>
         <input autoFocus type="password" placeholder="Clave de acceso" value={v} onChange={(e) => setV(e.target.value)}
-          className="w-full rounded-lg bg-white border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/40" />
+          className="w-full rounded-lg bg-white border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/40" />
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-        <button disabled={loading} className="w-full mt-4 rounded-lg bg-[#8F6A34] text-white py-2.5 text-sm font-medium disabled:opacity-50">
+        <button disabled={loading} className="w-full mt-4 rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium disabled:opacity-50">
           {loading ? 'Verificando…' : 'Entrar al catálogo'}
         </button>
       </form>
@@ -79,6 +107,8 @@ export default function CatalogoPublico() {
   const [claveOk, setClaveOk] = useState(false)
   const [modelos, setModelos] = useState<Modelo[]>([])
   const [loading, setLoading] = useState(true)
+  const [refiltrando, setRefiltrando] = useState(false)
+  const [facetas, setFacetas] = useState<{ tipos: string[]; clasificaciones: string[]; tratamientos: string[] }>({ tipos: [], clasificaciones: [], tratamientos: [] })
   // filtros
   const [q, setQ] = useState('')
   const [fTipo, setFTipo] = useState<string | null>(null)
@@ -105,36 +135,40 @@ export default function CatalogoPublico() {
     })
   }, [clave])
 
-  // cargar modelos
+  // facetas para los chips (una sola vez; no cambian con el filtro)
   useEffect(() => {
     if (!claveOk || !clave) return
-    setLoading(true)
-    supabase.rpc('catalogo_modelos', { p_clave: clave }).then(({ data, error }) => {
-      setModelos(error ? [] : ((data as Modelo[]) ?? [])); setLoading(false)
+    supabase.rpc('catalogo_facetas', { p_clave: clave }).then(({ data }) => {
+      const f = (data as any)?.[0]
+      if (f) setFacetas({ tipos: f.tipos ?? [], clasificaciones: f.clasificaciones ?? [], tratamientos: f.tratamientos ?? [] })
     })
   }, [claveOk, clave])
 
-  const tipos = useMemo(() => Array.from(new Set(modelos.flatMap((m) => m.tipos))).sort(), [modelos])
-  const clasifs = useMemo(() => Array.from(new Set(modelos.flatMap((m) => m.clasificaciones))).sort(), [modelos])
-  const trats = useMemo(() => Array.from(new Set(modelos.flatMap((m) => m.tratamientos))).sort(), [modelos])
+  // cargar modelos — el servidor filtra a nivel variante (solo muestra lo filtrado)
+  useEffect(() => {
+    if (!claveOk || !clave) return
+    setRefiltrando(true)
+    supabase.rpc('catalogo_modelos_v2', {
+      p_clave: clave, p_tipo: fTipo, p_clasif: fClasif, p_trat: fTrat, p_destacados: soloDestacados,
+    }).then(({ data, error }) => {
+      setModelos(error ? [] : ((data as Modelo[]) ?? [])); setLoading(false); setRefiltrando(false)
+    })
+  }, [claveOk, clave, fTipo, fClasif, fTrat, soloDestacados])
+
+  const tipos = useMemo(() => [...facetas.tipos].sort(), [facetas])
+  const clasifs = useMemo(() => [...facetas.clasificaciones].sort(), [facetas])
+  const trats = useMemo(() => [...facetas.tratamientos].sort(), [facetas])
 
   const filtrados = useMemo(() => {
     const qn = q.trim().toLowerCase()
-    const base = modelos.filter((m) => {
-      if (qn && !m.modelo.toLowerCase().includes(qn)) return false
-      if (fTipo && !m.tipos.includes(fTipo)) return false
-      if (fClasif && !m.clasificaciones.includes(fClasif)) return false
-      if (fTrat && !m.tratamientos.includes(fTrat)) return false
-      if (soloDestacados && !m.caliente) return false
-      return true
-    })
-    // Los que tienen foto primero; los que faltan (sin imagen) quedan al final.
+    const base = qn ? modelos.filter((m) => m.modelo.toLowerCase().includes(qn)) : modelos
+    // Los que tienen foto primero; los que faltan quedan al final.
     return base.map((m, i) => ({ m, i })).sort((a, b) => {
-      const ia = a.m.imagen ? 0 : 1, ib = b.m.imagen ? 0 : 1
+      const ia = a.m.imagenes?.length ? 0 : 1, ib = b.m.imagenes?.length ? 0 : 1
       return ia - ib || a.i - b.i
     }).map((x) => x.m)
-  }, [modelos, q, fTipo, fClasif, fTrat, soloDestacados])
-  const sinFoto = filtrados.filter((m) => !m.imagen).length
+  }, [modelos, q])
+  const sinFoto = filtrados.filter((m) => !m.imagenes?.length).length
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
@@ -152,18 +186,22 @@ export default function CatalogoPublico() {
     })
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-[#F6F4EF]">Cargando catálogo…</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
-  const chip = (active: boolean) => `text-[11px] rounded-full px-3 py-1.5 border font-medium whitespace-nowrap transition ${active ? 'bg-[#8F6A34] text-white border-[#8F6A34]' : 'bg-white border-black/10 text-neutral-600 hover:border-[#8F6A34]/40'}`
+  const chip = (active: boolean) => `text-[11px] rounded-full px-3 py-1.5 border font-medium whitespace-nowrap transition ${active ? 'bg-[#0004FF] text-white border-[#0004FF]' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
   return (
-    <div className="min-h-screen bg-[#F6F4EF] text-[#1c1a17]">
+    <div className="min-h-screen bg-white text-[#0a0a0a] font-mono">
+      {/* Banner chico estilo tienda */}
+      <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
+        Orbital® · Catálogo mayorista — pedido online sobre stock real
+      </div>
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <Logo />
-          <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#8F6A34] text-white rounded-full px-4 py-2 font-medium">
+          <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
             <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
             {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{cartCount}</span>}
           </button>
@@ -173,7 +211,7 @@ export default function CatalogoPublico() {
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
-              className="w-full rounded-full bg-[#F6F4EF] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+              className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
             <button onClick={() => setSoloDestacados((v) => !v)} className={chip(soloDestacados)}><Star size={11} className="inline mb-0.5 mr-0.5" />Destacados</button>
@@ -193,25 +231,23 @@ export default function CatalogoPublico() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
           {filtrados.map((m, idx) => (
             <Fragment key={m.modelo}>
-              {sinFoto > 0 && !m.imagen && (idx === 0 || filtrados[idx - 1].imagen) && (
+              {sinFoto > 0 && !m.imagenes?.length && (idx === 0 || filtrados[idx - 1].imagenes?.length) && (
                 <div className="col-span-2 md:col-span-4 mt-4 mb-1 flex items-center gap-3">
                   <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">Próximamente con foto</span>
                   <span className="flex-1 h-px bg-black/10" />
                 </div>
               )}
-              <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#8F6A34]/40 hover:shadow-sm">
-                <button onClick={() => setSel(m)} className="text-left w-full block">
-                  <div className="aspect-square bg-white relative">
-                    {m.imagen ? <img src={m.imagen} alt={m.modelo} className="w-full h-full object-contain" /> : <Placeholder />}
-                    {m.caliente && <span className="absolute top-2 left-2 bg-[#8F6A34] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"><Star size={9} />TOP</span>}
-                  </div>
-                  <div className="p-3 pb-2">
-                    <p className="text-sm font-semibold truncate">{m.modelo}</p>
-                    <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
-                    <p className="text-base font-bold mt-1 text-[#8F6A34]">{kAr(m.precio_desde)}</p>
-                  </div>
+              <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm">
+                <div className="relative">
+                  <CardCarousel imagenes={m.imagenes} alt={m.modelo} onOpen={() => setSel(m)} />
+                  {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
+                </div>
+                <button onClick={() => setSel(m)} className="text-left w-full block px-3 pt-3 pb-2">
+                  <p className="text-sm font-semibold truncate">{m.modelo}</p>
+                  <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
+                  <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>
                 </button>
-                <button onClick={() => setQuick(m)} className="mx-3 mb-3 w-[calc(100%-1.5rem)] rounded-lg bg-[#8F6A34]/10 text-[#8F6A34] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#8F6A34]/20">
+                <button onClick={() => setQuick(m)} className="mx-3 mb-3 w-[calc(100%-1.5rem)] rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
                   <Plus size={14} /> Agregar
                 </button>
               </div>
@@ -221,13 +257,13 @@ export default function CatalogoPublico() {
         {filtrados.length === 0 && <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con esos filtros.</p>}
       </main>
 
-      {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
-      {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
+      {quick && <QuickAdd modelo={quick} clave={clave} filtros={{ tipo: fTipo, clasif: fClasif, trat: fTrat }} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
+      {sel && <ModeloSheet modelo={sel} clave={clave} filtros={{ tipo: fTipo, clasif: fClasif, trat: fTrat }} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Barra flotante de pedido en mobile */}
       {cartCount > 0 && !carritoOpen && !sel && (
-        <button onClick={() => setCarritoOpen(true)} className="md:hidden fixed bottom-4 inset-x-4 bg-[#8F6A34] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20">
+        <button onClick={() => setCarritoOpen(true)} className="md:hidden fixed bottom-4 inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20">
           <span className="text-sm font-medium">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</span>
           <span className="text-sm font-bold">{kAr(cartTotal)} · Ver pedido →</span>
         </button>
@@ -237,14 +273,14 @@ export default function CatalogoPublico() {
 }
 
 // ── Carga rápida desde la grilla: elegir color y cantidad sin entrar al detalle ──
-function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
-  modelo: Modelo; clave: string; cart: Record<string, CartItem>
+function QuickAdd({ modelo, clave, filtros, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
+  modelo: Modelo; clave: string; filtros: Filtros; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void; onVerDetalle: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    supabase.rpc('catalogo_modelo', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data, error }) => {
+    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: filtros.tipo, p_clasif: filtros.clasif, p_trat: filtros.trat }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
   }, [clave, modelo.modelo])
@@ -266,7 +302,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
               {vars.map((v) => {
                 const q = cart[v.codigo]?.cantidad ?? 0
                 return (
-                  <div key={v.codigo} className={`shrink-0 w-32 rounded-xl border overflow-hidden ${q > 0 ? 'border-[#8F6A34]' : 'border-black/10'}`}>
+                  <div key={v.codigo} className={`shrink-0 w-32 rounded-xl border overflow-hidden ${q > 0 ? 'border-[#0004FF]' : 'border-black/10'}`}>
                     <div className="aspect-square relative" style={{ background: v.imagen ? '#fff' : colorSwatch(v.descripcion) }}>
                       {v.imagen && <img src={v.imagen} alt={v.descripcion ?? ''} className="w-full h-full object-contain" />}
                       <span className="absolute bottom-1 left-1 w-4 h-4 rounded-full border border-white shadow" style={{ background: colorSwatch(v.descripcion) }} />
@@ -274,9 +310,9 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                     </div>
                     <div className="p-2">
                       <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
-                      <p className="text-[12px] font-bold text-[#8F6A34] mt-0.5">{kAr(v.precio)}</p>
+                      <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>
                       {q === 0 ? (
-                        <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#8F6A34] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
+                        <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
                         <div className="flex items-center justify-between mt-1.5">
                           <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={13} /></button>
@@ -289,7 +325,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                 )
               })}
             </div>
-            <button onClick={onVerDetalle} className="w-full text-[12px] text-[#8F6A34] font-medium py-2 mt-1">Ver fotos y detalle →</button>
+            <button onClick={onVerDetalle} className="w-full text-[12px] text-[#0004FF] font-medium py-2 mt-1">Ver fotos y detalle →</button>
           </div>
         )}
       </div>
@@ -298,15 +334,15 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
 }
 
 // ── Ficha del modelo con carrusel de colores ──
-function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
-  modelo: Modelo; clave: string; cart: Record<string, CartItem>
+function ModeloSheet({ modelo, clave, filtros, cart, onAdd, onSetQty, onClose }: {
+  modelo: Modelo; clave: string; filtros: Filtros; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    supabase.rpc('catalogo_modelo', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data, error }) => {
+    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: filtros.tipo, p_clasif: filtros.clasif, p_trat: filtros.trat }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
   }, [clave, modelo.modelo])
@@ -331,7 +367,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
           <div className="p-4">
             {/* Imagen grande */}
             <div className="aspect-square bg-white rounded-xl border border-black/5 relative overflow-hidden">
-              {(v.imagen || modelo.imagen) ? <img src={v.imagen || modelo.imagen!} alt={v.descripcion ?? ''} className="w-full h-full object-contain" /> : <Placeholder label="Sin foto aún" />}
+              {(v.imagen || modelo.imagenes?.[0]) ? <img src={v.imagen || modelo.imagenes[0]} alt={v.descripcion ?? ''} className="w-full h-full object-contain" /> : <Placeholder label="Sin foto aún" />}
               {vars.length > 1 && (
                 <>
                   <button onClick={() => setI((i - 1 + vars.length) % vars.length)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5 shadow"><ChevronLeft size={18} /></button>
@@ -346,7 +382,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
               <div className="flex gap-2 overflow-x-auto py-3 -mx-1 px-1">
                 {vars.map((vv, idx) => (
                   <button key={vv.codigo} onClick={() => setI(idx)}
-                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden relative ${idx === i ? 'border-[#8F6A34]' : 'border-black/10'}`}
+                    className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden relative ${idx === i ? 'border-[#0004FF]' : 'border-black/10'}`}
                     style={{ background: vv.imagen ? '#fff' : colorSwatch(vv.descripcion) }}>
                     {vv.imagen && <img src={vv.imagen} alt="" className="w-full h-full object-contain" />}
                     <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full border border-white shadow-sm" style={{ background: colorSwatch(vv.descripcion) }} />
@@ -363,11 +399,11 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
               </p>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {[v.tipo, v.clasificacion, v.tratamiento].filter(Boolean).map((t) => (
-                  <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#F1EDE4] text-neutral-600">{cap(t)}</span>
+                  <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#EEEEF0] text-neutral-600">{cap(t)}</span>
                 ))}
               </div>
               <div className="flex items-baseline gap-2 mt-3">
-                <span className="text-2xl font-bold text-[#8F6A34]">{kAr(v.precio)}</span>
+                <span className="text-2xl font-bold text-[#0004FF]">{kAr(v.precio)}</span>
                 {v.tiene_preventa && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
                 <span className="text-[11px] text-neutral-400">+ IVA</span>
               </div>
@@ -376,11 +412,11 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
             {/* Agregar */}
             <div className="mt-4">
               {enCarrito === 0 ? (
-                <button onClick={() => onAdd(v, modelo.modelo)} className="w-full bg-[#8F6A34] text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
+                <button onClick={() => onAdd(v, modelo.modelo)} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
                   <Plus size={16} /> Agregar al pedido
                 </button>
               ) : (
-                <div className="flex items-center justify-between bg-[#F1EDE4] rounded-xl p-1.5">
+                <div className="flex items-center justify-between bg-[#EEEEF0] rounded-xl p-1.5">
                   <button onClick={() => onSetQty(v.codigo, enCarrito - 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Minus size={16} /></button>
                   <span className="text-base font-bold">{enCarrito} en el pedido</span>
                   <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Plus size={16} /></button>
@@ -450,7 +486,7 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
             <p className="text-xs text-neutral-400 mt-3">
               {result.identificado ? 'Tu vendedor asignado lo va a revisar y confirmar a la brevedad.' : 'Un asesor comercial se va a contactar para confirmar los datos.'}
             </p>
-            <button onClick={onClose} className="mt-5 bg-[#8F6A34] text-white rounded-xl py-2.5 px-6 text-sm font-medium">Seguir viendo</button>
+            <button onClick={onClose} className="mt-5 bg-[#0004FF] text-white rounded-xl py-2.5 px-6 text-sm font-medium">Seguir viendo</button>
           </div>
         ) : items.length === 0 ? (
           <p className="text-sm text-neutral-400 p-10 text-center">Tu pedido está vacío.</p>
@@ -458,14 +494,14 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
           <>
             <div className="p-3 space-y-2">
               {items.map((c) => (
-                <div key={c.codigo} className="flex items-center gap-3 bg-[#F6F4EF] rounded-xl p-2">
+                <div key={c.codigo} className="flex items-center gap-3 bg-[#F5F5F7] rounded-xl p-2">
                   <div className="w-14 h-14 rounded-lg bg-white border border-black/5 overflow-hidden shrink-0">
                     {c.imagen ? <img src={c.imagen} alt="" className="w-full h-full object-contain" /> : <Placeholder />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{c.modelo}</p>
                     <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>
-                    <p className="text-sm font-bold text-[#8F6A34]">{kAr(c.precio)}</p>
+                    <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => onSetQty(c.codigo, c.cantidad - 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
@@ -478,7 +514,7 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
             </div>
             <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
               <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
-              <button onClick={() => setFase('datos')} className="w-full bg-[#8F6A34] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
+              <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
             </div>
           </>
         ) : (
@@ -486,38 +522,38 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Código de cliente, CUIT o email *</label>
               <input value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="Ej: 030554 · 30-12345678-9 · optica@mail.com"
-                className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+                className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             {pedirRazon && (
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Razón social / nombre de la óptica *</label>
                 <input value={razon} onChange={(e) => setRazon(e.target.value)} placeholder="Nombre de tu óptica"
-                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">WhatsApp</label>
-                <input value={wsp} onChange={(e) => setWsp(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+                <input value={wsp} onChange={(e) => setWsp(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Email</label>
-                <input value={mail} onChange={(e) => setMail(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+                <input value={mail} onChange={(e) => setMail(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             </div>
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Contacto / nombre</label>
-              <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+              <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Observaciones</label>
-              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8F6A34]/30" />
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             {err && <p className="text-sm text-red-600">{err}</p>}
             <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{unidades} unidades</span><span className="font-bold text-lg">{kAr(total)}</span></div>
             <div className="flex gap-2">
               <button onClick={() => setFase('carrito')} className="rounded-xl border border-black/10 py-3 px-5 text-sm font-medium">Volver</button>
-              <button onClick={enviar} disabled={enviando || !ident.trim() || (pedirRazon && !razon.trim())} className="flex-1 bg-[#8F6A34] text-white rounded-xl py-3 text-sm font-medium disabled:opacity-50">
+              <button onClick={enviar} disabled={enviando || !ident.trim() || (pedirRazon && !razon.trim())} className="flex-1 bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium disabled:opacity-50">
                 {enviando ? 'Enviando…' : 'Enviar pedido'}
               </button>
             </div>
