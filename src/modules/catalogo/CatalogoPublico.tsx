@@ -25,10 +25,23 @@ interface HomeModelo extends Modelo {
 const DESTACADOS_EXTRA: string[] = []
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
 const esGris = (c: string | null) => !!c && /gris|gray/i.test(c)
+// Tapa fija elegida a mano para modelos puntuales (color exacto)
+const COVER_OVERRIDE: Record<string, string> = {
+  'SIGNATURE': 'Negro Mate / Espejo Rojo',
+  'ZETA 11': 'Negro Mate / Gris',
+  'ZETA 7': 'Negro Mate / Gris',
+  'LONG BEACH': 'Negro Mate / Gris Polarizado',
+}
+const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
-function coverIndex(fotos: Foto[], grupo?: string): number {
+function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   if (!fotos?.length) return 0
   const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
+  // 1) override manual por modelo (color exacto)
+  if (modelo && COVER_OVERRIDE[modelo]) {
+    const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE[modelo]))
+    if (j >= 0) return j
+  }
   let i = -1
   if (grupo === 'destacados') {
     // preferimos NEGRO con lente GRIS; si no hay, cualquier negro
@@ -220,7 +233,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
-        <CardCarousel fotos={m.fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(m.fotos, grupo)} />
+        <CardCarousel fotos={m.fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(m.fotos, grupo, m.modelo)} />
         {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
         {m.has_bluecut && <BlueCutBadge />}
       </div>
