@@ -259,11 +259,12 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
 }
 
 // Cartelito de sección (chico, tipo Mercado Libre) + fila con scroll horizontal
-function SectionRow({ grupo, items, onOpen, onQuick, onInfo }: {
-  grupo: Grupo; items: HomeModelo[]; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void; onInfo: () => void
+function SectionRow({ grupo, items, row, onOpen, onQuick, onInfo }: {
+  grupo: Grupo; items: HomeModelo[]; row?: HomeModelo[]; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void; onInfo: () => void
 }) {
   const [exp, setExp] = useState(false)
-  if (!items.length) return null
+  const fila = row ?? items  // fila colapsada (deduplicada); expandido muestra todo `items`
+  if (!fila.length) return null
   return (
     <section id={`g-${grupo.key}`} className="mb-7 scroll-mt-32">
       <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 mb-2.5 ${ACCENT[grupo.accent]}`}>
@@ -284,12 +285,12 @@ function SectionRow({ grupo, items, onOpen, onQuick, onInfo }: {
         </div>
       ) : (
         <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-          {items.slice(0, 14).map((m) => (
+          {fila.slice(0, 14).map((m) => (
             <div key={m.modelo} className="snap-start shrink-0 w-36 sm:w-44">
               <ModelCard m={m} grupo={grupo.key} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
             </div>
           ))}
-          {items.length > 14 && (
+          {fila.length > 14 && (
             <button onClick={() => setExp(true)} className="snap-start shrink-0 w-36 sm:w-44 rounded-xl border border-dashed border-black/20 text-[#0004FF] text-sm font-semibold flex items-center justify-center hover:bg-[#0004FF]/5">
               Ver los {items.length} ↓
             </button>
@@ -449,10 +450,18 @@ export default function CatalogoPublico() {
             </div>
           </>
         ) : (
-          GRUPOS.map((g) => (
-            <SectionRow key={g.key} grupo={g} items={conFoto(todos.filter(g.match))}
-              onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
-          ))
+          (() => {
+            // Dedup de arriba para abajo: cada modelo se muestra en la sección más alta que le toca (no repetir tapas)
+            const usados = new Set<string>()
+            return GRUPOS.map((g) => {
+              const items = conFoto(todos.filter(g.match))
+              const row = items.filter((m) => !usados.has(m.modelo))
+              row.forEach((m) => usados.add(m.modelo))
+              if (!row.length) return null
+              return <SectionRow key={g.key} grupo={g} items={items} row={row}
+                onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
+            })
+          })()
         )}
       </main>
 
