@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
+
+interface ProtModelo { modelo: string; foto: string }
 
 // Landing público de Triple Protección — link comercial de Orbital (ruta /proteccion).
 // Estética de marca: claro, negro, acento AZUL tech + logo correcto. Infrarrojo primero.
@@ -38,6 +41,10 @@ const PROTECCIONES: Prot[] = [
 
 export default function ProteccionPublica() {
   const [sel, setSel] = useState('infrarrojo')
+  const [modelos, setModelos] = useState<ProtModelo[]>([])
+  useEffect(() => {
+    supabase.rpc('proteccion_modelos').then(({ data }) => setModelos((data as ProtModelo[]) ?? []))
+  }, [])
   const p = PROTECCIONES.find((x) => x.id === sel) ?? PROTECCIONES[0]
 
   return (
@@ -115,13 +122,26 @@ export default function ProteccionPublica() {
         {/* Modelos (nombres, sin colores) */}
         <div className="mt-12">
           <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: AZUL }}>La línea</p>
-          <h3 className="text-xl font-bold mb-4">Algunos de nuestros modelos</h3>
-          <div className="flex flex-wrap gap-2">
-            {MODELOS.map((m) => (
-              <span key={m} className="text-[12px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 bg-black/[0.02]">{m}</span>
-            ))}
-            <span className="text-[12px] font-semibold rounded-lg px-2.5 py-1.5" style={{ color: AZUL }}>+ muchos más</span>
-          </div>
+          <h3 className="text-xl font-bold mb-4">Modelos con Triple Protección</h3>
+          {modelos.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {modelos.map((m) => (
+                <div key={m.modelo} className="rounded-xl border border-black/10 overflow-hidden bg-white">
+                  <div className="aspect-square bg-white">
+                    <img src={m.foto} alt={m.modelo} loading="lazy" className="w-full h-full object-contain" />
+                  </div>
+                  <p className="text-[12px] font-semibold text-center px-2 py-2 truncate">{m.modelo}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {MODELOS.map((m) => (
+                <span key={m} className="text-[12px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 bg-black/[0.02]">{m}</span>
+              ))}
+            </div>
+          )}
+          <p className="text-[12px] font-semibold mt-3" style={{ color: AZUL }}>+ muchos más en el catálogo</p>
         </div>
 
         {/* CTA */}
