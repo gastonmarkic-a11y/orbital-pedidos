@@ -24,12 +24,17 @@ interface HomeModelo extends Modelo {
 // Modelos que van fijos en Destacados además de los "de fuego" (es_caliente)
 const DESTACADOS_EXTRA = ['SILVERSTONE', 'ADELAIDA', 'LE MANS', 'BUENOS AIRES', 'PALERMO']
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
+const esGris = (c: string | null) => !!c && /gris|gray/i.test(c)
 // Índice de la foto de portada según el grupo (representa al grupo)
 function coverIndex(fotos: Foto[], grupo?: string): number {
   if (!fotos?.length) return 0
   const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
   let i = -1
-  if (grupo === 'destacados') i = find((f) => esNegro(f.c))
+  if (grupo === 'destacados') {
+    // preferimos NEGRO con lente GRIS; si no hay, cualquier negro
+    i = find((f) => esNegro(f.c) && esGris(f.c))
+    if (i < 0) i = find((f) => esNegro(f.c))
+  }
   else if (grupo === 'triple') i = find((f) => f.t === 'Infrarrojo + Blue cut')
   else if (grupo === 'bluecut') i = find((f) => !!f.t && /blue cut|lentilla/i.test(f.t))
   else if (grupo === 'bajaluz') i = find((f) => f.bl)
