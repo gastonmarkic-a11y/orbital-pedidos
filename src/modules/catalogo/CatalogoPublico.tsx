@@ -17,12 +17,12 @@ interface Variante {
   caliente: boolean; imagen: string | null; stock: number
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number }
-interface Foto { u: string; c: string | null; t: string | null; k: string | null; bl: boolean; bc: boolean; ca: boolean }
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
-// Modelos que van fijos en Destacados además de los "de fuego" (es_caliente)
-const DESTACADOS_EXTRA = ['SILVERSTONE', 'ADELAIDA', 'LE MANS', 'BUENOS AIRES', 'PALERMO']
+// Destacados se controla 100% por es_caliente en la base (stock). Lista vacía = sin forzados en el front.
+const DESTACADOS_EXTRA: string[] = []
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
 const esGris = (c: string | null) => !!c && /gris|gray/i.test(c)
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -38,6 +38,9 @@ function coverIndex(fotos: Foto[], grupo?: string): number {
   else if (grupo === 'triple') i = find((f) => f.t === 'Infrarrojo + Blue cut')
   else if (grupo === 'bluecut') i = find((f) => !!f.t && /blue cut|lentilla/i.test(f.t))
   else if (grupo === 'bajaluz') i = find((f) => f.bl)
+  else if (grupo === 'deportivo') i = find((f) => f.tp === 'sol')  // en Deportivo la tapa siempre de sol, nunca receta
+  // Deportivo: si igual no hubiera sol, evitamos receta en la tapa
+  if (i < 0 && grupo === 'deportivo') i = find((f) => f.tp !== 'receta')
   return i >= 0 ? i : 0
 }
 
