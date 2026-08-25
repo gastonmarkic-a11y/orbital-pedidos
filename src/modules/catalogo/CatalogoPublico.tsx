@@ -33,7 +33,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZETA 7': 'Negro Mate / Gris',
   'LONG BEACH': 'Negro Mate / Gris Polarizado',
   'ZETA 1 PRO': 'Negro Mate / Espejo Naranja',
-  'ENDOR': 'Negro Mate/ Gris Polarizado',
+  'ENDOR': 'Negro Brillo/ Gris Polarizado',
   'BAREIN': 'Negro Brillo / Gris',
   'EIVISSA': 'Negro Brillo / Gris',
 }
@@ -172,14 +172,21 @@ const tieneSolFoto = (m: HomeModelo) => (m.fotos || []).some((f) => f.tp === 'so
 const esRecetaModelo = (m: HomeModelo) => !tieneSolFoto(m) && (m.fotos || []).some((f) => f.tp === 'receta' || /lentilla/i.test(f.c || ''))
 // Línea Zaira Nara: clasificación 'zaira nara' o nombre que termina en "- ZN"
 const esZN = (m: HomeModelo) => m.clasificaciones.includes('zaira nara') || /\bZN\s*$/i.test(m.modelo)
-// Los ZN son exclusivos de su sección; el resto excluye a los ZN
-const matchGrupo = (g: Grupo, m: HomeModelo) => g.key === 'zn' ? esZN(m) : (g.match(m) && !esZN(m))
-type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark'; match: (m: HomeModelo) => boolean }
+// Cápsula ETHEREA (ultralivianos 9g)
+const ETHEREA_MODELOS = ['SUBLIME', 'PLUMA', 'MICRA', 'BRISSA']
+const esEtherea = (m: HomeModelo) => ETHEREA_MODELOS.includes(m.modelo)
+// ZN y ETHEREA son exclusivos de su sección; el resto los excluye
+const matchGrupo = (g: Grupo, m: HomeModelo) =>
+  g.key === 'zn' ? esZN(m)
+  : g.key === 'etherea' ? esEtherea(m)
+  : (g.match(m) && !esZN(m) && !esEtherea(m))
+type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
   { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') && tieneSolFoto(m) },
+  { key: 'etherea', nombre: 'ETHEREA', sub: 'Ultralivianos · 9 gramos', accent: 'etherea', match: (m) => esEtherea(m) },
   { key: 'receta', nombre: 'Recetados', sub: 'Armazones para receta', accent: 'dark', match: (m) => esRecetaModelo(m) },
   { key: 'bluecut', nombre: 'Blue cut y lentillas', accent: 'blue', match: (m) => m.tratamientos.includes('Blue cut') || m.tratamientos.includes('lentilla') },
   { key: 'bajaluz', nombre: 'Cuando baja la luz', sub: 'Cristal ocre · naranja · rojo', accent: 'amber', match: (m) => m.is_bajaluz },
@@ -191,6 +198,7 @@ const ACCENT: Record<Grupo['accent'], string> = {
   amber: 'bg-gradient-to-r from-[#b45309] via-[#ea8a00] to-[#dc2626] text-white',
   red: 'bg-gradient-to-r from-[#dc2626] to-[#f05252] text-white',
   dark: 'bg-[#0a0a0a] text-white',
+  etherea: 'bg-gradient-to-r from-[#64748b] via-[#94a3b8] to-[#e2e8f0] text-white',
 }
 
 // Contenido explicativo (pop-up tipo frontpage) por grupo
@@ -200,6 +208,7 @@ const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: strin
   urbano: { titulo: 'Urbanos', bajada: 'Diseño para el día a día en la ciudad. Livianos, versátiles y con impronta de marca.', puntos: ['Estilo para uso diario', 'Materiales livianos y resistentes', 'Combinan con todo'] },
   deportivo: { titulo: 'Deportivos', bajada: 'Sujeción, liviandad y cristales de alto rendimiento para exigencia y aire libre.', puntos: ['Agarre firme en movimiento', 'Cristales polarizados y espejados', 'Pensados para deporte y manejo'] },
   receta: { titulo: 'Recetados', bajada: 'Armazones pensados para uso con receta: se cierran con el cristal graduado del cliente.', puntos: ['Aptos para lentes recetados', 'Diseño y calce cuidados', 'Consultá calibres y colores disponibles'] },
+  etherea: { titulo: 'ETHEREA — Ultralivianos', bajada: 'Ultralivianos de solo 9 gramos: liviandad, confort y sofisticación en su máxima expresión, con un diseño para quienes buscan la mejor experiencia de uso.', puntos: ['Solo 9 gramos de peso', 'Hasta 4× más livianos que un marco tradicional', 'Sensación prácticamente imperceptible todo el día', 'Calce natural, sin presión ni marcas', 'Se adaptan suavemente al rostro'] },
   bluecut: { titulo: 'Blue cut y lentillas', bajada: 'Filtro de luz azul para pantallas, y opción con lentilla de aumento lista para usar.', puntos: ['Menos fatiga visual frente a pantallas', 'Descanso para uso prolongado', 'Lentillas de aumento sin receta'] },
   bajaluz: { titulo: 'Cuando baja la luz', bajada: 'Cristales ocre, naranja y rojo que aumentan el contraste cuando cae la luz: manejo nocturno, niebla y días grises.', puntos: ['Más contraste con poca luz', 'Ideal para conducir al atardecer y de noche', 'Reduce el encandilamiento'] },
   zn: { titulo: 'Zaira Nara — ZN', bajada: 'La cápsula ZN: diseño de tendencia con el sello de Zaira Nara.', puntos: ['Colección cápsula', 'Diseño de moda', 'Edición especial'] },
