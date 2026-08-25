@@ -35,7 +35,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZETA 1 PRO': 'Negro Mate / Espejo Naranja',
   'ENDOR': 'Negro Brillo/ Gris Polarizado',
   'BAREIN': 'Negro Brillo / Gris',
-  'EIVISSA': 'Negro Brillo / Gris',
+  'EIVISSA': 'Negro Brillo / Celeste Flash',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -54,10 +54,9 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
     if (i < 0) i = find((f) => esNegro(f.c))
   }
   else if (grupo === 'triple') i = find((f) => f.t === 'Infrarrojo + Blue cut')
-  else if (grupo === 'bluecut') i = find((f) => !!f.t && /blue cut|lentilla/i.test(f.t))
+  else if (grupo === 'bluecut') i = find((f) => (!!f.t && /blue cut|lentilla/i.test(f.t)) || f.tp === 'receta' || /lentilla/i.test(f.c || ''))
   else if (grupo === 'bajaluz') i = find((f) => f.bl)
   else if (grupo === 'deportivo') i = find((f) => f.tp === 'sol')  // en Deportivo la tapa siempre de sol, nunca receta
-  else if (grupo === 'receta') i = find((f) => f.tp === 'receta' || /lentilla/i.test(f.c || ''))
   // Deportivo: si igual no hubiera sol, evitamos receta en la tapa
   if (i < 0 && grupo === 'deportivo') i = find((f) => f.tp !== 'receta')
   return i >= 0 ? i : 0
@@ -187,8 +186,7 @@ const GRUPOS: Grupo[] = [
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
   { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') && tieneSolFoto(m) },
   { key: 'etherea', nombre: 'ETHEREA', sub: 'Ultralivianos · 9 gramos', accent: 'etherea', match: (m) => esEtherea(m) },
-  { key: 'receta', nombre: 'Recetados', sub: 'Armazones para receta', accent: 'dark', match: (m) => esRecetaModelo(m) },
-  { key: 'bluecut', nombre: 'Blue cut y lentillas', accent: 'blue', match: (m) => m.tratamientos.includes('Blue cut') || m.tratamientos.includes('lentilla') },
+  { key: 'bluecut', nombre: 'Blue cut y lentillas', sub: 'Recetados y lentillas', accent: 'blue', match: (m) => m.tratamientos.includes('Blue cut') || m.tratamientos.includes('lentilla') || esRecetaModelo(m) },
   { key: 'bajaluz', nombre: 'Cuando baja la luz', sub: 'Cristal ocre · naranja · rojo', accent: 'amber', match: (m) => m.is_bajaluz },
   { key: 'zn', nombre: 'Zaira Nara', sub: 'ZN', accent: 'dark', match: (m) => m.clasificaciones.includes('zaira nara') },
   { key: 'oportunidades', nombre: 'Oportunidades', accent: 'red', match: (m) => m.clasificaciones.includes('oportunidades') },
@@ -209,7 +207,7 @@ const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: strin
   deportivo: { titulo: 'Deportivos', bajada: 'Sujeción, liviandad y cristales de alto rendimiento para exigencia y aire libre.', puntos: ['Agarre firme en movimiento', 'Cristales polarizados y espejados', 'Pensados para deporte y manejo'] },
   receta: { titulo: 'Recetados', bajada: 'Armazones pensados para uso con receta: se cierran con el cristal graduado del cliente.', puntos: ['Aptos para lentes recetados', 'Diseño y calce cuidados', 'Consultá calibres y colores disponibles'] },
   etherea: { titulo: 'ETHEREA — Ultralivianos', bajada: 'Ultralivianos de solo 9 gramos: liviandad, confort y sofisticación en su máxima expresión, con un diseño para quienes buscan la mejor experiencia de uso.', puntos: ['Solo 9 gramos de peso', 'Hasta 4× más livianos que un marco tradicional', 'Sensación prácticamente imperceptible todo el día', 'Calce natural, sin presión ni marcas', 'Se adaptan suavemente al rostro'] },
-  bluecut: { titulo: 'Blue cut y lentillas', bajada: 'Filtro de luz azul para pantallas, y opción con lentilla de aumento lista para usar.', puntos: ['Menos fatiga visual frente a pantallas', 'Descanso para uso prolongado', 'Lentillas de aumento sin receta'] },
+  bluecut: { titulo: 'Blue cut y lentillas', bajada: 'Filtro de luz azul para pantallas y armazones para receta/lentilla, listos para el cristal graduado del cliente.', puntos: ['Menos fatiga visual frente a pantallas', 'Aptos para lentes recetados / lentilla', 'Diseño y calce cuidados'] },
   bajaluz: { titulo: 'Cuando baja la luz', bajada: 'Cristales ocre, naranja y rojo que aumentan el contraste cuando cae la luz: manejo nocturno, niebla y días grises.', puntos: ['Más contraste con poca luz', 'Ideal para conducir al atardecer y de noche', 'Reduce el encandilamiento'] },
   zn: { titulo: 'Zaira Nara — ZN', bajada: 'La cápsula ZN: diseño de tendencia con el sello de Zaira Nara.', puntos: ['Colección cápsula', 'Diseño de moda', 'Edición especial'] },
   oportunidades: { titulo: 'Oportunidades', bajada: 'Precios especiales y liquidación de temporada: margen y rotación para la óptica.', puntos: ['Mejor precio', 'Ideales para promociones', 'Stock por tiempo limitado'] },
@@ -247,9 +245,9 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
   )
 }
 
-// Badge azul "Blue cut" para los modelos que filtran luz azul
-function BlueCutBadge() {
-  return <span className="absolute top-2 right-2 z-10 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-2 py-0.5 tracking-wide shadow">BLUE CUT</span>
+// Badge azul: "Triple Protección" (si tiene Infrarrojo + Blue cut) o "Blue cut"
+function ProtBadge({ triple }: { triple: boolean }) {
+  return <span className="absolute top-2 right-2 z-10 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-2 py-0.5 tracking-wide shadow whitespace-nowrap">{triple ? 'TRIPLE PROT.' : 'BLUE CUT'}</span>
 }
 
 // Tarjeta de modelo reutilizable (grilla y secciones)
@@ -259,7 +257,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
       <div className="relative">
         <CardCarousel fotos={m.fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(m.fotos, grupo, m.modelo)} />
         {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
-        {m.has_bluecut && <BlueCutBadge />}
+        {m.has_bluecut && <ProtBadge triple={m.tratamientos.includes('Infrarrojo + Blue cut')} />}
       </div>
       <button onClick={onOpen} className="text-left w-full block px-3 pt-3 pb-2 flex-1">
         <p className="text-sm font-semibold truncate">{m.modelo}</p>
