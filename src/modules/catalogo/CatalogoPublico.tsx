@@ -33,6 +33,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZETA 7': 'Negro Mate / Gris',
   'LONG BEACH': 'Negro Mate / Gris Polarizado',
   'ZETA 1 PRO': 'Negro Mate / Espejo Naranja',
+  'ENDOR': 'Negro Mate/ Gris Polarizado',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
