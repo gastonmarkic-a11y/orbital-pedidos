@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
@@ -166,6 +166,50 @@ const ACCENT: Record<Grupo['accent'], string> = {
   dark: 'bg-[#0a0a0a] text-white',
 }
 
+// Contenido explicativo (pop-up tipo frontpage) por grupo
+const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: string[]; link?: { href: string; texto: string } }> = {
+  destacados: { titulo: 'Destacados', bajada: 'Lo más elegido por las ópticas: los modelos que más rotan y mejor funcionan en vidriera.', puntos: ['Curados por el equipo comercial', 'Alta rotación y demanda comprobada', 'Ideales para arrancar o reponer stock'] },
+  triple: { titulo: 'Triple Protección', bajada: 'La tecnología Orbital que protege de la luz infrarroja, la luz azul y los rayos UV en un solo cristal.', puntos: ['Filtro Infrarrojo (IR) — confort térmico', 'Filtro Blue Cut — pantallas y luz artificial', 'Protección UV400 — sol', 'Visión más nítida y menos fatiga'], link: { href: '/proteccion', texto: 'Ver la página de Triple Protección →' } },
+  urbano: { titulo: 'Urbanos', bajada: 'Diseño para el día a día en la ciudad. Livianos, versátiles y con impronta de marca.', puntos: ['Estilo para uso diario', 'Materiales livianos y resistentes', 'Combinan con todo'] },
+  deportivo: { titulo: 'Deportivos', bajada: 'Sujeción, liviandad y cristales de alto rendimiento para exigencia y aire libre.', puntos: ['Agarre firme en movimiento', 'Cristales polarizados y espejados', 'Pensados para deporte y manejo'] },
+  bluecut: { titulo: 'Blue cut y lentillas', bajada: 'Filtro de luz azul para pantallas, y opción con lentilla de aumento lista para usar.', puntos: ['Menos fatiga visual frente a pantallas', 'Descanso para uso prolongado', 'Lentillas de aumento sin receta'] },
+  bajaluz: { titulo: 'Cuando baja la luz', bajada: 'Cristales ocre, naranja y rojo que aumentan el contraste cuando cae la luz: manejo nocturno, niebla y días grises.', puntos: ['Más contraste con poca luz', 'Ideal para conducir al atardecer y de noche', 'Reduce el encandilamiento'] },
+  zn: { titulo: 'Zaira Nara — ZN', bajada: 'La cápsula ZN: diseño de tendencia con el sello de Zaira Nara.', puntos: ['Colección cápsula', 'Diseño de moda', 'Edición especial'] },
+  oportunidades: { titulo: 'Oportunidades', bajada: 'Precios especiales y liquidación de temporada: margen y rotación para la óptica.', puntos: ['Mejor precio', 'Ideales para promociones', 'Stock por tiempo limitado'] },
+}
+
+// Pop-up explicativo del grupo (frontpage de cada punto)
+function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => void }) {
+  const g = GRUPOS.find((x) => x.key === grupoKey)
+  const info = GRUPO_INFO[grupoKey]
+  if (!g || !info) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center font-mono">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[88vh] overflow-y-auto">
+        <div className={`px-5 py-5 relative ${ACCENT[g.accent]} sm:rounded-t-2xl`}>
+          <button onClick={onClose} className="absolute top-3 right-3 text-white/90 hover:text-white"><X size={20} /></button>
+          <p className="text-[10px] tracking-[0.3em] uppercase opacity-80">Orbital® · Eyewear</p>
+          <h2 className="text-xl font-bold tracking-wide uppercase mt-1">{info.titulo}</h2>
+          {g.sub && <p className="text-[11px] opacity-80 mt-0.5">{g.sub}</p>}
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-neutral-700 leading-relaxed">{info.bajada}</p>
+          <ul className="mt-4 space-y-2">
+            {info.puntos.map((p, i) => (
+              <li key={i} className="flex gap-2 text-sm text-neutral-800"><span className="text-[#0004FF] font-bold">›</span><span>{p}</span></li>
+            ))}
+          </ul>
+          {info.link && (
+            <a href={info.link.href} target="_blank" rel="noreferrer" className="mt-5 block text-center bg-[#0004FF] text-white rounded-xl py-3 text-sm font-semibold hover:opacity-90">{info.link.texto}</a>
+          )}
+          <button onClick={onClose} className="mt-2 w-full text-center text-[12px] text-neutral-500 py-2">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Badge azul "Blue cut" para los modelos que filtran luz azul
 function BlueCutBadge() {
   return <span className="absolute top-2 right-2 z-10 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-2 py-0.5 tracking-wide shadow">BLUE CUT</span>
@@ -193,20 +237,21 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
 }
 
 // Cartelito de sección (chico, tipo Mercado Libre) + fila con scroll horizontal
-function SectionRow({ grupo, items, onOpen, onQuick }: {
-  grupo: Grupo; items: HomeModelo[]; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void
+function SectionRow({ grupo, items, onOpen, onQuick, onInfo }: {
+  grupo: Grupo; items: HomeModelo[]; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void; onInfo: () => void
 }) {
   const [exp, setExp] = useState(false)
   if (!items.length) return null
   return (
     <section id={`g-${grupo.key}`} className="mb-7 scroll-mt-32">
       <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 mb-2.5 ${ACCENT[grupo.accent]}`}>
-        <div className="flex items-baseline gap-2 min-w-0">
+        <button onClick={onInfo} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupo.nombre}`}>
           {grupo.key === 'destacados' && <Star size={13} className="shrink-0" />}
-          <span className="text-[12px] font-bold tracking-[0.18em] uppercase truncate">{grupo.nombre}</span>
+          <span className="text-[12px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupo.nombre}</span>
+          <Info size={12} className="shrink-0 opacity-80 group-hover/info:opacity-100" />
           {grupo.sub && <span className="text-[10px] opacity-70 tracking-wide truncate hidden sm:inline">{grupo.sub}</span>}
           <span className="text-[10px] opacity-70">· {items.length}</span>
-        </div>
+        </button>
         {items.length > (exp ? 0 : 14) || exp ? (
           <button onClick={() => setExp((v) => !v)} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">{exp ? 'Ver menos ↑' : 'Ver todos ↓'}</button>
         ) : null}
@@ -250,6 +295,7 @@ export default function CatalogoPublico() {
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
+  const [infoGrupo, setInfoGrupo] = useState<string | null>(null)
   const [carritoOpen, setCarritoOpen] = useState(false)
   const [cart, setCart] = useState<Record<string, CartItem>>(() => {
     try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}') } catch { return {} }
@@ -368,11 +414,12 @@ export default function CatalogoPublico() {
         ) : grupoObj ? (
           <>
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
-              <div className="flex items-baseline gap-2 min-w-0">
-                <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate">{grupoObj.nombre}</span>
+              <button onClick={() => setInfoGrupo(grupoObj.key)} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupoObj.nombre}`}>
+                <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupoObj.nombre}</span>
+                <Info size={13} className="shrink-0 opacity-80 group-hover/info:opacity-100" />
                 {grupoObj.sub && <span className="text-[10px] opacity-70 truncate hidden sm:inline">{grupoObj.sub}</span>}
                 <span className="text-[10px] opacity-70">· {modelosGrupo.length}</span>
-              </div>
+              </button>
               <button onClick={irInicio} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">← Inicio</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
@@ -382,10 +429,12 @@ export default function CatalogoPublico() {
         ) : (
           GRUPOS.map((g) => (
             <SectionRow key={g.key} grupo={g} items={conFoto(todos.filter(g.match))}
-              onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} />
+              onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
           ))
         )}
       </main>
+
+      {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
