@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
@@ -17,7 +17,9 @@ interface Variante {
   caliente: boolean; imagen: string | null
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null }
-interface Filtros { tipo: string | null; clasif: string | null; trat: string | null }
+interface HomeModelo extends Modelo {
+  clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
+}
 
 // Paleta de la tienda orbitaleyewear.com.ar: blanco/negro, azul eléctrico, tipografía monospace
 const CLAVE_KEY = 'orbital_catalogo_clave'
@@ -102,19 +104,90 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
   )
 }
 
+// ── Grupos del catálogo (secciones tipo tienda) ──
+type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark'; match: (m: HomeModelo) => boolean }
+const GRUPOS: Grupo[] = [
+  { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente },
+  { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') },
+  { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
+  { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') },
+  { key: 'bluecut', nombre: 'Blue cut y lentillas', accent: 'blue', match: (m) => m.tratamientos.includes('Blue cut') || m.tratamientos.includes('lentilla') },
+  { key: 'bajaluz', nombre: 'Cuando baja la luz', sub: 'Cristal ocre · naranja · rojo', accent: 'amber', match: (m) => m.is_bajaluz },
+  { key: 'zn', nombre: 'Zaira Nara', sub: 'ZN', accent: 'dark', match: (m) => m.clasificaciones.includes('zaira nara') },
+  { key: 'oportunidades', nombre: 'Oportunidades', accent: 'red', match: (m) => m.clasificaciones.includes('oportunidades') },
+]
+const ACCENT: Record<Grupo['accent'], string> = {
+  blue: 'bg-gradient-to-r from-[#0004FF] to-[#3b46ff] text-white',
+  amber: 'bg-gradient-to-r from-[#b45309] via-[#ea8a00] to-[#dc2626] text-white',
+  red: 'bg-gradient-to-r from-[#dc2626] to-[#f05252] text-white',
+  dark: 'bg-[#0a0a0a] text-white',
+}
+
+// Badge azul "Blue cut" para los modelos que filtran luz azul
+function BlueCutBadge() {
+  return <span className="absolute top-2 right-2 z-10 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-2 py-0.5 tracking-wide shadow">BLUE CUT</span>
+}
+
+// Tarjeta de modelo reutilizable (grilla y secciones)
+function ModelCard({ m, onOpen, onQuick }: { m: HomeModelo; onOpen: () => void; onQuick: () => void }) {
+  return (
+    <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
+      <div className="relative">
+        <CardCarousel imagenes={m.imagenes} alt={m.modelo} onOpen={onOpen} />
+        {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
+        {m.has_bluecut && <BlueCutBadge />}
+      </div>
+      <button onClick={onOpen} className="text-left w-full block px-3 pt-3 pb-2 flex-1">
+        <p className="text-sm font-semibold truncate">{m.modelo}</p>
+        <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
+        <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>
+      </button>
+      <button onClick={onQuick} className="mx-3 mb-3 rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
+        <Plus size={14} /> Agregar
+      </button>
+    </div>
+  )
+}
+
+// Cartelito de sección (chico, tipo Mercado Libre) + fila con scroll horizontal
+function SectionRow({ grupo, items, onVerTodos, onOpen, onQuick }: {
+  grupo: Grupo; items: HomeModelo[]; onVerTodos: () => void; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void
+}) {
+  if (!items.length) return null
+  return (
+    <section id={`g-${grupo.key}`} className="mb-7 scroll-mt-32">
+      <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 mb-2.5 ${ACCENT[grupo.accent]}`}>
+        <div className="flex items-baseline gap-2 min-w-0">
+          {grupo.key === 'destacados' && <Star size={13} className="shrink-0" />}
+          <span className="text-[12px] font-bold tracking-[0.18em] uppercase truncate">{grupo.nombre}{grupo.sub ? '' : ''}</span>
+          {grupo.sub && <span className="text-[10px] opacity-70 tracking-wide truncate hidden sm:inline">{grupo.sub}</span>}
+          <span className="text-[10px] opacity-70">· {items.length}</span>
+        </div>
+        <button onClick={onVerTodos} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">Ver todos →</button>
+      </div>
+      <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+        {items.slice(0, 14).map((m) => (
+          <div key={m.modelo} className="snap-start shrink-0 w-36 sm:w-44">
+            <ModelCard m={m} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
+          </div>
+        ))}
+        {items.length > 14 && (
+          <button onClick={onVerTodos} className="snap-start shrink-0 w-36 sm:w-44 rounded-xl border border-dashed border-black/20 text-[#0004FF] text-sm font-semibold flex items-center justify-center hover:bg-[#0004FF]/5">
+            Ver los {items.length} →
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function CatalogoPublico() {
   const [clave, setClave] = useState<string | null>(() => localStorage.getItem(CLAVE_KEY))
   const [claveOk, setClaveOk] = useState(false)
-  const [modelos, setModelos] = useState<Modelo[]>([])
+  const [todos, setTodos] = useState<HomeModelo[]>([])
   const [loading, setLoading] = useState(true)
-  const [refiltrando, setRefiltrando] = useState(false)
-  const [facetas, setFacetas] = useState<{ tipos: string[]; clasificaciones: string[]; tratamientos: string[] }>({ tipos: [], clasificaciones: [], tratamientos: [] })
-  // filtros
   const [q, setQ] = useState('')
-  const [fTipo, setFTipo] = useState<string | null>(null)
-  const [fClasif, setFClasif] = useState<string | null>(null)
-  const [fTrat, setFTrat] = useState<string | null>(null)
-  const [soloDestacados, setSoloDestacados] = useState(false)
+  const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
@@ -135,40 +208,25 @@ export default function CatalogoPublico() {
     })
   }, [clave])
 
-  // facetas para los chips (una sola vez; no cambian con el filtro)
+  // cargar todo el catálogo una vez; los grupos se arman en el cliente
   useEffect(() => {
     if (!claveOk || !clave) return
-    supabase.rpc('catalogo_facetas', { p_clave: clave }).then(({ data }) => {
-      const f = (data as any)?.[0]
-      if (f) setFacetas({ tipos: f.tipos ?? [], clasificaciones: f.clasificaciones ?? [], tratamientos: f.tratamientos ?? [] })
+    supabase.rpc('catalogo_home', { p_clave: clave }).then(({ data, error }) => {
+      setTodos(error ? [] : ((data as HomeModelo[]) ?? [])); setLoading(false)
     })
   }, [claveOk, clave])
 
-  // cargar modelos — el servidor filtra a nivel variante (solo muestra lo filtrado)
-  useEffect(() => {
-    if (!claveOk || !clave) return
-    setRefiltrando(true)
-    supabase.rpc('catalogo_modelos_v2', {
-      p_clave: clave, p_tipo: fTipo, p_clasif: fClasif, p_trat: fTrat, p_destacados: soloDestacados,
-    }).then(({ data, error }) => {
-      setModelos(error ? [] : ((data as Modelo[]) ?? [])); setLoading(false); setRefiltrando(false)
-    })
-  }, [claveOk, clave, fTipo, fClasif, fTrat, soloDestacados])
+  // foto primero, sin foto al final
+  const conFoto = (arr: HomeModelo[]) => arr.map((m, i) => ({ m, i })).sort((a, b) => {
+    const ia = a.m.imagenes?.length ? 0 : 1, ib = b.m.imagenes?.length ? 0 : 1
+    return ia - ib || a.i - b.i
+  }).map((x) => x.m)
 
-  const tipos = useMemo(() => [...facetas.tipos].sort(), [facetas])
-  const clasifs = useMemo(() => [...facetas.clasificaciones].sort(), [facetas])
-  const trats = useMemo(() => [...facetas.tratamientos].sort(), [facetas])
-
-  const filtrados = useMemo(() => {
-    const qn = q.trim().toLowerCase()
-    const base = qn ? modelos.filter((m) => m.modelo.toLowerCase().includes(qn)) : modelos
-    // Los que tienen foto primero; los que faltan quedan al final.
-    return base.map((m, i) => ({ m, i })).sort((a, b) => {
-      const ia = a.m.imagenes?.length ? 0 : 1, ib = b.m.imagenes?.length ? 0 : 1
-      return ia - ib || a.i - b.i
-    }).map((x) => x.m)
-  }, [modelos, q])
-  const sinFoto = filtrados.filter((m) => !m.imagenes?.length).length
+  const qn = q.trim().toLowerCase()
+  const buscando = qn.length > 0
+  const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn))), [todos, qn])
+  const grupoObj = GRUPOS.find((g) => g.key === grupoActivo) || null
+  const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter(grupoObj.match)) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
@@ -186,10 +244,14 @@ export default function CatalogoPublico() {
     })
   }
 
+  function verGrupo(k: string) { setGrupoActivo(k); setQ(''); window.scrollTo({ top: 0 }) }
+  function irInicio() { setGrupoActivo(null); setQ('') }
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
-  const chip = (active: boolean) => `text-[11px] rounded-full px-3 py-1.5 border font-medium whitespace-nowrap transition ${active ? 'bg-[#0004FF] text-white border-[#0004FF]' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
+  const navPill = (active: boolean, accent: Grupo['accent']) =>
+    `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
   return (
     <div className="min-h-screen bg-white text-[#0a0a0a] font-mono">
@@ -200,65 +262,65 @@ export default function CatalogoPublico() {
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <Logo />
+          <button onClick={irInicio} className="shrink-0"><Logo /></button>
           <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
             <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
             {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{cartCount}</span>}
           </button>
         </div>
-        {/* Buscador + filtros */}
-        <div className="max-w-6xl mx-auto px-4 pb-3 space-y-2">
+        {/* Buscador */}
+        <div className="max-w-6xl mx-auto px-4 pb-2">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
+            <input value={q} onChange={(e) => { setQ(e.target.value); setGrupoActivo(null) }} placeholder="Buscar modelo…"
               className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
+        </div>
+        {/* Propuestas: acceso directo a cada grupo */}
+        <div className="max-w-6xl mx-auto px-4 pb-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-            <button onClick={() => setSoloDestacados((v) => !v)} className={chip(soloDestacados)}><Star size={11} className="inline mb-0.5 mr-0.5" />Destacados</button>
-            {tipos.map((t) => <button key={t} onClick={() => setFTipo(fTipo === t ? null : t)} className={chip(fTipo === t)}>{cap(t)}</button>)}
-            {clasifs.map((c) => <button key={c} onClick={() => setFClasif(fClasif === c ? null : c)} className={chip(fClasif === c)}>{cap(c)}</button>)}
-            {trats.map((t) => <button key={t} onClick={() => setFTrat(fTrat === t ? null : t)} className={chip(fTrat === t)}>{cap(t)}</button>)}
+            <button onClick={irInicio} className={navPill(!buscando && !grupoActivo, 'dark')}>Inicio</button>
+            {GRUPOS.map((g) => (
+              <button key={g.key} onClick={() => verGrupo(g.key)} className={navPill(grupoActivo === g.key, g.accent)}>{g.nombre}</button>
+            ))}
           </div>
         </div>
       </header>
 
-      {/* Grilla de modelos */}
       <main className="max-w-6xl mx-auto px-3 py-4">
-        <p className="text-[11px] text-neutral-400 mb-3">
-          {filtrados.length} modelo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''}
-          {sinFoto > 0 && <span className="text-neutral-300"> · {sinFoto} con foto pendiente</span>}
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          {filtrados.map((m, idx) => (
-            <Fragment key={m.modelo}>
-              {sinFoto > 0 && !m.imagenes?.length && (idx === 0 || filtrados[idx - 1].imagenes?.length) && (
-                <div className="col-span-2 md:col-span-4 mt-4 mb-1 flex items-center gap-3">
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">Próximamente con foto</span>
-                  <span className="flex-1 h-px bg-black/10" />
-                </div>
-              )}
-              <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm">
-                <div className="relative">
-                  <CardCarousel imagenes={m.imagenes} alt={m.modelo} onOpen={() => setSel(m)} />
-                  {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
-                </div>
-                <button onClick={() => setSel(m)} className="text-left w-full block px-3 pt-3 pb-2">
-                  <p className="text-sm font-semibold truncate">{m.modelo}</p>
-                  <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
-                  <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>
-                </button>
-                <button onClick={() => setQuick(m)} className="mx-3 mb-3 w-[calc(100%-1.5rem)] rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
-                  <Plus size={14} /> Agregar
-                </button>
+        {buscando ? (
+          <>
+            <p className="text-[11px] text-neutral-400 mb-3">{resultados.length} resultado{resultados.length !== 1 ? 's' : ''} para “{q.trim()}”</p>
+            {resultados.length ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                {resultados.map((m) => <ModelCard key={m.modelo} m={m} onOpen={() => setSel(m)} onQuick={() => setQuick(m)} />)}
               </div>
-            </Fragment>
-          ))}
-        </div>
-        {filtrados.length === 0 && <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con esos filtros.</p>}
+            ) : <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con ese nombre.</p>}
+          </>
+        ) : grupoObj ? (
+          <>
+            <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate">{grupoObj.nombre}</span>
+                {grupoObj.sub && <span className="text-[10px] opacity-70 truncate hidden sm:inline">{grupoObj.sub}</span>}
+                <span className="text-[10px] opacity-70">· {modelosGrupo.length}</span>
+              </div>
+              <button onClick={irInicio} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">← Inicio</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              {modelosGrupo.map((m) => <ModelCard key={m.modelo} m={m} onOpen={() => setSel(m)} onQuick={() => setQuick(m)} />)}
+            </div>
+          </>
+        ) : (
+          GRUPOS.map((g) => (
+            <SectionRow key={g.key} grupo={g} items={conFoto(todos.filter(g.match))}
+              onVerTodos={() => verGrupo(g.key)} onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} />
+          ))
+        )}
       </main>
 
-      {quick && <QuickAdd modelo={quick} clave={clave} filtros={{ tipo: fTipo, clasif: fClasif, trat: fTrat }} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
-      {sel && <ModeloSheet modelo={sel} clave={clave} filtros={{ tipo: fTipo, clasif: fClasif, trat: fTrat }} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
+      {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
+      {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Barra flotante de pedido en mobile */}
@@ -273,14 +335,14 @@ export default function CatalogoPublico() {
 }
 
 // ── Carga rápida desde la grilla: elegir color y cantidad sin entrar al detalle ──
-function QuickAdd({ modelo, clave, filtros, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
-  modelo: Modelo; clave: string; filtros: Filtros; cart: Record<string, CartItem>
+function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
+  modelo: Modelo; clave: string; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void; onVerDetalle: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: filtros.tipo, p_clasif: filtros.clasif, p_trat: filtros.trat }).then(({ data, error }) => {
+    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
   }, [clave, modelo.modelo])
@@ -334,15 +396,15 @@ function QuickAdd({ modelo, clave, filtros, cart, onAdd, onSetQty, onClose, onVe
 }
 
 // ── Ficha del modelo con carrusel de colores ──
-function ModeloSheet({ modelo, clave, filtros, cart, onAdd, onSetQty, onClose }: {
-  modelo: Modelo; clave: string; filtros: Filtros; cart: Record<string, CartItem>
+function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
+  modelo: Modelo; clave: string; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: filtros.tipo, p_clasif: filtros.clasif, p_trat: filtros.trat }).then(({ data, error }) => {
+    supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
   }, [clave, modelo.modelo])
