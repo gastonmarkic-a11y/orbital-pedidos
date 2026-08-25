@@ -185,33 +185,42 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
 }
 
 // Cartelito de sección (chico, tipo Mercado Libre) + fila con scroll horizontal
-function SectionRow({ grupo, items, onVerTodos, onOpen, onQuick }: {
-  grupo: Grupo; items: HomeModelo[]; onVerTodos: () => void; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void
+function SectionRow({ grupo, items, onOpen, onQuick }: {
+  grupo: Grupo; items: HomeModelo[]; onOpen: (m: HomeModelo) => void; onQuick: (m: HomeModelo) => void
 }) {
+  const [exp, setExp] = useState(false)
   if (!items.length) return null
   return (
     <section id={`g-${grupo.key}`} className="mb-7 scroll-mt-32">
       <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 mb-2.5 ${ACCENT[grupo.accent]}`}>
         <div className="flex items-baseline gap-2 min-w-0">
           {grupo.key === 'destacados' && <Star size={13} className="shrink-0" />}
-          <span className="text-[12px] font-bold tracking-[0.18em] uppercase truncate">{grupo.nombre}{grupo.sub ? '' : ''}</span>
+          <span className="text-[12px] font-bold tracking-[0.18em] uppercase truncate">{grupo.nombre}</span>
           {grupo.sub && <span className="text-[10px] opacity-70 tracking-wide truncate hidden sm:inline">{grupo.sub}</span>}
           <span className="text-[10px] opacity-70">· {items.length}</span>
         </div>
-        <button onClick={onVerTodos} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">Ver todos →</button>
+        {items.length > (exp ? 0 : 14) || exp ? (
+          <button onClick={() => setExp((v) => !v)} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">{exp ? 'Ver menos ↑' : 'Ver todos ↓'}</button>
+        ) : null}
       </div>
-      <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-        {items.slice(0, 14).map((m) => (
-          <div key={m.modelo} className="snap-start shrink-0 w-36 sm:w-44">
-            <ModelCard m={m} grupo={grupo.key} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
-          </div>
-        ))}
-        {items.length > 14 && (
-          <button onClick={onVerTodos} className="snap-start shrink-0 w-36 sm:w-44 rounded-xl border border-dashed border-black/20 text-[#0004FF] text-sm font-semibold flex items-center justify-center hover:bg-[#0004FF]/5">
-            Ver los {items.length} →
-          </button>
-        )}
-      </div>
+      {exp ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          {items.map((m) => <ModelCard key={m.modelo} m={m} grupo={grupo.key} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />)}
+        </div>
+      ) : (
+        <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+          {items.slice(0, 14).map((m) => (
+            <div key={m.modelo} className="snap-start shrink-0 w-36 sm:w-44">
+              <ModelCard m={m} grupo={grupo.key} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
+            </div>
+          ))}
+          {items.length > 14 && (
+            <button onClick={() => setExp(true)} className="snap-start shrink-0 w-36 sm:w-44 rounded-xl border border-dashed border-black/20 text-[#0004FF] text-sm font-semibold flex items-center justify-center hover:bg-[#0004FF]/5">
+              Ver los {items.length} ↓
+            </button>
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -365,7 +374,7 @@ export default function CatalogoPublico() {
         ) : (
           GRUPOS.map((g) => (
             <SectionRow key={g.key} grupo={g} items={conFoto(todos.filter(g.match))}
-              onVerTodos={() => verGrupo(g.key)} onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} />
+              onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} />
           ))
         )}
       </main>
