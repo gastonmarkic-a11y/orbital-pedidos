@@ -21,6 +21,7 @@ interface Foto { u: string; c: string | null; t: string | null; k: string | null
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
+interface Medidas { ancho: number | null; alto: number | null; largo: number | null; formato: string | null; patilla: string | null; frente: string | null; para: string | null }
 // Destacados se controla 100% por es_caliente en la base (stock). Lista vacía = sin forzados en el front.
 const DESTACADOS_EXTRA: string[] = []
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
@@ -31,6 +32,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZETA 11': 'Negro Mate / Gris',
   'ZETA 7': 'Negro Mate / Gris',
   'LONG BEACH': 'Negro Mate / Gris Polarizado',
+  'ZETA 1 PRO': 'Negro Mate / Espejo Naranja',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -52,6 +54,7 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   else if (grupo === 'bluecut') i = find((f) => !!f.t && /blue cut|lentilla/i.test(f.t))
   else if (grupo === 'bajaluz') i = find((f) => f.bl)
   else if (grupo === 'deportivo') i = find((f) => f.tp === 'sol')  // en Deportivo la tapa siempre de sol, nunca receta
+  else if (grupo === 'receta') i = find((f) => f.tp === 'receta' || /lentilla/i.test(f.c || ''))
   // Deportivo: si igual no hubiera sol, evitamos receta en la tapa
   if (i < 0 && grupo === 'deportivo') i = find((f) => f.tp !== 'receta')
   return i >= 0 ? i : 0
@@ -161,12 +164,16 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 }
 
 // ── Grupos del catálogo (secciones tipo tienda) ──
+// Un modelo es "de sol" si tiene alguna foto de producto de sol; es "recetado" si solo tiene fotos de receta/lentilla
+const tieneSolFoto = (m: HomeModelo) => (m.fotos || []).some((f) => f.tp === 'sol')
+const esRecetaModelo = (m: HomeModelo) => !tieneSolFoto(m) && (m.fotos || []).some((f) => f.tp === 'receta' || /lentilla/i.test(f.c || ''))
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
-  { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') },
+  { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') && tieneSolFoto(m) },
+  { key: 'receta', nombre: 'Recetados', sub: 'Armazones para receta', accent: 'dark', match: (m) => esRecetaModelo(m) },
   { key: 'bluecut', nombre: 'Blue cut y lentillas', accent: 'blue', match: (m) => m.tratamientos.includes('Blue cut') || m.tratamientos.includes('lentilla') },
   { key: 'bajaluz', nombre: 'Cuando baja la luz', sub: 'Cristal ocre · naranja · rojo', accent: 'amber', match: (m) => m.is_bajaluz },
   { key: 'zn', nombre: 'Zaira Nara', sub: 'ZN', accent: 'dark', match: (m) => m.clasificaciones.includes('zaira nara') },
@@ -185,6 +192,7 @@ const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: strin
   triple: { titulo: 'Triple Protección', bajada: 'La tecnología Orbital que protege de la luz infrarroja, la luz azul y los rayos UV en un solo cristal.', puntos: ['Filtro Infrarrojo (IR) — confort térmico', 'Filtro Blue Cut — pantallas y luz artificial', 'Protección UV400 — sol', 'Visión más nítida y menos fatiga'], link: { href: '/proteccion', texto: 'Ver la página de Triple Protección →' } },
   urbano: { titulo: 'Urbanos', bajada: 'Diseño para el día a día en la ciudad. Livianos, versátiles y con impronta de marca.', puntos: ['Estilo para uso diario', 'Materiales livianos y resistentes', 'Combinan con todo'] },
   deportivo: { titulo: 'Deportivos', bajada: 'Sujeción, liviandad y cristales de alto rendimiento para exigencia y aire libre.', puntos: ['Agarre firme en movimiento', 'Cristales polarizados y espejados', 'Pensados para deporte y manejo'] },
+  receta: { titulo: 'Recetados', bajada: 'Armazones pensados para uso con receta: se cierran con el cristal graduado del cliente.', puntos: ['Aptos para lentes recetados', 'Diseño y calce cuidados', 'Consultá calibres y colores disponibles'] },
   bluecut: { titulo: 'Blue cut y lentillas', bajada: 'Filtro de luz azul para pantallas, y opción con lentilla de aumento lista para usar.', puntos: ['Menos fatiga visual frente a pantallas', 'Descanso para uso prolongado', 'Lentillas de aumento sin receta'] },
   bajaluz: { titulo: 'Cuando baja la luz', bajada: 'Cristales ocre, naranja y rojo que aumentan el contraste cuando cae la luz: manejo nocturno, niebla y días grises.', puntos: ['Más contraste con poca luz', 'Ideal para conducir al atardecer y de noche', 'Reduce el encandilamiento'] },
   zn: { titulo: 'Zaira Nara — ZN', bajada: 'La cápsula ZN: diseño de tendencia con el sello de Zaira Nara.', puntos: ['Colección cápsula', 'Diseño de moda', 'Edición especial'] },
@@ -536,10 +544,12 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
   const [vars, setVars] = useState<Variante[]>([])
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [medidas, setMedidas] = useState<Medidas | null>(null)
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
+    supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))
   }, [clave, modelo.modelo])
   const v = vars[i]
   const enCarrito = v ? cart[v.codigo]?.cantidad ?? 0 : 0
@@ -603,6 +613,26 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                 <span className="text-[11px] text-neutral-400">+ IVA</span>
               </div>
             </div>
+
+            {/* Medidas del modelo (ficha técnica) */}
+            {medidas && (medidas.ancho || medidas.alto || medidas.largo || medidas.formato) && (
+              <div className="mt-4 border border-black/10 rounded-xl p-3">
+                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Medidas</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[['Ancho', medidas.ancho], ['Alto', medidas.alto], ['Varilla', medidas.largo]].map(([lbl, val]) => (
+                    <div key={lbl as string} className="bg-[#F5F5F7] rounded-lg py-2">
+                      <p className="text-sm font-bold">{val != null ? `${val} cm` : '—'}</p>
+                      <p className="text-[10px] text-neutral-500 uppercase tracking-wide">{lbl}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  {[medidas.formato && `Formato: ${cap(medidas.formato)}`, medidas.frente && `Frente: ${cap(medidas.frente)}`, medidas.patilla && `Varilla: ${cap(medidas.patilla)}`, medidas.para && cap(medidas.para)].filter(Boolean).map((t) => (
+                    <span key={t as string} className="text-[10px] rounded-full px-2 py-0.5 bg-[#EEEEF0] text-neutral-600">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Agregar */}
             <div className="mt-4">
