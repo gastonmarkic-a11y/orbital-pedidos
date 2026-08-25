@@ -34,6 +34,8 @@ const COVER_OVERRIDE: Record<string, string> = {
   'LONG BEACH': 'Negro Mate / Gris Polarizado',
   'ZETA 1 PRO': 'Negro Mate / Espejo Naranja',
   'ENDOR': 'Negro Mate/ Gris Polarizado',
+  'BAREIN': 'Negro Brillo / Gris',
+  'EIVISSA': 'Negro Brillo / Gris',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -168,6 +170,10 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 // Un modelo es "de sol" si tiene alguna foto de producto de sol; es "recetado" si solo tiene fotos de receta/lentilla
 const tieneSolFoto = (m: HomeModelo) => (m.fotos || []).some((f) => f.tp === 'sol')
 const esRecetaModelo = (m: HomeModelo) => !tieneSolFoto(m) && (m.fotos || []).some((f) => f.tp === 'receta' || /lentilla/i.test(f.c || ''))
+// Línea Zaira Nara: clasificación 'zaira nara' o nombre que termina en "- ZN"
+const esZN = (m: HomeModelo) => m.clasificaciones.includes('zaira nara') || /\bZN\s*$/i.test(m.modelo)
+// Los ZN son exclusivos de su sección; el resto excluye a los ZN
+const matchGrupo = (g: Grupo, m: HomeModelo) => g.key === 'zn' ? esZN(m) : (g.match(m) && !esZN(m))
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
@@ -361,7 +367,7 @@ export default function CatalogoPublico() {
   const buscando = qn.length > 0
   const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn))), [todos, qn])
   const grupoObj = GRUPOS.find((g) => g.key === grupoActivo) || null
-  const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter(grupoObj.match)) : []), [todos, grupoObj])
+  const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
@@ -454,7 +460,7 @@ export default function CatalogoPublico() {
             // Dedup de arriba para abajo: cada modelo se muestra en la sección más alta que le toca (no repetir tapas)
             const usados = new Set<string>()
             return GRUPOS.map((g) => {
-              const items = conFoto(todos.filter(g.match))
+              const items = conFoto(todos.filter((m) => matchGrupo(g, m)))
               const row = items.filter((m) => !usados.has(m.modelo))
               row.forEach((m) => usados.add(m.modelo))
               if (!row.length) return null
