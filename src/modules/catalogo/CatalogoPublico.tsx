@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
@@ -14,16 +14,33 @@ interface Modelo {
 interface Variante {
   codigo: string; descripcion: string | null; tipo: string | null; tratamiento: string | null
   clasificacion: string | null; precio: number; precio_lista: number; tiene_preventa: boolean
-  caliente: boolean; imagen: string | null
+  caliente: boolean; imagen: string | null; stock: number
 }
-interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null }
+interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number }
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; bl: boolean; bc: boolean; ca: boolean }
 interface HomeModelo extends Modelo {
-  clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
+  fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
+}
+// Modelos que van fijos en Destacados además de los "de fuego" (es_caliente)
+const DESTACADOS_EXTRA = ['SILVERSTONE', 'ADELAIDA', 'LE MANS', 'BUENOS AIRES', 'PALERMO']
+const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
+// Índice de la foto de portada según el grupo (representa al grupo)
+function coverIndex(fotos: Foto[], grupo?: string): number {
+  if (!fotos?.length) return 0
+  const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
+  let i = -1
+  if (grupo === 'destacados') i = find((f) => esNegro(f.c))
+  else if (grupo === 'triple') i = find((f) => f.t === 'Infrarrojo + Blue cut')
+  else if (grupo === 'bluecut') i = find((f) => !!f.t && /blue cut|lentilla/i.test(f.t))
+  else if (grupo === 'bajaluz') i = find((f) => f.bl)
+  return i >= 0 ? i : 0
 }
 
 // Paleta de la tienda orbitaleyewear.com.ar: blanco/negro, azul eléctrico, tipografía monospace
 const CLAVE_KEY = 'orbital_catalogo_clave'
+const ACCESO_KEY = 'orbital_catalogo_acceso'
 const CART_KEY = 'orbital_catalogo_cart'
+interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null }
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
 const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
@@ -40,22 +57,40 @@ function Placeholder({ label }: { label?: string }) {
 }
 
 // Carrusel de fotos en la tarjeta: permite ojear los colores sin abrir el detalle
-function CardCarousel({ imagenes, alt, onOpen }: { imagenes: string[]; alt: string; onOpen: () => void }) {
-  const [i, setI] = useState(0)
-  const n = imagenes?.length ?? 0
+function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt: string; onOpen: () => void; initial?: number }) {
+  const n = fotos?.length ?? 0
+  const [i, setI] = useState(Math.min(initial, Math.max(0, n - 1)))
+  useEffect(() => { setI(Math.min(initial, Math.max(0, n - 1))) }, [initial, n])
+  const tX = useRef<number | null>(null)
   const go = (e: React.MouseEvent, d: number) => { e.stopPropagation(); setI((p) => (p + d + n) % n) }
+  // Swipe en mobile: deslizar cambia de color directo
+  const onTouchStart = (e: React.TouchEvent) => { tX.current = e.touches[0].clientX }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (tX.current == null || n < 2) return
+    const dx = e.changedTouches[0].clientX - tX.current
+    if (Math.abs(dx) > 35) setI((p) => (p + (dx < 0 ? 1 : -1) + n) % n)
+    tX.current = null
+  }
   if (!n) return <button onClick={onOpen} className="aspect-square w-full bg-white block"><Placeholder /></button>
+  const cur = fotos[Math.min(i, n - 1)]
+  const color = colorLegible(cur.c)
   return (
-    <div className="group aspect-square bg-white relative">
+    <div className="group aspect-square bg-white relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <button onClick={onOpen} className="w-full h-full block">
-        <img src={imagenes[Math.min(i, n - 1)]} alt={alt} className="w-full h-full object-contain" />
+        <img src={cur.u} alt={alt} className="w-full h-full object-contain" />
       </button>
+      {color && (
+        <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[9px] font-medium rounded-full px-2 py-0.5 max-w-[90%] truncate flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full border border-white/60 shrink-0" style={{ background: colorSwatch(cur.c) }} />
+          {color}
+        </span>
+      )}
       {n > 1 && (
         <>
           <button onClick={(e) => go(e, -1)} aria-label="Anterior" className="absolute left-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronLeft size={16} /></button>
           <button onClick={(e) => go(e, 1)} aria-label="Siguiente" className="absolute right-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronRight size={16} /></button>
           <div className="absolute bottom-1.5 inset-x-0 flex items-center justify-center gap-1">
-            {imagenes.map((_, k) => (
+            {fotos.map((_, k) => (
               <span key={k} className={`h-1.5 rounded-full transition-all ${k === Math.min(i, n - 1) ? 'w-3 bg-[#0004FF]' : 'w-1.5 bg-black/20'}`} />
             ))}
           </div>
@@ -81,11 +116,11 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
   const [loading, setLoading] = useState(false)
   async function probar(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setErr(null)
-    const { data, error } = await supabase.rpc('catalogo_clave_ok', { p: v.trim() })
+    const { data, error } = await supabase.rpc('catalogo_entrar', { p: v.trim() })
     setLoading(false)
     if (error) { setErr('Error de conexión'); return }
-    if (data === true) { localStorage.setItem(CLAVE_KEY, v.trim()); onOk(v.trim()) }
-    else setErr('Clave incorrecta')
+    if ((data as any)?.ok) { localStorage.setItem(CLAVE_KEY, v.trim()); onOk(v.trim()) }
+    else setErr('Clave o código incorrecto')
   }
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
@@ -107,7 +142,7 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 // ── Grupos del catálogo (secciones tipo tienda) ──
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
-  { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente },
+  { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
   { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') },
@@ -129,11 +164,11 @@ function BlueCutBadge() {
 }
 
 // Tarjeta de modelo reutilizable (grilla y secciones)
-function ModelCard({ m, onOpen, onQuick }: { m: HomeModelo; onOpen: () => void; onQuick: () => void }) {
+function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () => void; onQuick: () => void; grupo?: string }) {
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
-        <CardCarousel imagenes={m.imagenes} alt={m.modelo} onOpen={onOpen} />
+        <CardCarousel fotos={m.fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(m.fotos, grupo)} />
         {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
         {m.has_bluecut && <BlueCutBadge />}
       </div>
@@ -168,7 +203,7 @@ function SectionRow({ grupo, items, onVerTodos, onOpen, onQuick }: {
       <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
         {items.slice(0, 14).map((m) => (
           <div key={m.modelo} className="snap-start shrink-0 w-36 sm:w-44">
-            <ModelCard m={m} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
+            <ModelCard m={m} grupo={grupo.key} onOpen={() => onOpen(m)} onQuick={() => onQuick(m)} />
           </div>
         ))}
         {items.length > 14 && (
@@ -182,8 +217,15 @@ function SectionRow({ grupo, items, onVerTodos, onOpen, onQuick }: {
 }
 
 export default function CatalogoPublico() {
-  const [clave, setClave] = useState<string | null>(() => localStorage.getItem(CLAVE_KEY))
+  // token del link (?k=) tiene prioridad sobre la clave guardada
+  const [clave, setClave] = useState<string | null>(() => {
+    try { const k = new URLSearchParams(window.location.search).get('k'); if (k) return k.trim() } catch { /* noop */ }
+    return localStorage.getItem(CLAVE_KEY)
+  })
   const [claveOk, setClaveOk] = useState(false)
+  const [acceso, setAcceso] = useState<Acceso | null>(() => {
+    try { return JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') } catch { return null }
+  })
   const [todos, setTodos] = useState<HomeModelo[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -198,12 +240,19 @@ export default function CatalogoPublico() {
 
   useEffect(() => { localStorage.setItem(CART_KEY, JSON.stringify(cart)) }, [cart])
 
-  // validar clave guardada al entrar
+  // validar clave/token guardado o del link al entrar
   useEffect(() => {
     if (!clave) { setLoading(false); return }
-    supabase.rpc('catalogo_clave_ok', { p: clave }).then(({ data }) => {
-      if (data === true) setClaveOk(true)
-      else { localStorage.removeItem(CLAVE_KEY); setClave(null) }
+    supabase.rpc('catalogo_entrar', { p: clave }).then(({ data }) => {
+      const r = data as any
+      if (r?.ok) {
+        setClaveOk(true)
+        localStorage.setItem(CLAVE_KEY, clave)
+        const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor }
+        setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
+      } else {
+        localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setClave(null); setAcceso(null)
+      }
       setLoading(false)
     })
   }, [clave])
@@ -234,13 +283,15 @@ export default function CatalogoPublico() {
   function addCart(v: Variante, modelo: string) {
     setCart((c) => {
       const prev = c[v.codigo]
-      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, cantidad: (prev?.cantidad ?? 0) + 1 } }
+      const cantidad = Math.min((prev?.cantidad ?? 0) + 1, v.stock)
+      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, stock: v.stock, cantidad } }
     })
   }
   function setQty(codigo: string, cantidad: number) {
     setCart((c) => {
       if (cantidad <= 0) { const { [codigo]: _x, ...rest } = c; return rest }
-      return { ...c, [codigo]: { ...c[codigo], cantidad } }
+      const max = c[codigo]?.stock
+      return { ...c, [codigo]: { ...c[codigo], cantidad: max ? Math.min(cantidad, max) : cantidad } }
     })
   }
 
@@ -308,7 +359,7 @@ export default function CatalogoPublico() {
               <button onClick={irInicio} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">← Inicio</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              {modelosGrupo.map((m) => <ModelCard key={m.modelo} m={m} onOpen={() => setSel(m)} onQuick={() => setQuick(m)} />)}
+              {modelosGrupo.map((m) => <ModelCard key={m.modelo} m={m} grupo={grupoObj.key} onOpen={() => setSel(m)} onQuick={() => setQuick(m)} />)}
             </div>
           </>
         ) : (
@@ -321,7 +372,7 @@ export default function CatalogoPublico() {
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {carritoOpen && <CarritoSheet cart={cart} clave={clave} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
+      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Barra flotante de pedido en mobile */}
       {cartCount > 0 && !carritoOpen && !sel && (
@@ -376,11 +427,14 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                       {q === 0 ? (
                         <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
-                        <div className="flex items-center justify-between mt-1.5">
-                          <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={13} /></button>
-                          <span className="text-sm font-bold">{q}</span>
-                          <button onClick={() => onSetQty(v.codigo, q + 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Plus size={13} /></button>
-                        </div>
+                        <>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <button onClick={() => onSetQty(v.codigo, q - 1)} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center"><Minus size={13} /></button>
+                            <span className="text-sm font-bold">{q}</span>
+                            <button onClick={() => onSetQty(v.codigo, q + 1)} disabled={q >= v.stock} className="w-7 h-7 rounded-lg border border-black/10 flex items-center justify-center disabled:opacity-30"><Plus size={13} /></button>
+                          </div>
+                          {q >= v.stock && <p className="text-[9px] text-neutral-400 text-center mt-0.5">Sin más stock</p>}
+                        </>
                       )}
                     </div>
                   </div>
@@ -478,10 +532,13 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                   <Plus size={16} /> Agregar al pedido
                 </button>
               ) : (
-                <div className="flex items-center justify-between bg-[#EEEEF0] rounded-xl p-1.5">
-                  <button onClick={() => onSetQty(v.codigo, enCarrito - 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Minus size={16} /></button>
-                  <span className="text-base font-bold">{enCarrito} en el pedido</span>
-                  <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Plus size={16} /></button>
+                <div>
+                  <div className="flex items-center justify-between bg-[#EEEEF0] rounded-xl p-1.5">
+                    <button onClick={() => onSetQty(v.codigo, enCarrito - 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Minus size={16} /></button>
+                    <span className="text-base font-bold">{enCarrito} en el pedido</span>
+                    <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} disabled={enCarrito >= v.stock} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center disabled:opacity-30"><Plus size={16} /></button>
+                  </div>
+                  {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">Llegaste al stock disponible</p>}
                 </div>
               )}
             </div>
@@ -493,15 +550,17 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
 }
 
 // ── Carrito + checkout ──
-function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
-  cart: Record<string, CartItem>; clave: string
+function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
+  cart: Record<string, CartItem>; clave: string; acceso: Acceso | null
   onSetQty: (codigo: string, n: number) => void; onClose: () => void; onDone: () => void
 }) {
   const items = Object.values(cart)
   const total = items.reduce((a, c) => a + c.cantidad * c.precio, 0)
   const unidades = items.reduce((a, c) => a + c.cantidad, 0)
+  // si el link ya trae la óptica, queda pre-cargada y bloqueada
+  const identFijo = acceso?.cod_cliente || ''
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
-  const [ident, setIdent] = useState('')
+  const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
   const [pedirRazon, setPedirRazon] = useState(false)
   const [contacto, setContacto] = useState('')
@@ -518,6 +577,7 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
     const { data, error } = await supabase.rpc('catalogo_checkout', {
       p_clave: clave, p_identificador: ident.trim(), p_contacto: contacto.trim(),
       p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obs.trim(), p_razon: razon.trim() || null,
+      p_acceso: acceso?.codigo || clave,
     })
     setEnviando(false)
     if (error) { setErr('No se pudo enviar. Revisá la conexión.'); return }
@@ -568,7 +628,7 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => onSetQty(c.codigo, c.cantidad - 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
                     <span className="w-6 text-center text-sm font-bold">{c.cantidad}</span>
-                    <button onClick={() => onSetQty(c.codigo, c.cantidad + 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Plus size={14} /></button>
+                    <button onClick={() => onSetQty(c.codigo, c.cantidad + 1)} disabled={!!c.stock && c.cantidad >= c.stock} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
                     <button onClick={() => onSetQty(c.codigo, 0)} className="w-8 h-8 rounded-lg text-red-500 flex items-center justify-center"><Trash2 size={14} /></button>
                   </div>
                 </div>
@@ -581,11 +641,18 @@ function CarritoSheet({ cart, clave, onSetQty, onClose, onDone }: {
           </>
         ) : (
           <div className="p-4 space-y-3">
-            <div>
-              <label className="text-[11px] font-medium text-neutral-500">Código de cliente, CUIT o email *</label>
-              <input value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="Ej: 030554 · 30-12345678-9 · optica@mail.com"
-                className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
-            </div>
+            {identFijo ? (
+              <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5">
+                <p className="text-[11px] font-medium text-[#0004FF]">Pedido para tu óptica</p>
+                <p className="text-sm font-semibold">{acceso?.label || identFijo}</p>
+              </div>
+            ) : (
+              <div>
+                <label className="text-[11px] font-medium text-neutral-500">Código de cliente, CUIT o email *</label>
+                <input value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="Ej: 030554 · 30-12345678-9 · optica@mail.com"
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+              </div>
+            )}
             {pedirRazon && (
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Razón social / nombre de la óptica *</label>

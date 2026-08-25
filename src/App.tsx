@@ -19,6 +19,7 @@ import CargarActividad from './modules/actividad/CargarActividad'
 import MisResultados from './modules/actividad/MisResultados'
 import CoachFlotante from './modules/actividad/CoachFlotante'
 import Marketing from './modules/actividad/Marketing'
+import EnvioCatalogo from './modules/actividad/EnvioCatalogo'
 import GuionesContacto from './modules/actividad/GuionesContacto'
 import ProspeccionSocial from './modules/actividad/ProspeccionSocial'
 import AdminActividad from './modules/actividad/AdminActividad'
@@ -162,6 +163,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/resultados', label: 'Asistente' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
+    { to: '/envio-catalogo', label: 'Enviar catálogo' },
     { to: '/guiones', label: 'Guiones' },
     { to: '/conversaciones', label: 'Conversaciones' },
   ]
@@ -464,6 +466,7 @@ function Layout() {
           <Route path="/conversaciones" element={<Conversaciones />} />
           <Route path="/derivaciones" element={<Conversaciones />} />
           <Route path="/guiones" element={<GuionesContacto />} />
+          <Route path="/envio-catalogo" element={<EnvioCatalogo />} />
           <Route path="/prospeccion-social" element={<ProspeccionSocial />} />
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
