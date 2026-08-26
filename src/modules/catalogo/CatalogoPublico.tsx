@@ -24,6 +24,8 @@ interface HomeModelo extends Modelo {
 interface Medidas { ancho: number | null; alto: number | null; largo: number | null; formato: string | null; patilla: string | null; frente: string | null; para: string | null }
 // Destacados se controla 100% por es_caliente en la base (stock). Lista vacía = sin forzados en el front.
 const DESTACADOS_EXTRA: string[] = []
+// Modelos con tratamiento triple que NO queremos en la sección Triple (van a su grupo por clasificación)
+const TRIPLE_EXCLUDE: string[] = ['LONDRES']
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
 const esGris = (c: string | null) => !!c && /gris|gray/i.test(c)
 // Tapa fija elegida a mano para modelos puntuales (color exacto)
@@ -40,6 +42,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'BUENOS AIRES': 'Carey Brillo / Verde',
   'CENTRAL PARK': 'Negro Brillo / Gris Degrade',
   'MARSELLA': 'Negro Brillo / Habano Degrade',
+  'LONDRES': 'Negro Brillo / Gris Degradé',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -197,7 +200,7 @@ const matchGrupo = (g: Grupo, m: HomeModelo) => {
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
-  { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') },
+  { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
   { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') && tieneSolFoto(m) },
   { key: 'etherea', nombre: 'ETHEREA', sub: 'Ultralivianos · 9 gramos', accent: 'etherea', match: (m) => esEtherea(m) },
@@ -483,6 +486,12 @@ export default function CatalogoPublico() {
             const usados = new Set<string>()
             return GRUPOS.map((g) => {
               const items = conFoto(todos.filter((m) => matchGrupo(g, m)))
+              // "Cuando baja la luz" es transversal (por color de cristal): muestra su set completo con su tapa ocre/naranja/rojo, sin dedup
+              if (g.key === 'bajaluz') {
+                if (!items.length) return null
+                return <SectionRow key={g.key} grupo={g} items={items} row={items}
+                  onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
+              }
               const row = items.filter((m) => !usados.has(m.modelo))
               row.forEach((m) => usados.add(m.modelo))
               if (!row.length) return null
