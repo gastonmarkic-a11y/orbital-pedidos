@@ -44,10 +44,21 @@ const COVER_OVERRIDE: Record<string, string> = {
   'BUENOS AIRES': 'Carey Brillo / Verde',
   'CENTRAL PARK': 'Negro Brillo / Gris Degrade',
   'MARSELLA': 'Negro Brillo / Habano Degrade',
+  // Deportivos con foto profesional en 45° (negro)
+  'QUARTZ': 'Negro Mate / Gris Polarizado',
+  'ZETA 3': 'Negro Mate/ Gris Polarizado',
+  'ZETA 4': 'Negro Mate/ Gris Polarizado',
+  'ZETA 8': 'Negro Mate/ Gris Polarizado',
+  'VELOCITY': 'Negro Brillo / Gris Polarizado',
+  'ZERO': 'Negro Brillo / Gris Polarizado',
 }
 // Tapa por modelo + grupo (para modelos que viven en varias secciones con tapa distinta)
 const COVER_OVERRIDE_GRUPO: Record<string, Record<string, string>> = {
   'LONDRES': { triple: 'Clear Verde / Flash Verde Espejado Degradé', urbano: 'Negro Brillo / Gris Degradé' },
+  // Modelos triple con foto 45° negra: forzamos esa tapa también en la sección Triple
+  'ZETA 7': { triple: 'Negro Mate / Gris' },
+  'ZETA 8': { triple: 'Negro Mate/ Gris Polarizado' },
+  'ZERO': { triple: 'Negro Brillo / Gris Polarizado' },
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
