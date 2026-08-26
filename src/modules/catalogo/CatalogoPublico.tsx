@@ -53,6 +53,7 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZERO': 'Negro Brillo / Gris Polarizado',
   'ADRENALINE': 'Negro Mate/ Espejado Celeste',
   'CRYSTAL': 'Negro Mate/ Espejo Rojo',
+  'SUZUKA': 'Gris Clear / Gris Claro',
 }
 // Tapa por modelo + grupo (para modelos que viven en varias secciones con tapa distinta)
 const COVER_OVERRIDE_GRUPO: Record<string, Record<string, string>> = {
