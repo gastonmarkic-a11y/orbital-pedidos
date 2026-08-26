@@ -14,7 +14,7 @@ interface Modelo {
 interface Variante {
   codigo: string; descripcion: string | null; tipo: string | null; tratamiento: string | null
   clasificacion: string | null; precio: number; precio_lista: number; tiene_preventa: boolean
-  caliente: boolean; imagen: string | null; stock: number
+  caliente: boolean; imagen: string | null; stock: number; proyectado?: boolean
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number }
 interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean }
@@ -570,10 +570,11 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                       {v.imagen && <img src={v.imagen} alt={v.descripcion ?? ''} className="w-full h-full object-contain" />}
                       <span className="absolute bottom-1 left-1 w-4 h-4 rounded-full border border-white shadow" style={{ background: colorSwatch(v.descripcion) }} />
                       {v.tiene_preventa && <span className="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-bold rounded-full px-1.5 py-0.5">PV</span>}
+                      {v.proyectado && <span className="absolute top-1 left-1 bg-[#b45309] text-white text-[8px] font-bold rounded-full px-1.5 py-0.5">📅</span>}
                     </div>
                     <div className="p-2">
                       <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
-                      <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>
+                      <div className="flex items-center gap-1 flex-wrap"><p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
                       {q === 0 ? (
                         <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
@@ -643,6 +644,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                 </>
               )}
               {v.tiene_preventa && <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">PREVENTA</span>}
+              {v.proyectado && <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[10px] font-bold rounded-full px-2 py-0.5">📅 PROYECTADO</span>}
             </div>
 
             {/* Tira de colores */}
@@ -710,7 +712,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                     <span className="text-base font-bold">{enCarrito} en el pedido</span>
                     <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} disabled={enCarrito >= v.stock} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center disabled:opacity-30"><Plus size={16} /></button>
                   </div>
-                  {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">Llegaste al stock disponible</p>}
+                  {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">{v.proyectado ? 'Llegaste al máximo en proyectado' : 'Llegaste al stock disponible'}</p>}
                 </div>
               )}
             </div>
