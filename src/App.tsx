@@ -52,6 +52,7 @@ import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
+import LandingProximamente from './modules/landings/LandingProximamente'
 import PreciosML from './modules/mercadolibre/PreciosML'
 
 interface NavItem {
@@ -571,14 +572,30 @@ function Layout() {
 }
 
 export default function App() {
-  // Landing público de Triple Protección: link comercial, sin login.
-  // Se muestra en /proteccion o si se entra por el subdominio proteccion.orbitaleyewear.com.ar
-  if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/proteccion') || window.location.hostname.startsWith('proteccion.'))) {
+  // Landings públicas de campañas (Meta), sin login. URL linda: ver.orbitaleyewear.com.ar/<slug>
+  // Triple Protección: /proteccion o /tripleproteccion (o subdominio proteccion.)
+  if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/proteccion') || window.location.pathname.startsWith('/tripleproteccion') || window.location.hostname.startsWith('proteccion.'))) {
     return (
       <ToastProvider>
         <ProteccionPublica />
       </ToastProvider>
     )
+  }
+  // Campañas con ruta reservada (contenido a definir) → placeholder branded
+  if (typeof window !== 'undefined') {
+    const CAMPANAS: Record<string, string> = {
+      '/canje': 'Programa de Canje',
+      '/bienvenida': 'Bienvenida',
+      '/dia-de-la-madre': 'Día de la Madre',
+    }
+    const slug = Object.keys(CAMPANAS).find((p) => window.location.pathname.startsWith(p))
+    if (slug) {
+      return (
+        <ToastProvider>
+          <LandingProximamente titulo={CAMPANAS[slug]} />
+        </ToastProvider>
+      )
+    }
   }
   // Catálogo B2B público: ruta independiente del login por mail (acceso con clave propia).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/catalogo')) {
