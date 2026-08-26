@@ -51,6 +51,8 @@ const COVER_OVERRIDE: Record<string, string> = {
   'ZETA 8': 'Negro Mate/ Gris Polarizado',
   'VELOCITY': 'Negro Brillo / Gris Polarizado',
   'ZERO': 'Negro Brillo / Gris Polarizado',
+  'ADRENALINE': 'Negro Mate/ Espejado Celeste',
+  'CRYSTAL': 'Negro Mate/ Espejo Rojo',
 }
 // Tapa por modelo + grupo (para modelos que viven en varias secciones con tapa distinta)
 const COVER_OVERRIDE_GRUPO: Record<string, Record<string, string>> = {
