@@ -63,6 +63,7 @@ const COVER_OVERRIDE_GRUPO: Record<string, Record<string, string>> = {
   'ZETA 8': { triple: 'Negro Mate/ Gris Polarizado' },
   'ZERO': { triple: 'Negro Brillo / Gris Polarizado' },
   'ABU DHABI': { triple: 'Negro Mate / Gris Polarizado' },
+  'BUENOS AIRES I': { destacados: 'Negro Mate Compacto / Gris' },
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
