@@ -42,23 +42,31 @@ const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').
 function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   if (!fotos?.length) return 0
   const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
+  const hasSol = fotos.some((f) => f.tp === 'sol')
   // 1) override manual por modelo (color exacto)
   if (modelo && COVER_OVERRIDE[modelo]) {
     const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE[modelo]))
     if (j >= 0) return j
   }
+  // condición + tiene que ser de sol: la tapa SIEMPRE muestra un anteojo de sol
+  const S = (fn: (f: Foto) => boolean) => (f: Foto) => f.tp === 'sol' && fn(f)
   let i = -1
   if (grupo === 'destacados') {
-    // preferimos NEGRO con lente GRIS; si no hay, cualquier negro
-    i = find((f) => esNegro(f.c) && esGris(f.c))
-    if (i < 0) i = find((f) => esNegro(f.c))
+    // preferimos NEGRO con lente GRIS de sol; si no hay, cualquier negro de sol
+    i = find(S((f) => esNegro(f.c) && esGris(f.c)))
+    if (i < 0) i = find(S((f) => esNegro(f.c)))
   }
-  else if (grupo === 'triple') i = find((f) => f.t === 'Infrarrojo + Blue cut')
-  else if (grupo === 'bluecut') i = find((f) => (!!f.t && /blue cut|lentilla/i.test(f.t)) || f.tp === 'receta' || /lentilla/i.test(f.c || ''))
-  else if (grupo === 'bajaluz') i = find((f) => f.bl)
-  else if (grupo === 'deportivo') i = find((f) => f.tp === 'sol')  // en Deportivo la tapa siempre de sol, nunca receta
-  // Deportivo: si igual no hubiera sol, evitamos receta en la tapa
-  if (i < 0 && grupo === 'deportivo') i = find((f) => f.tp !== 'receta')
+  else if (grupo === 'triple') i = find(S((f) => f.t === 'Infrarrojo + Blue cut'))
+  else if (grupo === 'bajaluz') i = find(S((f) => !!f.bl))
+  else if (grupo === 'deportivo') i = find((f) => f.tp === 'sol')
+  else if (grupo === 'bluecut' && !hasSol) {
+    // solo si el modelo NO tiene ninguna posición de sol mostramos receta/lentilla en la tapa
+    i = find((f) => (!!f.t && /blue cut|lentilla/i.test(f.t)) || f.tp === 'receta' || /lentilla/i.test(f.c || ''))
+  }
+  // Regla global: la tapa siempre de sol si el modelo tiene alguna posición de sol
+  if (i < 0 && hasSol) i = find((f) => f.tp === 'sol')
+  // Modelo sin sol: evitamos receta si hubiera algo intermedio
+  if (i < 0) i = find((f) => f.tp !== 'receta')
   return i >= 0 ? i : 0
 }
 
@@ -175,10 +183,13 @@ const esZN = (m: HomeModelo) => m.clasificaciones.includes('zaira nara') || /\bZ
 const ETHEREA_MODELOS = ['SUBLIME', 'PLUMA', 'MICRA', 'BRISSA']
 const esEtherea = (m: HomeModelo) => ETHEREA_MODELOS.includes(m.modelo)
 // ZN y ETHEREA son exclusivos de su sección; el resto los excluye
-const matchGrupo = (g: Grupo, m: HomeModelo) =>
-  g.key === 'zn' ? esZN(m)
-  : g.key === 'etherea' ? esEtherea(m)
-  : (g.match(m) && !esZN(m) && !esEtherea(m))
+const matchGrupo = (g: Grupo, m: HomeModelo) => {
+  // Un modelo sin posiciones de sol solo puede vivir en "Blue cut y lentillas" (receta/lentillas, como Brasilia)
+  if (!tieneSolFoto(m)) return g.key === 'bluecut'
+  return g.key === 'zn' ? esZN(m)
+    : g.key === 'etherea' ? esEtherea(m)
+    : (g.match(m) && !esZN(m) && !esEtherea(m))
+}
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
