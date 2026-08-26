@@ -1,55 +1,39 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 
-interface ProtModelo { modelo: string; foto: string }
+interface Destacado { modelo: string; foto: string }
 
-// Landing público de Triple Protección — link comercial de Orbital (ruta /proteccion).
-// Estética de marca: claro, negro, acento AZUL tech + logo correcto. Infrarrojo primero.
+// Landing público de Triple Protección — link comercial de Orbital (/proteccion y /tripleproteccion).
+// Rediseño: hero + tecnología + DESTACADOS + 2 CTAs (catálogo con descuentos / coordinar visita → Iris).
 
 const WA = '5491178548316' // WhatsApp de Orbital (IRIS)
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const AZUL = '#1e50ff'
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
-
-// Algunos modelos de la línea (nombres, sin colores). Son ~180 modelos en total.
-const MODELOS = [
-  'PALERMO', 'BUENOS AIRES', 'LE MANS', 'SILVERSTONE', 'LONG BEACH', 'SAN REMO', 'PARIS', 'VARSOVIA',
-  'ADELAIDA', 'ROMA', 'MILANO', 'MARSELLA', 'RODAS', '5TH AVENUE', 'CIVIC CENTER', 'FILADELFIA',
-  'MALTA', 'SIGNATURE', 'SUZUKA', 'VENICE', 'ABU DHABI', 'LONDRES', 'EIVISSA', 'VERSALLES',
-  'BREMEN', 'CRYSTAL', 'VALLETTA', 'BAREIN', 'VELOCITY', 'ALASKA',
-]
+// El catálogo vive en el subdominio ver.* (en proteccion.* el hostname fuerza esta landing)
+const CATALOGO_URL = 'https://ver.orbitaleyewear.com.ar/catalogo'
 
 interface Prot { id: string; nombre: string; emoji: string; color: string; tag: string; titulo: string; texto: string }
-
 const PROTECCIONES: Prot[] = [
-  {
-    id: 'infrarrojo', nombre: 'Infrarrojo', emoji: '🔥', color: '#e0562e', tag: 'El diferencial',
-    titulo: 'Filtro Infrarrojo',
-    texto: 'Casi ningún anteojo del mercado lo tiene. Bloquea la radiación infrarroja —la que genera el calor y la fatiga visual bajo sol fuerte—. Resultado: menos cansancio y más confort en las jornadas largas al aire libre. Este es el filtro que marca la diferencia real.',
-  },
-  {
-    id: 'uv400', nombre: 'UV400', emoji: '☀️', color: '#c9971f', tag: 'Protección total',
-    titulo: 'Protección UV400',
-    texto: 'Bloquea el 100% de los rayos UVA y UVB. Es la protección que de verdad importa: cuida los ojos del daño solar acumulativo, ese que no se ve pero se paga con los años.',
-  },
-  {
-    id: 'bluecut', nombre: 'Blue Cut', emoji: '💠', color: AZUL, tag: 'Para el día a día',
-    titulo: 'Filtro Blue Cut',
-    texto: 'Filtra la luz azul de pantallas y LEDs. Ideal para el uso cotidiano, entre el sol de la calle y las horas frente al celular y la compu. Un plus de confort que el cliente agradece.',
-  },
+  { id: 'infrarrojo', nombre: 'Infrarrojo', emoji: '🔥', color: '#e0562e', tag: 'El diferencial', titulo: 'Filtro Infrarrojo',
+    texto: 'Casi ningún anteojo del mercado lo tiene. Bloquea la radiación infrarroja —la que genera el calor y la fatiga visual bajo sol fuerte—. Menos cansancio y más confort en las jornadas largas. Este filtro marca la diferencia real.' },
+  { id: 'uv400', nombre: 'UV400', emoji: '☀️', color: '#c9971f', tag: 'Protección total', titulo: 'Protección UV400',
+    texto: 'Bloquea el 100% de los rayos UVA y UVB. La protección que de verdad importa: cuida los ojos del daño solar acumulativo, ese que no se ve pero se paga con los años.' },
+  { id: 'bluecut', nombre: 'Blue Cut', emoji: '💠', color: AZUL, tag: 'Día a día', titulo: 'Filtro Blue Cut',
+    texto: 'Filtra la luz azul de pantallas y LEDs. Ideal para el uso cotidiano, entre el sol de la calle y las horas frente al celular y la compu. Un plus de confort que el cliente agradece.' },
 ]
 
 export default function ProteccionPublica() {
   const [sel, setSel] = useState('infrarrojo')
-  const [modelos, setModelos] = useState<ProtModelo[]>([])
+  const [destacados, setDestacados] = useState<Destacado[]>([])
   useEffect(() => {
-    supabase.rpc('proteccion_modelos').then(({ data }) => setModelos((data as ProtModelo[]) ?? []))
+    supabase.rpc('proteccion_destacados').then(({ data }) => setDestacados((data as Destacado[]) ?? []))
   }, [])
   const p = PROTECCIONES.find((x) => x.id === sel) ?? PROTECCIONES[0]
 
   return (
     <div className="min-h-screen bg-white text-[#0f0f10]" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
-      {/* Barra de marca con logo correcto */}
+      {/* Barra de marca */}
       <div className="border-b border-black/10">
         <div className="max-w-4xl mx-auto px-5 h-16 flex items-center justify-between">
           <img src="/logo-orbital-tm.png" alt="Orbital Eyewear" className="h-8 w-auto" />
@@ -57,7 +41,7 @@ export default function ProteccionPublica() {
         </div>
       </div>
 
-      {/* Hero: texto + foto del modelo (banners_web-08, retrato) */}
+      {/* Hero */}
       <div className="max-w-4xl mx-auto px-5 pt-8 grid md:grid-cols-2 gap-6 md:gap-10 md:items-center">
         <div className="order-2 md:order-1">
           <span className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-mono font-semibold tracking-wider" style={{ borderColor: AZUL, color: AZUL, background: `${AZUL}0a` }}>
@@ -78,7 +62,7 @@ export default function ProteccionPublica() {
       </div>
 
       <div className="max-w-4xl mx-auto px-5">
-        {/* Tabs — Infrarrojo primero */}
+        {/* Tecnología — tabs */}
         <div className="flex flex-wrap gap-2.5 mt-10">
           {PROTECCIONES.map((x) => {
             const activo = x.id === sel
@@ -91,8 +75,6 @@ export default function ProteccionPublica() {
             )
           })}
         </div>
-
-        {/* Panel de la protección seleccionada */}
         <div className="mt-5 rounded-2xl border border-black/10 p-6 sm:p-8" style={{ background: `${p.color}08`, boxShadow: `inset 3px 0 0 ${p.color}` }}>
           <div className="flex items-center gap-3 mb-3">
             <span className="text-3xl">{p.emoji}</span>
@@ -104,55 +86,45 @@ export default function ProteccionPublica() {
           <p className="text-black/70 leading-relaxed text-[15px]">{p.texto}</p>
         </div>
 
-        {/* Por qué Orbital */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-10">
-          {[
-            { n: 'Fabricantes', d: 'Fábrica en Buenos Aires' },
-            { n: '+180', d: 'Modelos, con stock propio' },
-            { n: 'Premium', d: 'Diseño actual, no se compite por precio' },
-            { n: 'Exclusivo', d: 'Posiciones exclusivas por zona' },
-          ].map((f) => (
-            <div key={f.n} className="rounded-xl border border-black/10 p-4 text-center">
-              <div className="text-lg font-black">{f.n}</div>
-              <div className="text-[11px] text-black/50 mt-1 leading-tight">{f.d}</div>
+        {/* Destacados */}
+        {destacados.length > 0 && (
+          <div className="mt-14">
+            <div className="flex items-end justify-between gap-3 mb-4">
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-1" style={{ color: AZUL }}>La línea</p>
+                <h3 className="text-2xl font-black">Modelos destacados</h3>
+              </div>
+              <a href={CATALOGO_URL} target="_blank" rel="noreferrer" className="hidden sm:inline text-[13px] font-bold whitespace-nowrap" style={{ color: AZUL }}>Ver catálogo completo →</a>
             </div>
-          ))}
-        </div>
-
-        {/* Modelos (nombres, sin colores) */}
-        <div className="mt-12">
-          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: AZUL }}>La línea</p>
-          <h3 className="text-xl font-bold mb-4">Modelos con Triple Protección</h3>
-          {modelos.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {modelos.map((m) => (
-                <div key={m.modelo} className="rounded-xl border border-black/10 overflow-hidden bg-white">
+              {destacados.map((m) => (
+                <a key={m.modelo} href={CATALOGO_URL} target="_blank" rel="noreferrer"
+                  className="rounded-xl border border-black/10 overflow-hidden bg-white hover:border-black/25 transition-colors no-underline text-inherit block">
                   <div className="aspect-square bg-white">
                     <img src={m.foto} alt={m.modelo} loading="lazy" className="w-full h-full object-contain" />
                   </div>
-                  <p className="text-[12px] font-semibold text-center px-2 py-2 truncate">{m.modelo}</p>
-                </div>
+                  <p className="text-[12px] font-bold text-center px-2 py-2 truncate">{m.modelo}</p>
+                </a>
               ))}
             </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {MODELOS.map((m) => (
-                <span key={m} className="text-[12px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 bg-black/[0.02]">{m}</span>
-              ))}
-            </div>
-          )}
-          <p className="text-[12px] font-semibold mt-3" style={{ color: AZUL }}>+ muchos más en el catálogo</p>
-        </div>
+          </div>
+        )}
 
-        {/* CTA */}
-        <div className="mt-12 rounded-2xl p-7 sm:p-9 text-center text-white relative overflow-hidden" style={{ background: '#0a0e1a' }}>
+        {/* CTAs */}
+        <div className="mt-14 rounded-2xl p-7 sm:p-10 text-center text-white relative overflow-hidden" style={{ background: '#0a0e1a' }}>
           <div className="absolute inset-x-0 top-0 h-0.5" style={{ background: AZUL }} />
           <h3 className="text-2xl sm:text-3xl font-black">¿Sumás la Triple Protección a tu óptica?</h3>
-          <p className="text-white/60 mt-2 text-sm max-w-md mx-auto">Te paso catálogo, lista de precios y te armo una primera selección para arrancar sin riesgo.</p>
-          <a href={waLink('¡Hola! Vi la info de la Triple Protección y me interesa para mi óptica. ¿Me pasás catálogo y lista?')} target="_blank" rel="noreferrer"
-            className="inline-flex items-center gap-2 mt-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-colors text-white font-bold px-6 py-3.5">
-            📲 Pedir catálogo por WhatsApp
-          </a>
+          <p className="text-white/60 mt-2 text-sm max-w-md mx-auto">Mirá el catálogo con descuentos exclusivos o coordiná una visita y te armamos una primera selección sin riesgo.</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-7">
+            <a href={CATALOGO_URL} target="_blank" rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl text-white font-bold px-6 py-3.5 transition-colors" style={{ background: AZUL }}>
+              🕶️ Ver catálogo · descuentos exclusivos
+            </a>
+            <a href={waLink('¡Hola! Vi la info de la Triple Protección y quiero coordinar una visita / más información para mi óptica.')} target="_blank" rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-colors text-white font-bold px-6 py-3.5">
+              📅 Coordinar visita / Más info
+            </a>
+          </div>
         </div>
 
         <p className="text-center text-black/35 text-[11px] mt-10 pb-10">Orbital Eyewear · Fabricante argentino · Triple Protección: Infrarrojo + UV400 + Blue Cut</p>
