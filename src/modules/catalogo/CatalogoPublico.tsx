@@ -218,11 +218,12 @@ const ETHEREA_MODELOS = ['SUBLIME', 'PLUMA', 'MICRA', 'BRISSA']
 const esEtherea = (m: HomeModelo) => ETHEREA_MODELOS.includes(m.modelo)
 // ZN y ETHEREA son exclusivos de su sección; el resto los excluye
 const matchGrupo = (g: Grupo, m: HomeModelo) => {
+  // ETHEREA y ZN son secciones exclusivas por modelo (aunque el modelo sea solo receta, como Brissa)
+  if (esEtherea(m)) return g.key === 'etherea'
+  if (esZN(m)) return g.key === 'zn'
   // Un modelo sin posiciones de sol solo puede vivir en "Blue cut y lentillas" (receta/lentillas, como Brasilia)
   if (!tieneSolFoto(m)) return g.key === 'bluecut'
-  return g.key === 'zn' ? esZN(m)
-    : g.key === 'etherea' ? esEtherea(m)
-    : (g.match(m) && !esZN(m) && !esEtherea(m))
+  return (g.match(m) && !esZN(m) && !esEtherea(m))
 }
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
