@@ -17,15 +17,17 @@ interface Variante {
   caliente: boolean; imagen: string | null; stock: number
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number }
-interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean }
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
 interface Medidas { ancho: number | null; alto: number | null; largo: number | null; formato: string | null; patilla: string | null; frente: string | null; para: string | null }
 // Destacados se controla 100% por es_caliente en la base (stock). Lista vacía = sin forzados en el front.
 const DESTACADOS_EXTRA: string[] = []
-// Modelos con tratamiento triple que NO queremos en la sección Triple (van a su grupo por clasificación)
-const TRIPLE_EXCLUDE: string[] = ['LONDRES']
+// Modelos con tratamiento triple que NO queremos en la sección Triple
+const TRIPLE_EXCLUDE: string[] = []
+// Modelos que pueden aparecer en más de una sección (no los consume el dedup): p.ej. Londres en Triple y Urbanos
+const MULTI_GRUPO: string[] = ['LONDRES']
 const esNegro = (c: string | null) => !!c && /negro|ngm|ngb|\bng\b|black/i.test(c)
 const esGris = (c: string | null) => !!c && /gris|gray/i.test(c)
 // Tapa fija elegida a mano para modelos puntuales (color exacto)
@@ -42,7 +44,10 @@ const COVER_OVERRIDE: Record<string, string> = {
   'BUENOS AIRES': 'Carey Brillo / Verde',
   'CENTRAL PARK': 'Negro Brillo / Gris Degrade',
   'MARSELLA': 'Negro Brillo / Habano Degrade',
-  'LONDRES': 'Negro Brillo / Gris Degradé',
+}
+// Tapa por modelo + grupo (para modelos que viven en varias secciones con tapa distinta)
+const COVER_OVERRIDE_GRUPO: Record<string, Record<string, string>> = {
+  'LONDRES': { triple: 'Clear Verde / Flash Verde Espejado Degradé', urbano: 'Negro Brillo / Gris Degradé' },
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
@@ -50,8 +55,13 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   if (!fotos?.length) return 0
   const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
   const hasSol = fotos.some((f) => f.tp === 'sol')
-  // 1) override manual por modelo (color exacto)
-  if (modelo && COVER_OVERRIDE[modelo]) {
+  // 1a) override por modelo + grupo (tapa distinta según la sección)
+  if (modelo && grupo && COVER_OVERRIDE_GRUPO[modelo]?.[grupo]) {
+    const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE_GRUPO[modelo][grupo]))
+    if (j >= 0) return j
+  }
+  // 1b) override manual por modelo (color exacto) — en Triple manda la lógica de flash, no el override
+  if (modelo && COVER_OVERRIDE[modelo] && grupo !== 'triple') {
     const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE[modelo]))
     if (j >= 0) return j
   }
@@ -120,6 +130,11 @@ function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt:
       <button onClick={onOpen} className="w-full h-full block">
         <img src={cur.u} alt={alt} className="w-full h-full object-contain" />
       </button>
+      {cur.pr && (
+        <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[9px] font-semibold rounded-full px-2 py-0.5 flex items-center gap-1 shadow">
+          📅 Proyectado
+        </span>
+      )}
       {color && (
         <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[9px] font-medium rounded-full px-2 py-0.5 max-w-[90%] truncate flex items-center gap-1">
           <span className="w-2 h-2 rounded-full border border-white/60 shrink-0" style={{ background: colorSwatch(cur.c) }} />
@@ -128,8 +143,9 @@ function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt:
       )}
       {n > 1 && (
         <>
-          <button onClick={(e) => go(e, -1)} aria-label="Anterior" className="absolute left-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronLeft size={16} /></button>
-          <button onClick={(e) => go(e, 1)} aria-label="Siguiente" className="absolute right-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronRight size={16} /></button>
+          {/* Flechas solo en desktop; en mobile el cambio de color es por arrastre (swipe) */}
+          <button onClick={(e) => go(e, -1)} aria-label="Anterior" className="hidden md:block absolute left-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronLeft size={16} /></button>
+          <button onClick={(e) => go(e, 1)} aria-label="Siguiente" className="hidden md:block absolute right-1 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition"><ChevronRight size={16} /></button>
           <div className="absolute bottom-1.5 inset-x-0 flex items-center justify-center gap-1">
             {fotos.map((_, k) => (
               <span key={k} className={`h-1.5 rounded-full transition-all ${k === Math.min(i, n - 1) ? 'w-3 bg-[#0004FF]' : 'w-1.5 bg-black/20'}`} />
@@ -492,8 +508,8 @@ export default function CatalogoPublico() {
                 return <SectionRow key={g.key} grupo={g} items={items} row={items}
                   onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
               }
-              const row = items.filter((m) => !usados.has(m.modelo))
-              row.forEach((m) => usados.add(m.modelo))
+              const row = items.filter((m) => MULTI_GRUPO.includes(m.modelo) || !usados.has(m.modelo))
+              row.forEach((m) => { if (!MULTI_GRUPO.includes(m.modelo)) usados.add(m.modelo) })
               if (!row.length) return null
               return <SectionRow key={g.key} grupo={g} items={items} row={row}
                 onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
