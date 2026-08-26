@@ -413,8 +413,10 @@ export default function CatalogoPublico() {
 
   // foto primero, sin foto al final
   const conFoto = (arr: HomeModelo[]) => arr.map((m, i) => ({ m, i })).sort((a, b) => {
+    // los de precio 32.645 van al final de cada categoría
+    const pa = a.m.precio_desde === 32645 ? 1 : 0, pb = b.m.precio_desde === 32645 ? 1 : 0
     const ia = a.m.imagenes?.length ? 0 : 1, ib = b.m.imagenes?.length ? 0 : 1
-    return ia - ib || a.i - b.i
+    return pa - pb || ia - ib || a.i - b.i
   }).map((x) => x.m)
 
   const qn = q.trim().toLowerCase()
