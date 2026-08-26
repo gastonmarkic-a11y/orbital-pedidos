@@ -53,8 +53,9 @@ const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').
 // Índice de la foto de portada según el grupo (representa al grupo)
 function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   if (!fotos?.length) return 0
-  const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex(fn); return i >= 0 ? i : -1 }
-  const hasSol = fotos.some((f) => f.tp === 'sol')
+  // la tapa siempre debe ser un color CON foto (nunca placeholder)
+  const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex((f) => !!f.u && fn(f)); return i >= 0 ? i : -1 }
+  const hasSol = fotos.some((f) => f.tp === 'sol' && !!f.u)
   // 1a) override por modelo + grupo (tapa distinta según la sección)
   if (modelo && grupo && COVER_OVERRIDE_GRUPO[modelo]?.[grupo]) {
     const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE_GRUPO[modelo][grupo]))
@@ -80,10 +81,11 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
     // solo si el modelo NO tiene ninguna posición de sol mostramos receta/lentilla en la tapa
     i = find((f) => (!!f.t && /blue cut|lentilla/i.test(f.t)) || f.tp === 'receta' || /lentilla/i.test(f.c || ''))
   }
-  // Regla global: la tapa siempre de sol si el modelo tiene alguna posición de sol
+  // Regla global: la tapa siempre de sol (con foto) si el modelo tiene alguna posición de sol
   if (i < 0 && hasSol) i = find((f) => f.tp === 'sol')
-  // Modelo sin sol: evitamos receta si hubiera algo intermedio
+  // Modelo sin sol: evitamos receta si hubiera algo intermedio; siempre con foto
   if (i < 0) i = find((f) => f.tp !== 'receta')
+  if (i < 0) i = find(() => true)
   return i >= 0 ? i : 0
 }
 
@@ -128,13 +130,8 @@ function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt:
   return (
     <div className="group aspect-square bg-white relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <button onClick={onOpen} className="w-full h-full block">
-        <img src={cur.u} alt={alt} className="w-full h-full object-contain" />
+        {cur.u ? <img src={cur.u} alt={alt} className="w-full h-full object-contain" /> : <Placeholder />}
       </button>
-      {cur.pr && (
-        <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[9px] font-semibold rounded-full px-2 py-0.5 flex items-center gap-1 shadow">
-          📅 Proyectado
-        </span>
-      )}
       {color && (
         <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[9px] font-medium rounded-full px-2 py-0.5 max-w-[90%] truncate flex items-center gap-1">
           <span className="w-2 h-2 rounded-full border border-white/60 shrink-0" style={{ background: colorSwatch(cur.c) }} />
