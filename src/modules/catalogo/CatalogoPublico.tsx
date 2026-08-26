@@ -37,6 +37,8 @@ const COVER_OVERRIDE: Record<string, string> = {
   'BAREIN': 'Negro Brillo / Gris',
   'EIVISSA': 'Negro Brillo / Celeste Flash',
   'LENA': 'Rosa Clear / Habano Degrade',
+  'BUENOS AIRES': 'Carey Brillo / Verde',
+  'CENTRAL PARK': 'Negro Brillo / Gris Degrade',
 }
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 // Índice de la foto de portada según el grupo (representa al grupo)
