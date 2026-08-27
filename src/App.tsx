@@ -51,6 +51,7 @@ import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
+import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import LandingProximamente from './modules/landings/LandingProximamente'
 import PreciosML from './modules/mercadolibre/PreciosML'
@@ -601,6 +602,14 @@ export default function App() {
     return (
       <ToastProvider>
         <CatalogoPublico />
+      </ToastProvider>
+    )
+  }
+  // Catálogo USA (independiente): stock Miami, USD, inglés, login propio.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/usa')) {
+    return (
+      <ToastProvider>
+        <CatalogoUSA />
       </ToastProvider>
     )
   }
