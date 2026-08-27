@@ -69,13 +69,19 @@ Deno.serve(async (req) => {
       // 'revisar' es lo mismo pero para las recien creadas: nacen pausadas a proposito
       // para que Gaston mire la foto y el titulo antes de que salgan a la venta. Sin este
       // corte el cron las prendia a los 30 minutos y la revision no llegaba a existir.
-      if (item.decision === 'pausar' || item.decision === 'revisar') {
+      // Cualquier decision tomada a mano manda sobre la automatica. La reactivacion por
+      // stock es ciega: si no se corta aca, en la corrida siguiente vuelve a prender todo
+      // lo que se pauso a proposito y el trabajo se deshace solo.
+      const MOTIVO: Record<string, string> = {
+        pausar: 'duplicada, pausada a proposito',
+        revisar: 'recien creada, esperando revision',
+        sin_foto_del_color: 'la foto es del modelo y no del color: no se publica',
+      }
+      if (item.decision && MOTIVO[item.decision]) {
         saltados++
         acciones.push({
           item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: {},
-          resultado: item.decision === 'revisar'
-            ? 'saltada — recien creada, esperando revision'
-            : 'saltada — duplicada, pausada a proposito',
+          resultado: `saltada — ${MOTIVO[item.decision]}`,
         })
         continue
       }

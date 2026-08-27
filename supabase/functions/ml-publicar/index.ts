@@ -180,14 +180,29 @@ function armarFamilia(row: Fila): string {
   return `${base} ${initcap(row.modelo)}`
 }
 
+/** El estuche no es foto de producto: nunca puede ir de portada. */
+const ES_ESTUCHE = /packaging|estuche|funda|caja/i
+
+/**
+ * Fotos de la publicacion, de la mas representativa a la menos.
+ *
+ * El orden importa porque ML toma la PRIMERA como portada, y es la unica que se ve en un
+ * carrusel o en los resultados de busqueda. Antes solo se priorizaba "la del color exacto",
+ * y en 164 SKUs esa foto es el packaging que vino de Shopify: la portada terminaba siendo
+ * una caja en vez del anteojo.
+ *
+ * Prioridad: color exacto -> foto del modelo -> estuche al final.
+ */
 async function fotosDe(sb: ReturnType<typeof db>, row: Fila) {
   const { data } = await sb.from('producto_imagenes')
     .select('url, codigo, orden')
     .or(`codigo.eq.${row.codigo},modelo.eq.${row.modelo}`)
     .order('orden', { nullsFirst: false })
-  // La del color exacto primero, si existe.
-  const ord = (data ?? []).sort((a, b) =>
-    (a.codigo === row.codigo ? -1 : 0) - (b.codigo === row.codigo ? -1 : 0))
+
+  const rango = (f: { url: string; codigo: string | null }) =>
+    ES_ESTUCHE.test(f.url) ? 2 : f.codigo === row.codigo ? 0 : 1
+
+  const ord = (data ?? []).slice().sort((a, b) => rango(a) - rango(b))
   return ord.slice(0, 10).map((f) => ({ source: f.url }))
 }
 

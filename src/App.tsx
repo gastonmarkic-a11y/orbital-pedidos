@@ -164,7 +164,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/resultados', label: 'Asistente' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
-    { to: '/envio-catalogo', label: 'Enviar catálogo' },
     { to: '/guiones', label: 'Guiones' },
     { to: '/conversaciones', label: 'Conversaciones' },
   ]

@@ -119,10 +119,17 @@ Deno.serve(async (req) => {
         // que dejo cosas como "Verde OCon Lentillauro" (era "Verde Oscuro"). Esas no se
         // pisan solas — se marcan para revisar a mano.
         const rota = /Con Lentilla[a-z]|[a-z]Con Lentilla/.test(nuevo)
+        // Mojibake: Shopify tiene variantes donde la tilde llego rota ("Gris Degrad?©",
+        // "Ã©", "�"). Copiarlas tal cual mando 8 titulos corruptos a ML el 2026-08-21, y
+        // el titulo se congela al crear: no se pueden arreglar despues. Se marcan y no se
+        // escriben. Cualquier caracter fuera del castellano normal es sospechoso.
+        const mojibake = /[?�]©|Ã.|[^\x20-\x7EáéíóúüñÁÉÍÓÚÜÑ°ºª/·—–]/.test(nuevo)
         // Palabra en ingles que quedo sin traducir: falta una entrada en el diccionario.
         const sinTraducir = /\b(matt|matte|shiny|shinny|glossy|gradiant|gradient|mirror|mirrored|polarized|dark|light|transparent|black|white|gray|grey|brown|green|blue|red|pink|orange|yellow|purple|violet|silver|gold|golden|ivory|turquoise|bordeaux|burgundy)\b/i
           .test(nuevo)
-        const alerta = rota ? 'shopify roto' : sinTraducir ? 'quedo ingles' : null
+        const alerta = rota ? 'shopify roto'
+          : mojibake ? 'caracteres corruptos'
+          : sinTraducir ? 'quedo ingles' : null
 
         diferencias.push({
           codigo: v.sku, modelo: fila.modelo,

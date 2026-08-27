@@ -119,6 +119,11 @@ export default function PreparacionEnvio({
   const [prepFecha, setPrepFecha] = useState('')
   const [prepHora, setPrepHora] = useState('')
   const [prepAbierto, setPrepAbierto] = useState(false)
+  // Catálogo B2B para PEDIR (con token): distinto de los catálogos visuales PDF.
+  // El link lleva token del cliente → precios propios y sin clave. Registra actividad propia.
+  const [tokenCat, setTokenCat] = useState(false)
+  const [tokenLink, setTokenLink] = useState<string | null>(null)
+  const [tokenBusy, setTokenBusy] = useState(false)
   // Nota de contexto (NO es un recordatorio): lo que se habló / lo que quiero recordar
   // para llegar en tema cuando reaparezca la próxima agenda de este cliente.
   const [prepNota, setPrepNota] = useState('')
@@ -226,8 +231,14 @@ export default function PreparacionEnvio({
     ].join('\n')
   }
 
+  // Agrega (o no) el bloque del catálogo B2B con token al final del mensaje.
+  function conToken(msg: string, linkT: string | null) {
+    if (!linkT) return msg
+    return `${msg}\n\n🛒 Y para pedir directo, con tus precios y sin clave:\n${linkT}`
+  }
+
   const armarMensaje = (c: Cliente, prop: Propuesta, sel: PiezaMarketing[]) =>
-    armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || '')
+    conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null)
 
   function proximoHabil(dias: number): string {
     return ymd(siguienteDiaHabil(new Date(Date.now() + dias * 86400000), feriados))
@@ -337,10 +348,13 @@ export default function PreparacionEnvio({
     const canalTxt = CANAL_TXT[prepCanal] ?? prepCanal
     const sig = SIGUIENTE_PASO[prepCanal] ?? { texto: 'Seguimiento', dias: 2 }
     const fechaSig = proximoHabil(sig.dias)
+    // Tipo de actividad propio para el catálogo B2B con token, separado del envío de propuesta.
     const desarrollo =
       prepCanal === 'llamada'
         ? `Llamada telefónica: ${prop?.nombre ?? ''}`
-        : `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`
+        : tokenCat
+          ? `🛒 Envío catálogo B2B (con token)${prop?.nombre ? ` + ${prop.nombre}` : ''} (envío ${canalTxt})`
+          : `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`
     const { error: errAct } = await supabase.from('actividad_diaria').insert({
       vendedor: codigoEfectivo,
       cod_cliente: cliente.cod,
@@ -360,9 +374,9 @@ export default function PreparacionEnvio({
     const { error: errCli } = await supabase
       .from('clientes')
       .update({
-        nota: `${prepCanal === 'llamada' ? '📞' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${
-          prepCanal === 'llamada' ? 'llamada' : 'se envió'
-        } "${prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.${
+        nota: `${prepCanal === 'llamada' ? '📞' : tokenCat ? '🛒' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${
+          prepCanal === 'llamada' ? 'llamada' : tokenCat ? 'se envió catálogo para pedir' : 'se envió'
+        } "${tokenCat ? 'Catálogo con token' : prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.${
           prepNota.trim() ? ` 🧠 ${prepNota.trim()}` : ''
         }`,
         proximo_paso: sig.texto,
@@ -508,6 +522,28 @@ export default function PreparacionEnvio({
     if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
   }
 
+  // Catálogo B2B para pedir (con token del cliente): genera el link y lo suma al mensaje.
+  async function toggleTokenCat() {
+    const seleccionadas = piezas.filter((x) => prepPiezas.has(x.id))
+    if (tokenCat) {
+      setTokenCat(false)
+      if (propSel) setPrepMensaje(conToken(armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || ''), null))
+      return
+    }
+    setTokenBusy(true)
+    let linkT = tokenLink
+    if (!linkT) {
+      const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod })
+      const r = data as any
+      setTokenBusy(false)
+      if (error || !r?.ok) { toast(r?.error || 'No se pudo generar el link con token', 'error'); return }
+      linkT = window.location.origin + '/catalogo?k=' + r.codigo
+      setTokenLink(linkT)
+    } else setTokenBusy(false)
+    setTokenCat(true)
+    if (propSel) setPrepMensaje(conToken(armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || ''), linkT))
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={cerrar}>
       <div
@@ -586,6 +622,29 @@ export default function PreparacionEnvio({
                   })}
                 </div>
               </div>
+            )}
+
+            {!esAgenda && (
+              <button
+                type="button"
+                onClick={toggleTokenCat}
+                disabled={tokenBusy}
+                className={`w-full text-left rounded-lg border p-2.5 flex items-start gap-2.5 transition-colors ${
+                  tokenCat ? 'border-brandDark bg-brandDark/5' : 'border-black/10 hover:border-black/25'
+                }`}
+              >
+                <input type="checkbox" checked={tokenCat} readOnly className="mt-0.5 pointer-events-none" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-ink">
+                    🛒 Catálogo para pedir <span className="font-normal text-brandDark">· con token del cliente</span>
+                  </p>
+                  <p className="text-[10px] text-faint leading-snug mt-0.5">
+                    {tokenBusy
+                      ? 'Generando link…'
+                      : 'Distinto de los catálogos visuales (PDF): el cliente entra sin clave, con sus precios, y arma el pedido. Se registra como actividad “Envío catálogo”.'}
+                  </p>
+                </div>
+              </button>
             )}
 
             {esAgenda && (
