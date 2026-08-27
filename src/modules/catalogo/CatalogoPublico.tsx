@@ -218,6 +218,32 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
   )
 }
 
+// ── Portón de bloqueo: el link ya está en uso en otro dispositivo ──
+function BloqueoGate({ label }: { label: string | null }) {
+  const optica = (label?.split(' - ')[1] || label || 'tu óptica').trim()
+  const wa = '5491178548316' // Orbital (IRIS)
+  const msg = `Hola! Soy ${optica}. Quiero abrir mi catálogo Orbital desde este dispositivo, ¿me lo habilitás?`
+  const waLink = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
+      <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8 text-center">
+        <Logo />
+        <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
+        <div className="text-4xl mb-3">🔒</div>
+        <p className="text-sm font-bold text-[#0a0a0a] mb-1">Catálogo exclusivo de {optica}</p>
+        <p className="text-sm text-neutral-600 mb-5">
+          Este link es personal y ya está en uso en otro dispositivo. Por seguridad, no se abre en uno nuevo sin autorización.
+        </p>
+        <a href={waLink} target="_blank" rel="noreferrer"
+          className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium">
+          Pedir acceso a mi vendedor
+        </a>
+        <p className="text-[11px] text-neutral-400 mt-3">Ya le avisamos a tu vendedor. En cuanto te habilite, recargá esta página.</p>
+      </div>
+    </div>
+  )
+}
+
 // ── Grupos del catálogo (secciones tipo tienda) ──
 // Un modelo es "de sol" si tiene alguna foto de producto de sol; es "recetado" si solo tiene fotos de receta/lentilla
 const tieneSolFoto = (m: HomeModelo) => (m.fotos || []).some((f) => f.tp === 'sol')
@@ -378,6 +404,7 @@ export default function CatalogoPublico() {
     return localStorage.getItem(CLAVE_KEY)
   })
   const [claveOk, setClaveOk] = useState(false)
+  const [bloqueo, setBloqueo] = useState<{ label: string | null } | null>(null)
   const [acceso, setAcceso] = useState<Acceso | null>(() => {
     try { return JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') } catch { return null }
   })
@@ -402,10 +429,13 @@ export default function CatalogoPublico() {
     supabase.rpc('catalogo_entrar', { p: clave, p_device: deviceId() }).then(({ data }) => {
       const r = data as any
       if (r?.ok) {
-        setClaveOk(true)
+        setClaveOk(true); setBloqueo(null)
         localStorage.setItem(CLAVE_KEY, clave)
         const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor }
         setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
+      } else if (r?.motivo === 'otro_dispositivo') {
+        // El link ya está en uso en otro equipo: no lo borramos, mostramos la pantalla de pedir acceso.
+        setBloqueo({ label: r.label ?? null })
       } else {
         localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setClave(null); setAcceso(null)
       }
@@ -457,6 +487,7 @@ export default function CatalogoPublico() {
   function irInicio() { setGrupoActivo(null); setQ('') }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
+  if (bloqueo) return <BloqueoGate label={bloqueo.label} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
   const navPill = (active: boolean, accent: Grupo['accent']) =>

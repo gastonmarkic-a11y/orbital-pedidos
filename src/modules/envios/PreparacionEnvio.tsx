@@ -126,20 +126,38 @@ export default function PreparacionEnvio({
   const [tokenBusy, setTokenBusy] = useState(false)
   // Cuántas veces entró el cliente al catálogo con token (y desde cuántos dispositivos).
   const [visitas, setVisitas] = useState<{ total: number; dispositivos: number; ultima: string | null } | null>(null)
+  // Candado por dispositivo: cuántos equipos pidieron acceso (para autorizar).
+  const [dispos, setDispos] = useState<{ permitidos: number; pendientes: number } | null>(null)
+  const [autorizando, setAutorizando] = useState(false)
   // Nota de contexto (NO es un recordatorio): lo que se habló / lo que quiero recordar
   // para llegar en tema cuando reaparezca la próxima agenda de este cliente.
   const [prepNota, setPrepNota] = useState('')
   const [guardando, setGuardando] = useState(false)
 
-  // Trae el resumen de entradas al catálogo con token de este cliente.
-  useEffect(() => {
+  // Trae el resumen de entradas al catálogo con token + pedidos de acceso de este cliente.
+  function cargarCatalogoStats() {
     if (!cliente?.cod) return
     supabase.rpc('catalogo_visitas_cliente', { p_cod_cliente: cliente.cod }).then(({ data }) => {
       const r = data as any
       if (r && r.total > 0) setVisitas({ total: r.total, dispositivos: r.dispositivos ?? 0, ultima: r.ultima ?? null })
       else setVisitas(null)
     })
-  }, [cliente?.cod])
+    supabase.rpc('catalogo_dispositivos_cliente', { p_cod_cliente: cliente.cod }).then(({ data }) => {
+      const r = data as any
+      setDispos(r ? { permitidos: r.permitidos ?? 0, pendientes: r.pendientes ?? 0 } : null)
+    })
+  }
+  useEffect(() => { cargarCatalogoStats() }, [cliente?.cod])
+
+  async function autorizarDispositivos() {
+    if (!cliente?.cod) return
+    setAutorizando(true)
+    const { data } = await supabase.rpc('catalogo_autorizar_pendientes', { p_cod_cliente: cliente.cod })
+    setAutorizando(false)
+    const r = data as any
+    if (r?.ok) { toast(`✓ ${r.autorizados} dispositivo(s) autorizado(s)`, 'success'); cargarCatalogoStats() }
+    else toast('No se pudo autorizar', 'error')
+  }
 
   // Carga inicial + preselección de propuesta, canal y mensaje para este cliente
   useEffect(() => {
@@ -576,6 +594,20 @@ export default function PreparacionEnvio({
                 {visitas.dispositivos > 1 && <span title="Se abrió desde varios dispositivos: puede que haya compartido el link">· {visitas.dispositivos} dispositivos ⚠️</span>}
                 {visitas.ultima && <span className="text-faint font-normal">· últ. {new Date(visitas.ultima).toLocaleDateString('es-AR')}</span>}
               </p>
+            )}
+            {dispos && dispos.pendientes > 0 && (
+              <div className="mt-1.5 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+                <span className="text-[11px] text-amber-800 font-medium flex-1">
+                  🔒 {dispos.pendientes} dispositivo{dispos.pendientes === 1 ? '' : 's'} pidió acceso desde otro equipo
+                </span>
+                <button
+                  onClick={autorizarDispositivos}
+                  disabled={autorizando}
+                  className="text-[11px] font-semibold bg-amber-600 text-white rounded-md px-2.5 py-1 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {autorizando ? 'Autorizando…' : 'Autorizar'}
+                </button>
+              </div>
             )}
           </div>
           <button onClick={cerrar} className="text-sm text-muted">
