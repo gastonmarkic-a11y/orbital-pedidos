@@ -36,9 +36,19 @@ export default function NuevoPedido() {
   const [stockCentral, setStockCentral] = useState<StockItem[]>([])
   // Si el cliente es de consigna, su stock propio (lo que tiene en su poder). null = cliente normal.
   const [consignaItems, setConsignaItems] = useState<StockItem[] | null>(null)
-  const esConsigna = consignaItems !== null
-  // El pedido opera sobre el stock de la consigna del cliente, o sobre el central si no es de consigna.
-  const stock = useMemo(() => consignaItems ?? stockCentral, [consignaItems, stockCentral])
+  // Reposición de consigna: modo especial que despacha desde el CENTRAL y rellena la consigna.
+  const [repoMode, setRepoMode] = useState(false)
+  const [repoActualId, setRepoActualId] = useState<number | null>(null)
+  type RepoDraft = { id: number; cod_cliente: string; cliente_razon: string | null; vendedor: string | null; items: { codigo: string | null; modelo: string | null; descripcion: string | null; cantidad: number }[] }
+  const [reposiciones, setReposiciones] = useState<RepoDraft[]>([])
+  // Venta de consigna: descuenta de la consigna. Reposición: NO (despacha del central y rellena).
+  const modoVentaConsigna = consignaItems !== null && !repoMode
+  const esConsigna = modoVentaConsigna
+  // El pedido lee: en reposición → central; en venta de consigna → la consigna; si no → central.
+  const stock = useMemo(
+    () => (repoMode ? stockCentral : consignaItems ?? stockCentral),
+    [repoMode, consignaItems, stockCentral],
+  )
   // Unidades en producción por SKU (stock_ingresos pendientes de que Depósito confirme)
   const [proyectado, setProyectado] = useState<Record<string, number>>({})
   const [busquedaCliente, setBusquedaCliente] = useState('')
@@ -200,6 +210,14 @@ export default function NuevoPedido() {
       .then(({ data }) => setPrecargas((data ?? []) as Precarga[]))
   }, [])
 
+  // Reposiciones de consigna pendientes de aprobar (se generan al confirmar una venta de consigna).
+  function cargarReposiciones() {
+    supabase.from('consignacion_repo').select('id, cod_cliente, cliente_razon, vendedor, items')
+      .eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => setReposiciones((data ?? []) as RepoDraft[]))
+  }
+  useEffect(() => { cargarReposiciones() }, [])
+
   // Carga una precarga en el formulario: fija el cliente y llena el carrito con lo que leyó IRIS.
   async function cargarPrecarga(p: Precarga) {
     if (p.cod_cliente) {
@@ -220,6 +238,23 @@ export default function NuevoPedido() {
   async function descartarPrecarga(p: Precarga) {
     await supabase.from('bot_foto_pedido').update({ estado: 'descartado' }).eq('conversacion_id', p.conversacion_id)
     setPrecargas((prev) => prev.filter((x) => x.conversacion_id !== p.conversacion_id))
+  }
+
+  // Carga una reposición de consigna: modo reposición (despacha del central, rellena la consigna).
+  async function cargarReposicion(r: RepoDraft) {
+    const { data: c } = await supabase.from('clientes').select('*').eq('cod', r.cod_cliente).maybeSingle()
+    if (c) { setCliente(c as Cliente); if ((c as Cliente).email) setMail((c as Cliente).email!); if ((c as Cliente).telefono) setWsp((c as Cliente).telefono!) }
+    const nuevo: Record<string, number> = {}
+    for (const it of r.items || []) if (it.codigo) nuevo[it.codigo] = (nuevo[it.codigo] || 0) + (it.cantidad || 1)
+    setCart(nuevo)
+    setRepoMode(true)
+    setRepoActualId(r.id)
+    setReposiciones((prev) => prev.filter((x) => x.id !== r.id))
+    toast('🔄 Reposición cargada. Revisá, sumá lo que quieras y confirmá. Al confirmar baja el central y rellena la consigna.', 'success')
+  }
+  async function descartarReposicion(r: RepoDraft) {
+    await supabase.from('consignacion_repo').update({ estado: 'descartada', updated_at: new Date().toISOString() }).eq('id', r.id)
+    setReposiciones((prev) => prev.filter((x) => x.id !== r.id))
   }
 
   // Búsqueda de cliente
@@ -589,7 +624,7 @@ export default function NuevoPedido() {
       }
 
       // Crear pedido (el trigger de la base registra la actividad comercial automáticamente)
-      await supabase.from('pedidos').insert({
+      const { data: pedIns } = await supabase.from('pedidos').insert({
         fecha: new Date().toLocaleString('es-AR'),
         vendedor: codigoEfectivo || (vendedor?.codigo ?? ''),
         nro_lista: cliente.nro_lista ?? 5,
@@ -598,7 +633,7 @@ export default function NuevoPedido() {
         cuotas_detalle: JSON.stringify(cuotas),
         cod_cliente: cliente.cod,
         cliente: `${cliente.cod} - ${cliente.razon ?? ''}`,
-        ...(esConsigna ? { origen: 'consigna' } : {}),
+        ...(repoMode ? { origen: 'reposicion' } : esConsigna ? { origen: 'consigna' } : {}),
         cond_entrega: labelEntrega(entregaCanal, entregaPago),
         entrega_canal: entregaCanal,
         entrega_pago: entregaPago,
@@ -615,7 +650,32 @@ export default function NuevoPedido() {
         items,
         total_units: totalUnidades,
         estado: 'pendiente',
-      })
+      }).select('id').single()
+      const pedidoId = (pedIns as { id: number } | null)?.id ?? null
+
+      if (repoMode) {
+        // Reposición: además del descuento del central (ya hecho arriba), rellena la consigna del cliente.
+        const { data: csNow } = await supabase.from('consignacion_stock').select('codigo, cantidad').eq('cod_cliente', cliente.cod)
+        const csMap = new Map((csNow ?? []).map((r: any) => [r.codigo as string, Number(r.cantidad)]))
+        for (const item of items) {
+          await supabase.from('consignacion_stock').upsert({
+            cod_cliente: cliente.cod, codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion,
+            cantidad: (csMap.get(item.codigo) ?? 0) + item.cantidad, updated_at: new Date().toISOString(),
+          }, { onConflict: 'cod_cliente,codigo' })
+        }
+        await supabase.from('consignacion_mov').insert(items.map((item) => ({
+          cod_cliente: cliente!.cod, codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion,
+          tipo: 'reposicion', cantidad: item.cantidad, ref: pedidoId ? String(pedidoId) : null, creado_por: quien,
+        })))
+        if (repoActualId) await supabase.from('consignacion_repo').update({ estado: 'aprobada', updated_at: new Date().toISOString() }).eq('id', repoActualId)
+      } else if (esConsigna) {
+        // Venta de consigna → generar la precarga de reposición 1:1 para que el vendedor la apruebe.
+        await supabase.from('consignacion_repo').insert({
+          cod_cliente: cliente.cod, cliente_razon: cliente.razon ?? null, vendedor: quien,
+          items: items.map((item) => ({ codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion, cantidad: item.cantidad })),
+          origen_pedido_id: pedidoId,
+        })
+      }
 
       // Registrar los datos de entrega/contacto también en la ficha del cliente
       await supabase
@@ -629,10 +689,17 @@ export default function NuevoPedido() {
         })
         .eq('cod', cliente.cod)
 
+      const eraRepo = repoMode
+      const eraVentaCons = esConsigna
+      const razonCli = cliente.razon
       await loadStock()
       setCart({})
       setPreventaSel(new Set())
       setCliente(null)
+      setRepoMode(false)
+      setRepoActualId(null)
+      setConsignaItems(null)
+      cargarReposiciones()
       setEntregaCanal('')
       setEntregaPago('')
       setMedios([])
@@ -644,9 +711,13 @@ export default function NuevoPedido() {
       setMail('')
       setObs('')
       toast(
-        totalPendiente > 0
-          ? `✓ Pedido confirmado — ${totalUnidades} u. para ${cliente.razon} · ${totalPendiente} u. quedan pendientes de producción`
-          : `✓ Pedido confirmado — ${totalUnidades} unidades para ${cliente.razon}`,
+        eraRepo
+          ? `🔄 Reposición confirmada — ${totalUnidades} u. al central (−) y a la consigna de ${razonCli} (+)`
+          : eraVentaCons
+            ? `✓ Venta de consigna — ${totalUnidades} u. descontadas de ${razonCli}. Se generó la reposición para aprobar.`
+            : totalPendiente > 0
+              ? `✓ Pedido confirmado — ${totalUnidades} u. para ${razonCli} · ${totalPendiente} u. quedan pendientes de producción`
+              : `✓ Pedido confirmado — ${totalUnidades} unidades para ${razonCli}`,
         'success'
       )
     } catch (e) {
@@ -665,9 +736,18 @@ export default function NuevoPedido() {
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-start gap-2">
           <span className="text-lg leading-none">📦</span>
           <p className="text-xs text-amber-900">
-            <b>Modo consigna</b> — {cliente?.razon ?? cliente?.cod}. El stock y las cantidades son las de <b>su consigna</b>,
-            no las del depósito central. Al confirmar se descuenta de la consigna y se registra para facturar (el central se
-            mueve recién en la reposición).
+            <b>Modo consigna (venta)</b> — {cliente?.razon ?? cliente?.cod}. El stock y las cantidades son las de <b>su consigna</b>,
+            no las del depósito central. Al confirmar se descuenta de la consigna, se registra para facturar y se genera la
+            reposición para aprobar (el central se mueve recién ahí).
+          </p>
+        </div>
+      )}
+      {repoMode && (
+        <div className="bg-sky-50 border border-sky-300 rounded-xl p-3 flex items-start gap-2">
+          <span className="text-lg leading-none">🔄</span>
+          <p className="text-xs text-sky-900">
+            <b>Modo reposición</b> — {cliente?.razon ?? cliente?.cod}. El stock que ves es el <b>depósito central</b> (de ahí se
+            despacha). Sumá lo que quieras. Al confirmar, <b>baja el central</b> y <b>rellena la consigna</b> del cliente.
           </p>
         </div>
       )}
@@ -684,6 +764,25 @@ export default function NuevoPedido() {
               <div className="flex gap-1.5 shrink-0">
                 <button onClick={() => cargarPrecarga(p)} className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5">Cargar</button>
                 <button onClick={() => descartarPrecarga(p)} className="text-[11px] rounded-lg border border-black/10 px-2 py-1.5 text-muted">Descartar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {reposiciones.length > 0 && !repoMode && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-sky-800">🔄 Reposiciones de consigna a aprobar</p>
+          {reposiciones.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-sky-100 p-2">
+              <div className="min-w-0 text-xs">
+                <b>{r.cliente_razon ?? r.cod_cliente}</b> · {(r.items?.length ?? 0)} modelos ·{' '}
+                {(r.items ?? []).reduce((s, x) => s + (x.cantidad || 0), 0)} u.
+                {r.vendedor ? <span className="text-muted"> · {r.vendedor}</span> : null}
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button onClick={() => cargarReposicion(r)} className="text-[11px] font-semibold rounded-lg bg-sky-600 text-white px-2.5 py-1.5">Revisar / aprobar</button>
+                <button onClick={() => descartarReposicion(r)} className="text-[11px] rounded-lg border border-black/10 px-2 py-1.5 text-muted">Descartar</button>
               </div>
             </div>
           ))}
