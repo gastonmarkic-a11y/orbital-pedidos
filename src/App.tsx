@@ -52,6 +52,8 @@ import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
+import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
+import StockUSAAdmin from './modules/usa/StockUSAAdmin'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import LandingProximamente from './modules/landings/LandingProximamente'
 import PreciosML from './modules/mercadolibre/PreciosML'
@@ -128,6 +130,16 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     }
   if (rol === 'logistica')
     return { principales: [{ to: '/pedidos', label: 'Entregas' }], secundarios: [], menu: [] }
+  // Usuario USA: circuito 100% independiente (stock/pedidos USA). No ve nada de Argentina.
+  if (rol === 'usa')
+    return {
+      principales: [
+        { to: '/usa-pedidos', label: 'USA Orders' },
+        { to: '/usa-stock', label: 'USA Stock' },
+      ],
+      secundarios: [],
+      menu: [],
+    }
   // Usuario de solo-contenido: únicamente la carpeta de material de marketing, nada más.
   if (rol === 'contenido')
     return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
@@ -203,6 +215,7 @@ function homeFor(rol: Rol): string {
   if (rol === 'social') return '/prospeccion-social'
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
+  if (rol === 'usa') return '/usa-pedidos'
   return '/hoy'
 }
 
@@ -321,6 +334,7 @@ const VIEW_OPTIONS = [
   { value: 'tienda', label: 'Tienda online' },
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
+  { value: 'usa', label: 'USA' },
 ]
 
 function ThemeToggle() {
@@ -437,6 +451,12 @@ function Layout() {
             </>
           )}
           {rol !== 'contenido' && <Route path="/pedidos" element={<Pedidos />} />}
+          {(rol === 'usa' || rol === 'admin') && (
+            <>
+              <Route path="/usa-pedidos" element={<PedidosUSAAdmin />} />
+              <Route path="/usa-stock" element={<StockUSAAdmin />} />
+            </>
+          )}
           {(rol === 'admin' || rol === 'administracion' || rol === 'deposito') && <Route path="/devoluciones" element={<Devoluciones />} />}
           {(rol === 'admin' || rol === 'administracion') && (
             <>
