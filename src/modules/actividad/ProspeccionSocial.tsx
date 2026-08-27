@@ -18,6 +18,7 @@ interface Item {
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
   telefono: string | null; web: string | null; instagram: string | null; email: string | null; etapa: string
+  cod_cliente: string | null
 }
 
 // Embudo PECA: etapas + cadencia (días hasta el próximo toque al avanzar).
@@ -252,6 +253,21 @@ export default function ProspeccionSocial() {
     await supabase.from('prospeccion_social').update({ estado, ...extra }).eq('id', it.id)
   }
   const marcarEnviado = (it: Item) => setEstado(it, 'enviado', { enviado_at: new Date().toISOString(), proximo_toque: hoyMas(4) })
+
+  // Registra el descubrimiento como prospecto real en el sistema (tabla clientes), a nombre del operador.
+  const [registrando, setRegistrando] = useState<number | null>(null)
+  async function registrar(it: Item) {
+    if (it.cod_cliente) return
+    if (!it.nombre?.trim()) { toast('Este contacto no tiene nombre para registrar', 'error'); return }
+    if (!window.confirm(`¿Registrar "${it.nombre}" como prospecto en el sistema?\n\nQueda en tu cartera como prospecto de bienvenida.`)) return
+    setRegistrando(it.id)
+    const { data, error } = await supabase.rpc('prospeccion_social_a_cliente', { p_id: it.id, p_operador: codigoEfectivo })
+    setRegistrando(null)
+    const r = data as any
+    if (error || !r?.ok) { toast(r?.error || 'No se pudo registrar', 'error'); return }
+    setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, cod_cliente: r.cod, etapa: 'cliente' } : x)))
+    toast(`✓ Registrado en el sistema (${r.cod})`, 'success')
+  }
 
   // Campaña asistida: recorre las ópticas con WhatsApp sin enviar, de a una, 1 toque cada una.
   function iniciarCampana() {
@@ -497,6 +513,14 @@ export default function ProspeccionSocial() {
               </div>
 
               <div className="flex flex-wrap gap-1.5">
+                {it.cod_cliente ? (
+                  <span className="text-[11px] font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 px-2.5 py-1.5 flex items-center gap-1"><Check size={13} />En el sistema · {it.cod_cliente}</span>
+                ) : (
+                  <button onClick={() => registrar(it)} disabled={registrando === it.id}
+                    className="text-[11px] font-semibold rounded-lg bg-brandDark text-white px-2.5 py-1.5 flex items-center gap-1 disabled:opacity-50">
+                    {registrando === it.id ? 'Registrando…' : '➕ Registrar en el sistema'}
+                  </button>
+                )}
                 <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>
                 {it.telefono && (
                   <a href={waLink(it)} target="_blank" rel="noreferrer" onClick={() => { if (it.estado === 'nuevo') marcarEnviado(it) }}
