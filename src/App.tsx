@@ -185,6 +185,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // pero acotada a su cartera.
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' })
+  // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
+  if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
