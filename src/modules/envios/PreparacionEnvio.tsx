@@ -124,10 +124,22 @@ export default function PreparacionEnvio({
   const [tokenCat, setTokenCat] = useState(false)
   const [tokenLink, setTokenLink] = useState<string | null>(null)
   const [tokenBusy, setTokenBusy] = useState(false)
+  // Cuántas veces entró el cliente al catálogo con token (y desde cuántos dispositivos).
+  const [visitas, setVisitas] = useState<{ total: number; dispositivos: number; ultima: string | null } | null>(null)
   // Nota de contexto (NO es un recordatorio): lo que se habló / lo que quiero recordar
   // para llegar en tema cuando reaparezca la próxima agenda de este cliente.
   const [prepNota, setPrepNota] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  // Trae el resumen de entradas al catálogo con token de este cliente.
+  useEffect(() => {
+    if (!cliente?.cod) return
+    supabase.rpc('catalogo_visitas_cliente', { p_cod_cliente: cliente.cod }).then(({ data }) => {
+      const r = data as any
+      if (r && r.total > 0) setVisitas({ total: r.total, dispositivos: r.dispositivos ?? 0, ultima: r.ultima ?? null })
+      else setVisitas(null)
+    })
+  }, [cliente?.cod])
 
   // Carga inicial + preselección de propuesta, canal y mensaje para este cliente
   useEffect(() => {
@@ -234,7 +246,7 @@ export default function PreparacionEnvio({
   // Agrega (o no) el bloque del catálogo B2B con token al final del mensaje.
   function conToken(msg: string, linkT: string | null) {
     if (!linkT) return msg
-    return `${msg}\n\n🛒 Y para pedir directo, con tus precios y sin clave:\n${linkT}`
+    return `${msg}\n\n🛒 Y armá tu pedido directo, con tus precios y sin clave. Adentro vas a encontrar nuestra línea exclusiva de cristales Triple Protección (Infrarrojo + UV400 + Blue Cut), única en Argentina:\n${linkT}`
   }
 
   const armarMensaje = (c: Cliente, prop: Propuesta, sel: PiezaMarketing[]) =>
@@ -537,7 +549,8 @@ export default function PreparacionEnvio({
       const r = data as any
       setTokenBusy(false)
       if (error || !r?.ok) { toast(r?.error || 'No se pudo generar el link con token', 'error'); return }
-      linkT = window.location.origin + '/catalogo?k=' + r.codigo
+      // Siempre con el dominio branded, aunque el vendedor esté en la URL de Vercel.
+      linkT = 'https://ver.orbitaleyewear.com.ar/catalogo?k=' + r.codigo
       setTokenLink(linkT)
     } else setTokenBusy(false)
     setTokenCat(true)
@@ -557,6 +570,13 @@ export default function PreparacionEnvio({
               {cliente.cod} · {telWhatsApp(cliente.whatsapp || cliente.telefono) ?? 'sin teléfono'} ·{' '}
               {cliente.email ?? 'sin mail'}
             </p>
+            {visitas && (
+              <p className="text-[11px] mt-1 inline-flex items-center gap-1.5 rounded-full bg-brandDark/5 text-brandDark font-medium px-2 py-0.5">
+                🛒 Entró {visitas.total} {visitas.total === 1 ? 'vez' : 'veces'} al catálogo
+                {visitas.dispositivos > 1 && <span title="Se abrió desde varios dispositivos: puede que haya compartido el link">· {visitas.dispositivos} dispositivos ⚠️</span>}
+                {visitas.ultima && <span className="text-faint font-normal">· últ. {new Date(visitas.ultima).toLocaleDateString('es-AR')}</span>}
+              </p>
+            )}
           </div>
           <button onClick={cerrar} className="text-sm text-muted">
             ✕

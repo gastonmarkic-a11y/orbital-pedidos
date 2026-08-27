@@ -109,6 +109,15 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
 const CLAVE_KEY = 'orbital_catalogo_clave'
 const ACCESO_KEY = 'orbital_catalogo_acceso'
 const CART_KEY = 'orbital_catalogo_cart'
+const DEVICE_KEY = 'orbital_catalogo_device'
+// Id estable por navegador para contar entradas y detectar si el link se comparte.
+function deviceId(): string {
+  try {
+    let d = localStorage.getItem(DEVICE_KEY)
+    if (!d) { d = (crypto.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36)); localStorage.setItem(DEVICE_KEY, d) }
+    return d
+  } catch { return '' }
+}
 interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null }
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
 const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
@@ -390,7 +399,7 @@ export default function CatalogoPublico() {
   // validar clave/token guardado o del link al entrar
   useEffect(() => {
     if (!clave) { setLoading(false); return }
-    supabase.rpc('catalogo_entrar', { p: clave }).then(({ data }) => {
+    supabase.rpc('catalogo_entrar', { p: clave, p_device: deviceId() }).then(({ data }) => {
       const r = data as any
       if (r?.ok) {
         setClaveOk(true)
@@ -459,6 +468,12 @@ export default function CatalogoPublico() {
       <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
         Orbital® · Catálogo mayorista — pedido online sobre stock real
       </div>
+      {/* Marca de agua: catálogo personalizado del cliente (link con token) */}
+      {acceso?.tipo === 'optica' && acceso.label && (
+        <div className="bg-[#0004FF]/[0.06] border-b border-[#0004FF]/15 text-[#0004FF] text-[11px] text-center py-1.5 px-3 font-semibold">
+          🔒 Catálogo con precios exclusivos de {(acceso.label.split(' - ')[1] || acceso.label).trim()} · uso personal
+        </div>
+      )}
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
