@@ -33,7 +33,12 @@ export default function NuevoPedido() {
   const toast = useToast()
   const location = useLocation()
 
-  const [stock, setStock] = useState<StockItem[]>([])
+  const [stockCentral, setStockCentral] = useState<StockItem[]>([])
+  // Si el cliente es de consigna, su stock propio (lo que tiene en su poder). null = cliente normal.
+  const [consignaItems, setConsignaItems] = useState<StockItem[] | null>(null)
+  const esConsigna = consignaItems !== null
+  // El pedido opera sobre el stock de la consigna del cliente, o sobre el central si no es de consigna.
+  const stock = useMemo(() => consignaItems ?? stockCentral, [consignaItems, stockCentral])
   // Unidades en producción por SKU (stock_ingresos pendientes de que Depósito confirme)
   const [proyectado, setProyectado] = useState<Record<string, number>>({})
   const [busquedaCliente, setBusquedaCliente] = useState('')
@@ -112,11 +117,12 @@ export default function NuevoPedido() {
         precio_preventa: null,
       })
     }
-    setStock([...data, ...virtuales].sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '')))
+    setStockCentral([...data, ...virtuales].sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '')))
   }
 
-  /** Máximo que se puede pedir de un SKU: lo que hay en depósito + lo que está en producción */
-  const proyDe = (codigo: string) => proyectado[codigo] ?? 0
+  /** Máximo que se puede pedir de un SKU: lo que hay en depósito + lo que está en producción.
+   *  En consigna no hay producción proyectada: solo se puede vender lo que el cliente tiene. */
+  const proyDe = (codigo: string) => (esConsigna ? 0 : proyectado[codigo] ?? 0)
   const maxPedible = (p: { codigo: string; cantidad: number }) => p.cantidad + proyDe(p.codigo)
 
   useEffect(() => {
@@ -147,6 +153,35 @@ export default function NuevoPedido() {
         setPreciosEsp(m)
       })
   }, [cliente?.cod])
+
+  // Si el cliente tiene stock EN CONSIGNA, el pedido opera sobre esa consigna (lee y descuenta de ahí,
+  // no del stock central). Aplica a cualquier cliente de consigna, no solo a uno.
+  useEffect(() => {
+    if (!cliente?.cod) { setConsignaItems(null); return }
+    supabase.from('consignacion_stock').select('codigo, modelo, descripcion, cantidad, precio').eq('cod_cliente', cliente.cod)
+      .then(({ data }) => {
+        const rows = (data ?? []) as { codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; precio: number | null }[]
+        if (!rows.length) { setConsignaItems(null); return }
+        const centralBy = new Map(stockCentral.map((s) => [s.codigo, s]))
+        setConsignaItems(rows.map((r) => {
+          const c = centralBy.get(r.codigo)
+          return {
+            codigo: r.codigo,
+            modelo: r.modelo || c?.modelo || r.codigo,
+            descripcion: r.descripcion ?? c?.descripcion ?? null,
+            estuche: c?.estuche ?? null,
+            cantidad: Number(r.cantidad),
+            precio: Number(r.precio ?? c?.precio ?? 0),
+            clasificacion: c?.clasificacion ?? null,
+            tipo: c?.tipo ?? null,
+            tratamiento: c?.tratamiento ?? null,
+            demanda: c?.demanda ?? 0,
+            es_caliente: c?.es_caliente ?? false,
+            precio_preventa: c?.precio_preventa ?? null,
+          } as StockItem
+        }))
+      })
+  }, [cliente?.cod, stockCentral])
 
   // Cliente preseleccionado desde Cartera / Agenda
   useEffect(() => {
@@ -462,14 +497,27 @@ export default function NuevoPedido() {
     setConfirmando(true)
     try {
       // Verificar stock actual: se puede pedir hasta lo disponible + lo que está en producción
-      const fresh = await fetchPaged<StockItem>(() => supabase.from('stock').select('*'))
-      const freshDe = (k: string) => fresh.find((x) => x.codigo === k)
+      // Disponibilidad fresca: en consigna, del stock del cliente; si no, del central.
+      type FreshRow = { cantidad: number; modelo: string | null; descripcion: string | null; precio: number | null }
+      const freshMap: Record<string, FreshRow> = {}
+      if (esConsigna) {
+        const { data: cs } = await supabase.from('consignacion_stock')
+          .select('codigo, cantidad, modelo, descripcion, precio').eq('cod_cliente', cliente.cod)
+        for (const r of (cs ?? []) as any[])
+          freshMap[r.codigo] = { cantidad: Number(r.cantidad), modelo: r.modelo, descripcion: r.descripcion, precio: r.precio }
+      } else {
+        const fresh = await fetchPaged<StockItem>(() => supabase.from('stock').select('*'))
+        for (const r of fresh) freshMap[r.codigo] = { cantidad: r.cantidad, modelo: r.modelo, descripcion: r.descripcion, precio: r.precio }
+      }
+      const freshDe = (k: string) => freshMap[k]
       for (const k of cartKeys) {
         const disponible = freshDe(k)?.cantidad ?? 0
         if (cart[k] > disponible + proyDe(k)) {
           const info = stock.find((x) => x.codigo === k)
           toast(
-            `Sin stock suficiente de ${info?.modelo ?? k}. Disponible: ${disponible} · proyectado: ${proyDe(k)}`,
+            esConsigna
+              ? `En consigna hay ${disponible} de ${info?.modelo ?? k} y pedís ${cart[k]}.`
+              : `Sin stock suficiente de ${info?.modelo ?? k}. Disponible: ${disponible} · proyectado: ${proyDe(k)}`,
             'error'
           )
           setConfirmando(false)
@@ -482,7 +530,7 @@ export default function NuevoPedido() {
         const p = freshDe(k)
         const info = stock.find((x) => x.codigo === k)
         const disponible = p?.cantidad ?? 0
-        const pendiente = Math.max(0, cart[k] - disponible)
+        const pendiente = esConsigna ? 0 : Math.max(0, cart[k] - disponible)
         const esRegalo = regaloSel.has(k)
         const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
         const esp = espDe(p?.modelo ?? info?.modelo)
@@ -505,16 +553,39 @@ export default function NuevoPedido() {
       if (dtoFinanciero && parseFloat(dtoFinanciero) > 0) pagoLabel += ` | Dto. financiero: ${dtoFinanciero}%`
       if (dtoComercial && parseFloat(dtoComercial) > 0) pagoLabel += ` | Dto. comercial: ${dtoComercial}%`
 
-      // Descontar del stock solo las unidades que había físicamente (lo pendiente no se descuenta)
-      for (const item of items) {
-        const p = freshDe(item.codigo)
-        if (!p) continue
-        const aDescontar = item.cantidad - (item.pendiente ?? 0)
-        if (aDescontar <= 0) continue
-        await supabase
-          .from('stock')
-          .update({ cantidad: p.cantidad - aDescontar, updated_at: new Date().toISOString() })
-          .eq('codigo', item.codigo)
+      const quien = codigoEfectivo || (vendedor?.codigo ?? '')
+      if (esConsigna) {
+        // Venta de consigna: descuenta de la consigna del cliente, registra la facturación (a facturar)
+        // y el movimiento. NO toca el stock central (eso pasa recién en la reposición).
+        for (const item of items) {
+          const p = freshDe(item.codigo)
+          if (!p) continue
+          await supabase.from('consignacion_stock')
+            .update({ cantidad: Math.max(0, (p.cantidad ?? 0) - item.cantidad), updated_at: new Date().toISOString() })
+            .eq('cod_cliente', cliente.cod).eq('codigo', item.codigo)
+        }
+        const precioLiq = (item: PedidoItem) =>
+          item.regalo ? 0 : (item.precio_esp ?? item.precio_pv ?? freshDe(item.codigo)?.precio ?? null)
+        await supabase.from('consignacion_liq').insert(items.map((item) => ({
+          cod_cliente: cliente!.cod, codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion,
+          cantidad: item.cantidad, precio: precioLiq(item), creado_por: quien,
+        })))
+        await supabase.from('consignacion_mov').insert(items.map((item) => ({
+          cod_cliente: cliente!.cod, codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion,
+          tipo: 'venta', cantidad: -item.cantidad, precio: precioLiq(item), creado_por: quien,
+        })))
+      } else {
+        // Descontar del stock central solo las unidades que había físicamente (lo pendiente no se descuenta)
+        for (const item of items) {
+          const p = freshDe(item.codigo)
+          if (!p) continue
+          const aDescontar = item.cantidad - (item.pendiente ?? 0)
+          if (aDescontar <= 0) continue
+          await supabase
+            .from('stock')
+            .update({ cantidad: (p.cantidad ?? 0) - aDescontar, updated_at: new Date().toISOString() })
+            .eq('codigo', item.codigo)
+        }
       }
 
       // Crear pedido (el trigger de la base registra la actividad comercial automáticamente)
@@ -527,6 +598,7 @@ export default function NuevoPedido() {
         cuotas_detalle: JSON.stringify(cuotas),
         cod_cliente: cliente.cod,
         cliente: `${cliente.cod} - ${cliente.razon ?? ''}`,
+        ...(esConsigna ? { origen: 'consigna' } : {}),
         cond_entrega: labelEntrega(entregaCanal, entregaPago),
         entrega_canal: entregaCanal,
         entrega_pago: entregaPago,
@@ -588,6 +660,17 @@ export default function NuevoPedido() {
   return (
     <div className="space-y-4 text-ink">
       <h2 className="text-base font-semibold">Nuevo Pedido</h2>
+
+      {esConsigna && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-start gap-2">
+          <span className="text-lg leading-none">📦</span>
+          <p className="text-xs text-amber-900">
+            <b>Modo consigna</b> — {cliente?.razon ?? cliente?.cod}. El stock y las cantidades son las de <b>su consigna</b>,
+            no las del depósito central. Al confirmar se descuenta de la consigna y se registra para facturar (el central se
+            mueve recién en la reposición).
+          </p>
+        </div>
+      )}
 
       {precargas.length > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
