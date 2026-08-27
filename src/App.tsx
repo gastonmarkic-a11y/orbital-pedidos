@@ -327,6 +327,7 @@ const VIEW_OPTIONS = [
   { value: 'vendedor:Martin', label: 'Martín' },
   { value: 'vendedor:Marketing', label: 'Luna (prospección)' },
   { value: 'vendedor:Damian', label: 'Damián (prospección)' },
+  { value: 'vendedor:Ulises', label: 'Ulises (prospección CABA)' },
   { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'revendedor', label: 'Revendedor Cuyo/SF' },
