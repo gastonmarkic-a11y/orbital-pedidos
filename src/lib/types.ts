@@ -206,4 +206,6 @@ export interface Pedido {
   esperando_stock: boolean | null
   /** Momento en que se exportó a Tango (Novedades). Evita reexportar. */
   exportado_tango_at: string | null
+  /** Origen del pedido: 'catalogo' | 'consigna' (liquidación) | 'reposicion' | null (normal). */
+  origen?: string | null
 }

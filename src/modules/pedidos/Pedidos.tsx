@@ -79,8 +79,12 @@ export default function Pedidos() {
   const filtrados = useMemo(() => {
     let logs = [...pedidos]
     if (esVendedor || esTienda || esRevendedor) logs = logs.filter((l) => l.vendedor === codigoEfectivo)
-    if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? ''))
-    if (esAdministracion) logs = logs.filter((l) => ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
+    // La VENTA de consigna es una liquidación: no se prepara en Depósito (la mercadería ya está en la óptica).
+    // La reposición de consigna SÍ se prepara (se despacha del central).
+    if (esDeposito) logs = logs.filter((l) => l.origen !== 'consigna')
+    if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? '') && l.origen !== 'consigna')
+    // Administración factura: ve lo confirmado + las liquidaciones de consigna (van directo a facturar).
+    if (esAdministracion) logs = logs.filter((l) => l.origen === 'consigna' || ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
     if (filtroEstado) logs = logs.filter((l) => (l.estado ?? 'pendiente') === filtroEstado)
     const q = busqueda.toLowerCase().trim()
@@ -91,7 +95,7 @@ export default function Pedidos() {
           (l.items || []).some((i) => (i.modelo || '').toLowerCase().includes(q))
       )
     return logs
-  }, [pedidos, esVendedor, esRevendedor, esTienda, esLogistica, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
+  }, [pedidos, esVendedor, esRevendedor, esTienda, esLogistica, esDeposito, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
 
   async function asignarCodigo() {
     if (!asignarPed) return
