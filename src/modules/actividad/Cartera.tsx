@@ -573,7 +573,7 @@ export default function Cartera() {
           [
             { label: 'Con ventas 2025', val: conVentas.length, color: 'bg-emerald-500', seg: 'canje', sub: 'ventas en 2025 · canje' },
             { label: 'A recuperar', val: aRecuperar.length, color: 'bg-orange-500', seg: 'recuperar', sub: 'con ventas previas a 2025' },
-            { label: 'Bienvenida', val: bienvenida.length, color: 'bg-red-500', seg: 'bienvenida', sub: 'sin ventas (fríos)' },
+            { label: esRevendedor ? 'Clientes en frío' : 'Bienvenida', val: bienvenida.length, color: 'bg-red-500', seg: 'bienvenida', sub: 'sin ventas (fríos)' },
             { label: '⭐ Fidelizados', val: fidelizados.length, color: 'bg-violet-500', seg: 'fidelizacion', sub: 'con ventas 2026 (activos)' },
           ] as { label: string; val: number; color: string; seg: Segmento; sub: string }[]
         ).map((k) => {
@@ -603,8 +603,8 @@ export default function Cartera() {
       {!buscando && PROPUESTA[segmento] && (
         <div className="bg-ink text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
           <div className="min-w-0 md:flex-1">
-            <p className="text-base font-semibold">{PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
-            <p className="text-[11px] text-white/70">{PROPUESTA[segmento].d}</p>
+            <p className="text-base font-semibold">{esRevendedor && segmento === 'bienvenida' ? '❄ Clientes en frío' : PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
+            <p className="text-[11px] text-white/70">{esRevendedor && segmento === 'bienvenida' ? 'Ópticas sin compras de tu zona — para salir a ofrecer.' : PROPUESTA[segmento].d}</p>
           </div>
         </div>
       )}
@@ -623,7 +623,7 @@ export default function Cartera() {
         return (
           <div className="bg-white rounded-xl border border-red-200 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm font-bold">🎯 Bienvenida — objetivo de hoy: <span className="text-red-600">{cupoDia} fríos</span></p>
+              <p className="text-sm font-bold">🎯 {esRevendedor ? 'Clientes en frío' : 'Bienvenida'} — objetivo de hoy: <span className="text-red-600">{cupoDia} fríos</span></p>
               <span className="text-[11px] text-faint">{META_NUEVOS_MES}/mes ÷ {diasHab} días hábiles restantes</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">

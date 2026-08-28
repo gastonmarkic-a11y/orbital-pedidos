@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { PiezaMarketing } from '../../lib/types'
-import { TEMAS, metaTema } from './temasMarketing'
+import { TEMAS, TEMAS_ENGANCHE, metaTema } from './temasMarketing'
 import { RUBROS, mensajePara } from '../../lib/guiones'
 
 const CATEGORIAS: Record<string, string> = {
@@ -29,6 +29,8 @@ export default function Marketing() {
   const { vendedor } = useAuth()
   const toast = useToast()
   const puedeEditar = vendedor?.rol === 'admin'
+  // El revendedor no ve las propuestas comerciales por segmento (no tiene las mismas promociones).
+  const esRevendedor = vendedor?.rol === 'revendedor'
   const [piezas, setPiezas] = useState<PiezaMarketing[]>([])
   const [loading, setLoading] = useState(true)
   const [sel, setSel] = useState<string | null>(null) // 'pieza:<id>' | 'guion:<rubroId>'
@@ -55,8 +57,9 @@ export default function Marketing() {
   const carpetas = useMemo(() => {
     const conocidas = TEMAS.map((t) => t.key).filter((k) => activas.some((p) => temaDe(p) === k))
     const custom = [...new Set(activas.map(temaDe))].filter((k) => !TEMAS.some((t) => t.key === k)).sort()
-    return [TEMA_GUIONES, ...conocidas, ...custom]
-  }, [activas])
+    const base = [TEMA_GUIONES, ...conocidas, ...custom]
+    return esRevendedor ? base.filter((k) => !TEMAS_ENGANCHE.includes(k)) : base
+  }, [activas, esRevendedor])
 
   const metaCarpeta = (key: string) => key === TEMA_GUIONES
     ? { icono: '🎙️', label: 'Guiones de contacto', desc: 'Mensajes por rubro (Triple Protección)' }

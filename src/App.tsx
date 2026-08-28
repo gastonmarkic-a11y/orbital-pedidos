@@ -149,7 +149,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }], secundarios: [], menu: [] }
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
-    return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }, { to: '/prospeccion-social', label: 'Prospección social' }], menu: [] }
+    return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -492,7 +492,7 @@ function Layout() {
           <Route path="/derivaciones" element={<Conversaciones />} />
           <Route path="/guiones" element={<GuionesContacto />} />
           <Route path="/envio-catalogo" element={<EnvioCatalogo />} />
-          <Route path="/prospeccion-social" element={<ProspeccionSocial />} />
+          {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
