@@ -599,12 +599,12 @@ export default function Cartera() {
         <span className="text-[11px] text-faint">Tocá una tarjeta de arriba para filtrar la lista.</span>
       </div>
 
-      {/* Propuesta de la base seleccionada + desglose por región */}
-      {!buscando && PROPUESTA[segmento] && (
+      {/* Propuesta de la base seleccionada + desglose por región (no aplica a revendedores) */}
+      {!buscando && !esRevendedor && PROPUESTA[segmento] && (
         <div className="bg-ink text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
           <div className="min-w-0 md:flex-1">
-            <p className="text-base font-semibold">{esRevendedor && segmento === 'bienvenida' ? '❄ Clientes en frío' : PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
-            <p className="text-[11px] text-white/70">{esRevendedor && segmento === 'bienvenida' ? 'Ópticas sin compras de tu zona — para salir a ofrecer.' : PROPUESTA[segmento].d}</p>
+            <p className="text-base font-semibold">{PROPUESTA[segmento].t} · {segmentoRows.length} clientes</p>
+            <p className="text-[11px] text-white/70">{PROPUESTA[segmento].d}</p>
           </div>
         </div>
       )}
