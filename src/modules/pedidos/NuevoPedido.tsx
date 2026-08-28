@@ -669,12 +669,21 @@ export default function NuevoPedido() {
         })))
         if (repoActualId) await supabase.from('consignacion_repo').update({ estado: 'aprobada', updated_at: new Date().toISOString() }).eq('id', repoActualId)
       } else if (esConsigna) {
-        // Venta de consigna → generar la precarga de reposición 1:1 para que el vendedor la apruebe.
-        await supabase.from('consignacion_repo').insert({
-          cod_cliente: cliente.cod, cliente_razon: cliente.razon ?? null, vendedor: quien,
-          items: items.map((item) => ({ codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion, cantidad: item.cantidad })),
-          origen_pedido_id: pedidoId,
-        })
+        // Venta de consigna → generar la precarga de reposición para que el vendedor la apruebe.
+        // Solo se repone lo que HAY en el stock central (no se puede reponer lo que no existe);
+        // se topea a lo disponible. Lo que no tiene stock queda pendiente de producción, no en la repo.
+        const cods = items.map((i) => i.codigo)
+        const { data: cst } = await supabase.from('stock').select('codigo, cantidad').in('codigo', cods)
+        const cmap = new Map((cst ?? []).map((s: any) => [s.codigo as string, Number(s.cantidad)]))
+        const reponibles = items
+          .map((item) => ({ codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion, cantidad: Math.min(item.cantidad, cmap.get(item.codigo) ?? 0) }))
+          .filter((item) => item.cantidad > 0)
+        if (reponibles.length) {
+          await supabase.from('consignacion_repo').insert({
+            cod_cliente: cliente.cod, cliente_razon: cliente.razon ?? null, vendedor: quien,
+            items: reponibles, origen_pedido_id: pedidoId,
+          })
+        }
       }
 
       // Registrar los datos de entrega/contacto también en la ficha del cliente
