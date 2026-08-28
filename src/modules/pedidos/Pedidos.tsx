@@ -739,9 +739,14 @@ export default function Pedidos() {
                       )}
                     </div>
 
-                    {(esDeposito || esAdmin) && estado === 'en_preparacion' && (
+                    {(esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna' && (
                       <p className="text-[11px] font-semibold text-muted mb-1">
                         🛒 Armado en góndola: {(l.picking ?? []).length} / {(l.items ?? []).length} artículos tomados
+                      </p>
+                    )}
+                    {l.origen === 'consigna' && (
+                      <p className="text-[11px] font-semibold text-amber-800 mb-1">
+                        📦 Venta de consigna (liquidación) — la mercadería ya está en la óptica, no se prepara ni descuenta stock central.
                       </p>
                     )}
                     {(l.items ?? []).map((i) => {
@@ -750,7 +755,7 @@ export default function Pedidos() {
                       const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, dcPed, dfPed)
                       const bu = brutoUnitario(i, s?.precio ?? 0, l.nro_lista) // precio de lista, para mostrar el bruto tachado
                       const picked = (l.picking ?? []).includes(i.codigo)
-                      const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion'
+                      const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna'
                       return (
                         <div key={i.codigo} className={`flex justify-between items-center gap-2 text-xs py-1 ${picked && conPicking ? 'opacity-60' : ''}`}>
                           <span className="flex items-center gap-2 min-w-0">
