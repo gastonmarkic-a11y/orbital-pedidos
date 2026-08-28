@@ -14,7 +14,7 @@ interface Persona { id: number; empresa_id: number; nombre: string | null; cargo
 // El sistema arma el mensaje; la persona copia, abre el perfil y envía (2 clics), y queda todo registrado.
 
 interface Item {
-  id: number; canal: 'ig' | 'linkedin'; nombre: string | null; perfil: string | null; url: string | null
+  id: number; canal: 'ig' | 'linkedin' | 'meta_b2b'; nombre: string | null; perfil: string | null; url: string | null
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
   telefono: string | null; web: string | null; instagram: string | null; email: string | null; etapa: string
@@ -51,6 +51,7 @@ export default function ProspeccionSocial() {
   const [fWa, setFWa] = useState(false)
   const [fIg, setFIg] = useState(false)
   const [fWeb, setFWeb] = useState(false)
+  const [fMeta, setFMeta] = useState(false)
   const [personas, setPersonas] = useState<Record<number, Persona[]>>({})
   const [buscarOpen, setBuscarOpen] = useState<Set<number>>(new Set())
   const [copiado, setCopiado] = useState<number | null>(null)
@@ -76,7 +77,9 @@ export default function ProspeccionSocial() {
   const [lkGuardando, setLkGuardando] = useState(false)
   const TOPE_APIFY = 4.5
 
-  const msgDe = (it: Item) => it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal, it.nombre ?? undefined)
+  const msgDe = (it: Item) => it.mensaje ?? (it.canal === 'meta_b2b'
+    ? (it.nota ?? 'Lead entrante de campaña Meta B2B.')
+    : mensajePara(it.rubro ?? 'opticas', it.canal === 'linkedin' ? 'linkedin' : 'ig', it.nombre ?? undefined))
   // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
   const waLink = (it: Item) => `https://wa.me/${(it.telefono ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(msgDe(it))}`
 
@@ -223,10 +226,11 @@ export default function ProspeccionSocial() {
     if (fWa) base = base.filter((i) => !!i.telefono?.trim())
     if (fIg) base = base.filter((i) => !!i.instagram?.trim())
     if (fWeb) base = base.filter((i) => !!i.web?.trim())
+    if (fMeta) base = base.filter((i) => i.canal === 'meta_b2b')
     if (fEtapa) base = base.filter((i) => (i.etapa || 'presentacion') === fEtapa)
     if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, filtro, fZona, fWa, fIg, fWeb, fEtapa, ordenPrioridad, personas])
+  }, [items, filtro, fZona, fWa, fIg, fWeb, fMeta, fEtapa, ordenPrioridad, personas])
 
   const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -433,6 +437,7 @@ export default function ProspeccionSocial() {
         <button onClick={() => setFWa(!fWa)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWa ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10 text-muted'}`}>📲 WhatsApp</button>
         <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
         <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
+        <button onClick={() => setFMeta(!fMeta)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fMeta ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white border-fuchsia-300 text-fuchsia-700'}`}>📣 Meta ({items.filter((i) => i.canal === 'meta_b2b' && i.estado !== 'descartado').length})</button>
         <button onClick={() => setOrdenPrioridad(!ordenPrioridad)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${ordenPrioridad ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-black/10 text-muted'}`}>🔝 Prioridad</button>
         <button onClick={iniciarCampana} className="shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-semibold bg-brand text-white border-brand">📣 Enviar campaña</button>
         <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
@@ -443,13 +448,14 @@ export default function ProspeccionSocial() {
       ) : (
         <div className="space-y-2">
           {filtrados.map((it) => (
-            <div key={it.id} className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
+            <div key={it.id} className={`rounded-2xl border p-3 space-y-2 ${it.canal === 'meta_b2b' ? 'bg-fuchsia-50/50 border-fuchsia-200 border-l-4 border-l-fuchsia-500' : 'bg-white border-black/10'}`}>
               <button onClick={() => toggleExpandido(it.id)} className="w-full flex items-center justify-between gap-2 text-left">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{it.canal === 'ig' ? '📷' : '💼'} {it.nombre || it.perfil}</p>
+                  <p className="text-sm font-semibold truncate">{it.canal === 'ig' ? '📷' : it.canal === 'meta_b2b' ? '📣' : '💼'} {it.nombre || it.perfil}</p>
                   <p className="text-[10px] text-faint">{[it.perfil && it.nombre ? it.perfil : null, rubroLabel(it.rubro), it.zona].filter(Boolean).join(' · ')}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {it.canal === 'meta_b2b' && <span className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700">Meta</span>}
                   {ordenPrioridad && <span className="text-[10px] font-bold text-amber-600" title="prioridad">{scoreDe(it)}</span>}
                   <span className="text-[11px] tracking-tight">{it.telefono ? '📲' : ''}{it.email ? '✉️' : ''}{it.instagram ? '📷' : ''}{it.web ? '🌐' : ''}</span>
                   <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
