@@ -52,6 +52,7 @@ import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
+import MiCatalogo from './modules/catalogo/MiCatalogo'
 import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
@@ -148,7 +149,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }], secundarios: [], menu: [] }
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
-    return { principales: [{ to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }, { to: '/prospeccion-social', label: 'Prospección social' }], menu: [] }
+    return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }, { to: '/prospeccion-social', label: 'Prospección social' }], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -448,8 +449,8 @@ function Layout() {
           {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
           {rol === 'revendedor' && (
             <>
+              <Route path="/mi-catalogo" element={<MiCatalogo />} />
               <Route path="/cartera" element={<Cartera />} />
-              <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
               <Route path="/marketing" element={<Marketing />} />
             </>
           )}

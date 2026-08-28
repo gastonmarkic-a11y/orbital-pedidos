@@ -29,9 +29,7 @@ function repartirCuotas(dias: number[]): Cuota[] {
 }
 
 export default function NuevoPedido() {
-  const { vendedor, codigoEfectivo, rolEfectivo } = useAuth()
-  // El revendedor compra a lista con 15% de bonificación (descuento comercial); NO se modifican los precios.
-  const esRevendedor = rolEfectivo === 'revendedor'
+  const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
   const location = useLocation()
 
@@ -140,9 +138,6 @@ export default function NuevoPedido() {
   useEffect(() => {
     loadStock()
   }, [])
-
-  // Revendedor: la bonificación por defecto es 15% (se puede ajustar; el precio de lista queda intacto).
-  useEffect(() => { if (esRevendedor) setDtoComercial('15') }, [esRevendedor])
 
   // Datos de entrega/contacto del cliente elegido
   useEffect(() => {

@@ -795,6 +795,7 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
   const unidades = items.reduce((a, c) => a + c.cantidad, 0)
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
+  const esRev = acceso?.tipo === 'revendedor'
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
@@ -803,6 +804,7 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
   const [wsp, setWsp] = useState('')
   const [mail, setMail] = useState('')
   const [obs, setObs] = useState('')
+  const [paraQuien, setParaQuien] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [result, setResult] = useState<{ pedido_id: number; cliente: string; identificado: boolean } | null>(null)
@@ -810,9 +812,15 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
   async function enviar() {
     setEnviando(true); setErr(null)
     const payload = items.map((c) => ({ codigo: c.codigo, modelo: c.modelo, descripcion: c.descripcion, cantidad: c.cantidad, precio: c.precio }))
+    // Revendedor: marcamos el pedido y sumamos "para quién" (informativo) a las observaciones,
+    // así Adrián sabe aplicar 15% bonif. + 30/60/90 + retira al aprobar.
+    const obsFinal = esRev
+      ? ['🔁 REVENDEDOR — aplicar 15% bonif. · 30/60/90 · retira',
+         paraQuien.trim() ? 'Para: ' + paraQuien.trim() : '', obs.trim()].filter(Boolean).join(' · ')
+      : obs.trim()
     const { data, error } = await supabase.rpc('catalogo_checkout', {
       p_clave: clave, p_identificador: ident.trim(), p_contacto: contacto.trim(),
-      p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obs.trim(), p_razon: razon.trim() || null,
+      p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obsFinal, p_razon: razon.trim() || null,
       p_acceso: acceso?.codigo || clave,
     })
     setEnviando(false)
@@ -879,7 +887,7 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
           <div className="p-4 space-y-3">
             {identFijo ? (
               <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5">
-                <p className="text-[11px] font-medium text-[#0004FF]">Pedido para tu óptica</p>
+                <p className="text-[11px] font-medium text-[#0004FF]">{esRev ? 'Tu cuenta revendedor' : 'Pedido para tu óptica'}</p>
                 <p className="text-sm font-semibold">{acceso?.label || identFijo}</p>
               </div>
             ) : (
@@ -910,6 +918,13 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
               <label className="text-[11px] font-medium text-neutral-500">Contacto / nombre</label>
               <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
+            {esRev && (
+              <div>
+                <label className="text-[11px] font-medium text-neutral-500">¿Para qué cliente es? <span className="text-neutral-400">(opcional · informativo)</span></label>
+                <input value={paraQuien} onChange={(e) => setParaQuien(e.target.value)} placeholder="Óptica / cliente al que se lo vas a revender"
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+              </div>
+            )}
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Observaciones</label>
               <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
