@@ -48,8 +48,9 @@ interface Item {
   rubro: string | null; zona: string | null; mensaje: string | null; estado: string
   operador: string | null; proximo_toque: string | null; nota: string | null; created_at: string; enviado_at: string | null
   telefono: string | null; web: string | null; instagram: string | null; email: string | null; etapa: string
-  cod_cliente: string | null
+  cod_cliente: string | null; conversacion_id: string | null
 }
+type Msg = { emisor: string; contenido: string }
 
 // Embudo PECA: etapas + cadencia (días hasta el próximo toque al avanzar).
 const EMBUDO: { id: string; label: string; emoji: string; c: string; dias: number }[] = [
@@ -105,6 +106,7 @@ export default function ProspeccionSocial() {
   const [campanaIdx, setCampanaIdx] = useState(0)
   const [campanaOpen, setCampanaOpen] = useState(false)
   const [expandido, setExpandido] = useState<Set<number>>(new Set())
+  const [charlas, setCharlas] = useState<Record<string, Msg[]>>({})
   const [ordenPrioridad, setOrdenPrioridad] = useState(true)
   const [lkOpen, setLkOpen] = useState(false)
   const [lkTexto, setLkTexto] = useState('')
@@ -196,7 +198,16 @@ export default function ProspeccionSocial() {
   async function cargar() {
     setLoading(true)
     const { data } = await supabase.from('prospeccion_social').select('*').order('created_at', { ascending: false }).limit(400)
-    setItems((data as Item[]) ?? [])
+    const rows = (data as Item[]) ?? []
+    setItems(rows)
+    // Charla con IRIS: mensajes de las conversaciones linkeadas a los leads Meta que respondieron.
+    const convIds = [...new Set(rows.map((r) => r.conversacion_id).filter(Boolean))] as string[]
+    if (convIds.length) {
+      const { data: msgs } = await supabase.from('at_mensajes').select('conversacion_id, emisor, contenido, created_at').in('conversacion_id', convIds).order('created_at', { ascending: true })
+      const ch: Record<string, Msg[]> = {}
+      for (const m of ((msgs ?? []) as { conversacion_id: string; emisor: string; contenido: string }[])) { (ch[m.conversacion_id] ??= []).push({ emisor: m.emisor, contenido: m.contenido }) }
+      setCharlas(ch)
+    } else setCharlas({})
     const { data: pers } = await supabase.from('prospecto_persona').select('id, empresa_id, nombre, cargo, categoria, relevance_score, linkedin_url, estado').neq('estado', 'descartado').order('relevance_score', { ascending: false })
     const map: Record<number, Persona[]> = {}
     for (const p of ((pers ?? []) as Persona[])) { (map[p.empresa_id] ??= []).push(p) }
@@ -475,7 +486,9 @@ export default function ProspeccionSocial() {
 
       {/* Filtros */}
       <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {([['pend', `A enviar (${cuenta('nuevo')})`], ['enviado', `Enviados (${cuenta('enviado')})`], ['respondio', `Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as const).map(([k, l]) => (
+        {(vista === 'recepcion'
+          ? [['enviado', `🤖 IRIS escribió (${cuenta('enviado')})`], ['respondio', `🧑 Para vos (${cuenta('respondio')})`], ['pend', `Sin contactar (${cuenta('nuevo')})`], ['todos', 'Todos']] as [typeof filtro, string][]
+          : [['pend', `A enviar (${cuenta('nuevo')})`], ['enviado', `Enviados (${cuenta('enviado')})`], ['respondio', `Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as [typeof filtro, string][]).map(([k, l]) => (
           <button key={k} onClick={() => setFiltro(k)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${filtro === k ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>{l}</button>
         ))}
       </div>
@@ -515,6 +528,23 @@ export default function ProspeccionSocial() {
               </button>
               {expandido.has(it.id) && (<>
               {msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {it.conversacion_id && (charlas[it.conversacion_id]?.length ?? 0) > 0 && (() => {
+                const esBot = (e: string) => /bot|iris|sistema|asist/i.test(e)
+                return (
+                  <div className="bg-white border border-black/10 rounded-lg p-2">
+                    <p className="text-[10px] font-semibold text-brandDark uppercase tracking-wide mb-1.5">💬 Charla con IRIS</p>
+                    <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
+                      {charlas[it.conversacion_id].map((m, i) => (
+                        <div key={i} className={`flex ${esBot(m.emisor) ? 'justify-start' : 'justify-end'}`}>
+                          <span className={`text-[11px] rounded-lg px-2 py-1 max-w-[85%] whitespace-pre-wrap ${esBot(m.emisor) ? 'bg-[#EEF0FF] text-ink' : 'bg-emerald-50 text-emerald-900'}`}>
+                            <b className="text-[9px] uppercase tracking-wide opacity-60 block">{esBot(m.emisor) ? 'IRIS' : 'Lead'}</b>{m.contenido}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
               {it.canal === 'meta_b2b' && (
                 <div className="bg-fuchsia-50/50 border border-fuchsia-200 rounded-lg p-2">
                   <p className="text-[10px] font-semibold text-fuchsia-700 uppercase tracking-wide mb-1.5">⚡ Respuestas rápidas · según lo que respondió</p>
