@@ -241,7 +241,9 @@ export default function ProspeccionSocial() {
     return s
   }
 
-  const zonas = useMemo(() => [...new Set(items.map((i) => i.zona).filter(Boolean))].sort() as string[], [items])
+  // Todos los contadores (embudo, tabs, zonas) respetan la pestaña activa (Búsqueda vs Recepción).
+  const itemsVista = useMemo(() => items.filter((i) => (vista === 'recepcion' ? esInbound(i.canal) : !esInbound(i.canal))), [items, vista])
+  const zonas = useMemo(() => [...new Set(itemsVista.map((i) => i.zona).filter(Boolean))].sort() as string[], [itemsVista])
 
   const filtrados = useMemo(() => {
     let base = items.filter((i) => i.estado !== 'descartado')
@@ -258,7 +260,7 @@ export default function ProspeccionSocial() {
     return base
   }, [items, vista, filtro, fZona, fWa, fIg, fWeb, fEtapa, ordenPrioridad, personas])
 
-  const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
+  const cuenta = (e: string) => itemsVista.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
   async function agregar() {
     if (!nv.nombre.trim() && !nv.perfil.trim()) { toast('Poné al menos nombre o perfil', 'error'); return }
@@ -445,7 +447,7 @@ export default function ProspeccionSocial() {
         <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🎯 Embudo</p>
         <div className="grid grid-cols-5 gap-1.5">
           {EMBUDO.map((e) => {
-            const n = items.filter((i) => i.estado !== 'descartado' && (i.etapa || 'presentacion') === e.id).length
+            const n = itemsVista.filter((i) => i.estado !== 'descartado' && (i.etapa || 'presentacion') === e.id).length
             const activo = fEtapa === e.id
             return (
               <button key={e.id} onClick={() => setFEtapa(activo ? '' : e.id)}
