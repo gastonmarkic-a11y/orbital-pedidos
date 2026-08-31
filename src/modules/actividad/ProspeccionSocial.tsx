@@ -26,6 +26,16 @@ function mensajeMetaLead(nombre: string | null, operador: string): string {
     + `Si te parece, después coordinamos una llamada corta y te cuento más. Estoy seguro de que podemos hacer algo muy bueno juntos.`
 }
 
+// Respuestas rápidas para DESPUÉS del primer contacto — según lo que responde el prospecto.
+// build(primerNombre) devuelve el mensaje listo para WhatsApp.
+const RESPUESTAS_META: { tema: string; label: string; build: (n: string) => string }[] = [
+  { tema: 'visita', label: '📅 Coordinar visita', build: (n) => `¡Genial${n ? ', ' + n : ''}! 🙌 Me encantaría pasar a mostrarte la línea en persona y que veas los cristales. ¿Qué día y horario te queda cómodo esta semana? Coordinamos y te llevo el muestrario.` },
+  { tema: 'catalogo', label: '📖 Enviar catálogo', build: () => `Te paso el catálogo online 👉 https://ver.orbitaleyewear.com.ar/catalogo\nAhí ves toda la colección con fotos y medidas, y podés armar el pedido directo. Cualquier modelo que te guste te paso disponibilidad y condiciones 🙌` },
+  { tema: 'precio', label: '💲 Cotización / precios', build: () => `¡Dale! Te armo la cotización 🙌 ¿Qué modelos te interesan y qué cantidades manejás? Trabajamos con lista para óptica y condiciones de pago a 30/60/90 días.` },
+  { tema: 'triple', label: '🕶️ Triple Protección', build: () => `Nuestro diferencial es la Triple Protección (UV400 + Infrarrojo + Blue Cut) en un solo cristal, única en el país. Mirá el detalle acá 👉 https://ver.orbitaleyewear.com.ar/tripleproteccion` },
+  { tema: 'recontacto', label: '🔄 Re-contacto (sin respuesta)', build: (n) => `¡Hola${n ? ' ' + n : ''}! 👋 Te escribí hace unos días por la línea de Orbital. ¿Llegaste a verla? Si te copa, coordinamos una visita corta o te paso el catálogo. Quedo atento 🙌` },
+]
+
 interface LkRow { id: number; nombre: string; cargo: string | null; empresa: string | null; ubicacion: string | null; estado: string }
 
 interface Persona { id: number; empresa_id: number; nombre: string | null; cargo: string | null; categoria: string | null; relevance_score: number | null; linkedin_url: string | null; estado: string }
@@ -103,8 +113,10 @@ export default function ProspeccionSocial() {
   const TOPE_APIFY = 4.5
 
   const nombreOperador = NOMBRE_OPERADOR[codigoEfectivo] ?? codigoEfectivo ?? 'Orbital'
+  // Lead Meta: el mensaje de primer contacto SOLO en "A enviar" (nuevo). Una vez enviado/respondido,
+  // no se repite — Ulises usa las respuestas rápidas por tema.
   const msgDe = (it: Item) => it.canal === 'meta_b2b'
-    ? mensajeMetaLead(it.nombre, nombreOperador)
+    ? (it.estado === 'nuevo' ? mensajeMetaLead(it.nombre, nombreOperador) : '')
     : it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal === 'linkedin' ? 'linkedin' : 'ig', it.nombre ?? undefined)
   // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
   const waLink = (it: Item) => `https://wa.me/${(it.telefono ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(msgDe(it))}`
@@ -502,7 +514,21 @@ export default function ProspeccionSocial() {
                 </div>
               </button>
               {expandido.has(it.id) && (<>
-              <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>
+              {msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {it.canal === 'meta_b2b' && (
+                <div className="bg-fuchsia-50/50 border border-fuchsia-200 rounded-lg p-2">
+                  <p className="text-[10px] font-semibold text-fuchsia-700 uppercase tracking-wide mb-1.5">⚡ Respuestas rápidas · según lo que respondió</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {RESPUESTAS_META.map((r) => {
+                      const msg = r.build(primerNombre(it.nombre))
+                      const tel = (it.telefono ?? '').replace(/\D/g, '')
+                      return tel
+                        ? <a key={r.tema} href={`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="text-[11px] font-medium rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2.5 py-1.5">{r.label}</a>
+                        : <button key={r.tema} onClick={() => { navigator.clipboard.writeText(msg); toast('✓ Copiado', 'success') }} className="text-[11px] font-medium rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2.5 py-1.5">{r.label}</button>
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Buscar contactos (decisores) — genera búsquedas, no scrapea */}
               <div>
@@ -566,7 +592,7 @@ export default function ProspeccionSocial() {
                     {registrando === it.id ? 'Registrando…' : '➕ Registrar en el sistema'}
                   </button>
                 )}
-                <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>
+                {msgDe(it) && <button onClick={() => copiar(it)} className="text-[11px] font-semibold rounded-lg border border-black/10 px-2.5 py-1.5 flex items-center gap-1 text-brandDark">{copiado === it.id ? <Check size={13} /> : <Copy size={13} />}{copiado === it.id ? 'Copiado' : 'Copiar'}</button>}
                 {it.telefono && (
                   <a href={waLink(it)} target="_blank" rel="noreferrer" onClick={() => { if (it.estado === 'nuevo') marcarEnviado(it) }}
                      className="text-[11px] font-semibold rounded-lg bg-emerald-600 text-white px-2.5 py-1.5 flex items-center gap-1"><Send size={13} />WhatsApp</a>
