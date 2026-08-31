@@ -61,17 +61,22 @@ const ESTADOS: Record<string, { t: string; c: string }> = {
 }
 const hoyMas = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10) }
 
+// Recepción (nos buscan a nosotros): leads que entran por campañas/redes/formularios/página.
+// Búsqueda (salimos a cazar): ópticas que descubrimos/agregamos nosotros (IG, LinkedIn, Apify).
+const CANALES_INBOUND = ['meta_b2b']
+const esInbound = (canal: string) => CANALES_INBOUND.includes(canal)
+
 export default function ProspeccionSocial() {
   const { codigoEfectivo } = useAuth()
   const toast = useToast()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
+  const [vista, setVista] = useState<'busqueda' | 'recepcion'>('busqueda')
   const [filtro, setFiltro] = useState<'pend' | 'enviado' | 'respondio' | 'todos'>('pend')
   const [fZona, setFZona] = useState('')
   const [fWa, setFWa] = useState(false)
   const [fIg, setFIg] = useState(false)
   const [fWeb, setFWeb] = useState(false)
-  const [fMeta, setFMeta] = useState(false)
   const [personas, setPersonas] = useState<Record<number, Persona[]>>({})
   const [buscarOpen, setBuscarOpen] = useState<Set<number>>(new Set())
   const [copiado, setCopiado] = useState<number | null>(null)
@@ -240,6 +245,7 @@ export default function ProspeccionSocial() {
 
   const filtrados = useMemo(() => {
     let base = items.filter((i) => i.estado !== 'descartado')
+    base = base.filter((i) => (vista === 'recepcion' ? esInbound(i.canal) : !esInbound(i.canal)))
     if (filtro === 'pend') base = base.filter((i) => i.estado === 'nuevo')
     else if (filtro === 'enviado') base = base.filter((i) => i.estado === 'enviado')
     else if (filtro === 'respondio') base = base.filter((i) => ['respondio', 'whatsapp'].includes(i.estado))
@@ -247,11 +253,10 @@ export default function ProspeccionSocial() {
     if (fWa) base = base.filter((i) => !!i.telefono?.trim())
     if (fIg) base = base.filter((i) => !!i.instagram?.trim())
     if (fWeb) base = base.filter((i) => !!i.web?.trim())
-    if (fMeta) base = base.filter((i) => i.canal === 'meta_b2b')
     if (fEtapa) base = base.filter((i) => (i.etapa || 'presentacion') === fEtapa)
     if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, filtro, fZona, fWa, fIg, fWeb, fMeta, fEtapa, ordenPrioridad, personas])
+  }, [items, vista, filtro, fZona, fWa, fIg, fWeb, fEtapa, ordenPrioridad, personas])
 
   const cuenta = (e: string) => items.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -329,9 +334,20 @@ export default function ProspeccionSocial() {
           <h1 className="text-lg font-bold">📣 Cola de prospección social</h1>
           <p className="text-xs text-muted">Cada contacto con su mensaje listo. Copiás, abrís el perfil y enviás — 2 clics.</p>
         </div>
-        <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>
+        {vista === 'busqueda' && <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>}
       </div>
 
+      {/* Dos motores: Búsqueda (salimos a cazar) vs Recepción (nos buscan a nosotros). */}
+      <div className="flex gap-1.5">
+        {([['busqueda', '🔍 Búsqueda', items.filter((i) => !esInbound(i.canal) && i.estado !== 'descartado').length], ['recepcion', '📣 Recepción', items.filter((i) => esInbound(i.canal) && i.estado !== 'descartado').length]] as const).map(([k, l, n]) => (
+          <button key={k} onClick={() => setVista(k as 'busqueda' | 'recepcion')} className={`flex-1 text-[13px] rounded-xl px-3 py-2.5 border font-semibold ${vista === k ? (k === 'recepcion' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-ink text-white border-ink') : 'bg-white border-black/10 text-muted'}`}>{l} <span className="opacity-70">({n})</span></button>
+        ))}
+      </div>
+      {vista === 'recepcion' && (
+        <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca a nosotros (Meta, redes, formularios, página). Ya vienen con el primer mensaje listo — respondé y registralos.</p>
+      )}
+
+      {vista === 'busqueda' && (<>
       {/* Buscar ópticas: UN botón hace todo (descubre + robot completa el email). */}
       <div className="bg-white rounded-2xl border border-black/10 p-3">
         <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🔎 Buscar ópticas por ciudad</p>
@@ -422,6 +438,7 @@ export default function ProspeccionSocial() {
           <button onClick={agregar} disabled={guardando} className="w-full bg-brand text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">{guardando ? 'Agregando…' : '+ Sumar a la cola'}</button>
         </div>
       )}
+      </>)}
 
       {/* Embudo PECA: cuántas ópticas en cada etapa (tocá para filtrar) */}
       <div className="bg-white rounded-2xl border border-black/10 p-2.5">
@@ -458,7 +475,6 @@ export default function ProspeccionSocial() {
         <button onClick={() => setFWa(!fWa)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWa ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10 text-muted'}`}>📲 WhatsApp</button>
         <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
         <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
-        <button onClick={() => setFMeta(!fMeta)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fMeta ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white border-fuchsia-300 text-fuchsia-700'}`}>📣 Meta ({items.filter((i) => i.canal === 'meta_b2b' && i.estado !== 'descartado').length})</button>
         <button onClick={() => setOrdenPrioridad(!ordenPrioridad)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${ordenPrioridad ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-black/10 text-muted'}`}>🔝 Prioridad</button>
         <button onClick={iniciarCampana} className="shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-semibold bg-brand text-white border-brand">📣 Enviar campaña</button>
         <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
