@@ -5,6 +5,26 @@ import { useToast } from '../../lib/toast'
 import { Copy, Check, ExternalLink, Send, Plus, Trash2 } from 'lucide-react'
 import { RUBROS, mensajePara } from '../../lib/guiones'
 import { CARGOS, linkedinSearchUrl, googleLinkedinUrl, googleWebUrl, webTeamUrl, linkedinEmpresaUrl, googleEmpresaUrl, parseLinkedinContactos, type CargoCat } from '../../lib/cargos'
+import { NOMBRE_OPERADOR } from '../../lib/operadores'
+
+// Primer nombre "presentable" del lead (saca títulos y puntuación de la respuesta del formulario).
+function primerNombre(n?: string | null): string {
+  const limpio = (n || '').replace(/[^\p{L}\s]/gu, ' ').trim()
+  const titulos = new Set(['lic', 'dr', 'dra', 'sr', 'sra', 'prof', 'ing'])
+  const w = limpio.split(/\s+/).find((x) => x && !titulos.has(x.toLowerCase())) || ''
+  return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''
+}
+// Primera respuesta para leads de Meta: la óptica vio el video de Triple Protección y dejó sus datos.
+function mensajeMetaLead(nombre: string | null, operador: string): string {
+  const n = primerNombre(nombre)
+  return `Hola${n ? ' ' + n : ''}, ¿cómo estás? Soy ${operador}, de Orbital.\n\n`
+    + `Vi que te interesaste en nuestra marca y quería escribirte para conocerte un poco y saber qué estás buscando.\n\n`
+    + `Estoy seguro de que tenemos una propuesta que puede ayudarte a diferenciarte con tus clientes. En un mercado con cada vez más marcas y opciones, Orbital no solo te ofrece una marca instalada y posicionada, sino también un producto realmente diferencial: la única línea de anteojos de sol en el mercado argentino con Triple Protección (UV400 + Infrarrojo + Blue Cut).\n\n`
+    + `Más info: https://ver.orbitaleyewear.com.ar/tripleproteccion\n\n`
+    + `La idea es que tengas algo distinto para ofrecer y una herramienta concreta para diferenciarte de tu competencia.\n\n`
+    + `Contame un poco de ustedes, ¿cómo se llama la óptica y en qué zona están?\n\n`
+    + `Si te parece, después coordinamos una llamada corta y te cuento más. Estoy seguro de que podemos hacer algo muy bueno juntos.`
+}
 
 interface LkRow { id: number; nombre: string; cargo: string | null; empresa: string | null; ubicacion: string | null; estado: string }
 
@@ -77,9 +97,10 @@ export default function ProspeccionSocial() {
   const [lkGuardando, setLkGuardando] = useState(false)
   const TOPE_APIFY = 4.5
 
-  const msgDe = (it: Item) => it.mensaje ?? (it.canal === 'meta_b2b'
-    ? (it.nota ?? 'Lead entrante de campaña Meta B2B.')
-    : mensajePara(it.rubro ?? 'opticas', it.canal === 'linkedin' ? 'linkedin' : 'ig', it.nombre ?? undefined))
+  const nombreOperador = NOMBRE_OPERADOR[codigoEfectivo] ?? codigoEfectivo ?? 'Orbital'
+  const msgDe = (it: Item) => it.canal === 'meta_b2b'
+    ? mensajeMetaLead(it.nombre, nombreOperador)
+    : it.mensaje ?? mensajePara(it.rubro ?? 'opticas', it.canal === 'linkedin' ? 'linkedin' : 'ig', it.nombre ?? undefined)
   // Link de WhatsApp con el mensaje ya cargado: 1 clic abre el chat listo para enviar.
   const waLink = (it: Item) => `https://wa.me/${(it.telefono ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(msgDe(it))}`
 
