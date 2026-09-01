@@ -198,31 +198,38 @@ export default function Tienda() {
     toast(`✓ ${ok}/${conCambios.length} color(es) actualizados en ${modelo}`, ok === conCambios.length ? 'success' : 'error')
   }
 
+  // Invoca shopify-stock-cero y extrae el mensaje real del cuerpo (invoke esconde el body en error.context en 4xx/5xx).
+  async function invocarStockCero(dry: boolean): Promise<{ ok: boolean; body: Record<string, unknown>; msg?: string }> {
+    const { data, error } = await supabase.functions.invoke('shopify-stock-cero', { body: { tienda, dry } })
+    if (error) {
+      let msg = error.message
+      try {
+        const ctx = (error as { context?: Response }).context
+        if (ctx?.json) { const b = await ctx.json(); msg = b?.detalle || b?.error || msg }
+      } catch { /* sin cuerpo legible */ }
+      return { ok: false, body: {}, msg }
+    }
+    return { ok: true, body: (data ?? {}) as Record<string, unknown> }
+  }
+
   // Pone en 0 (Agotado, sin venta) en Shopify los SKU que Orbital tiene agotados. Vista previa → confirmar → aplicar.
   async function bloquearAgotados() {
     setBloqueando(true)
-    const prev = await supabase.functions.invoke('shopify-stock-cero', { body: { tienda, dry: true } })
-    const pc = (prev.data ?? {}) as { error?: string; detalle?: string; resumen?: { agotados_a_bloquear: number } }
-    if (prev.error || pc.error) {
-      setBloqueando(false)
-      toast(pc.detalle || pc.error || prev.error?.message || 'No se pudo consultar la tienda', 'error')
-      return
-    }
-    const n = pc.resumen?.agotados_a_bloquear ?? 0
+    const prev = await invocarStockCero(true)
+    if (!prev.ok) { setBloqueando(false); toast(prev.msg || 'No se pudo consultar la tienda', 'error'); return }
+    const resumenP = prev.body.resumen as { agotados_a_bloquear?: number } | undefined
+    const n = resumenP?.agotados_a_bloquear ?? 0
     if (n === 0) { setBloqueando(false); toast('No hay agotados para bloquear 👌', 'success'); return }
     if (!window.confirm(
       `Se van a marcar como AGOTADO (stock 0, sin venta) ${n} variante(s) en la tienda "${tienda}", que Orbital tiene en 0.\n\n` +
         `Los que tienen stock NO se tocan.\n\n⚠ Cambia la tienda online EN VIVO.`
     )) { setBloqueando(false); return }
-    const res = await supabase.functions.invoke('shopify-stock-cero', { body: { tienda, dry: false } })
+    const res = await invocarStockCero(false)
     setBloqueando(false)
-    const rc = (res.data ?? {}) as { error?: string; detalle?: string; resumen?: { aplicados: number; errores: number } }
-    if (res.error || rc.error) {
-      toast(rc.detalle || rc.error || res.error?.message || 'No se pudo aplicar', 'error')
-      return
-    }
-    const errs = rc.resumen?.errores ?? 0
-    toast(`✓ ${rc.resumen?.aplicados ?? 0} agotado(s) bloqueado(s) en la tienda${errs ? ` · ${errs} con error` : ''}`, errs ? 'error' : 'success')
+    if (!res.ok) { toast(res.msg || 'No se pudo aplicar', 'error'); return }
+    const resumen = res.body.resumen as { aplicados?: number; errores?: number } | undefined
+    const errs = resumen?.errores ?? 0
+    toast(`✓ ${resumen?.aplicados ?? 0} agotado(s) bloqueado(s) en la tienda${errs ? ` · ${errs} con error` : ''}`, errs ? 'error' : 'success')
     comparar()
   }
 
