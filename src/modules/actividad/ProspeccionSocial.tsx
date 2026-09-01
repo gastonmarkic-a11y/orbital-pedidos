@@ -417,7 +417,7 @@ export default function ProspeccionSocial() {
         ))}
       </div>
       {vista === 'recepcion' && (<>
-        <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca (Meta, redes, formularios). <b>IRIS hace el primer contacto solo.</b> A vos te entran en <b>🧑 Para vos</b> cuando responden, con lo que preguntaron y las respuestas listas.</p>
+        <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca (Meta, redes, formularios). Los que entran en vivo los abre <b>IRIS solo</b> y te llegan a <b>🧑 Para vos</b> cuando responden. Los <b>✋ Sin contactar</b> (importados) los abrís vos con el mensaje listo.</p>
         {/* Resumen por aviso: cuántos entraron / contactó IRIS / respondieron, con link al aviso */}
         {statsAvisos.length > 0 && (
           <div className="bg-white rounded-2xl border border-black/10 p-3">
@@ -616,10 +616,17 @@ export default function ProspeccionSocial() {
                   {adRefs[it.id].preview_link && <a href={adRefs[it.id].preview_link!} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-semibold rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2 py-1">Ver aviso ↗</a>}
                 </div>
               )}
-              {/* Mensaje armado a enviar — solo para prospección de búsqueda (no Meta) */}
-              {it.canal !== 'meta_b2b' && msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {/* Mensaje armado a enviar — prospección de búsqueda (no Meta) o lead Meta sin contactar (lo abre Ulises a mano) */}
+              {(it.canal !== 'meta_b2b' || it.estado === 'nuevo') && msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {/* Lead Meta sin contactar (importado): IRIS NO lo abrió, lo contacta Ulises a mano */}
+              {it.canal === 'meta_b2b' && it.estado === 'nuevo' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">✋</span>
+                  <p className="text-[11px] text-ink"><b>Sin primer contacto</b> (lead importado). Abrilo vos: mandá el mensaje por WhatsApp o copialo — queda marcado como enviado.</p>
+                </div>
+              )}
               {/* Meta en manos de IRIS: primer contacto ya hecho, Ulises espera la respuesta */}
-              {it.canal === 'meta_b2b' && !['respondio', 'whatsapp'].includes(it.estado) && (
+              {it.canal === 'meta_b2b' && it.estado === 'enviado' && (
                 <div className="bg-[#EEF0FF] border border-brandDark/15 rounded-lg p-2 flex items-start gap-2">
                   <span className="text-base leading-none mt-0.5">🤖</span>
                   <p className="text-[11px] text-ink"><b>IRIS ya hizo el primer contacto.</b> Cuando {primerNombre(it.nombre) || 'el lead'} responda te llega acá con lo que preguntó, para que sigas vos.</p>
