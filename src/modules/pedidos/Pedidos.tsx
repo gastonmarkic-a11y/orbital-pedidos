@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario } from './calc'
+import { calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario, esPedidoShopify } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
@@ -424,10 +424,10 @@ export default function Pedidos() {
     for (const l of filtrados) {
       const dc = parseFloat(l.dto_comercial || '') || 0
       const df = parseFloat(l.dto_financiero || '') || 0
-      const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+      const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista, esPedidoShopify(l))
       const iva = calcImporteConIVA(imp.neto, l.blanco_pct ?? 100)
       // Descuento financiero = NC "Diferencia de Precios" que aplica Administración si se cumple el pago (no está en el neto/IVA).
-      const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+      const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista, esPedidoShopify(l))
       const plazos = parseFP(l.cond_pago, l.cuotas_detalle).map((c) => (c.dias === 0 ? 'Contado' : `${c.dias}d ${Math.round(c.pct * 100)}%`)).join(' · ')
       const medios = l.medios_pago?.length ? labelMedios(l.medios_pago) : ''
       const base = [
@@ -441,7 +441,7 @@ export default function Pedidos() {
         continue
       }
       for (const i of items) {
-        const pu = netoUnitario(i, stock.find((x) => x.codigo === i.codigo)?.precio ?? 0, l.nro_lista, dc, df)
+        const pu = netoUnitario(i, stock.find((x) => x.codigo === i.codigo)?.precio ?? 0, l.nro_lista, dc, df, esPedidoShopify(l))
         csv += [...base, q(i.codigo), q(i.modelo), q(i.descripcion ?? ''), i.cantidad, pu, pu * i.cantidad, imp.neto, iva.conIVA, financieroNC].join(';') + '\n'
       }
     }
@@ -549,7 +549,7 @@ export default function Pedidos() {
         <div className="space-y-2">
           {filtrados.map((l) => {
             const estado = (l.estado ?? 'pendiente') as EstadoPedido
-            const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+            const imp = calcImporte(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista, esPedidoShopify(l))
             // Criterio nuevo para TODOS los pedidos (incluidos los facturados): las facturas reales se
             // emitieron por Tango, así que la app siempre muestra el neto = solo comercial y el financiero
             // como NC "Diferencia de Precios" aparte. Se recalcula en vivo desde los descuentos.
@@ -557,7 +557,7 @@ export default function Pedidos() {
             const dcPed = parseFloat(l.dto_comercial || '') || 0
             const dfPed = parseFloat(l.dto_financiero || '') || 0
             // Monto del descuento financiero = NC "Diferencia de Precios" condicional al pago (no va en la factura).
-            const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista)
+            const financieroNC = calcFinanciero(l.items, stock, l.dto_comercial, l.dto_financiero, l.nro_lista, esPedidoShopify(l))
             const abierto = abiertos.has(l.id)
             const color = ESTADO_COLORS[estado] ?? '#999'
             const pendienteTotal = (l.items ?? []).reduce((a, i) => a + (i.pendiente ?? 0), 0)
@@ -752,8 +752,8 @@ export default function Pedidos() {
                     {(l.items ?? []).map((i) => {
                       const s = stock.find((x) => x.codigo === i.codigo)
                       // Precio NETO real del ítem = lista − comercial (o preventa/precio fijo/sin cargo). El financiero NO entra acá.
-                      const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, dcPed, dfPed)
-                      const bu = brutoUnitario(i, s?.precio ?? 0, l.nro_lista) // precio de lista, para mostrar el bruto tachado
+                      const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, dcPed, dfPed, esPedidoShopify(l))
+                      const bu = brutoUnitario(i, s?.precio ?? 0, l.nro_lista, esPedidoShopify(l)) // precio de lista, para mostrar el bruto tachado
                       const picked = (l.picking ?? []).includes(i.codigo)
                       const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna'
                       return (

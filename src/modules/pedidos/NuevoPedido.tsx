@@ -424,8 +424,9 @@ export default function NuevoPedido() {
       ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
     }
   })
-  const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
-  const financieroPreview = calcFinanciero(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5)
+  // Este builder arma pedidos B2B / catálogo / consigna (nunca Shopify) → esShopify = false: item.precio no cierra el precio.
+  const montoPreview = calcImporte(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5, false)
+  const financieroPreview = calcFinanciero(itemsPreview, stock, dtoComercial, dtoFinanciero, cliente?.nro_lista ?? 5, false)
   const dcN = parseFloat(dtoComercial || '') || 0
   const dfN = parseFloat(dtoFinanciero || '') || 0
   // Info por línea: precio neto unitario + etiqueta clara del descuento que aplicó el sistema.
@@ -441,8 +442,8 @@ export default function NuevoPedido() {
       ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
     }
     // El precio neto de la línea lleva SOLO el descuento comercial (el financiero es una NC condicional aparte).
-    const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN)
-    const pct = descuentoItemPct(item, dcN, dfN) // comercial
+    const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN, false)
+    const pct = descuentoItemPct(item, dcN, dfN, false) // comercial
     let tag: string
     if (esRegalo) tag = 'sin cargo (100% bonif.)'
     else if (esp != null) tag = '★ precio especial'

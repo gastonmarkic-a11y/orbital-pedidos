@@ -5,16 +5,25 @@ import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 // Shopify va por precio público (item.precio) y no pasa por esta función.
 export const FACTOR_DISTRIBUIDOR = 1.41
 
+// Shopify = tienda online MINORISTA independiente (vendedor 'Tienda'): precio cerrado con IVA, sin descuentos B2B.
+// NO tiene nada que ver con el B2B (clientes/revendedores/distribuidores/catálogo), que van por lista + dto_comercial.
+// Se detecta por el vendedor 'Tienda' (así lo separa también esElegibleTango); el origen queda como respaldo futuro.
+export function esPedidoShopify(p: Pedido): boolean {
+  return p.vendedor === 'Tienda' || p.origen === 'shopify'
+}
+
 export function getPrecioLista(precioBase: number, nroLista: number | null): number {
   if (nroLista === 1) return Math.round(precioBase / FACTOR_DISTRIBUIDOR) // distribuidor
   return Math.round(precioBase) // óptico (lista 5) para todos los demás
 }
 
 // Precio BRUTO unitario (antes de descuentos): lista, o preventa, o Shopify-neto. Sin cargo = 0.
-export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null): number {
+// `esShopify` viene del pedido (pedido.origen === 'shopify'); solo entonces item.precio es un precio cerrado.
+// Ojo: los pedidos de catálogo (origen='catalogo') también traen item.precio pero NO son Shopify → van por lista.
+export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, esShopify = false): number {
   if (item.regalo) return 0
   if (item.precio_esp != null) return Math.round(item.precio_esp) // precio especial por cliente (neto final, sin dtos)
-  if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA)
+  if (esShopify && item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA)
   if (item.preventa && item.precio_pv != null) return item.precio_pv
   return precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
 }
@@ -22,10 +31,10 @@ export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: nu
 // Descuento COMERCIAL del ítem, en %. Es el único que se hornea en el precio (define el neto a remitir/facturar).
 // El financiero NO entra acá: va aparte como NC "Diferencia de Precios" (ver financieroUnitario).
 // Reglas: sin cargo = 100%; preventa = 0 (precio fijo, sin comercial); lista = comercial; Shopify = 0.
-export function descuentoItemPct(item: PedidoItem, dc: number, _df: number): number {
+export function descuentoItemPct(item: PedidoItem, dc: number, _df: number, esShopify = false): number {
   if (item.regalo) return 100
   if (item.precio_esp != null) return 0 // precio especial: sin descuentos
-  if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
+  if (esShopify && item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
   if (item.preventa && item.precio_pv != null) return 0 // preventa: precio fijo, sin comercial
   return Math.round(dc)
 }
@@ -33,10 +42,10 @@ export function descuentoItemPct(item: PedidoItem, dc: number, _df: number): num
 // Precio NETO unitario (después del descuento COMERCIAL), idéntico en resumen, remito, factura y Tango.
 // El descuento FINANCIERO NO se hornea acá: es condicional al pago y se materializa como NC posterior.
 // Preventa: precio fijo (precio_pv), sin comercial ni financiero horneado.
-export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, _df: number): number {
+export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, _df: number, esShopify = false): number {
   if (item.regalo) return 0
   if (item.precio_esp != null) return Math.round(item.precio_esp) // precio especial por cliente (neto final, sin dtos)
-  if (item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
+  if (esShopify && item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
   if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv) // preventa: precio fijo
   const precioLista = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
   return Math.round(precioLista * (1 - dc / 100)) // solo comercial
@@ -46,11 +55,11 @@ export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: num
 // Es condicional al cumplimiento del pago pactado (efectivo/transferencia): Administración genera
 // una NC "Diferencia de Precios" por este monto cuando el cobro se cumple.
 // Se calcula SOBRE el neto comercial → por eso comercial + financiero NO se suman (cascada).
-export function financieroUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number): number {
+export function financieroUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number, esShopify = false): number {
   if (df <= 0 || item.regalo) return 0
   if (item.precio_esp != null) return 0 // precio especial: final, sin financiero
-  if (item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado, sin financiero
-  const netoCom = netoUnitario(item, precioBase, nroLista, dc, df)
+  if (esShopify && item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado, sin financiero
+  const netoCom = netoUnitario(item, precioBase, nroLista, dc, df, esShopify)
   return Math.round(netoCom * (df / 100))
 }
 
@@ -60,7 +69,8 @@ export function calcFinanciero(
   stock: StockItem[],
   dtoCom: string | null,
   dtoFin: string | null,
-  nroLista?: number | null
+  nroLista?: number | null,
+  esShopify = false
 ): number {
   const df = parseFloat(dtoFin || '') || 0
   if (df <= 0) return 0
@@ -69,7 +79,7 @@ export function calcFinanciero(
   for (const it of items ?? []) {
     if (it.regalo) continue
     const precioBase = stock.find((x) => x.codigo === it.codigo)?.precio || 0
-    total += financieroUnitario(it, precioBase, nroLista ?? 5, dc, df) * it.cantidad
+    total += financieroUnitario(it, precioBase, nroLista ?? 5, dc, df, esShopify) * it.cantidad
   }
   return Math.round(total)
 }
@@ -79,17 +89,18 @@ export function calcImporte(
   stock: StockItem[],
   dtoCom: string | null,
   dtoFin: string | null,
-  nroLista?: number | null
+  nroLista?: number | null,
+  esShopify = false
 ): { bruto: number; neto: number } {
   const lista = items ?? []
-  // Pedido de Shopify: precio ya cerrado (con IVA), sin descuentos comerciales.
-  const esShopify = lista.some((i) => !i.regalo && i.precio !== undefined && i.precio !== null)
+  // Pedido de Shopify (pedido.origen === 'shopify'): precio ya cerrado (con IVA), sin descuentos comerciales.
+  // NO se infiere de la presencia de item.precio: los pedidos de catálogo también lo traen y NO son Shopify.
   if (esShopify) {
     let bruto = 0
     for (const it of lista) if (!it.regalo && it.precio != null) bruto += it.precio * it.cantidad
     return { bruto: Math.round(bruto), neto: Math.round(bruto / 1.21) }
   }
-  // Pedido B2B: se suma línea por línea (mismo redondeo que el remito de Tango).
+  // Pedido B2B (incluye catálogo): se suma línea por línea (mismo redondeo que el remito de Tango).
   const dc = parseFloat(dtoCom || '') || 0
   const df = parseFloat(dtoFin || '') || 0
   let bruto = 0
@@ -97,8 +108,8 @@ export function calcImporte(
   for (const item of lista) {
     if (item.regalo) continue
     const precioBase = stock.find((x) => x.codigo === item.codigo)?.precio || 0
-    bruto += brutoUnitario(item, precioBase, nroLista ?? 5) * item.cantidad
-    neto += netoUnitario(item, precioBase, nroLista ?? 5, dc, df) * item.cantidad
+    bruto += brutoUnitario(item, precioBase, nroLista ?? 5, esShopify) * item.cantidad
+    neto += netoUnitario(item, precioBase, nroLista ?? 5, dc, df, esShopify) * item.cantidad
   }
   return { bruto: Math.round(bruto), neto: Math.round(neto) }
 }
@@ -194,7 +205,7 @@ export const ESTADO_COLORS: Record<string, string> = {
 }
 
 export function importeDe(p: Pedido, stock: StockItem[]): number {
-  const imp = calcImporte(p.items, stock, p.dto_comercial, p.dto_financiero, p.nro_lista)
+  const imp = calcImporte(p.items, stock, p.dto_comercial, p.dto_financiero, p.nro_lista, esPedidoShopify(p))
   return imp.neto || p.importe_neto || 0
 }
 

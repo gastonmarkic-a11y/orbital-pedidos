@@ -1,6 +1,6 @@
 import type { Pedido, PedidoItem } from '../../lib/types'
 import { supabase } from '../../lib/supabase'
-import { netoUnitario, brutoUnitario, descuentoItemPct } from './calc'
+import { netoUnitario, brutoUnitario, descuentoItemPct, esPedidoShopify } from './calc'
 
 // Exporta pedidos al formato "Novedades para pedidos" de Tango (Pedidos automáticos).
 // Genera DOS archivos: Plenorius (parte blanca) y Ejemplar (parte negra).
@@ -84,8 +84,8 @@ function razonSocial(cliente: string | null, cod: string | null): string {
 
 // Precio neto unitario: idéntico al del resumen del pedido (misma función netoUnitario).
 // Sin cargo = $0; preventa = solo dto financiero (no comercial); lista = comercial + financiero; Shopify = precio/1,21.
-function precioNetoUnitario(it: PedidoItem, stockMap: Map<string, number>, nroLista: number, dc: number, df: number): number {
-  return netoUnitario(it, stockMap.get(it.codigo) ?? 0, nroLista, dc, df)
+function precioNetoUnitario(it: PedidoItem, stockMap: Map<string, number>, nroLista: number, dc: number, df: number, esShopify = false): number {
+  return netoUnitario(it, stockMap.get(it.codigo) ?? 0, nroLista, dc, df, esShopify)
 }
 
 // Reparte las líneas en blanco/negro por monto, acercándose al target de la parte blanca.
@@ -139,8 +139,10 @@ export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango):
   // Precios base del stock para los ítems B2B (sin precio explícito).
   const codigos = new Set<string>()
   for (const p of elegibles) {
+    const esShopify = esPedidoShopify(p)
     for (const it of p.items ?? []) {
-      const tienePrecio = it.precio != null || (it.preventa && it.precio_pv != null)
+      // item.precio solo cierra el precio si el pedido es de Shopify. Catálogo/B2B necesitan el precio base del stock.
+      const tienePrecio = (esShopify && it.precio != null) || (it.preventa && it.precio_pv != null)
       if (!tienePrecio && it.codigo) codigos.add(it.codigo)
     }
   }
@@ -159,13 +161,14 @@ export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango):
     const nroLista = p.nro_lista ?? 5
     const dc = parseFloat(p.dto_comercial || '') || 0
     const df = parseFloat(p.dto_financiero || '') || 0
+    const esShopify = esPedidoShopify(p)
     const lineas: Linea[] = (p.items ?? [])
       .filter((it) => it.codigo && it.cantidad)
       .map((it) => {
         const precioBase = stockMap.get(it.codigo) ?? 0
-        const bruto = brutoUnitario(it, precioBase, nroLista)
-        const bonif = descuentoItemPct(it, dc, df) // solo comercial
-        const precio = precioNetoUnitario(it, stockMap, nroLista, dc, df) // neto comercial (para repartir por monto)
+        const bruto = brutoUnitario(it, precioBase, nroLista, esShopify)
+        const bonif = descuentoItemPct(it, dc, df, esShopify) // solo comercial
+        const precio = precioNetoUnitario(it, stockMap, nroLista, dc, df, esShopify) // neto comercial (para repartir por monto)
         return { it, bruto, bonif, precio, monto: precio * it.cantidad }
       })
     if (!lineas.length) {
