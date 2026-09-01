@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
+import { calcularBono, type BonoEstado } from './bono'
+import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -421,6 +423,11 @@ export default function CatalogoPublico() {
     try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}') } catch { return {} }
   })
 
+  // Bono de campaña: vive en el token, no en el catálogo. Sin bono no se renderiza nada.
+  const [bono, setBono] = useState<BonoEstado | null>(null)
+  const [celebra, setCelebra] = useState<string | null>(null)
+  const ganadoRef = useRef({ bonificacion: 0, piezas: 0 })
+
   useEffect(() => { localStorage.setItem(CART_KEY, JSON.stringify(cart)) }, [cart])
 
   // validar clave/token guardado o del link al entrar
@@ -468,6 +475,29 @@ export default function CatalogoPublico() {
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
 
+  // ¿este token trae bono? Se consulta una vez, al validar el acceso.
+  useEffect(() => {
+    if (!claveOk) { setBono(null); return }
+    const cod = acceso?.codigo || clave
+    if (!cod) return
+    supabase.rpc('catalogo_bono_estado', { p_acceso: cod }).then(({ data }) => {
+      setBono((data as BonoEstado) ?? null)
+    })
+  }, [claveOk, acceso?.codigo, clave])
+
+  const bonoCalc = useMemo(() => calcularBono(cartTotal, bono, cartCount), [cartTotal, bono, cartCount])
+
+  // Al cruzar un escalón, cartel de celebración (una sola vez por escalón).
+  useEffect(() => {
+    if (!bonoCalc) return
+    const prev = ganadoRef.current
+    const partes: string[] = []
+    if (bonoCalc.bonificacion > prev.bonificacion) partes.push(`${kAr(bonoCalc.bonificacion)} de bonificación`)
+    if (bonoCalc.piezas > prev.piezas) partes.push(`${bonoCalc.piezas} pares sin cargo`)
+    ganadoRef.current = { bonificacion: bonoCalc.bonificacion, piezas: bonoCalc.piezas }
+    if (partes.length) setCelebra(partes.join(' y '))
+  }, [bonoCalc])
+
   function addCart(v: Variante, modelo: string) {
     setCart((c) => {
       const prev = c[v.codigo]
@@ -505,6 +535,8 @@ export default function CatalogoPublico() {
           🔒 Catálogo con precios exclusivos de {(acceso.label.split(' - ')[1] || acceso.label).trim()} · uso personal
         </div>
       )}
+      {/* Bono de campaña: solo si el token lo trae */}
+      {bono && <BonoBanner bono={bono} />}
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -584,11 +616,17 @@ export default function CatalogoPublico() {
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
+      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
+
+      {/* Bono: cartel de escalón desbloqueado + barra de progreso fija */}
+      {celebra && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
+      {bonoCalc && !bonoCalc.vencido && !carritoOpen && !sel && !quick && (
+        <BonoBarra calc={bonoCalc} onVerPares={() => verGrupo('oportunidades')} />
+      )}
 
       {/* Barra flotante de pedido en mobile */}
       {cartCount > 0 && !carritoOpen && !sel && (
-        <button onClick={() => setCarritoOpen(true)} className="md:hidden fixed bottom-4 inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20">
+        <button onClick={() => setCarritoOpen(true)} className={`md:hidden fixed ${bonoCalc && !bonoCalc.vencido ? 'bottom-28' : 'bottom-4'} inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20`}>
           <span className="text-sm font-medium">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</span>
           <span className="text-sm font-bold">{kAr(cartTotal)} · Ver pedido →</span>
         </button>
@@ -786,13 +824,14 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
 }
 
 // ── Carrito + checkout ──
-function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
-  cart: Record<string, CartItem>; clave: string; acceso: Acceso | null
+function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: {
+  cart: Record<string, CartItem>; clave: string; acceso: Acceso | null; bono?: BonoEstado | null
   onSetQty: (codigo: string, n: number) => void; onClose: () => void; onDone: () => void
 }) {
   const items = Object.values(cart)
   const total = items.reduce((a, c) => a + c.cantidad * c.precio, 0)
   const unidades = items.reduce((a, c) => a + c.cantidad, 0)
+  const bonoCalc = calcularBono(total, bono ?? null, unidades)
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
@@ -880,6 +919,7 @@ function CarritoSheet({ cart, clave, acceso, onSetQty, onClose, onDone }: {
             </div>
             <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
               <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
+              {bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
               <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
             </div>
           </>
