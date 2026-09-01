@@ -51,6 +51,20 @@ interface Item {
   cod_cliente: string | null; conversacion_id: string | null
 }
 type Msg = { emisor: string; contenido: string }
+type AdRef = { ad_id: string; numero: number; ad_name: string | null; campaign_name: string | null; preview_link: string | null; thumb_url: string | null }
+
+// Detecta el tema de la ÚLTIMA respuesta del lead (no de IRIS) para pre-marcar la respuesta rápida.
+function temaRespuesta(msgs: Msg[] | undefined): string | null {
+  if (!msgs?.length) return null
+  const last = [...msgs].reverse().find((m) => !/bot|iris|sistema|asist/i.test(m.emisor))
+  if (!last) return null
+  const t = (last.contenido || '').toLowerCase()
+  if (/\bvisit|reuni[oó]n|reunir|pas[aá]|vernos|vern[oa]|coordin|cu[aá]ndo|agend|te espero|veni/.test(t)) return 'visita'
+  if (/cat[aá]logo|modelos|colecci|ver.*(lente|anteojo|producto)|qu[eé] tienen/.test(t)) return 'catalogo'
+  if (/precio|cotiz|costo|cu[aá]nto|lista|valor|pagar|condicion/.test(t)) return 'precio'
+  if (/triple|protecci|uv400|\buv\b|blue cut|infrarrojo|cristal/.test(t)) return 'triple'
+  return null
+}
 
 // Embudo PECA: etapas + cadencia (días hasta el próximo toque al avanzar).
 const EMBUDO: { id: string; label: string; emoji: string; c: string; dias: number }[] = [
@@ -107,6 +121,9 @@ export default function ProspeccionSocial() {
   const [campanaOpen, setCampanaOpen] = useState(false)
   const [expandido, setExpandido] = useState<Set<number>>(new Set())
   const [charlas, setCharlas] = useState<Record<string, Msg[]>>({})
+  const [adRefs, setAdRefs] = useState<Record<number, AdRef>>({})
+  const [adList, setAdList] = useState<AdRef[]>([])
+  const [fCampana, setFCampana] = useState('')
   const [ordenPrioridad, setOrdenPrioridad] = useState(true)
   const [lkOpen, setLkOpen] = useState(false)
   const [lkTexto, setLkTexto] = useState('')
@@ -208,6 +225,20 @@ export default function ProspeccionSocial() {
       for (const m of ((msgs ?? []) as { conversacion_id: string; emisor: string; contenido: string }[])) { (ch[m.conversacion_id] ??= []).push({ emisor: m.emisor, contenido: m.contenido }) }
       setCharlas(ch)
     } else setCharlas({})
+    // Aviso de origen por lead (Meta): meta_leads.prospeccion_id → ad_id → meta_ads_ref.
+    const metaIds = rows.filter((r) => r.canal === 'meta_b2b').map((r) => r.id)
+    if (metaIds.length) {
+      const [{ data: refs }, { data: mls }] = await Promise.all([
+        supabase.from('meta_ads_ref').select('*').order('numero'),
+        supabase.from('meta_leads').select('prospeccion_id, ad_id').in('prospeccion_id', metaIds),
+      ])
+      const refByAd: Record<string, AdRef> = {}
+      for (const r of ((refs ?? []) as AdRef[])) refByAd[r.ad_id] = r
+      const byItem: Record<number, AdRef> = {}
+      for (const m of ((mls ?? []) as { prospeccion_id: number; ad_id: string }[])) { if (m.ad_id && refByAd[m.ad_id]) byItem[m.prospeccion_id] = refByAd[m.ad_id] }
+      setAdRefs(byItem)
+      setAdList((refs ?? []) as AdRef[])
+    } else { setAdRefs({}); setAdList([]) }
     const { data: pers } = await supabase.from('prospecto_persona').select('id, empresa_id, nombre, cargo, categoria, relevance_score, linkedin_url, estado').neq('estado', 'descartado').order('relevance_score', { ascending: false })
     const map: Record<number, Persona[]> = {}
     for (const p of ((pers ?? []) as Persona[])) { (map[p.empresa_id] ??= []).push(p) }
@@ -279,9 +310,26 @@ export default function ProspeccionSocial() {
     if (fIg) base = base.filter((i) => !!i.instagram?.trim())
     if (fWeb) base = base.filter((i) => !!i.web?.trim())
     if (fEtapa) base = base.filter((i) => (i.etapa || 'presentacion') === fEtapa)
+    if (fCampana) base = base.filter((i) => (adRefs[i.id]?.campaign_name ?? '') === fCampana)
     if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, vista, filtro, fZona, fWa, fIg, fWeb, fEtapa, ordenPrioridad, personas])
+  }, [items, vista, filtro, fZona, fWa, fIg, fWeb, fEtapa, fCampana, adRefs, ordenPrioridad, personas])
+
+  // Resumen por aviso (Recepción): cuántos entraron / contactados por IRIS / respondieron.
+  const statsAvisos = useMemo(() => {
+    const porAd: Record<string, { entraron: number; contactados: number; respondieron: number }> = {}
+    for (const i of itemsVista) {
+      if (i.estado === 'descartado') continue
+      const ad = adRefs[i.id]?.ad_id
+      if (!ad) continue
+      const s = (porAd[ad] ??= { entraron: 0, contactados: 0, respondieron: 0 })
+      s.entraron++
+      if (['enviado', 'respondio', 'whatsapp'].includes(i.estado)) s.contactados++
+      if (['respondio', 'whatsapp'].includes(i.estado)) s.respondieron++
+    }
+    return adList.map((a) => ({ ...a, ...(porAd[a.ad_id] ?? { entraron: 0, contactados: 0, respondieron: 0 }) })).filter((a) => a.entraron > 0)
+  }, [itemsVista, adRefs, adList])
+  const campanas = useMemo(() => [...new Set(adList.map((a) => a.campaign_name).filter(Boolean))] as string[], [adList])
 
   const cuenta = (e: string) => itemsVista.filter((i) => (e === 'respondio' ? ['respondio', 'whatsapp'].includes(i.estado) : i.estado === e)).length
 
@@ -368,9 +416,39 @@ export default function ProspeccionSocial() {
           <button key={k} onClick={() => setVista(k as 'busqueda' | 'recepcion')} className={`flex-1 text-[13px] rounded-xl px-3 py-2.5 border font-semibold ${vista === k ? (k === 'recepcion' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-ink text-white border-ink') : 'bg-white border-black/10 text-muted'}`}>{l} <span className="opacity-70">({n})</span></button>
         ))}
       </div>
-      {vista === 'recepcion' && (
-        <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca a nosotros (Meta, redes, formularios, página). Ya vienen con el primer mensaje listo — respondé y registralos.</p>
-      )}
+      {vista === 'recepcion' && (<>
+        <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca (Meta, redes, formularios). <b>IRIS hace el primer contacto solo.</b> A vos te entran en <b>🧑 Para vos</b> cuando responden, con lo que preguntaron y las respuestas listas.</p>
+        {/* Resumen por aviso: cuántos entraron / contactó IRIS / respondieron, con link al aviso */}
+        {statsAvisos.length > 0 && (
+          <div className="bg-white rounded-2xl border border-black/10 p-3">
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">📊 Rendimiento por aviso</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {statsAvisos.map((a) => (
+                <div key={a.ad_id} className="shrink-0 w-52 border border-fuchsia-200 bg-fuchsia-50/40 rounded-xl p-2.5">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {a.thumb_url && <img src={a.thumb_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />}
+                    <p className="text-[11px] font-semibold text-fuchsia-800 leading-tight line-clamp-2">#{a.numero} · {a.ad_name}</p>
+                  </div>
+                  <div className="flex items-center justify-between text-center">
+                    <div><p className="text-[15px] font-bold text-ink">{a.entraron}</p><p className="text-[9px] text-muted uppercase">Entraron</p></div>
+                    <div><p className="text-[15px] font-bold text-brandDark">{a.contactados}</p><p className="text-[9px] text-muted uppercase">Contactó IRIS</p></div>
+                    <div><p className="text-[15px] font-bold text-emerald-600">{a.respondieron}</p><p className="text-[9px] text-muted uppercase">Respondieron</p></div>
+                  </div>
+                  {a.preview_link && <a href={a.preview_link} target="_blank" rel="noreferrer" className="block text-center mt-2 text-[11px] font-semibold rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 py-1">Ver aviso ↗</a>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {campanas.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            <button onClick={() => setFCampana('')} className={`shrink-0 text-[11px] rounded-full px-3 py-1 border font-medium ${!fCampana ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white border-black/10 text-muted'}`}>Todas las campañas</button>
+            {campanas.map((c) => (
+              <button key={c} onClick={() => setFCampana(c)} className={`shrink-0 text-[11px] rounded-full px-3 py-1 border font-medium ${fCampana === c ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white border-black/10 text-muted'}`}>{c}</button>
+            ))}
+          </div>
+        )}
+      </>)}
 
       {vista === 'busqueda' && (<>
       {/* Buscar ópticas: UN botón hace todo (descubre + robot completa el email). */}
@@ -527,7 +605,27 @@ export default function ProspeccionSocial() {
                 </div>
               </button>
               {expandido.has(it.id) && (<>
-              {msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {/* Aviso de origen (Meta) — de qué pieza vino + link visual referencial */}
+              {adRefs[it.id] && (
+                <div className="flex items-center gap-2 bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2">
+                  {adRefs[it.id].thumb_url && <img src={adRefs[it.id].thumb_url!} alt="" className="w-9 h-9 rounded object-cover shrink-0" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold text-fuchsia-800 truncate">📣 Aviso #{adRefs[it.id].numero} · {adRefs[it.id].ad_name}</p>
+                    <p className="text-[10px] text-fuchsia-600 truncate">{adRefs[it.id].campaign_name}</p>
+                  </div>
+                  {adRefs[it.id].preview_link && <a href={adRefs[it.id].preview_link!} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-semibold rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2 py-1">Ver aviso ↗</a>}
+                </div>
+              )}
+              {/* Mensaje armado a enviar — solo para prospección de búsqueda (no Meta) */}
+              {it.canal !== 'meta_b2b' && msgDe(it) && <p className="text-[12px] text-muted bg-[#F6F4EF] rounded-lg p-2 whitespace-pre-wrap">{msgDe(it)}</p>}
+              {/* Meta en manos de IRIS: primer contacto ya hecho, Ulises espera la respuesta */}
+              {it.canal === 'meta_b2b' && !['respondio', 'whatsapp'].includes(it.estado) && (
+                <div className="bg-[#EEF0FF] border border-brandDark/15 rounded-lg p-2 flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">🤖</span>
+                  <p className="text-[11px] text-ink"><b>IRIS ya hizo el primer contacto.</b> Cuando {primerNombre(it.nombre) || 'el lead'} responda te llega acá con lo que preguntó, para que sigas vos.</p>
+                </div>
+              )}
+              {/* Charla con IRIS (conversación linkeada) */}
               {it.conversacion_id && (charlas[it.conversacion_id]?.length ?? 0) > 0 && (() => {
                 const esBot = (e: string) => /bot|iris|sistema|asist/i.test(e)
                 return (
@@ -545,20 +643,28 @@ export default function ProspeccionSocial() {
                   </div>
                 )
               })()}
-              {it.canal === 'meta_b2b' && (
-                <div className="bg-fuchsia-50/50 border border-fuchsia-200 rounded-lg p-2">
-                  <p className="text-[10px] font-semibold text-fuchsia-700 uppercase tracking-wide mb-1.5">⚡ Respuestas rápidas · según lo que respondió</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {RESPUESTAS_META.map((r) => {
-                      const msg = r.build(primerNombre(it.nombre))
-                      const tel = (it.telefono ?? '').replace(/\D/g, '')
-                      return tel
-                        ? <a key={r.tema} href={`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="text-[11px] font-medium rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2.5 py-1.5">{r.label}</a>
-                        : <button key={r.tema} onClick={() => { navigator.clipboard.writeText(msg); toast('✓ Copiado', 'success') }} className="text-[11px] font-medium rounded-lg border border-fuchsia-300 bg-white text-fuchsia-700 px-2.5 py-1.5">{r.label}</button>
-                    })}
+              {/* Respuestas rápidas — solo cuando el lead respondió, con el tema pre-marcado según lo que preguntó */}
+              {it.canal === 'meta_b2b' && ['respondio', 'whatsapp'].includes(it.estado) && (() => {
+                const tema = temaRespuesta(it.conversacion_id ? charlas[it.conversacion_id] : undefined)
+                const nombreTema: Record<string, string> = { visita: 'una visita', catalogo: 'el catálogo', precio: 'precios', triple: 'Triple Protección' }
+                const ordenadas = [...RESPUESTAS_META].sort((a, b) => (b.tema === tema ? 1 : 0) - (a.tema === tema ? 1 : 0))
+                return (
+                  <div className="bg-fuchsia-50/50 border border-fuchsia-200 rounded-lg p-2">
+                    <p className="text-[10px] font-semibold text-fuchsia-700 uppercase tracking-wide mb-1.5">⚡ Respuestas rápidas{tema ? ` · preguntó por ${nombreTema[tema]}` : ' · según lo que respondió'}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ordenadas.map((r) => {
+                        const msg = r.build(primerNombre(it.nombre))
+                        const tel = (it.telefono ?? '').replace(/\D/g, '')
+                        const activo = !!tema && r.tema === tema
+                        const cls = `text-[11px] font-medium rounded-lg border px-2.5 py-1.5 ${activo ? 'bg-fuchsia-600 border-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-white border-fuchsia-300 text-fuchsia-700'}`
+                        return tel
+                          ? <a key={r.tema} href={`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className={cls}>{activo ? '⭐ ' : ''}{r.label}</a>
+                          : <button key={r.tema} onClick={() => { navigator.clipboard.writeText(msg); toast('✓ Copiado', 'success') }} className={cls}>{activo ? '⭐ ' : ''}{r.label}</button>
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Buscar contactos (decisores) — genera búsquedas, no scrapea */}
               <div>
