@@ -60,6 +60,7 @@ export default function Tienda() {
   const [grupo, setGrupo] = useState<Grupo>('publicado_sin_stock')
   const [importando, setImportando] = useState(false)
   const [importe, setImporte] = useState<Record<string, unknown> | null>(null)
+  const [bloqueando, setBloqueando] = useState(false)
 
   // --- Editor de precios de Shopify ---
   const [tienda, setTienda] = useState<'linea' | 'outlet'>('linea')
@@ -197,6 +198,34 @@ export default function Tienda() {
     toast(`✓ ${ok}/${conCambios.length} color(es) actualizados en ${modelo}`, ok === conCambios.length ? 'success' : 'error')
   }
 
+  // Pone en 0 (Agotado, sin venta) en Shopify los SKU que Orbital tiene agotados. Vista previa → confirmar → aplicar.
+  async function bloquearAgotados() {
+    setBloqueando(true)
+    const prev = await supabase.functions.invoke('shopify-stock-cero', { body: { tienda, dry: true } })
+    const pc = (prev.data ?? {}) as { error?: string; detalle?: string; resumen?: { agotados_a_bloquear: number } }
+    if (prev.error || pc.error) {
+      setBloqueando(false)
+      toast(pc.detalle || pc.error || prev.error?.message || 'No se pudo consultar la tienda', 'error')
+      return
+    }
+    const n = pc.resumen?.agotados_a_bloquear ?? 0
+    if (n === 0) { setBloqueando(false); toast('No hay agotados para bloquear 👌', 'success'); return }
+    if (!window.confirm(
+      `Se van a marcar como AGOTADO (stock 0, sin venta) ${n} variante(s) en la tienda "${tienda}", que Orbital tiene en 0.\n\n` +
+        `Los que tienen stock NO se tocan.\n\n⚠ Cambia la tienda online EN VIVO.`
+    )) { setBloqueando(false); return }
+    const res = await supabase.functions.invoke('shopify-stock-cero', { body: { tienda, dry: false } })
+    setBloqueando(false)
+    const rc = (res.data ?? {}) as { error?: string; detalle?: string; resumen?: { aplicados: number; errores: number } }
+    if (res.error || rc.error) {
+      toast(rc.detalle || rc.error || res.error?.message || 'No se pudo aplicar', 'error')
+      return
+    }
+    const errs = rc.resumen?.errores ?? 0
+    toast(`✓ ${rc.resumen?.aplicados ?? 0} agotado(s) bloqueado(s) en la tienda${errs ? ` · ${errs} con error` : ''}`, errs ? 'error' : 'success')
+    comparar()
+  }
+
   async function comparar() {
     setCargando(true)
     setSinSecretos(null)
@@ -240,13 +269,23 @@ export default function Tienda() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-semibold">🛍 Tienda vs Sistema</h1>
-        <button
-          onClick={comparar}
-          disabled={cargando}
-          className="px-3 py-2 rounded-lg bg-[#15151A] text-white text-sm disabled:opacity-50"
-        >
-          {cargando ? 'Consultando Shopify…' : '↻ Comparar con Shopify'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={bloquearAgotados}
+            disabled={bloqueando}
+            title={`Pone en 0 (Agotado) en la tienda "${tienda}" lo que Orbital tiene sin stock`}
+            className="px-3 py-2 rounded-lg border border-red-300 text-red-700 bg-white text-sm disabled:opacity-50"
+          >
+            {bloqueando ? 'Bloqueando…' : `🚫 Bloquear agotados (${tienda})`}
+          </button>
+          <button
+            onClick={comparar}
+            disabled={cargando}
+            className="px-3 py-2 rounded-lg bg-[#15151A] text-white text-sm disabled:opacity-50"
+          >
+            {cargando ? 'Consultando Shopify…' : '↻ Comparar con Shopify'}
+          </button>
+        </div>
       </div>
 
       {sinSecretos && (
