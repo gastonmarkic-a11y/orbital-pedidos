@@ -115,7 +115,9 @@ export function calcularBono(
   }
 }
 
-/** Cuenta regresiva legible: "47:12:05". Devuelve null si ya venció. */
+/** Cuenta regresiva legible: "47:12:05". Devuelve null si ya venció.
+ *  Arriba de 4 días pasa a "12d 07:45" — un contador de tres dígitos de horas
+ *  no se lee como urgencia, se lee como error. */
 export function cuentaRegresiva(vence: string, ahora = Date.now()): string | null {
   const ms = new Date(vence).getTime() - ahora
   if (ms <= 0) return null
@@ -123,5 +125,6 @@ export function cuentaRegresiva(vence: string, ahora = Date.now()): string | nul
   const m = Math.floor((ms % 3600000) / 60000)
   const s = Math.floor((ms % 60000) / 1000)
   const dd = (n: number) => String(n).padStart(2, '0')
+  if (h >= 96) return `${Math.floor(h / 24)}d ${dd(h % 24)}:${dd(m)}`
   return `${dd(h)}:${dd(m)}:${dd(s)}`
 }
