@@ -221,12 +221,30 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 }
 
 // ── Portón de bloqueo: el link ya está en uso en otro dispositivo ──
-function BloqueoGate({ label, vendedorTel }: { label: string | null; vendedorTel?: string | null }) {
+function BloqueoGate({ label, vendedorTel, codigo }: {
+  label: string | null; vendedorTel?: string | null; codigo?: string | null
+}) {
   const optica = (label?.split(' - ')[1] || label || 'tu óptica').trim()
+  const [tel, setTel] = useState(vendedorTel || null)
+  const [agotado, setAgotado] = useState(false)
+  const [yendo, setYendo] = useState(false)
   // El pedido de acceso va al vendedor del token; si no tiene teléfono cargado, cae en IRIS.
-  const wa = (vendedorTel || '').replace(/\D/g, '') || '5491178548316'
+  const wa = (tel || '').replace(/\D/g, '') || '5491178548316'
   const msg = `Hola! Soy ${optica}. Quiero abrir mi catálogo Orbital desde este dispositivo, ¿me lo habilitás?`
   const waLink = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`
+
+  // Primera vez que un cliente choca con el candado, se habilita solo y entra.
+  // A partir de la segunda ya necesita que lo habilite el vendedor.
+  async function entrarIgual() {
+    if (!codigo) return
+    setYendo(true)
+    const { data } = await supabase.rpc('catalogo_autoacceso', { p: codigo, p_device: deviceId() })
+    const r = data as { ok: boolean; motivo?: string; vendedor_tel?: string | null }
+    if (r?.ok) { window.location.reload(); return }
+    if (r?.vendedor_tel) setTel(r.vendedor_tel)
+    setAgotado(true); setYendo(false)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
       <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8 text-center">
@@ -234,14 +252,32 @@ function BloqueoGate({ label, vendedorTel }: { label: string | null; vendedorTel
         <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
         <div className="text-4xl mb-3">🔒</div>
         <p className="text-sm font-bold text-[#0a0a0a] mb-1">Catálogo exclusivo de {optica}</p>
-        <p className="text-sm text-neutral-600 mb-5">
-          Este link es personal y ya está en uso en otro dispositivo. Por seguridad, no se abre en uno nuevo sin autorización.
-        </p>
-        <a href={waLink} target="_blank" rel="noreferrer"
-          className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium">
-          Pedir acceso a mi vendedor
-        </a>
-        <p className="text-[11px] text-neutral-400 mt-3">Ya le avisamos a tu vendedor. En cuanto te habilite, recargá esta página.</p>
+        {agotado ? (
+          <>
+            <p className="text-sm text-neutral-600 mb-5">
+              Este link ya se abrió en varios dispositivos. Para sumar uno más te lo tiene que habilitar tu vendedor.
+            </p>
+            <a href={waLink} target="_blank" rel="noreferrer"
+              className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium">
+              Pedir acceso a mi vendedor
+            </a>
+            <p className="text-[11px] text-neutral-400 mt-3">Ya le avisamos. En cuanto te habilite, recargá esta página.</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-neutral-600 mb-5">
+              Este link es personal y ya está abierto en otro dispositivo. Podés habilitar este por única vez.
+            </p>
+            <button onClick={entrarIgual} disabled={yendo}
+              className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium disabled:opacity-60">
+              {yendo ? 'Habilitando…' : 'Habilitar este dispositivo y entrar'}
+            </button>
+            <a href={waLink} target="_blank" rel="noreferrer"
+              className="block w-full rounded-lg border border-black/10 text-neutral-600 py-2.5 text-sm font-medium mt-2">
+              Prefiero avisarle a mi vendedor
+            </a>
+          </>
+        )}
       </div>
     </div>
   )
@@ -518,7 +554,7 @@ export default function CatalogoPublico() {
   function irInicio() { setGrupoActivo(null); setQ('') }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
-  if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} />
+  if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} codigo={clave} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
   const navPill = (active: boolean, accent: Grupo['accent']) =>
