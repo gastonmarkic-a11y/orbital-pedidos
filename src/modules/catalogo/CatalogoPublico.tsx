@@ -221,9 +221,10 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 }
 
 // ── Portón de bloqueo: el link ya está en uso en otro dispositivo ──
-function BloqueoGate({ label }: { label: string | null }) {
+function BloqueoGate({ label, vendedorTel }: { label: string | null; vendedorTel?: string | null }) {
   const optica = (label?.split(' - ')[1] || label || 'tu óptica').trim()
-  const wa = '5491178548316' // Orbital (IRIS)
+  // El pedido de acceso va al vendedor del token; si no tiene teléfono cargado, cae en IRIS.
+  const wa = (vendedorTel || '').replace(/\D/g, '') || '5491178548316'
   const msg = `Hola! Soy ${optica}. Quiero abrir mi catálogo Orbital desde este dispositivo, ¿me lo habilitás?`
   const waLink = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`
   return (
@@ -406,7 +407,7 @@ export default function CatalogoPublico() {
     return localStorage.getItem(CLAVE_KEY)
   })
   const [claveOk, setClaveOk] = useState(false)
-  const [bloqueo, setBloqueo] = useState<{ label: string | null } | null>(null)
+  const [bloqueo, setBloqueo] = useState<{ label: string | null; vendedor_tel?: string | null } | null>(null)
   const [acceso, setAcceso] = useState<Acceso | null>(() => {
     try { return JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') } catch { return null }
   })
@@ -442,7 +443,7 @@ export default function CatalogoPublico() {
         setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
       } else if (r?.motivo === 'otro_dispositivo') {
         // El link ya está en uso en otro equipo: no lo borramos, mostramos la pantalla de pedir acceso.
-        setBloqueo({ label: r.label ?? null })
+        setBloqueo({ label: r.label ?? null, vendedor_tel: r.vendedor_tel ?? null })
       } else {
         localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setClave(null); setAcceso(null)
       }
@@ -517,7 +518,7 @@ export default function CatalogoPublico() {
   function irInicio() { setGrupoActivo(null); setQ('') }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
-  if (bloqueo) return <BloqueoGate label={bloqueo.label} />
+  if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
   const navPill = (active: boolean, accent: Grupo['accent']) =>
@@ -846,7 +847,7 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
   const [paraQuien, setParaQuien] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [result, setResult] = useState<{ pedido_id: number; cliente: string; identificado: boolean } | null>(null)
+  const [result, setResult] = useState<{ cliente: string; identificado: boolean } | null>(null)
 
   async function enviar() {
     setEnviando(true); setErr(null)
@@ -864,13 +865,13 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
     })
     setEnviando(false)
     if (error) { setErr('No se pudo enviar. Revisá la conexión.'); return }
-    const r = data as { ok: boolean; need?: string; error?: string; pedido_id?: number; cliente?: string; identificado?: boolean }
+    const r = data as { ok: boolean; need?: string; error?: string; precarga_id?: number; cliente?: string; identificado?: boolean }
     if (!r.ok) {
       if (r.need === 'razon') { setPedirRazon(true); setErr('No encontramos tu óptica. Ingresá la razón social para registrar el pedido.') }
       else setErr(r.error || 'No se pudo enviar.')
       return
     }
-    setResult({ pedido_id: r.pedido_id!, cliente: r.cliente!, identificado: !!r.identificado })
+    setResult({ cliente: r.cliente!, identificado: !!r.identificado })
     setFase('ok'); onDone()
   }
 
@@ -886,7 +887,7 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
         {fase === 'ok' && result ? (
           <div className="p-6 text-center">
             <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><Check size={28} /></div>
-            <p className="text-sm font-semibold">¡Recibimos tu pedido! (N° {result.pedido_id})</p>
+            <p className="text-sm font-semibold">¡Recibimos tu pedido!</p>
             <p className="text-sm text-neutral-500 mt-1">{result.cliente}</p>
             <p className="text-xs text-neutral-400 mt-3">
               {result.identificado ? 'Tu vendedor asignado lo va a revisar y confirmar a la brevedad.' : 'Un asesor comercial se va a contactar para confirmar los datos.'}

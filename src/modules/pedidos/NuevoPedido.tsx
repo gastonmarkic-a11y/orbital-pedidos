@@ -66,6 +66,14 @@ export default function NuevoPedido() {
   // Precargas de foto (IRIS leyó un pedido por WhatsApp → acá se activa).
   type Precarga = { conversacion_id: string; cod_cliente: string | null; cliente_razon: string | null; vendedor: string | null; items: { sku: string | null; modelo: string | null; color: string | null; cantidad: number; estado: string }[] }
   const [precargas, setPrecargas] = useState<Precarga[]>([])
+  // Pedidos que la óptica armó sola en el catálogo web (catalogo_precarga).
+  type PrecargaWeb = {
+    id: number; cod_cliente: string | null; cliente_razon: string | null; vendedor: string | null
+    contacto: string | null; wsp: string | null; mail: string | null; obs: string | null
+    items: { codigo: string; modelo?: string | null; descripcion?: string | null; cantidad: number; precio?: number }[]
+    total_units: number; importe: number; created_at: string
+  }
+  const [webs, setWebs] = useState<PrecargaWeb[]>([])
   // SKUs para los que el vendedor eligió el precio de preventa
   const [preventaSel, setPreventaSel] = useState<Set<string>>(new Set())
   // SKUs marcados como regalo/bonificación (precio 0)
@@ -209,6 +217,35 @@ export default function NuevoPedido() {
       .eq('estado', 'listo').order('updated_at', { ascending: false }).limit(10)
       .then(({ data }) => setPrecargas((data ?? []) as Precarga[]))
   }, [])
+
+  // Pedidos armados por la óptica en el catálogo web: quedan acá esperando que el
+  // vendedor los complete (lista, comercial/financiero, condición de pago) y confirme.
+  useEffect(() => {
+    supabase.from('catalogo_precarga')
+      .select('id, cod_cliente, cliente_razon, vendedor, contacto, wsp, mail, obs, items, total_units, importe, created_at')
+      .eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => setWebs((data ?? []) as PrecargaWeb[]))
+  }, [])
+
+  // Carga el pedido web en el formulario: cliente + carrito, listo para poner condiciones.
+  async function cargarWeb(w: PrecargaWeb) {
+    if (w.cod_cliente) {
+      const { data: c } = await supabase.from('clientes').select('*').eq('cod', w.cod_cliente).maybeSingle()
+      if (c) { setCliente(c as Cliente) }
+    }
+    if (w.mail) setMail(w.mail)
+    if (w.wsp) setWsp(w.wsp)
+    const nuevo: Record<string, number> = {}
+    for (const it of w.items || []) if (it.codigo) nuevo[it.codigo] = (nuevo[it.codigo] || 0) + (it.cantidad || 1)
+    setCart(nuevo)
+    await supabase.from('catalogo_precarga').update({ estado: 'cargado' }).eq('id', w.id)
+    setWebs((prev) => prev.filter((x) => x.id !== w.id))
+    toast(`🛒 Pedido web cargado${w.cod_cliente ? '' : ' · sin cliente identificado, elegilo a mano'}. Poné lista y condiciones y confirmá.`, 'success')
+  }
+  async function descartarWeb(w: PrecargaWeb) {
+    await supabase.from('catalogo_precarga').update({ estado: 'descartado' }).eq('id', w.id)
+    setWebs((prev) => prev.filter((x) => x.id !== w.id))
+  }
 
   // Reposiciones de consigna pendientes de aprobar (se generan al confirmar una venta de consigna).
   function cargarReposiciones() {
@@ -759,6 +796,30 @@ export default function NuevoPedido() {
             <b>Modo reposición</b> — {cliente?.razon ?? cliente?.cod}. El stock que ves es el <b>depósito central</b> (de ahí se
             despacha). Sumá lo que quieras. Al confirmar, <b>baja el central</b> y <b>rellena la consigna</b> del cliente.
           </p>
+        </div>
+      )}
+
+      {webs.length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-indigo-800">🛒 Pedidos del catálogo web (armados por la óptica)</p>
+          <p className="text-[11px] text-indigo-700/80 -mt-1">
+            Cargalos acá, definí lista y condiciones, y confirmá. Hasta que no los confirmes no son un pedido.
+          </p>
+          {webs.map((w) => (
+            <div key={w.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-indigo-100 p-2">
+              <div className="min-w-0 text-xs">
+                <b>{w.cliente_razon ?? w.cod_cliente ?? 'Sin cliente'}</b>
+                <span className="text-muted"> · {w.total_units} u. · ${Math.round(w.importe).toLocaleString('es-AR')}</span>
+                {w.vendedor ? <span className="text-muted"> · {w.vendedor}</span> : null}
+                {w.contacto ? <div className="text-muted truncate">Contacto: {w.contacto}{w.wsp ? ` · ${w.wsp}` : ''}</div> : null}
+                {w.obs ? <div className="text-muted truncate">{w.obs}</div> : null}
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button onClick={() => cargarWeb(w)} className="text-[11px] font-semibold rounded-lg bg-indigo-600 text-white px-2.5 py-1.5">Cargar</button>
+                <button onClick={() => descartarWeb(w)} className="text-[11px] rounded-lg border border-black/10 px-2 py-1.5 text-muted">Descartar</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
