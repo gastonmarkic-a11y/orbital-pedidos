@@ -74,7 +74,8 @@ function ClaveGate({ onOk }: { onOk: (c: string) => void }) {
   const [loading, setLoading] = useState(false)
   async function probar(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setErr(null)
-    const { data, error } = await supabase.rpc('catalogo_clave_ok', { p: v.trim() })
+    // puerta propia del cobranding: los tokens B2B no entran acá y viceversa
+    const { data, error } = await supabase.rpc('zn_clave_ok', { p: v.trim() })
     setLoading(false)
     if (error) { setErr('Error de conexión'); return }
     if (data === true) { localStorage.setItem(CLAVE_KEY, v.trim()); onOk(v.trim()) }
@@ -146,7 +147,7 @@ function SkuCard({ modelo, f, zn, orb, onToggle, onQuitar }: {
         {e === 'ideal' && <div className="text-[8px] font-bold uppercase mt-0.5 tracking-widest">★ Ideal · ZN + Orbital</div>}
         {e === 'zn' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: VERDE }}>Elige ZN</div>}
         {e === 'orb' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: ROJO }}>Sugiere Orbital</div>}
-        {!f.ok && <div className="text-[8px] text-amber-600 font-bold uppercase mt-0.5">Sin reposición</div>}
+        {!f.ok && <div className="text-[8px] text-amber-600 font-bold uppercase mt-0.5">Sin stock futuro</div>}
       </div>
       <Marcas e={e} />
       {onQuitar && (
@@ -234,7 +235,7 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
               <Marcas e={estadoDe(act.cod, zn, orb)} size={26} />
               {!act.ok && (
                 <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-amber-500 text-white text-[10px] font-bold px-2 py-1">
-                  <AlertTriangle size={11} />Sin reposición
+                  <AlertTriangle size={11} />Sin stock futuro
                 </span>
               )}
             </div>
@@ -270,7 +271,7 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
                     {f.u ? <img src={f.u} alt={f.c || ''} className="w-full h-full object-contain p-1" loading="lazy" /> : <Placeholder />}
                   </div>
                   <Marcas e={e} />
-                  {!f.ok && e === 'no' && <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-amber-500" title="Sin reposición" />}
+                  {!f.ok && e === 'no' && <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-amber-500" title="Sin stock futuro" />}
                   <div className="px-1 py-1 flex items-center gap-1 bg-white border-t border-black/5">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10" style={{ background: colorSwatch(f.c) }} />
                     <span className="text-[8px] leading-tight text-neutral-600 truncate">{colorLegible(f.c)}</span>
@@ -353,7 +354,11 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
         {alerta.length > 0 && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900 flex gap-2">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span><b>{alerta.length} {alerta.length === 1 ? 'SKU' : 'SKU'} sin reposición</b> (menos de 20 unidades entre stock y proyectado): {alerta.map((i) => `${i.modelo} ${colorLegible(i.f.c)}`).join(' · ')}. Conviene reemplazarlos.</span>
+            <span>
+              <b>Análisis de stock futuro:</b> {alerta.length === 1 ? 'este color no tiene' : `estos ${alerta.length} colores no tienen`} reposición
+              proyectada para sostener la colección — {alerta.map((i) => `${i.modelo} ${colorLegible(i.f.c)}`).join(' · ')}.
+              Conviene reemplazar{alerta.length === 1 ? 'lo' : 'los'} por otro color del mismo modelo.
+            </span>
           </div>
         )}
         {bloques.map((b) => {
@@ -437,6 +442,10 @@ export default function CatalogoZN() {
   const [cargando, setCargando] = useState(true)
   const [selZN, setSelZN] = useState<Set<string>>(new Set())
   const [selOrb, setSelOrb] = useState<Set<string>>(new Set())
+  // Recién cuando cargó la base se puede escribir el borrador local. Si no, el
+  // estado inicial vacío pisa el borrador y en la recarga siguiente aparece todo
+  // desmarcado aunque la base tenga las marcas.
+  const [listo, setListo] = useState(false)
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('Todos')
   const [abierto, setAbierto] = useState<number | null>(null)
@@ -464,12 +473,16 @@ export default function CatalogoZN() {
       const local = crudo ? new Set<string>(JSON.parse(crudo)) : null
       if (miRol === 'zn') { setSelZN(local ?? baseZN); setSelOrb(baseOrb) }
       else { setSelOrb(local ?? baseOrb); setSelZN(baseZN) }
+      setListo(true)
       if (urlK) localStorage.setItem(CLAVE_KEY, urlK)
     })
   }, [clave])
 
   const mio = rol === 'zn' ? selZN : selOrb
-  useEffect(() => { localStorage.setItem(SEL_KEY + ':' + rol, JSON.stringify(Array.from(mio))) }, [mio, rol])
+  useEffect(() => {
+    if (!listo) return
+    localStorage.setItem(SEL_KEY + ':' + rol, JSON.stringify(Array.from(mio)))
+  }, [mio, rol, listo])
 
   // con una hoja abierta, la página de atrás no debe scrollear (mobile)
   useEffect(() => {
