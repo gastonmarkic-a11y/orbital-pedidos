@@ -96,7 +96,10 @@ export default function ProspeccionSocial() {
   const toast = useToast()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
-  const [vista, setVista] = useState<'busqueda' | 'recepcion'>('busqueda')
+  // El origen (nos buscaron o los buscamos) es un ATRIBUTO del contacto, no un embudo aparte:
+  // filtra la lista, pero el embudo y los contadores siempre miran el pozo completo.
+  const [fOrigen, setFOrigen] = useState<'' | 'meta' | 'busqueda'>('')
+  const [herramientasOpen, setHerramientasOpen] = useState(false)
   const [filtro, setFiltro] = useState<'pend' | 'enviado' | 'respondio' | 'todos'>('pend')
   const [fZona, setFZona] = useState('')
   const [fWa, setFWa] = useState(false)
@@ -296,12 +299,12 @@ export default function ProspeccionSocial() {
   }
 
   // Todos los contadores (embudo, tabs, zonas) respetan la pestaña activa (Búsqueda vs Recepción).
-  const itemsVista = useMemo(() => items.filter((i) => (vista === 'recepcion' ? esInbound(i.canal) : !esInbound(i.canal))), [items, vista])
+  const itemsVista = useMemo(() => items.filter((i) => i.estado !== 'descartado'), [items])
   const zonas = useMemo(() => [...new Set(itemsVista.map((i) => i.zona).filter(Boolean))].sort() as string[], [itemsVista])
 
   const filtrados = useMemo(() => {
     let base = items.filter((i) => i.estado !== 'descartado')
-    base = base.filter((i) => (vista === 'recepcion' ? esInbound(i.canal) : !esInbound(i.canal)))
+    if (fOrigen) base = base.filter((i) => (fOrigen === 'meta' ? esInbound(i.canal) : !esInbound(i.canal)))
     if (filtro === 'pend') base = base.filter((i) => i.estado === 'nuevo')
     else if (filtro === 'enviado') base = base.filter((i) => i.estado === 'enviado')
     else if (filtro === 'respondio') base = base.filter((i) => ['respondio', 'whatsapp'].includes(i.estado))
@@ -313,7 +316,7 @@ export default function ProspeccionSocial() {
     if (fCampana) base = base.filter((i) => (adRefs[i.id]?.campaign_name ?? '') === fCampana)
     if (ordenPrioridad) base = [...base].sort((a, b) => scoreDe(b) - scoreDe(a))
     return base
-  }, [items, vista, filtro, fZona, fWa, fIg, fWeb, fEtapa, fCampana, adRefs, ordenPrioridad, personas])
+  }, [items, fOrigen, filtro, fZona, fWa, fIg, fWeb, fEtapa, fCampana, adRefs, ordenPrioridad, personas])
 
   // Resumen por aviso (Recepción): cuántos entraron / contactados por IRIS / respondieron.
   const statsAvisos = useMemo(() => {
@@ -407,16 +410,25 @@ export default function ProspeccionSocial() {
           <h1 className="text-lg font-bold">📣 Cola de prospección social</h1>
           <p className="text-xs text-muted">Cada contacto con su mensaje listo. Copiás, abrís el perfil y enviás — 2 clics.</p>
         </div>
-        {vista === 'busqueda' && <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>}
+        {herramientasOpen && <button onClick={() => setNuevoOpen((o) => !o)} className="text-xs font-medium bg-brand text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><Plus size={14} />Agregar</button>}
       </div>
 
-      {/* Dos motores: Búsqueda (salimos a cazar) vs Recepción (nos buscan a nosotros). */}
-      <div className="flex gap-1.5">
-        {([['busqueda', '🔍 Búsqueda', items.filter((i) => !esInbound(i.canal) && i.estado !== 'descartado').length], ['recepcion', '📣 Recepción', items.filter((i) => esInbound(i.canal) && i.estado !== 'descartado').length]] as const).map(([k, l, n]) => (
-          <button key={k} onClick={() => setVista(k as 'busqueda' | 'recepcion')} className={`flex-1 text-[13px] rounded-xl px-3 py-2.5 border font-semibold ${vista === k ? (k === 'recepcion' ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-ink text-white border-ink') : 'bg-white border-black/10 text-muted'}`}>{l} <span className="opacity-70">({n})</span></button>
+      {/* Un solo embudo. El origen es un atributo del contacto, no una pestaña aparte. */}
+      <div className="flex gap-1.5 items-center flex-wrap">
+        {([['', 'Todos', itemsVista.length],
+           ['meta', '📣 Nos buscaron', itemsVista.filter((i) => esInbound(i.canal)).length],
+           ['busqueda', '🔍 Los buscamos', itemsVista.filter((i) => !esInbound(i.canal)).length]] as const).map(([k, l, n]) => (
+          <button key={k || 'todos'} onClick={() => setFOrigen(k as '' | 'meta' | 'busqueda')}
+            className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fOrigen === k ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>
+            {l} <span className="opacity-60">({n})</span>
+          </button>
         ))}
+        <button onClick={() => setHerramientasOpen((x) => !x)}
+          className="shrink-0 text-[12px] rounded-full px-3 py-1.5 border border-black/10 bg-white text-muted font-medium ml-auto">
+          {herramientasOpen ? '✕ Cerrar' : '＋ Traer ópticas'}
+        </button>
       </div>
-      {vista === 'recepcion' && (<>
+      {statsAvisos.length > 0 && (<>
         <p className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2">Gente que nos busca (Meta, redes, formularios). Los que entran en vivo los abre <b>IRIS solo</b> y te llegan a <b>🧑 Para vos</b> cuando responden. Los <b>✋ Sin contactar</b> (importados) los abrís vos con el mensaje listo.</p>
         {/* Resumen por aviso: cuántos entraron / contactó IRIS / respondieron, con link al aviso */}
         {statsAvisos.length > 0 && (
@@ -450,7 +462,7 @@ export default function ProspeccionSocial() {
         )}
       </>)}
 
-      {vista === 'busqueda' && (<>
+      {herramientasOpen && (<>
       {/* Buscar ópticas: UN botón hace todo (descubre + robot completa el email). */}
       <div className="bg-white rounded-2xl border border-black/10 p-3">
         <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">🔎 Buscar ópticas por ciudad</p>
@@ -564,9 +576,7 @@ export default function ProspeccionSocial() {
 
       {/* Filtros */}
       <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {(vista === 'recepcion'
-          ? [['enviado', `🤖 IRIS escribió (${cuenta('enviado')})`], ['respondio', `🧑 Para vos (${cuenta('respondio')})`], ['pend', `Sin contactar (${cuenta('nuevo')})`], ['todos', 'Todos']] as [typeof filtro, string][]
-          : [['pend', `A enviar (${cuenta('nuevo')})`], ['enviado', `Enviados (${cuenta('enviado')})`], ['respondio', `Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as [typeof filtro, string][]).map(([k, l]) => (
+        {([['pend', `Sin contactar (${cuenta('nuevo')})`], ['enviado', `Contactados (${cuenta('enviado')})`], ['respondio', `🧑 Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as [typeof filtro, string][]).map(([k, l]) => (
           <button key={k} onClick={() => setFiltro(k)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${filtro === k ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>{l}</button>
         ))}
       </div>
@@ -586,7 +596,7 @@ export default function ProspeccionSocial() {
       </div>
 
       {loading ? <p className="text-sm text-muted p-4">Cargando…</p> : filtrados.length === 0 ? (
-        <div className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">Sin contactos en esta vista. Agregá targets o esperá al descubridor.</div>
+        <div className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">Sin contactos con estos filtros. Probá con “Todos” o traé ópticas nuevas.</div>
       ) : (
         <div className="space-y-2">
           {filtrados.map((it) => (
@@ -598,6 +608,9 @@ export default function ProspeccionSocial() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {it.canal === 'meta_b2b' && <span className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700">Meta</span>}
+                  {/* Con la lista unificada, la etapa es lo que ordena la cabeza del prospectador. */}
+                  {(() => { const e = EMBUDO[etapaIdx(it.etapa || 'presentacion')]
+                    return <span className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 ${e.c}`} title={e.label}>{e.emoji}</span> })()}
                   {ordenPrioridad && <span className="text-[10px] font-bold text-amber-600" title="prioridad">{scoreDe(it)}</span>}
                   <span className="text-[11px] tracking-tight">{it.telefono ? '📲' : ''}{it.email ? '✉️' : ''}{it.instagram ? '📷' : ''}{it.web ? '🌐' : ''}</span>
                   <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ESTADOS[it.estado]?.c ?? 'bg-black/5'}`}>{ESTADOS[it.estado]?.t ?? it.estado}</span>
