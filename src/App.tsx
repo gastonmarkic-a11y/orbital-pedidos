@@ -42,6 +42,7 @@ import Clientes from './modules/pedidos/Clientes'
 import Produccion from './modules/pedidos/Produccion'
 import Tienda from './modules/pedidos/Tienda'
 import Publicidad from './modules/publicidad/Publicidad'
+import PanelCanales from './modules/panel/PanelCanales'
 import Liquidacion from './modules/liquidacion/Liquidacion'
 import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
@@ -192,6 +193,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
+      { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
@@ -484,6 +486,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'tienda') && <Route path="/tienda" element={<Tienda />} />}
           {(rol === 'admin' || rol === 'tienda') && <Route path="/mercadolibre/precios" element={<PreciosML />} />}
           {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
+          {rol === 'admin' && <Route path="/panel-canales" element={<PanelCanales />} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
