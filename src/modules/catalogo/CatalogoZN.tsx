@@ -214,16 +214,15 @@ function ResumenSheet({ modelos, sel, toggle, onClose, clave }: {
 }) {
   const [guardando, setGuardando] = useState(false)
   const [ok, setOk] = useState(false)
-  const grupos = useMemo(() => {
-    const g: { modelo: string; fotos: ZFoto[] }[] = []
-    for (const m of modelos) {
-      const fs = (m.fotos || []).filter((f) => sel.has(f.cod))
-      if (fs.length) g.push({ modelo: m.modelo, fotos: fs })
-    }
-    return g.sort((a, b) => a.modelo.localeCompare(b.modelo))
+  // lista plana: un ítem por SKU elegido, con el detalle completo del color
+  const items = useMemo(() => {
+    const out: { modelo: string; f: ZFoto }[] = []
+    for (const m of modelos) for (const f of m.fotos || []) if (sel.has(f.cod)) out.push({ modelo: m.modelo, f })
+    return out.sort((a, b) => a.modelo.localeCompare(b.modelo) || colorLegible(a.f.c).localeCompare(colorLegible(b.f.c)))
   }, [modelos, sel])
-  const total = grupos.reduce((a, g) => a + g.fotos.length, 0)
-  const alerta = grupos.flatMap((g) => g.fotos).filter((f) => !f.ok)
+  const total = items.length
+  const nModelos = new Set(items.map((i) => i.modelo)).size
+  const alerta = items.filter((i) => !i.f.ok)
 
   async function guardar() {
     setGuardando(true)
@@ -238,7 +237,7 @@ function ResumenSheet({ modelos, sel, toggle, onClose, clave }: {
         <button onClick={onClose} className="p-2 -ml-2"><X size={20} /></button>
         <div className="text-center">
           <div className="text-[13px] font-bold tracking-wide uppercase">La colección</div>
-          <div className="text-[10px] text-neutral-500">{grupos.length} modelos · {total} colores</div>
+          <div className="text-[10px] text-neutral-500">{nModelos} modelos · {total} SKU</div>
         </div>
         <div className="w-8" />
       </div>
@@ -248,37 +247,33 @@ function ResumenSheet({ modelos, sel, toggle, onClose, clave }: {
         {alerta.length > 0 && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900 flex gap-2">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span><b>{alerta.length} {alerta.length === 1 ? 'color elegido' : 'colores elegidos'} sin reposición</b> (menos de 20 unidades entre stock y proyectado): {alerta.map((f) => colorLegible(f.c)).join(' · ')}. Conviene reemplazarlos.</span>
+            <span><b>{alerta.length} {alerta.length === 1 ? 'SKU elegido' : 'SKU elegidos'} sin reposición</b> (menos de 20 unidades entre stock y proyectado): {alerta.map((i) => `${i.modelo} ${colorLegible(i.f.c)}`).join(' · ')}. Conviene reemplazarlos.</span>
           </div>
         )}
-        {grupos.map((g) => (
-          <div key={g.modelo} className="mb-6">
-            <div className="flex items-baseline gap-2 mb-2">
-              <h3 className="text-[13px] font-bold tracking-wide uppercase">{g.modelo}</h3>
-              <span className="text-[10px] text-neutral-400">{g.fotos.length} {g.fotos.length === 1 ? 'color' : 'colores'}</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {g.fotos.map((f) => (
-                <div key={f.cod} className="relative rounded-xl overflow-hidden bg-white border border-black/10">
-                  <div className="aspect-[4/3]">
-                    {f.u ? <img src={f.u} alt={f.c || ''} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder />}
-                  </div>
-                  <div className="px-2 py-1.5 border-t border-black/5">
-                    <div className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10" style={{ background: colorSwatch(f.c) }} />
-                      <span className="text-[10px] leading-tight truncate">{colorLegible(f.c)}</span>
-                    </div>
-                    <div className="text-[8px] text-neutral-400 uppercase tracking-wide">{f.tp || ''} · {f.cod}</div>
-                  </div>
-                  {!f.ok && <span className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full bg-amber-500" />}
-                  <button onClick={() => toggle(f.cod)} className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center">
-                    <X size={12} />
-                  </button>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {items.map(({ modelo, f }) => (
+            <div key={f.cod} className="relative rounded-xl overflow-hidden bg-white border border-black/10 flex flex-col">
+              <div className="aspect-[4/3]">
+                {f.u ? <img src={f.u} alt={f.c || ''} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder />}
+              </div>
+              <div className="px-2 py-2 border-t border-black/5 flex-1">
+                <div className="text-[11px] font-bold tracking-wide uppercase leading-tight">{modelo}</div>
+                <div className="flex items-start gap-1 mt-1">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10 mt-0.5" style={{ background: colorSwatch(f.c) }} />
+                  <span className="text-[10px] leading-snug">{colorLegible(f.c)}</span>
                 </div>
-              ))}
+                <div className="text-[8px] text-neutral-400 uppercase tracking-wide mt-1">
+                  {f.tp || ''}{f.t ? ` · ${f.t}` : ''}
+                </div>
+                <div className="text-[8px] text-neutral-400 tracking-wide">REF {f.cod}</div>
+                {!f.ok && <div className="text-[8px] text-amber-600 font-bold uppercase mt-0.5">Sin reposición</div>}
+              </div>
+              <button onClick={() => toggle(f.cod)} className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center">
+                <X size={12} />
+              </button>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="border-t border-black/10 bg-white p-3 shrink-0 flex gap-2">
@@ -292,8 +287,22 @@ function ResumenSheet({ modelos, sel, toggle, onClose, clave }: {
   )
 }
 
-const FILTROS = ['Todos', 'Elegidos', 'Sin elegir', 'Novedades', 'Sol', 'Receta'] as const
+const FILTROS = ['Todos', 'Elegidos', 'Sin elegir', 'Novedades'] as const
 type Filtro = typeof FILTROS[number]
+
+// La grilla se muestra dividida por categoría, en este orden.
+const CATEGORIAS: { key: string; label: string }[] = [
+  { key: 'urbano', label: 'Urbanos' },
+  { key: 'deportivo', label: 'Deportivos' },
+  { key: 'zaira nara', label: 'Zaira Nara' },
+  { key: 'oportunidades', label: 'Oportunidades' },
+  { key: '_otros', label: 'Otros' },
+]
+const catDe = (m: ZModelo): string => {
+  const c = (m.clasificaciones || [])[0]
+  return c && CATEGORIAS.some((x) => x.key === c) ? c : '_otros'
+}
+const slugCat = (k: string) => 'cat-' + k.replace(/\s+/g, '-')
 
 export default function CatalogoZN() {
   const urlK = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('k') : null
@@ -341,11 +350,17 @@ export default function CatalogoZN() {
       if (filtro === 'Elegidos') return cuenta(m) > 0
       if (filtro === 'Sin elegir') return cuenta(m) === 0
       if (filtro === 'Novedades') return m.novedad
-      if (filtro === 'Sol') return (m.tipos || []).includes('sol')
-      if (filtro === 'Receta') return (m.tipos || []).includes('receta')
       return true
     })
   }, [modelos, q, filtro, sel])
+
+  // grilla partida por categoría (solo las que tienen algo con el filtro puesto)
+  const secciones = useMemo(
+    () => CATEGORIAS.map((c) => ({ ...c, items: lista.filter((m) => catDe(m) === c.key) })).filter((s) => s.items.length),
+    [lista],
+  )
+  // el orden de ‹ › dentro de la hoja sigue el orden visible (por categoría)
+  const orden = useMemo(() => secciones.flatMap((s) => s.items), [secciones])
 
   const totalSel = sel.size
   const modelosSel = modelos.filter((m) => cuenta(m) > 0).length
@@ -388,20 +403,45 @@ export default function CatalogoZN() {
           ))}
         </div>
 
+        {secciones.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">
+            {secciones.map((s) => (
+              <a key={s.key} href={`#${slugCat(s.key)}`}
+                className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium bg-white border border-black/10 text-neutral-600">
+                {s.label} <span className="text-neutral-400">{s.items.length}</span>
+              </a>
+            ))}
+          </div>
+        )}
+
         {cargando && <p className="text-sm text-neutral-500 py-16 text-center">Cargando modelos…</p>}
         {!cargando && lista.length === 0 && <p className="text-sm text-neutral-500 py-16 text-center">No hay modelos con ese filtro.</p>}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {lista.map((m) => (
-            <ModeloCard key={m.modelo} m={m} elegidos={cuenta(m)} onOpen={() => setAbierto(modelos.indexOf(m))} />
-          ))}
-        </div>
+        {secciones.map((s) => {
+          const eleg = s.items.reduce((a, m) => a + cuenta(m), 0)
+          return (
+            <section key={s.key} id={slugCat(s.key)} className="mb-8 scroll-mt-20">
+              <div className="flex items-baseline gap-2 mb-2 border-b border-black/10 pb-1.5">
+                <h2 className="text-[12px] font-bold tracking-[0.18em] uppercase">{s.label}</h2>
+                <span className="text-[10px] text-neutral-400">
+                  {s.items.length} {s.items.length === 1 ? 'modelo' : 'modelos'}
+                  {eleg > 0 && <span className="text-emerald-600 font-bold"> · {eleg} elegidos</span>}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {s.items.map((m) => (
+                  <ModeloCard key={m.modelo} m={m} elegidos={cuenta(m)} onOpen={() => setAbierto(orden.indexOf(m))} />
+                ))}
+              </div>
+            </section>
+          )
+        })}
       </div>
 
-      {abierto !== null && modelos[abierto] && (
-        <ColorSheet m={modelos[abierto]} sel={sel} toggle={toggle} onClose={() => setAbierto(null)}
+      {abierto !== null && orden[abierto] && (
+        <ColorSheet m={orden[abierto]} sel={sel} toggle={toggle} onClose={() => setAbierto(null)}
           onPrev={abierto > 0 ? () => setAbierto(abierto - 1) : undefined}
-          onNext={abierto < modelos.length - 1 ? () => setAbierto(abierto + 1) : undefined} />
+          onNext={abierto < orden.length - 1 ? () => setAbierto(abierto + 1) : undefined} />
       )}
       {resumen && <ResumenSheet modelos={modelos} sel={sel} toggle={toggle} onClose={() => setResumen(false)} clave={clave} />}
     </div>
