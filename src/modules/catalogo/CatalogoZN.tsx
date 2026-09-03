@@ -11,7 +11,7 @@
 // (todas las posiciones aunque no tengan stock), y solo con foto. Ver vista zn_universo.
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2 } from 'lucide-react'
+import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2, BarChart3 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 
 const CLAVE_KEY = 'orbital_zn_clave'
@@ -540,6 +540,211 @@ function MisLinks({ clave }: { clave: string }) {
   )
 }
 
+// ── Dashboard de ZN ─────────────────────────────────────────────────────────
+// SOLO lo suyo: su alcance, sus visitas, sus pedidos, su venta y su 10%.
+// Deliberadamente NO trae nada del panel interno de Orbital (ventas B2B,
+// inversión en pauta, ROAS, parámetros de canal, estado de integraciones).
+const C_SHOPIFY = '#eb6834'
+const C_ML = '#1baf7a'
+
+type SerieMes = { periodo: string; shopify: number; ml: number; alcance: number; visitas: number; pedidos: number }
+type TopMod = { modelo: string; neta: number; shopify: number; ml: number }
+type Resumen = { hay_datos: boolean; serie: SerieMes[]; top: TopMod[] }
+
+// Ejemplo que se muestra SOLO mientras no haya seguimiento conectado, con el
+// cartel puesto. En cuanto entra la primera fila real, se usa la real.
+const EJEMPLO: Resumen = {
+  hay_datos: false,
+  serie: [
+    { periodo: '2026-04', shopify: 1_940_000, ml: 620_000, alcance: 386_000, visitas: 4_120, pedidos: 61 },
+    { periodo: '2026-05', shopify: 2_380_000, ml: 810_000, alcance: 441_000, visitas: 5_060, pedidos: 78 },
+    { periodo: '2026-06', shopify: 2_120_000, ml: 1_140_000, alcance: 402_000, visitas: 4_780, pedidos: 74 },
+    { periodo: '2026-07', shopify: 3_060_000, ml: 1_490_000, alcance: 588_000, visitas: 6_940, pedidos: 108 },
+    { periodo: '2026-08', shopify: 3_840_000, ml: 1_920_000, alcance: 671_000, visitas: 8_310, pedidos: 131 },
+  ],
+  top: [
+    { modelo: 'ADELAIDA', neta: 1_640_000, shopify: 1_190_000, ml: 450_000 },
+    { modelo: '5TH AVENUE', neta: 1_280_000, shopify: 980_000, ml: 300_000 },
+    { modelo: 'BUENOS AIRES I', neta: 1_010_000, shopify: 640_000, ml: 370_000 },
+    { modelo: 'CENTRAL PARK', neta: 780_000, shopify: 520_000, ml: 260_000 },
+    { modelo: 'ZETA 8', neta: 540_000, shopify: 310_000, ml: 230_000 },
+  ],
+}
+
+const mesCorto = (p: string) => {
+  const M = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  const [y, m] = p.split('-')
+  return `${M[+m - 1]} ${y.slice(2)}`
+}
+
+function Dashboard({ clave }: { clave: string }) {
+  const [r, setR] = useState<Resumen | null>(null)
+  useEffect(() => {
+    supabase.rpc('zn_resumen', { p_clave: clave }).then(({ data }) => {
+      const d = data as Resumen | null
+      setR(d && d.hay_datos && d.serie.length ? d : EJEMPLO)
+    })
+  }, [clave])
+
+  if (!r) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
+
+  const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+  const kM = (n: number) => '$' + (n / 1_000_000).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + 'M'
+  const ult = r.serie[r.serie.length - 1]
+  const prev = r.serie[r.serie.length - 2]
+  const netaMes = ult ? ult.shopify + ult.ml : 0
+  const netaPrev = prev ? prev.shopify + prev.ml : 0
+  const delta = netaPrev ? ((netaMes / netaPrev - 1) * 100) : 0
+  const maxMes = Math.max(...r.serie.map((s) => s.shopify + s.ml), 1)
+  const maxTop = Math.max(...r.top.map((t) => t.neta), 1)
+
+  // Embudo: cada paso con su conversión respecto del anterior.
+  const pasos = ult ? [
+    { k: 'Alcance', v: ult.alcance, sub: 'personas que vieron el posteo' },
+    { k: 'Visitas al link', v: ult.visitas, sub: 'entraron al anteojo' },
+    { k: 'Pedidos', v: ult.pedidos, sub: 'compraron' },
+  ] : []
+
+  return (
+    <>
+      <div className="mb-4">
+        <h1 className="text-[15px] font-bold tracking-wide uppercase">Mi dashboard</h1>
+        <p className="text-[11px] text-neutral-500 mt-1">
+          Cómo viene rindiendo lo que promocionás, mes a mes y por anteojo.
+        </p>
+      </div>
+
+      {!r.hay_datos && (
+        <div className="mb-4 rounded-xl border border-dashed border-black/25 bg-white p-3 text-[11px] flex gap-2">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5 text-neutral-500" />
+          <span>
+            <b>Números de ejemplo.</b> Todavía no está conectado el seguimiento de la tienda ni el de
+            Mercado Libre, así que esto muestra cómo se va a ver. En cuanto empiecen a llegar los datos
+            reales, la pantalla los usa sola.
+          </span>
+        </div>
+      )}
+
+      {/* Lo primero: la plata */}
+      <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">
+              {ult ? mesCorto(ult.periodo) : '—'} · tu {PCT_ZN}% sobre la venta neta
+            </div>
+            <div className="text-[32px] font-bold leading-none mt-1">{kAr(netaMes * PCT_ZN / 100)}</div>
+            {prev && (
+              <div className="text-[11px] mt-1" style={{ color: delta >= 0 ? '#6ee7b7' : '#fca5a5' }}>
+                {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)}% vs {mesCorto(prev.periodo)}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-5 text-[11px]">
+            {[['Venta neta', kAr(netaMes)], ['Visitas', (ult?.visitas ?? 0).toLocaleString('es-AR')],
+              ['Pedidos', (ult?.pedidos ?? 0).toLocaleString('es-AR')]].map(([k, v]) => (
+              <div key={k}>
+                <div className="text-[9px] uppercase tracking-wide opacity-50">{k}</div>
+                <div className="font-bold">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Embudo */}
+      <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide">De la publicación a la venta</h2>
+        <p className="text-[10px] text-neutral-500 mb-3">{ult ? mesCorto(ult.periodo) : ''}</p>
+        {/* Escalones, no barras proporcionales: entre 671.000 y 131 no hay barra
+            que se pueda dibujar sin que la última quede invisible. Lo que importa
+            acá es el salto de un paso al siguiente. */}
+        <div>
+          {pasos.map((p, i) => {
+            const anterior = i > 0 ? pasos[i - 1].v : null
+            return (
+              <div key={p.k}>
+                {anterior != null && (
+                  <div className="flex items-center gap-2 py-1 pl-3">
+                    <span className="w-px h-4 bg-black/15" />
+                    <span className="text-[10px] text-neutral-500">
+                      pasó el <b className="text-black">{((p.v / anterior) * 100).toFixed(1)}%</b>
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-baseline justify-between gap-3 rounded-lg bg-[#F5F5F7] px-3 py-2">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wide">{p.k}</div>
+                    <div className="text-[10px] text-neutral-500">{p.sub}</div>
+                  </div>
+                  <div className="text-[20px] font-bold tabular-nums leading-none">{p.v.toLocaleString('es-AR')}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Evolución mensual, apilada por canal */}
+      <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide">Venta neta por mes</h2>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 mb-3">
+          <span className="inline-flex items-center gap-1.5 text-[10px] text-neutral-500">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: C_SHOPIFY }} />Tienda Orbital
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[10px] text-neutral-500">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: C_ML }} />Mercado Libre
+          </span>
+        </div>
+        <div className="flex items-end gap-2 h-44">
+          {r.serie.map((s) => {
+            const tot = s.shopify + s.ml
+            const h = (tot / maxMes) * 100
+            return (
+              <div key={s.periodo} className="flex-1 flex flex-col items-center justify-end h-full">
+                <div className="text-[9px] font-bold mb-1 tabular-nums">{kM(tot)}</div>
+                <div className="w-full flex flex-col justify-end gap-[2px]" style={{ height: `${h}%` }}>
+                  <div style={{ background: C_ML, height: `${(s.ml / tot) * 100}%`, borderRadius: '4px 4px 0 0' }} />
+                  <div style={{ background: C_SHOPIFY, height: `${(s.shopify / tot) * 100}%` }} />
+                </div>
+                <div className="text-[9px] text-neutral-500 mt-1">{mesCorto(s.periodo)}</div>
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-[10px] text-neutral-400 mt-2">
+          Tu {PCT_ZN}% del último mes: <b className="text-black">{kAr(netaMes * PCT_ZN / 100)}</b>
+        </p>
+      </div>
+
+      {/* Qué anteojo rinde más */}
+      <div className="bg-white rounded-xl p-4 border border-black/10">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide">Qué anteojos rinden más</h2>
+        <p className="text-[10px] text-neutral-500 mb-3">Venta neta acumulada, dividida por dónde se compró.</p>
+        <div className="space-y-2.5">
+          {r.top.map((t) => (
+            <div key={t.modelo}>
+              <div className="flex justify-between text-[11px] mb-0.5">
+                <span className="font-bold uppercase tracking-wide">{t.modelo}</span>
+                <span className="tabular-nums text-neutral-500">
+                  {kAr(t.neta)} <span className="text-black font-bold">· tu {PCT_ZN}%: {kAr(t.neta * PCT_ZN / 100)}</span>
+                </span>
+              </div>
+              <div className="flex gap-[2px] h-3" style={{ width: `${(t.neta / maxTop) * 100}%` }}>
+                <div style={{ background: C_SHOPIFY, width: `${(t.shopify / t.neta) * 100}%`, borderRadius: '4px 0 0 4px' }} />
+                <div style={{ background: C_ML, width: `${(t.ml / t.neta) * 100}%`, borderRadius: '0 4px 4px 0' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
+        La venta neta es sin IVA y sin el envío, y descuenta devoluciones y pedidos cancelados del mes.
+      </p>
+    </>
+  )
+}
+
 const FILTROS = ['Todos', 'Elegidos ZN', 'Sugeridos Orbital', 'Coincidencias', 'Sin marcar', 'Novedades'] as const
 type Filtro = typeof FILTROS[number]
 // Con estos filtros la grilla muestra directamente el SKU, no la tarjeta de modelo.
@@ -575,7 +780,7 @@ export default function CatalogoZN() {
   const [filtro, setFiltro] = useState<Filtro>('Todos')
   const [abierto, setAbierto] = useState<number | null>(null)
   const [resumen, setResumen] = useState(false)
-  const [tab, setTab] = useState<'coleccion' | 'links'>('coleccion')
+  const [tab, setTab] = useState<'coleccion' | 'links' | 'dash'>('coleccion')
 
   useEffect(() => {
     if (!clave) return
@@ -695,7 +900,7 @@ export default function CatalogoZN() {
         </div>
         {/* Dos vistas: armar la colección y ver lo que rinde cada link. */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
-          {([['coleccion', 'Colección', Layers], ['links', 'Mis links', Link2]] as const).map(([k, lbl, Ic]) => (
+          {([['coleccion', 'Colección', Layers], ['links', 'Mis links', Link2], ['dash', 'Dashboard', BarChart3]] as const).map(([k, lbl, Ic]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold border-b-2 -mb-px ${
                 tab === k ? 'border-current' : 'border-transparent text-neutral-400'}`}
@@ -708,6 +913,8 @@ export default function CatalogoZN() {
 
       {tab === 'links' ? (
         <div className="max-w-6xl mx-auto px-4 py-5"><MisLinks clave={clave} /></div>
+      ) : tab === 'dash' ? (
+        <div className="max-w-6xl mx-auto px-4 py-5"><Dashboard clave={clave} /></div>
       ) : (
       <div className="max-w-6xl mx-auto px-4 py-5">
         <div className="mb-4">
