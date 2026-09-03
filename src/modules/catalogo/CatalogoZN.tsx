@@ -468,9 +468,16 @@ export default function CatalogoZN() {
       const baseOrb = new Set<string>(ms.flatMap((m) => (m.fotos || []).filter((f) => f.eo).map((f) => f.cod)))
       // El borrador local es la copia de trabajo de ESTE dispositivo y manda tal cual
       // (si se uniera con la base nunca se podría desmarcar algo sin guardar).
-      // Para volver a lo guardado está "Borrar mis marcas" en el resumen.
-      const crudo = localStorage.getItem(SEL_KEY + ':' + miRol)
-      const local = crudo ? new Set<string>(JSON.parse(crudo)) : null
+      // PERO un borrador VACÍO nunca gana: si ganara, un borrador vacío viejo
+      // dejaría la pantalla en cero con las marcas guardadas en la base y sin
+      // forma de recuperarlas (el botón de borrar se esconde cuando no hay marcas).
+      let local: Set<string> | null = null
+      try {
+        const crudo = localStorage.getItem(SEL_KEY + ':' + miRol)
+        const arr = crudo ? (JSON.parse(crudo) as string[]) : []
+        if (Array.isArray(arr) && arr.length) local = new Set(arr)
+        else localStorage.removeItem(SEL_KEY + ':' + miRol)
+      } catch { localStorage.removeItem(SEL_KEY + ':' + miRol) }
       if (miRol === 'zn') { setSelZN(local ?? baseZN); setSelOrb(baseOrb) }
       else { setSelOrb(local ?? baseOrb); setSelZN(baseZN) }
       setListo(true)
