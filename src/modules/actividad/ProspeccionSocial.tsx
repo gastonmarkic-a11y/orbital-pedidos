@@ -100,7 +100,9 @@ export default function ProspeccionSocial() {
   // filtra la lista, pero el embudo y los contadores siempre miran el pozo completo.
   const [fOrigen, setFOrigen] = useState<'' | 'meta' | 'busqueda'>('')
   const [herramientasOpen, setHerramientasOpen] = useState(false)
-  const [filtro, setFiltro] = useState<'pend' | 'enviado' | 'respondio' | 'todos'>('pend')
+  // El estado del último envío ya no filtra la lista: eso lo dice la etapa, que se mueve sola.
+  // Queda en 'todos' y el embudo es el único filtro de avance.
+  const [filtro, setFiltro] = useState<'pend' | 'enviado' | 'respondio' | 'todos'>('todos')
   const [fZona, setFZona] = useState('')
   const [fWa, setFWa] = useState(false)
   const [fIg, setFIg] = useState(false)
@@ -574,22 +576,12 @@ export default function ProspeccionSocial() {
         {fEtapa && <button onClick={() => setFEtapa('')} className="text-[10px] text-brandDark mt-1.5">✕ Ver todas las etapas</button>}
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {([['pend', `Sin contactar (${cuenta('nuevo')})`], ['enviado', `Contactados (${cuenta('enviado')})`], ['respondio', `🧑 Respondieron (${cuenta('respondio')})`], ['todos', 'Todos']] as [typeof filtro, string][]).map(([k, l]) => (
-          <button key={k} onClick={() => setFiltro(k)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${filtro === k ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>{l}</button>
-        ))}
-      </div>
-
-      {/* Filtros por zona / contacto */}
+            {/* Filtros por zona / contacto */}
       <div className="flex gap-1.5 items-center flex-wrap">
         <select value={fZona} onChange={(e) => setFZona(e.target.value)} className="shrink-0 text-[12px] rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-brandDark">
           <option value="">📍 Todas las zonas</option>
           {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
-        <button onClick={() => setFWa(!fWa)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWa ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10 text-muted'}`}>📲 WhatsApp</button>
-        <button onClick={() => setFIg(!fIg)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fIg ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>📷 IG</button>
-        <button onClick={() => setFWeb(!fWeb)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${fWeb ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 text-muted'}`}>🌐 Web</button>
         <button onClick={() => setOrdenPrioridad(!ordenPrioridad)} className={`shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-medium ${ordenPrioridad ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-black/10 text-muted'}`}>🔝 Prioridad</button>
         <button onClick={iniciarCampana} className="shrink-0 text-[12px] rounded-full px-3 py-1.5 border font-semibold bg-brand text-white border-brand">📣 Enviar campaña</button>
         <span className="text-[11px] text-faint ml-auto shrink-0">{filtrados.length} contactos</span>
