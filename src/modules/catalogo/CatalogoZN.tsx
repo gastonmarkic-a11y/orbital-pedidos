@@ -962,13 +962,35 @@ export default function CatalogoZN() {
     if (!agregados.length && !quitados.length) return
     const t = setTimeout(async () => {
       setSync('guardando')
-      const res = await Promise.all([
-        ...agregados.map((c) => supabase.rpc('zn_marcar', { p_clave: clave, p_codigo: c, p_valor: true })),
-        ...quitados.map((c) => supabase.rpc('zn_marcar', { p_clave: clave, p_codigo: c, p_valor: false })),
-      ])
-      if (res.some((r) => r.error)) { setSync('error'); return }
-      guardadoRef.current = JSON.stringify(Array.from(mio).sort())
-      setSync('ok')
+      // De a tandas chicas y en orden, no 60 llamadas en paralelo: desde un
+      // celular varias fallaban y se perdía TODO el lote. Cada código que entra
+      // se confirma en el acto, así lo que ya subió no se vuelve a perder
+      // aunque el resto falle.
+      const pasos: [string, boolean][] = [
+        ...agregados.map((c) => [c, true] as [string, boolean]),
+        ...quitados.map((c) => [c, false] as [string, boolean]),
+      ]
+      const confirmado = new Set(previo)
+      let fallo = false
+      for (let i = 0; i < pasos.length; i += 4) {
+        const tanda = pasos.slice(i, i + 4)
+        const res = await Promise.all(
+          tanda.map(async ([cod, val]) => {
+            for (let intento = 0; intento < 3; intento++) {
+              const { error } = await supabase.rpc('zn_marcar', { p_clave: clave, p_codigo: cod, p_valor: val })
+              if (!error) return { cod, val, ok: true }
+              await new Promise((r) => setTimeout(r, 400 * (intento + 1)))
+            }
+            return { cod, val, ok: false }
+          }),
+        )
+        for (const r of res) {
+          if (!r.ok) { fallo = true; continue }
+          if (r.val) confirmado.add(r.cod); else confirmado.delete(r.cod)
+        }
+        guardadoRef.current = JSON.stringify(Array.from(confirmado).sort())
+      }
+      setSync(fallo ? 'error' : 'ok')
     }, 700)
     return () => clearTimeout(t)
   }, [mio, listo, clave])
