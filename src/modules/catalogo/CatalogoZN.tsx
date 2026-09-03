@@ -974,7 +974,7 @@ export default function CatalogoZN() {
   mioRef.current = mio
   useEffect(() => {
     if (!listo || !clave) return
-    const id = setInterval(() => {
+    const refrescar = () => {
       supabase.rpc('zn_home', { p_clave: clave }).then(({ data, error }) => {
         if (error || !data) return
         const ms = data as ZModelo[]
@@ -995,8 +995,18 @@ export default function CatalogoZN() {
           guardadoRef.current = firmaBase
         }
       })
-    }, 30000)
-    return () => clearInterval(id)
+    }
+    // Volver a la pestaña refresca al toque: en el celular se abre la app y se
+    // mira, no se espera. Sin esto había que aguantar el intervalo o recargar.
+    const alVolver = () => { if (document.visibilityState === 'visible') refrescar() }
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener('focus', refrescar)
+    const id = setInterval(refrescar, 15000)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener('focus', refrescar)
+    }
   }, [listo, clave, rol])
 
   // con una hoja abierta, la página de atrás no debe scrollear (mobile)
