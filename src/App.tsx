@@ -52,6 +52,7 @@ import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
+import CatalogoZN from './modules/catalogo/CatalogoZN'
 import MiCatalogo from './modules/catalogo/MiCatalogo'
 import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
@@ -626,6 +627,14 @@ export default function App() {
     return (
       <ToastProvider>
         <CatalogoPublico />
+      </ToastProvider>
+    )
+  }
+  // Cobranding ZN: selección de colección SIN precios (modelo + color), no genera pedido.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/zn')) {
+    return (
+      <ToastProvider>
+        <CatalogoZN />
       </ToastProvider>
     )
   }
