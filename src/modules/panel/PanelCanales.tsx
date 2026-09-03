@@ -695,8 +695,8 @@ function OrganicoZN() {
           ?utm_source=ig_zn &nbsp;·&nbsp; utm_medium=organic &nbsp;·&nbsp; utm_campaign=zn_cobranding &nbsp;·&nbsp; utm_content=&lt;id del posteo&gt;
         </code>
         <span className="block mt-1">
-          Sin UTM la venta entra como “directo” y el posteo no se puede acreditar. En Mercado Libre no hay UTM:
-          se mide con una publicación distinta por posteo, o con el link de la Tienda Oficial y las visitas del ítem.
+          Sin UTM la venta entra como “directo” y el posteo no se puede acreditar. En Mercado Libre no van UTM:
+          el link sale del <b>Programa de Colaboradores</b>, que atribuye por sí mismo si el artículo convirtió o no.
         </span>
       </div>
     </div>

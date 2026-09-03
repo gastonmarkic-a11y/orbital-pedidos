@@ -11,7 +11,7 @@
 // (todas las posiciones aunque no tengan stock), y solo con foto. Ver vista zn_universo.
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers } from 'lucide-react'
+import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 
 const CLAVE_KEY = 'orbital_zn_clave'
@@ -415,6 +415,131 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
   )
 }
 
+// ── Mis links · vista de ZN sobre lo que promociona ─────────────────────────
+// Canal exclusivo digital: cada anteojo que promociona tiene su propio link.
+//   Shopify → link del producto + UTM (la atribución la da el UTM).
+//   Mercado Libre → link del Programa de Colaboradores (ML atribuye el ítem
+//   con su propio tracking, no usa UTM).
+const PCT_ZN = 10
+
+type ZLink = {
+  modelo: string; imagen: string | null; colores: number
+  url_shopify: string | null; url_ml: string | null
+  visitas: number; pedidos: number; venta_neta: number
+}
+
+function LinkFila({ label, url, color }: { label: string; url: string | null; color: string }) {
+  const [copiado, setCopiado] = useState(false)
+  if (!url) {
+    return (
+      <div className="flex items-center gap-2 text-[10px] text-neutral-400 py-1">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color, opacity: 0.3 }} />
+        <span className="flex-1">{label}</span>
+        <span className="italic">falta cargar</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2 text-[10px] py-1">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+      <a href={url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate underline decoration-black/20">{label}</a>
+      <button
+        onClick={() => { navigator.clipboard?.writeText(url).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }) }}
+        className="shrink-0 inline-flex items-center gap-1 rounded-md border border-black/10 px-1.5 py-0.5 font-bold">
+        {copiado ? <><Check size={9} strokeWidth={3} />Copiado</> : <><Copy size={9} />Copiar</>}
+      </button>
+    </div>
+  )
+}
+
+function MisLinks({ clave }: { clave: string }) {
+  const [filas, setFilas] = useState<ZLink[] | null>(null)
+  useEffect(() => {
+    supabase.rpc('zn_mis_links', { p_clave: clave, p_periodo: null }).then(({ data }) => setFilas((data as ZLink[]) || []))
+  }, [clave])
+
+  if (!filas) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
+
+  const neta = filas.reduce((a, f) => a + Number(f.venta_neta || 0), 0)
+  const visitas = filas.reduce((a, f) => a + f.visitas, 0)
+  const pedidos = filas.reduce((a, f) => a + f.pedidos, 0)
+  const comision = neta * (PCT_ZN / 100)
+  const sinLink = filas.filter((f) => !f.url_shopify && !f.url_ml).length
+  const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+
+  return (
+    <>
+      <div className="mb-4">
+        <h1 className="text-[15px] font-bold tracking-wide uppercase">Mis links</h1>
+        <p className="text-[11px] text-neutral-500 mt-1">
+          Canal <b>exclusivo digital</b>. Cada anteojo que promocionás tiene su link propio: el de la tienda
+          lleva tu etiqueta y el de Mercado Libre sale del Programa de Colaboradores. Lo que entra por ahí
+          es lo que se cuenta.
+        </p>
+      </div>
+
+      {/* Resumen del período: la venta neta y el 10% */}
+      <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">Mes en curso · {PCT_ZN}% sobre la venta neta</div>
+            <div className="text-[30px] font-bold leading-none mt-1">{kAr(comision)}</div>
+          </div>
+          <div className="flex gap-5 text-[11px]">
+            {[['Visitas', visitas.toLocaleString('es-AR')], ['Pedidos', pedidos.toLocaleString('es-AR')], ['Venta neta', kAr(neta)]].map(([k, v]) => (
+              <div key={k}>
+                <div className="text-[9px] uppercase tracking-wide opacity-50">{k}</div>
+                <div className="font-bold">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {sinLink > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900 flex gap-2">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span>
+            <b>{sinLink} de {filas.length} modelos todavía no tienen link cargado.</b> Hasta que estén, esos
+            anteojos no suman visitas ni ventas — el conteo arranca cuando el link existe.
+          </span>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {filas.map((f) => (
+          <div key={f.modelo} className="bg-white rounded-xl border border-black/10 overflow-hidden">
+            <div className="aspect-[4/3] bg-white">
+              {f.imagen ? <img src={f.imagen} alt={f.modelo} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder />}
+            </div>
+            <div className="px-3 py-2.5 border-t border-black/5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] font-bold tracking-wide uppercase">{f.modelo}</span>
+                <span className="text-[10px] text-neutral-400">{f.colores} {f.colores === 1 ? 'color' : 'colores'}</span>
+              </div>
+              <div className="mt-1.5 border-t border-black/5 pt-1">
+                <LinkFila label="Link tienda Orbital" url={f.url_shopify} color={AZUL} />
+                <LinkFila label="Link Mercado Libre" url={f.url_ml} color="#1baf7a" />
+              </div>
+              <div className="mt-1.5 border-t border-black/5 pt-1.5 flex justify-between text-[10px]">
+                <span className="text-neutral-500">Visitas <b className="text-black">{f.visitas.toLocaleString('es-AR')}</b></span>
+                <span className="text-neutral-500">Pedidos <b className="text-black">{f.pedidos.toLocaleString('es-AR')}</b></span>
+                <span className="text-neutral-500">Tu {PCT_ZN}% <b className="text-black">{kAr(Number(f.venta_neta || 0) * PCT_ZN / 100)}</b></span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
+        La venta neta es sin IVA y sin el envío, y descuenta devoluciones y pedidos cancelados del mes.
+        En la tienda se cuenta lo que entra por tu link; en Mercado Libre, lo que Colaboradores registra como
+        convertido en ese artículo.
+      </p>
+    </>
+  )
+}
+
 const FILTROS = ['Todos', 'Elegidos ZN', 'Sugeridos Orbital', 'Coincidencias', 'Sin marcar', 'Novedades'] as const
 type Filtro = typeof FILTROS[number]
 // Con estos filtros la grilla muestra directamente el SKU, no la tarjeta de modelo.
@@ -450,6 +575,7 @@ export default function CatalogoZN() {
   const [filtro, setFiltro] = useState<Filtro>('Todos')
   const [abierto, setAbierto] = useState<number | null>(null)
   const [resumen, setResumen] = useState(false)
+  const [tab, setTab] = useState<'coleccion' | 'links'>('coleccion')
 
   useEffect(() => {
     if (!clave) return
@@ -559,14 +685,30 @@ export default function CatalogoZN() {
               <span className="w-2 h-2 rounded-full" style={{ background: rol === 'zn' ? VERDE : ROJO }} />
               {rol === 'zn' ? 'Marcás como ZN' : 'Marcás como Orbital'}
             </span>
-            <button onClick={() => setResumen(true)}
-              className="inline-flex items-center gap-2 rounded-full text-white px-4 py-2 text-[12px] font-bold" style={{ background: AZUL }}>
-              <Layers size={14} />La colección · {ideal}★
-            </button>
+            {tab === 'coleccion' && (
+              <button onClick={() => setResumen(true)}
+                className="inline-flex items-center gap-2 rounded-full text-white px-4 py-2 text-[12px] font-bold" style={{ background: AZUL }}>
+                <Layers size={14} />La colección · {ideal}★
+              </button>
+            )}
           </div>
+        </div>
+        {/* Dos vistas: armar la colección y ver lo que rinde cada link. */}
+        <div className="max-w-6xl mx-auto px-4 flex gap-1">
+          {([['coleccion', 'Colección', Layers], ['links', 'Mis links', Link2]] as const).map(([k, lbl, Ic]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold border-b-2 -mb-px ${
+                tab === k ? 'border-current' : 'border-transparent text-neutral-400'}`}
+              style={tab === k ? { color: AZUL } : undefined}>
+              <Ic size={13} />{lbl}
+            </button>
+          ))}
         </div>
       </header>
 
+      {tab === 'links' ? (
+        <div className="max-w-6xl mx-auto px-4 py-5"><MisLinks clave={clave} /></div>
+      ) : (
       <div className="max-w-6xl mx-auto px-4 py-5">
         <div className="mb-4">
           <h1 className="text-[15px] font-bold tracking-wide uppercase">Selección de colección</h1>
@@ -651,6 +793,7 @@ export default function CatalogoZN() {
           </>
         )}
       </div>
+      )}
 
       {abierto !== null && orden[abierto] && (
         <ColorSheet m={orden[abierto]} rol={rol} zn={selZN} orb={selOrb} toggle={toggle} onClose={() => setAbierto(null)}
