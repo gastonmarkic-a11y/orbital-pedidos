@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, HelpCircle, MessageCircle, ChevronDown } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { calcularBono, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
@@ -120,7 +120,7 @@ function deviceId(): string {
     return d
   } catch { return '' }
 }
-interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null }
+interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null; vendedor_tel?: string | null }
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
 const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
@@ -436,6 +436,92 @@ function SectionRow({ grupo, items, row, onOpen, onQuick, onInfo }: {
   )
 }
 
+
+// ── Botón de ayuda del catálogo ──────────────────────────────────────────────
+// Respuestas automáticas de cómo funciona + WhatsApp del vendedor asignado.
+// El teléfono sale del token (vendedor de la óptica); si no hay, cae en IRIS.
+const TEL_IRIS = '5491178548316'
+const FAQ: { q: string; a: string }[] = [
+  { q: '¿Los precios que veo son los míos?',
+    a: 'Sí. Este catálogo se abre con tu link personal, así que los precios que ves son los de tu lista de óptica, sin IVA. No son precios de público.' },
+  { q: '¿Cómo armo un pedido?',
+    a: 'Entrá al modelo que te interese, elegí el color y la cantidad, y se suma a tu pedido. Cuando termines, tocá "Pedido" arriba a la derecha y confirmá. Te llega a tu vendedor para que valide stock y condiciones.' },
+  { q: '¿Lo que veo tiene stock?',
+    a: 'Sí. Solo se muestran los colores con stock disponible en este momento. Por eso a veces un modelo aparece con menos colores que en el catálogo PDF.' },
+  { q: '¿Puedo abrirlo desde otro dispositivo?',
+    a: 'Tu link funciona en hasta 2 dispositivos. Si querés sumar otro (por ejemplo la compu del local), escribile a tu vendedor y te lo habilita en el momento.' },
+  { q: '¿Qué es la Triple Protección?',
+    a: 'Es nuestra plataforma de cristales: UV400 + Blue Cut + Infrarrojo en un solo lente. Es única en el mercado argentino y es el principal argumento de venta en el mostrador.' },
+  { q: '¿Cuándo me llega el pedido?',
+    a: 'Una vez que tu vendedor confirma el pedido, se prepara y se despacha por el transporte que tengas acordado. Él te pasa el número de seguimiento cuando sale.' },
+]
+
+function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: string }) {
+  const [open, setOpen] = useState(false)
+  const [abierta, setAbierta] = useState<number | null>(null)
+  const optica = (acceso?.label?.split(' - ')[1] || acceso?.label || '').trim()
+  const vendedor = acceso?.vendedor || null
+  const tel = (acceso?.vendedor_tel || '').replace(/\D/g, '') || TEL_IRIS
+  const propio = !!acceso?.vendedor_tel
+  const msg = `Hola${vendedor && propio ? ` ${vendedor}` : ''}! Soy ${optica || 'una óptica'} y estoy en el catálogo online. Necesito una mano con:`
+  const wa = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} aria-label="Ayuda"
+        className={`fixed ${offset ?? "bottom-5"} right-5 z-30 flex items-center gap-2 rounded-full bg-white border border-black/10 shadow-lg px-4 py-3 text-sm font-medium text-[#0a0a0a] hover:border-[#0004FF]/40 transition-colors`}>
+        <HelpCircle size={18} className="text-[#0004FF]" />
+        <span className="hidden sm:inline">Ayuda</span>
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={() => setOpen(false)}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
+              <p className="font-semibold text-[15px]">¿Te ayudo?</p>
+              <button onClick={() => setOpen(false)} className="p-1"><X size={20} /></button>
+            </div>
+
+            <div className="px-4 pt-3 pb-1">
+              <p className="text-[13px] text-neutral-500">Las dudas más comunes, respondidas. Si necesitás algo puntual, escribinos.</p>
+            </div>
+
+            <div className="px-4 py-2 divide-y divide-black/5">
+              {FAQ.map((f, i) => (
+                <div key={i} className="py-1">
+                  <button onClick={() => setAbierta(abierta === i ? null : i)}
+                    className="w-full flex items-start justify-between gap-3 text-left py-2.5">
+                    <span className="text-[13.5px] font-medium leading-snug">{f.q}</span>
+                    <ChevronDown size={17} className={`shrink-0 mt-0.5 text-neutral-400 transition-transform ${abierta === i ? 'rotate-180' : ''}`} />
+                  </button>
+                  {abierta === i && <p className="text-[13px] text-neutral-600 leading-relaxed pb-3 pr-6">{f.a}</p>}
+                </div>
+              ))}
+            </div>
+
+            <div className="px-4 pb-5 pt-2">
+              <div className="rounded-xl border border-black/10 bg-[#F5F5F7] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 mb-1">
+                  {propio ? 'Tu vendedor de zona' : 'Atención Orbital'}
+                </p>
+                <p className="text-[15px] font-semibold">{propio && vendedor ? vendedor : 'Orbital Eyewear'}</p>
+                <p className="text-[13px] text-neutral-500 font-mono mt-0.5">
+                  +{tel.replace(/^(\d{2})(\d)(\d{2})(\d{4})(\d{4})$/, '$1 $2 $3 $4-$5')}
+                </p>
+                <a href={wa} target="_blank" rel="noreferrer"
+                  className="mt-3 w-full flex items-center justify-center gap-2 bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">
+                  <MessageCircle size={16} /> Escribir por WhatsApp
+                </a>
+                <p className="text-[11px] text-neutral-400 text-center mt-2">Lunes a viernes de 9 a 19 hs</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function CatalogoPublico() {
   // token del link (?k=) tiene prioridad sobre la clave guardada
   const [clave, setClave] = useState<string | null>(() => {
@@ -475,7 +561,7 @@ export default function CatalogoPublico() {
       if (r?.ok) {
         setClaveOk(true); setBloqueo(null)
         localStorage.setItem(CLAVE_KEY, clave)
-        const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor }
+        const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor, vendedor_tel: r.vendedor_tel ?? null }
         setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
       } else if (r?.motivo === 'otro_dispositivo') {
         // El link ya está en uso en otro equipo: no lo borramos, mostramos la pantalla de pedir acceso.
@@ -659,6 +745,11 @@ export default function CatalogoPublico() {
       {celebra && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
       {bonoCalc && !bonoCalc.vencido && !carritoOpen && !sel && !quick && (
         <BonoBarra calc={bonoCalc} onVerPares={() => verGrupo('oportunidades')} />
+      )}
+
+      {/* Ayuda al cliente: FAQ automática + WhatsApp del vendedor asignado */}
+      {!carritoOpen && !sel && !quick && !infoGrupo && (
+        <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (bonoCalc && !bonoCalc.vencido ? "bottom-44 md:bottom-5" : "bottom-20 md:bottom-5") : (bonoCalc && !bonoCalc.vencido ? "bottom-28 md:bottom-5" : "bottom-5")} />
       )}
 
       {/* Barra flotante de pedido en mobile */}
