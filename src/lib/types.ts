@@ -50,6 +50,8 @@ export interface Cliente {
   /** Prospector (Marketing=Luna / Damian) que derivó el contacto a un vendedor. Se fija arriba de la agenda hasta que lo toma. */
   derivado_por: string | null
   derivado_at: string | null
+  /** Igual que derivado_por pero estable: no se limpia cuando el vendedor toma el contacto. Es el que usa Liquidación. */
+  derivado_origen: string | null
   ultima_compra_fecha: string | null
   ultima_compra_monto: number | null
   unidades_2025: number | null

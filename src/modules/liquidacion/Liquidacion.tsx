@@ -7,10 +7,14 @@ import { fetchPaged } from '../../lib/fetchAll'
 // calculado directamente desde los datos reales de la app.
 //
 // Esquema (config en tabla comisiones_config):
-//   • Básico: básico × factor (Damián arrancó a mitad de mes → factor 0,5)
+//   • Básico: básico × factor. Si hay fila en comisiones_mes para ese mes-año,
+//     ese monto reemplaza el cálculo (alta o baja a mitad de mes), sin tocar
+//     los meses ya liquidados.
 //   • Propuestas válidas: solo Bienvenida / Plan Canje / Preventa, por cliente
 //     único. Cliente compartido con el otro prospector cuenta 0,5 (50/50).
-//   • Reuniones: derivaciones a un vendedor de campo con reunión asignada.
+//   • Reuniones: derivaciones a un vendedor de campo con reunión asignada. Cuentan
+//     tanto las cargadas desde la ficha del cliente (derivado_origen, estable) como
+//     las que quedaron registradas en la actividad. Un cliente cuenta una sola vez.
 //   • Cierres telefónicos: 3% de la facturación de ventas directas cerradas.
 
 interface Prospector {
@@ -38,6 +42,14 @@ interface ConfigCom {
   basico_piso: number | null
   extra_monto: number | null
   extra_label: string | null
+}
+
+// Ajuste del básico para un mes puntual (tabla comisiones_mes).
+interface ConfigMes {
+  codigo: string
+  mes_anio: string
+  basico_monto: number | null
+  nota: string | null
 }
 
 interface Resultado {
@@ -89,6 +101,7 @@ interface CliRow {
   razon: string | null
   nomcomerc: string | null
   derivado_at: string | null
+  derivado_origen: string | null
   proxima_agenda_fecha: string | null
 }
 
@@ -152,14 +165,16 @@ const CONSEJOS: Record<string, string> = {
 }
 
 // Reseña de acompañamiento: reconoce lo bueno, marca 1-2 mejoras y da un consejo.
-function generarResena(nombre: string, medioMes: boolean, metricas: MetricaObj[]): string[] {
+function generarResena(nombre: string, medioMes: boolean, metricas: MetricaObj[], notaPeriodo?: string | null): string[] {
   const conObjetivo = metricas.filter((m) => m.objetivo > 0)
   const bullets: string[] = []
 
   bullets.push(
-    medioMes
-      ? `${nombre} arrancó a mitad de mes, así que este primer período es de adaptación al rol — y aun así dejó una base concreta para construir.`
-      : `Primer mes de ${nombre} en el rol: etapa de adaptación, con una base para seguir construyendo.`
+    notaPeriodo
+      ? `Mes parcial de ${nombre}: ${notaPeriodo}. Los números de abajo son sobre ese período, no sobre el mes completo.`
+      : medioMes
+        ? `${nombre} arrancó a mitad de mes, así que este primer período es de adaptación al rol — y aun así dejó una base concreta para construir.`
+        : `Primer mes de ${nombre} en el rol: etapa de adaptación, con una base para seguir construyendo.`
   )
 
   if (conObjetivo.length) {
@@ -195,8 +210,9 @@ export default function Liquidacion() {
       const hasta = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`
       const todosCodigos = PROSPECTORES.flatMap((p) => p.codigos)
 
-      const [{ data: cfg }, { data: props }, { data: objs }] = await Promise.all([
+      const [{ data: cfg }, { data: cfgMes }, { data: props }, { data: objs }] = await Promise.all([
         supabase.from('comisiones_config').select('*'),
+        supabase.from('comisiones_mes').select('*').eq('mes_anio', mes),
         supabase.from('propuestas_julio').select('id, nombre'),
         supabase.from('objetivos_mes').select('*').eq('mes_anio', mes),
       ])
@@ -217,7 +233,7 @@ export default function Liquidacion() {
       // (que NO se borra) en vez de derivado_por (que se limpia cuando el vendedor la toma).
       const { data: cliDeriv } = await supabase
         .from('clientes')
-        .select('cod, razon, nomcomerc, derivado_at, proxima_agenda_fecha')
+        .select('cod, razon, nomcomerc, derivado_at, derivado_origen, proxima_agenda_fecha')
         .gte('derivado_at', desde)
         .lt('derivado_at', hasta)
         .not('proxima_agenda_fecha', 'is', null)
@@ -237,13 +253,15 @@ export default function Liquidacion() {
       for (let i = 0; i < faltan.length; i += 300) {
         const { data } = await supabase
           .from('clientes')
-          .select('cod, razon, nomcomerc, derivado_at, proxima_agenda_fecha')
+          .select('cod, razon, nomcomerc, derivado_at, derivado_origen, proxima_agenda_fecha')
           .in('cod', faltan.slice(i, i + 300))
         for (const c of (data as CliRow[]) ?? []) nombres.set(c.cod, c)
       }
 
       const cfgMap: Record<string, ConfigCom> = {}
       for (const c of (cfg as ConfigCom[]) ?? []) cfgMap[c.codigo] = c
+      const cfgMesMap: Record<string, ConfigMes> = {}
+      for (const c of (cfgMes as ConfigMes[]) ?? []) cfgMesMap[c.codigo] = c
 
       // cliente -> propuestas válidas recibidas, por prospector
       const propsPorCliente: Record<string, Map<string, Set<string>>> = {}
@@ -279,9 +297,18 @@ export default function Liquidacion() {
         // Reuniones válidas: derivaciones a un vendedor de campo (Adrián/Martín) con reunión.
         let reuniones = 0
         if (p.reunionesDe === 'actividad') {
-          // Registra la derivación en la actividad ("Derivado a Adrián/Martín ..."). Solo cuentan
-          // las que van a un vendedor de campo, no las derivaciones a Ventas para llamado.
+          // Dos vías, unificadas por cliente (nunca se paga dos veces el mismo):
+          //   a) la derivación hecha desde la ficha del cliente (RPC derivar_cliente), que deja
+          //      derivado_origen + derivado_at. derivado_origen NO se borra cuando el vendedor
+          //      toma el contacto, a diferencia de derivado_por.
+          //   b) la derivación registrada a mano en la actividad ("Derivado a Adrián/Martín ...").
+          //      No cuentan las "Derivación a Ventas": son para llamado, no reunión de campo.
           const clientesReunion = new Set<string>()
+          for (const c of ((cliDeriv as CliRow[]) ?? [])) {
+            // El prefijo de otro prospector manda: evita contarle la misma derivación a los dos.
+            const deOtro = PROSPECTORES.some((q) => q.codigo !== p.codigo && q.prefijoCod && (c.cod ?? '').startsWith(q.prefijoCod))
+            if (!deOtro && c.derivado_origen && p.codigos.includes(c.derivado_origen)) clientesReunion.add(c.cod)
+          }
           for (const a of acts) {
             if (!a.vendedor || !p.codigos.includes(a.vendedor) || !a.cod_cliente) continue
             const d = (a.actividad_desarrollo ?? '').toLowerCase()
@@ -299,6 +326,8 @@ export default function Liquidacion() {
         const facturacionCierres = cierresRows.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
 
         const c = cfgMap[p.codigo]
+        const ajusteMes = cfgMesMap[p.codigo]
+        const basicoMes = ajusteMes?.basico_monto != null ? Number(ajusteMes.basico_monto) : null
         const basico = Number(c?.basico ?? 0)
         const factor = Number(c?.factor_basico ?? 1)
         const tarifaProp = Number(c?.tarifa_propuesta ?? 0)
@@ -311,13 +340,15 @@ export default function Liquidacion() {
         const montoExtra = Number(c?.extra_monto ?? 0)
         const extraLabel = c?.extra_label ?? null
         const basicoCalculo =
-          umbral == null
-            ? `${money.format(basico)} × ${num.format(factor)}`
-            : superaUmbral
-              ? `${money.format(basico)} · llegó a ${umbral} propuestas`
-              : `piso ${money.format(basicoPiso)} · ${num.format(unidadesProp)} de ${umbral} propuestas`
+          basicoMes != null
+            ? `${money.format(basico)} · ${ajusteMes?.nota ?? 'período parcial'}`
+            : umbral == null
+              ? `${money.format(basico)} × ${num.format(factor)}`
+              : superaUmbral
+                ? `${money.format(basico)} · llegó a ${umbral} propuestas`
+                : `piso ${money.format(basicoPiso)} · ${num.format(unidadesProp)} de ${umbral} propuestas`
 
-        const montoBasico = basicoAplicado * factor
+        const montoBasico = basicoMes != null ? basicoMes : basicoAplicado * factor
         const montoPropuestas = unidadesProp * tarifaProp
         const montoReuniones = reuniones * tarifaReunion
         const montoCierres = facturacionCierres * pctCierre
@@ -328,19 +359,24 @@ export default function Liquidacion() {
         const objReuniones = obj?.objetivo_contactos ?? 0
         const objCierres = obj?.objetivo_ventas ?? 0
         // Techo: básico pleno + variables al objetivo + adicionales fijos.
-        const metaBasico = umbral == null ? montoBasico : basico * factor
+        const metaBasico = basicoMes != null ? basicoMes : umbral == null ? montoBasico : basico * factor
         const meta = metaBasico + objProp * tarifaProp + objReuniones * tarifaReunion + montoCierres + montoExtra
         const pctMeta = meta > 0 ? Math.min(100, Math.round((total / meta) * 100)) : 0
-        const resena = generarResena(p.nombre, factor < 1, [
-          { key: 'propuestas', label: 'propuestas', logrado: clientesUnicos, objetivo: objProp },
-          { key: 'reuniones', label: 'reuniones', logrado: reuniones, objetivo: objReuniones },
-          { key: 'cierres', label: 'cierres telefónicos', logrado: cierresRows.length, objetivo: objCierres },
-        ])
+        const resena = generarResena(
+          p.nombre,
+          factor < 1,
+          [
+            { key: 'propuestas', label: 'propuestas', logrado: clientesUnicos, objetivo: objProp },
+            { key: 'reuniones', label: 'reuniones', logrado: reuniones, objetivo: objReuniones },
+            { key: 'cierres', label: 'cierres telefónicos', logrado: cierresRows.length, objetivo: objCierres },
+          ],
+          ajusteMes?.nota ?? null
+        )
 
         out.push({
           codigo: p.codigo,
           nombre: p.nombre,
-          diasTexto: factor < 1 ? `Medio mes trabajado (factor ${num.format(factor)})` : 'Mes completo',
+          diasTexto: ajusteMes?.nota ?? (factor < 1 ? `Medio mes trabajado (factor ${num.format(factor)})` : 'Mes completo'),
           porPropuesta: [...conteoPropuesta.entries()].map(([nombre, clientes]) => ({ nombre, clientes })).sort((a, b) => b.clientes - a.clientes),
           clientesUnicos,
           compartidos,
