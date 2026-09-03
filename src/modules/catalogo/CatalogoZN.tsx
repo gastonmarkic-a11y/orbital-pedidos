@@ -292,12 +292,13 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
 }
 
 // ── Resumen comparado: el ideal (coincidencias) + lo de cada uno ──
-function ResumenSheet({ modelos, rol, zn, orb, toggle, onClose, clave }: {
+function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }: {
   modelos: ZModelo[]; rol: Rol; zn: Set<string>; orb: Set<string>
-  toggle: (c: string) => void; onClose: () => void; clave: string
+  toggle: (c: string) => void; limpiar: () => void; onClose: () => void; clave: string
 }) {
   const [guardando, setGuardando] = useState(false)
   const [ok, setOk] = useState(false)
+  const [confirmar, setConfirmar] = useState(false)
   const mio = rol === 'zn' ? zn : orb
 
   // un ítem por SKU marcado por cualquiera de los dos, con el detalle completo
@@ -322,6 +323,16 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, onClose, clave }: {
     const { error } = await supabase.rpc('zn_guardar', { p_clave: clave, p_items: Array.from(mio) })
     setGuardando(false)
     if (!error) { setOk(true); setTimeout(() => setOk(false), 2500) }
+  }
+
+  // Borra TODAS mis marcas (las de este rol): en pantalla, en el navegador y en la base.
+  // No toca las del otro rol.
+  async function borrarTodo() {
+    setGuardando(true)
+    await supabase.rpc('zn_guardar', { p_clave: clave, p_items: [] })
+    limpiar()
+    setGuardando(false)
+    setConfirmar(false)
   }
 
   return (
@@ -368,13 +379,32 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, onClose, clave }: {
         })}
       </div>
 
-      <div className="border-t border-black/10 bg-white p-3 shrink-0 flex gap-2">
-        <button onClick={onClose} className="flex-1 rounded-xl border border-black/15 py-3 text-sm font-medium">Seguir eligiendo</button>
-        <button onClick={guardar} disabled={guardando || mio.size === 0}
-          className="flex-1 rounded-xl text-white py-3 text-sm font-bold disabled:opacity-40"
-          style={{ background: ok ? VERDE : AZUL }}>
-          {guardando ? 'Guardando…' : ok ? '✓ Guardado' : `Guardar (${mio.size})`}
-        </button>
+      <div className="border-t border-black/10 bg-white p-3 shrink-0">
+        {mio.size > 0 && (
+          confirmar ? (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] text-neutral-600 flex-1">
+                ¿Borrar tus {mio.size} marcas {rol === 'zn' ? 'verdes' : 'rojas'}? Las del otro no se tocan.
+              </span>
+              <button onClick={() => setConfirmar(false)} className="rounded-lg border border-black/15 px-3 py-1.5 text-[11px]">No</button>
+              <button onClick={borrarTodo} disabled={guardando}
+                className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
+                style={{ background: ROJO }}>Sí, borrar</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmar(true)} className="text-[10px] text-neutral-400 underline mb-2">
+              Borrar mis {mio.size} marcas y empezar de cero
+            </button>
+          )
+        )}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-black/15 py-3 text-sm font-medium">Seguir eligiendo</button>
+          <button onClick={guardar} disabled={guardando || mio.size === 0}
+            className="flex-1 rounded-xl text-white py-3 text-sm font-bold disabled:opacity-40"
+            style={{ background: ok ? VERDE : AZUL }}>
+            {guardando ? 'Guardando…' : ok ? '✓ Guardado' : `Guardar (${mio.size})`}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -427,10 +457,13 @@ export default function CatalogoZN() {
       setModelos(ms)
       const baseZN = new Set<string>(ms.flatMap((m) => (m.fotos || []).filter((f) => f.ez).map((f) => f.cod)))
       const baseOrb = new Set<string>(ms.flatMap((m) => (m.fotos || []).filter((f) => f.eo).map((f) => f.cod)))
-      // lo local solo puede sumar sobre la selección propia (lo del otro es de lectura)
-      const local = new Set<string>(JSON.parse(localStorage.getItem(SEL_KEY + ':' + miRol) || '[]'))
-      if (miRol === 'zn') { setSelZN(local.size ? new Set([...baseZN, ...local]) : baseZN); setSelOrb(baseOrb) }
-      else { setSelOrb(local.size ? new Set([...baseOrb, ...local]) : baseOrb); setSelZN(baseZN) }
+      // El borrador local es la copia de trabajo de ESTE dispositivo y manda tal cual
+      // (si se uniera con la base nunca se podría desmarcar algo sin guardar).
+      // Para volver a lo guardado está "Borrar mis marcas" en el resumen.
+      const crudo = localStorage.getItem(SEL_KEY + ':' + miRol)
+      const local = crudo ? new Set<string>(JSON.parse(crudo)) : null
+      if (miRol === 'zn') { setSelZN(local ?? baseZN); setSelOrb(baseOrb) }
+      else { setSelOrb(local ?? baseOrb); setSelZN(baseZN) }
       if (urlK) localStorage.setItem(CLAVE_KEY, urlK)
     })
   }, [clave])
@@ -448,6 +481,11 @@ export default function CatalogoZN() {
   const toggle = (cod: string) => {
     const set = rol === 'zn' ? setSelZN : setSelOrb
     set((p) => { const n = new Set(p); if (n.has(cod)) n.delete(cod); else n.add(cod); return n })
+  }
+  // deja mis marcas en cero (pantalla + borrador del navegador); las del otro rol no se tocan
+  const limpiar = () => {
+    localStorage.removeItem(SEL_KEY + ':' + rol)
+    ;(rol === 'zn' ? setSelZN : setSelOrb)(new Set())
   }
   const nZN = (m: ZModelo) => (m.fotos || []).filter((f) => selZN.has(f.cod)).length
   const nOrb = (m: ZModelo) => (m.fotos || []).filter((f) => selOrb.has(f.cod)).length
@@ -600,7 +638,7 @@ export default function CatalogoZN() {
           onNext={abierto < orden.length - 1 ? () => setAbierto(abierto + 1) : undefined} />
       )}
       {resumen && (
-        <ResumenSheet modelos={modelos} rol={rol} zn={selZN} orb={selOrb} toggle={toggle}
+        <ResumenSheet modelos={modelos} rol={rol} zn={selZN} orb={selOrb} toggle={toggle} limpiar={limpiar}
           onClose={() => setResumen(false)} clave={clave} />
       )}
     </div>
