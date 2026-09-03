@@ -9,7 +9,7 @@
 //   · El "carrito" no dispara un pedido: abre el resumen comparado de lo elegido.
 // Universo: SKU con stock+proyectado >= 20, más las novedades de $72.000
 // (todas las posiciones aunque no tengan stock), y solo con foto. Ver vista zn_universo.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2, BarChart3 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
@@ -298,7 +298,6 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
   toggle: (c: string) => void; limpiar: () => void; onClose: () => void; clave: string
 }) {
   const [guardando, setGuardando] = useState(false)
-  const [ok, setOk] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
   const mio = rol === 'zn' ? zn : orb
 
@@ -318,13 +317,6 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
     { key: 'orb', titulo: 'Solo Orbital', color: ROJO, bajada: 'Sugerido por Orbital, ZN todavía no lo eligió.' },
   ]
   const alerta = items.filter((i) => !i.f.ok)
-
-  async function guardar() {
-    setGuardando(true)
-    const { error } = await supabase.rpc('zn_guardar', { p_clave: clave, p_items: Array.from(mio) })
-    setGuardando(false)
-    if (!error) { setOk(true); setTimeout(() => setOk(false), 2500) }
-  }
 
   // Borra TODAS mis marcas (las de este rol): en pantalla, en el navegador y en la base.
   // No toca las del otro rol.
@@ -402,14 +394,13 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
             </button>
           )
         )}
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 rounded-xl border border-black/15 py-3 text-sm font-medium">Seguir eligiendo</button>
-          <button onClick={guardar} disabled={guardando || mio.size === 0}
-            className="flex-1 rounded-xl text-white py-3 text-sm font-bold disabled:opacity-40"
-            style={{ background: ok ? VERDE : AZUL }}>
-            {guardando ? 'Guardando…' : ok ? '✓ Guardado' : `Guardar (${mio.size})`}
-          </button>
-        </div>
+        {/* Ya no hay botón Guardar: cada marca se guarda sola. */}
+        <button onClick={onClose} className="w-full rounded-xl text-white py-3 text-sm font-bold" style={{ background: AZUL }}>
+          Seguir eligiendo
+        </button>
+        <p className="text-[10px] text-neutral-400 text-center mt-1.5">
+          Se guarda solo: lo que marcás queda al toque, no hace falta confirmar.
+        </p>
       </div>
     </div>
   )
@@ -904,6 +895,11 @@ export default function CatalogoZN() {
   // estado inicial vacío pisa el borrador y en la recarga siguiente aparece todo
   // desmarcado aunque la base tenga las marcas.
   const [listo, setListo] = useState(false)
+  // Autoguardado: sin esto, lo que marca uno vive solo en SU navegador hasta que
+  // toca "Guardar", y el otro ve un número distinto. Firma de lo último que quedó
+  // efectivamente en la base, para no reescribir al pedo.
+  const guardadoRef = useRef<string>('')
+  const [sync, setSync] = useState<'ok' | 'guardando' | 'error'>('ok')
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('Todos')
   const [abierto, setAbierto] = useState<number | null>(null)
@@ -939,6 +935,10 @@ export default function CatalogoZN() {
       } catch { localStorage.removeItem(SEL_KEY + ':' + miRol) }
       if (miRol === 'zn') { setSelZN(local ?? baseZN); setSelOrb(baseOrb) }
       else { setSelOrb(local ?? baseOrb); setSelZN(baseZN) }
+      // La firma arranca en lo que dice la BASE, no en el borrador: si el
+      // borrador local trae marcas sin guardar, el autoguardado las sube solo.
+      const baseMio = miRol === 'zn' ? baseZN : baseOrb
+      guardadoRef.current = JSON.stringify(Array.from(baseMio).sort())
       setListo(true)
       if (urlK) localStorage.setItem(CLAVE_KEY, urlK)
     })
@@ -949,6 +949,55 @@ export default function CatalogoZN() {
     if (!listo) return
     localStorage.setItem(SEL_KEY + ':' + rol, JSON.stringify(Array.from(mio)))
   }, [mio, rol, listo])
+
+  // Autoguardado con espera: cada cambio se sube solo. Como zn_guardar reemplaza
+  // el set completo del rol y cada rol escribe SOLO su columna, no se pisan entre sí.
+  useEffect(() => {
+    if (!listo || !clave) return
+    const firma = JSON.stringify(Array.from(mio).sort())
+    if (firma === guardadoRef.current) return
+    const t = setTimeout(() => {
+      setSync('guardando')
+      supabase.rpc('zn_guardar', { p_clave: clave, p_items: Array.from(mio) }).then(({ error }) => {
+        if (error) setSync('error')
+        else { guardadoRef.current = firma; setSync('ok') }
+      })
+    }, 700)
+    return () => clearTimeout(t)
+  }, [mio, listo, clave])
+
+  // Refresco periódico contra la base, para que todos vean el mismo número sin
+  // recargar. Trae SIEMPRE lo del otro rol; y lo propio solo cuando no hay nada
+  // sin guardar en este dispositivo — así dos teléfonos del mismo rol convergen
+  // en vez de pisarse, y nunca se pierde lo que se acaba de marcar acá.
+  const mioRef = useRef(mio)
+  mioRef.current = mio
+  useEffect(() => {
+    if (!listo || !clave) return
+    const id = setInterval(() => {
+      supabase.rpc('zn_home', { p_clave: clave }).then(({ data, error }) => {
+        if (error || !data) return
+        const ms = data as ZModelo[]
+        setModelos(ms)
+        const de = (propio: boolean) => new Set<string>(
+          ms.flatMap((m) => (m.fotos || [])
+            .filter((f) => ((rol === 'zn') === propio ? f.ez : f.eo))
+            .map((f) => f.cod)),
+        )
+        ;(rol === 'zn' ? setSelOrb : setSelZN)(de(false))
+
+        const firmaLocal = JSON.stringify(Array.from(mioRef.current).sort())
+        if (firmaLocal !== guardadoRef.current) return   // hay cambios sin subir: no tocar
+        const base = de(true)
+        const firmaBase = JSON.stringify(Array.from(base).sort())
+        if (firmaBase !== firmaLocal) {
+          ;(rol === 'zn' ? setSelZN : setSelOrb)(base)
+          guardadoRef.current = firmaBase
+        }
+      })
+    }, 30000)
+    return () => clearInterval(id)
+  }, [listo, clave, rol])
 
   // con una hoja abierta, la página de atrás no debe scrollear (mobile)
   useEffect(() => {
@@ -1017,6 +1066,9 @@ export default function CatalogoZN() {
               style={{ borderColor: rol === 'zn' ? VERDE : ROJO, color: rol === 'zn' ? VERDE : ROJO }}>
               <span className="w-2 h-2 rounded-full" style={{ background: rol === 'zn' ? VERDE : ROJO }} />
               {rol === 'zn' ? 'Marcás como ZN' : 'Marcás como Orbital'}
+            </span>
+            <span className="text-[10px] tabular-nums" style={{ color: sync === 'error' ? ROJO : '#9CA3AF' }}>
+              {sync === 'guardando' ? 'Guardando…' : sync === 'error' ? '⚠ sin guardar' : 'Guardado'}
             </span>
             {tab === 'coleccion' && (
               <button onClick={() => setResumen(true)}
