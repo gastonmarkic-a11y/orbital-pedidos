@@ -26,6 +26,8 @@ interface Accion {
   nota: string | null
   toques_previos: number
   ultimo_toque: string | null
+  /** Lo último que anotó el vendedor sobre este cliente. Se lee ANTES de escribirle. */
+  nota_vendedor: string | null
 }
 
 const POSTA: Record<string, { label: string; calida: boolean }> = {
@@ -212,6 +214,14 @@ export default function MiTanda() {
 
               {/* Por qué le toca esto ahora — reemplaza a los filtros */}
               <p className="text-[13px] text-muted mt-4 leading-relaxed">{porQue(actual)}</p>
+
+              {/* Lo último que anotó el vendedor. Va antes del mensaje: cambia lo que le escribís. */}
+              {actual.nota_vendedor && (
+                <div className="mt-4 border-l-2 border-brandDark/40 pl-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Última nota del vendedor</p>
+                  <p className="text-[13px] text-ink mt-1 leading-relaxed">{actual.nota_vendedor}</p>
+                </div>
+              )}
 
               {actual.es_visita ? (
                 <div className="mt-5 rounded-lg border border-black/10 bg-black/[0.02] p-4 flex gap-3">
