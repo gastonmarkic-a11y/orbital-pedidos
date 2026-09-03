@@ -950,18 +950,25 @@ export default function CatalogoZN() {
     localStorage.setItem(SEL_KEY + ':' + rol, JSON.stringify(Array.from(mio)))
   }, [mio, rol, listo])
 
-  // Autoguardado con espera: cada cambio se sube solo. Como zn_guardar reemplaza
-  // el set completo del rol y cada rol escribe SOLO su columna, no se pisan entre sí.
+  // Autoguardado POR DIFERENCIA: sube solo los SKU que cambiaron acá, uno por uno.
+  // Mandar el set completo hacía que un dispositivo con estado viejo borrara lo
+  // que había agregado otro del mismo rol. Marcando de a uno, cada dispositivo
+  // toca únicamente lo suyo y las dos personas suman.
   useEffect(() => {
     if (!listo || !clave) return
-    const firma = JSON.stringify(Array.from(mio).sort())
-    if (firma === guardadoRef.current) return
-    const t = setTimeout(() => {
+    const previo = new Set<string>(JSON.parse(guardadoRef.current || '[]'))
+    const agregados = Array.from(mio).filter((c) => !previo.has(c))
+    const quitados = Array.from(previo).filter((c) => !mio.has(c))
+    if (!agregados.length && !quitados.length) return
+    const t = setTimeout(async () => {
       setSync('guardando')
-      supabase.rpc('zn_guardar', { p_clave: clave, p_items: Array.from(mio) }).then(({ error }) => {
-        if (error) setSync('error')
-        else { guardadoRef.current = firma; setSync('ok') }
-      })
+      const res = await Promise.all([
+        ...agregados.map((c) => supabase.rpc('zn_marcar', { p_clave: clave, p_codigo: c, p_valor: true })),
+        ...quitados.map((c) => supabase.rpc('zn_marcar', { p_clave: clave, p_codigo: c, p_valor: false })),
+      ])
+      if (res.some((r) => r.error)) { setSync('error'); return }
+      guardadoRef.current = JSON.stringify(Array.from(mio).sort())
+      setSync('ok')
     }, 700)
     return () => clearTimeout(t)
   }, [mio, listo, clave])
