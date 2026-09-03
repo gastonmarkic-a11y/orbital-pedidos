@@ -482,7 +482,7 @@ function MisLinks({ clave }: { clave: string }) {
       <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">Mes en curso · {PCT_ZN}% sobre la venta neta</div>
+            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">Mes en curso</div>
             <div className="text-[30px] font-bold leading-none mt-1">{kAr(comision)}</div>
           </div>
           <div className="flex gap-5 text-[11px]">
@@ -549,7 +549,22 @@ const C_ML = '#1baf7a'
 
 type SerieMes = { periodo: string; shopify: number; ml: number; alcance: number; visitas: number; pedidos: number }
 type TopMod = { modelo: string; neta: number; shopify: number; ml: number }
-type Resumen = { hay_datos: boolean; serie: SerieMes[]; top: TopMod[] }
+type Fuente = 'zn' | 'orbital' | 'meta'
+type Origen = { fuente: Fuente; alcance: number; visitas: number; pedidos: number; neta: number; acciones: number }
+type Post = {
+  id: number; fecha: string; fuente: Fuente; red: string; tipo: string; modelo: string
+  destino: 'shopify' | 'ml'; url_pub: string | null; url_der: string | null
+  alcance: number; visitas: number; pedidos: number; neta: number
+}
+type Resumen = { hay_datos: boolean; serie: SerieMes[]; top: TopMod[]; origenes: Origen[]; posts: Post[] }
+
+// De dónde vino el resultado. La pauta va en gris: es el punto de comparación,
+// no el sujeto. Los dos orgánicos llevan color porque son lo que se compara.
+const FUENTE: Record<Fuente, { label: string; corto: string; color: string }> = {
+  zn: { label: 'Orgánico · cuenta de Zaira', corto: 'ZN', color: '#4a3aa7' },
+  orbital: { label: 'Orgánico · canales de Orbital', corto: 'Orbital', color: '#2a78d6' },
+  meta: { label: 'Pauta de Meta', corto: 'Meta', color: '#8d8a82' },
+}
 
 // Ejemplo que se muestra SOLO mientras no haya seguimiento conectado, con el
 // cartel puesto. En cuanto entra la primera fila real, se usa la real.
@@ -568,6 +583,20 @@ const EJEMPLO: Resumen = {
     { modelo: 'BUENOS AIRES I', neta: 1_010_000, shopify: 640_000, ml: 370_000 },
     { modelo: 'CENTRAL PARK', neta: 780_000, shopify: 520_000, ml: 260_000 },
     { modelo: 'ZETA 8', neta: 540_000, shopify: 310_000, ml: 230_000 },
+  ],
+  origenes: [
+    { fuente: 'zn', alcance: 671_000, visitas: 8_310, pedidos: 131, neta: 3_420_000, acciones: 6 },
+    { fuente: 'orbital', alcance: 214_000, visitas: 3_180, pedidos: 41, neta: 1_090_000, acciones: 9 },
+    { fuente: 'meta', alcance: 986_000, visitas: 12_400, pedidos: 96, neta: 2_480_000, acciones: 4 },
+  ],
+  posts: [
+    { id: 1, fecha: '2026-08-14', fuente: 'zn', red: 'Instagram', tipo: 'Reel', modelo: 'ADELAIDA', destino: 'shopify', url_pub: null, url_der: null, alcance: 268_000, visitas: 3_410, pedidos: 58, neta: 1_480_000 },
+    { id: 2, fecha: '2026-08-22', fuente: 'zn', red: 'TikTok', tipo: 'Video', modelo: '5TH AVENUE', destino: 'ml', url_pub: null, url_der: null, alcance: 191_000, visitas: 2_240, pedidos: 34, neta: 910_000 },
+    { id: 3, fecha: '2026-08-07', fuente: 'zn', red: 'Instagram', tipo: 'Historia', modelo: 'BUENOS AIRES I', destino: 'shopify', url_pub: null, url_der: null, alcance: 118_000, visitas: 1_610, pedidos: 24, neta: 640_000 },
+    { id: 4, fecha: '2026-08-19', fuente: 'orbital', red: 'Instagram', tipo: 'Reel', modelo: 'CENTRAL PARK', destino: 'shopify', url_pub: null, url_der: null, alcance: 84_000, visitas: 1_290, pedidos: 18, neta: 470_000 },
+    { id: 5, fecha: '2026-08-28', fuente: 'zn', red: 'Instagram', tipo: 'Post', modelo: 'ZETA 8', destino: 'shopify', url_pub: null, url_der: null, alcance: 94_000, visitas: 1_050, pedidos: 15, neta: 390_000 },
+    { id: 6, fecha: '2026-08-11', fuente: 'orbital', red: 'Instagram', tipo: 'Historia', modelo: 'LONDRES', destino: 'ml', url_pub: null, url_der: null, alcance: 62_000, visitas: 940, pedidos: 13, neta: 340_000 },
+    { id: 7, fecha: '2026-08-25', fuente: 'orbital', red: 'Facebook', tipo: 'Post', modelo: 'WYNWOOD', destino: 'shopify', url_pub: null, url_der: null, alcance: 41_000, visitas: 610, pedidos: 7, neta: 180_000 },
   ],
 }
 
@@ -630,7 +659,7 @@ function Dashboard({ clave }: { clave: string }) {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">
-              {ult ? mesCorto(ult.periodo) : '—'} · tu {PCT_ZN}% sobre la venta neta
+              {ult ? mesCorto(ult.periodo) : 'Mes en curso'}
             </div>
             <div className="text-[32px] font-bold leading-none mt-1">{kAr(netaMes * PCT_ZN / 100)}</div>
             {prev && (
@@ -715,6 +744,105 @@ function Dashboard({ clave }: { clave: string }) {
           Tu {PCT_ZN}% del último mes: <b className="text-black">{kAr(netaMes * PCT_ZN / 100)}</b>
         </p>
       </div>
+
+      {/* De dónde vienen los resultados: los dos orgánicos vs la pauta.
+          Sin inversión ni ROAS — el orgánico no tiene costo de medios, así que
+          esas métricas no comparan nada. Estas cuatro sí. */}
+      {r.origenes.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+          <h2 className="text-[12px] font-bold uppercase tracking-wide">De dónde vienen los resultados</h2>
+          <p className="text-[10px] text-neutral-500 mb-3">
+            El orgánico no tiene costo de medios, así que no se compara con ROAS. Estas cuatro miden lo mismo
+            en las tres fuentes.
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3">
+            {r.origenes.map((o) => (
+              <span key={o.fuente} className="inline-flex items-center gap-1.5 text-[10px] text-neutral-500">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: FUENTE[o.fuente].color }} />
+                {FUENTE[o.fuente].label} · {o.acciones}
+              </span>
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              ['Venta neta', (o: Origen) => o.neta, (v: number) => kM(v)],
+              ['Visitas al link', (o: Origen) => o.visitas, (v: number) => v.toLocaleString('es-AR')],
+              ['Conversión visita → pedido', (o: Origen) => (o.visitas ? (o.pedidos / o.visitas) * 100 : 0), (v: number) => v.toFixed(1) + '%'],
+              ['Venta por cada 1.000 impresiones', (o: Origen) => (o.alcance ? (o.neta / o.alcance) * 1000 : 0), (v: number) => kAr(v)],
+            ] as const).map(([titulo, calc, fmt]) => {
+              const vals = r.origenes.map((o) => ({ o, v: calc(o) }))
+              const max = Math.max(...vals.map((x) => x.v), 1)
+              const gana = vals.reduce((a, b) => (b.v > a.v ? b : a))
+              return (
+                <div key={titulo} className="rounded-lg border border-black/10 p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] uppercase tracking-wide text-neutral-500 leading-tight">{titulo}</span>
+                    <span className="text-[10px] font-bold shrink-0" style={{ color: FUENTE[gana.o.fuente].color }}>
+                      gana {FUENTE[gana.o.fuente].corto}
+                    </span>
+                  </div>
+                  {vals.map(({ o, v }) => (
+                    <div key={o.fuente} className="mt-1.5">
+                      <div className="flex justify-between text-[10px] mb-0.5">
+                        <span className="text-neutral-500">{FUENTE[o.fuente].corto}</span>
+                        <b className="tabular-nums">{fmt(v)}</b>
+                      </div>
+                      <div className="h-2.5 rounded-r-[4px]" style={{ background: FUENTE[o.fuente].color, width: `${(v / max) * 100}%` }} />
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Lo vital: QUÉ posteo orgánico rinde más */}
+      {r.posts.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+          <h2 className="text-[12px] font-bold uppercase tracking-wide">Qué posteos rinden más</h2>
+          <p className="text-[10px] text-neutral-500 mb-3">
+            Solo orgánico, ordenado por venta. Sirve para saber qué repetir: red, formato y anteojo.
+          </p>
+          <div className="space-y-2">
+            {r.posts.map((p, i) => {
+              const maxP = r.posts[0].neta || 1
+              const conv = p.visitas ? (p.pedidos / p.visitas) * 100 : 0
+              return (
+                <div key={p.id} className="rounded-lg border border-black/10 p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <span className="text-[11px] font-bold text-neutral-300 tabular-nums mt-0.5">{i + 1}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold uppercase tracking-wide">{p.modelo}</span>
+                          <span className="rounded-full px-1.5 py-0.5 text-[8px] font-bold text-white"
+                            style={{ background: FUENTE[p.fuente].color }}>{FUENTE[p.fuente].corto}</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-500">
+                          {p.red} · {p.tipo} · {p.destino === 'ml' ? 'Mercado Libre' : 'Tienda Orbital'}
+                          {p.url_pub && <> · <a href={p.url_pub} target="_blank" rel="noopener noreferrer" className="underline">ver posteo</a></>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[13px] font-bold tabular-nums leading-none">{kM(p.neta)}</div>
+                      <div className="text-[9px] text-neutral-400">tu {PCT_ZN}%: {kAr(p.neta * PCT_ZN / 100)}</div>
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-r-[4px] mt-1.5" style={{ background: FUENTE[p.fuente].color, width: `${(p.neta / maxP) * 100}%` }} />
+                  <div className="flex gap-4 text-[9px] text-neutral-500 mt-1">
+                    <span>Alcance <b className="text-black">{p.alcance.toLocaleString('es-AR')}</b></span>
+                    <span>Visitas <b className="text-black">{p.visitas.toLocaleString('es-AR')}</b></span>
+                    <span>Pedidos <b className="text-black">{p.pedidos}</b></span>
+                    <span>Conversión <b className="text-black">{conv.toFixed(1)}%</b></span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Qué anteojo rinde más */}
       <div className="bg-white rounded-xl p-4 border border-black/10">
