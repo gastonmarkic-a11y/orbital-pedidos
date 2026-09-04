@@ -331,8 +331,14 @@ export default function Cartera() {
         return r * dir
       })
     } else {
-      // Orden por defecto: los más olvidados primero (sin contactar / hace más tiempo)
-      ordenadas.sort((a, b) => (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999))
+      // Orden por defecto: primero los que el vendedor ya conoce (los trajo de su agenda),
+      // y dentro de cada bloque los más olvidados arriba (sin contactar / hace más tiempo).
+      ordenadas.sort((a, b) => {
+        const ca = aportadoPor(a) ? 0 : 1
+        const cb = aportadoPor(b) ? 0 : 1
+        if (ca !== cb) return ca - cb
+        return (daysSince(ultimaAct[b.cod] ?? null) ?? 9999) - (daysSince(ultimaAct[a.cod] ?? null) ?? 9999)
+      })
     }
     return ordenadas.map((c) => ({ c, maxCanje }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
