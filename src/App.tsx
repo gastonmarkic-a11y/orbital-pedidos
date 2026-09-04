@@ -436,7 +436,7 @@ function Layout() {
           {esVendedorOAdmin && (
             <>
               <Route path="/hoy" element={
-                codigoEfectivo === 'Adrian' || codigoEfectivo === 'Martin' ? <AgendaCampo />
+                codigoEfectivo === 'Adrian' || codigoEfectivo === 'Bruno' ? <AgendaCampo />
                 : codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian' ? <ProspeccionCampo />
                 : rol === 'admin' ? <AgendaEquipo />
                 : <AgendaDelDia />
