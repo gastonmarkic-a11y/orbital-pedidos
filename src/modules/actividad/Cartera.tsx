@@ -266,6 +266,8 @@ export default function Cartera() {
     segmento === 'canje' ? conVentas : segmento === 'recuperar' ? aRecuperar : segmento === 'fidelizacion' ? fidelizados : bienvenida
 
   // Escalafón desplegable: zona → provincia → ciudad/barrio → clientes.
+  // Contactos que el vendedor trajo de su propia agenda al entrar: ya los conoce.
+  const aportadoPor = (c: Cliente) => (c as { aportado_por?: string | null }).aportado_por || null
   const regionDe = (c: Cliente) => regionDeProvincia((c as { provincia?: string | null }).provincia ?? c.zona)
   const provDe = (c: Cliente) => ((c as { provincia?: string | null }).provincia || '(sin provincia)')
   const ciudadDe = (c: Cliente) => ((c as { barrio?: string | null }).barrio || c.localidad || '(sin ciudad)')
@@ -899,6 +901,10 @@ export default function Cartera() {
                     <div className="flex items-center gap-1.5">
                       <p className="font-medium text-ink truncate">{c.nomcomerc || c.razon}</p>
                       {esFidelizado(c) && <span className="shrink-0 text-[10px]">⭐</span>}
+                      {aportadoPor(c) && (
+                        <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-goldSoft text-brandDark"
+                          title={`Contacto que trajo ${aportadoPor(c)} de su propia agenda — ya lo conoce`}>lo conocés</span>
+                      )}
                       {propuestaMes[c.cod] && (
                         <span
                           className="shrink-0 text-[9px] font-semibold bg-emerald-50 text-emerald-700 rounded-full px-1.5 py-0.5"
