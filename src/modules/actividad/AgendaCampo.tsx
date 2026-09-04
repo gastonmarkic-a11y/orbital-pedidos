@@ -69,7 +69,8 @@ interface Turno { id: number; vendedor: string; dia_num: number; cliente: string
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 interface Evento { id: number; dia_num: number; hora: string | null; lugar: string | null; cliente: string | null; nota: string | null }
 
-const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Martin', label: 'Martín' }]
+// Los que hacen recorrido de campo. Martín salió del equipo; Bruno tomó CABA/norte/oeste.
+const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }]
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
 // Feriados nacionales AR (editar según calendario oficial).
 const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
@@ -243,7 +244,7 @@ function HistorialModal({ r, onClose }: { r: Row; onClose: () => void }) {
     </div>
   )
 }
-const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Martin: 'Martín', Corporativo: 'Corporativo' }
+const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Bruno: 'Bruno', Martin: 'Martín', Corporativo: 'Corporativo' }
 
 // Asistente IA: reacomoda la agenda del vendedor por un pedido en lenguaje natural.
 function AjusteIAAgenda({ ven, onAplicado }: { ven: string; onAplicado: () => void }) {
@@ -311,7 +312,10 @@ function AjusteIAAgenda({ ven, onAplicado }: { ven: string; onAplicado: () => vo
 export default function AgendaCampo() {
   const { codigoEfectivo } = useAuth()
   const navigate = useNavigate()
-  const [ven, setVen] = useState<string>(codigoEfectivo === 'Martin' ? 'Martin' : 'Adrian')
+  // Cada uno abre en SU agenda. El admin ve la de Adrián y cambia con el selector.
+  const [ven, setVen] = useState<string>(
+    VEND.some((v) => v.cod === codigoEfectivo) ? (codigoEfectivo as string) : 'Adrian',
+  )
   const [rows, setRows] = useState<Row[]>([])
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [loading, setLoading] = useState(true)
