@@ -332,12 +332,8 @@ function Protected({ children }: { children: ReactNode }) {
 const VIEW_OPTIONS = [
   { value: 'admin', label: 'Admin (todo)' },
   { value: 'vendedor:Adrian', label: 'Adrián' },
-  { value: 'vendedor:Martin', label: 'Martín' },
-  { value: 'vendedor:Marketing', label: 'Luna (prospección)' },
-  { value: 'vendedor:Damian', label: 'Damián (prospección)' },
   { value: 'vendedor:Ulises', label: 'Ulises (prospección CABA)' },
   { value: 'vendedor:Bruno', label: 'Bruno (CABA/norte/oeste)' },
-  { value: 'vendedor:ProspeccionVenta', label: 'Prosp. venta directa' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'revendedor', label: 'Revendedor Cuyo/SF' },
   { value: 'social', label: 'Prospección social (piloto)' },
