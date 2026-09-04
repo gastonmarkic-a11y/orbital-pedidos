@@ -764,7 +764,7 @@ export default function Cartera() {
                   </p>
                 </div>
                 <span
-                  className={`shrink-0 inline-block w-2.5 h-2.5 rounded-full mt-1 ${c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
+                  className={`shrink-0 inline-block w-2.5 h-2.5 rounded-full mt-1 ${aportadoPor(c) ? 'bg-gold ring-2 ring-gold/30' : c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
                 />
               </div>
               <p className="text-xs text-muted">
@@ -900,7 +900,7 @@ export default function Cartera() {
                 >
                   <td className="px-2.5 py-2">
                     <span
-                      className={`inline-block w-2 h-2 rounded-full ${c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
+                      className={`inline-block w-2 h-2 rounded-full ${aportadoPor(c) ? 'bg-gold ring-2 ring-gold/30' : c.prioridad ? PRIO_COLORS[c.prioridad] ?? 'bg-[#c8c8d4]' : 'bg-[#c8c8d4]'}`}
                     />
                   </td>
                   <td className="px-2.5 py-2 max-w-[180px]">
