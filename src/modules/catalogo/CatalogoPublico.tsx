@@ -10,7 +10,7 @@ import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
 // Datos en vivo de `stock`; el checkout crea un pedido web en el flujo normal.
 
 interface Modelo {
-  modelo: string; precio_desde: number | null; caliente: boolean; n_colores: number
+  modelo: string; precio_desde: number | null; precio_lista_desde?: number | null; caliente: boolean; n_colores: number
   imagenes: string[]
 }
 interface Variante {
@@ -583,8 +583,10 @@ export default function CatalogoPublico() {
 
   // foto primero, sin foto al final
   const conFoto = (arr: HomeModelo[]) => arr.map((m, i) => ({ m, i })).sort((a, b) => {
-    // los de precio 32.645 van al final de cada categoría
-    const pa = a.m.precio_desde === 32645 ? 1 : 0, pb = b.m.precio_desde === 32645 ? 1 : 0
+    // los de precio 32.645 van al final de cada categoría (se mira el precio de LISTA: el cliente
+    // con lista especial ve otro número, pero el orden de la góndola no cambia)
+    const lp = (m: Modelo) => m.precio_lista_desde ?? m.precio_desde
+    const pa = lp(a.m) === 32645 ? 1 : 0, pb = lp(b.m) === 32645 ? 1 : 0
     const ia = a.m.imagenes?.length ? 0 : 1, ib = b.m.imagenes?.length ? 0 : 1
     return pa - pb || ia - ib || a.i - b.i
   }).map((x) => x.m)
