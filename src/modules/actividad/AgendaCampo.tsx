@@ -310,7 +310,9 @@ function AjusteIAAgenda({ ven, onAplicado }: { ven: string; onAplicado: () => vo
 }
 
 export default function AgendaCampo() {
-  const { codigoEfectivo } = useAuth()
+  const { codigoEfectivo, rolEfectivo } = useAuth()
+  // Solo supervisión cambia de vendedor: Adrián ve la de Adrián, Bruno la de Bruno.
+  const esSupervisor = rolEfectivo === 'admin' || rolEfectivo === 'administracion'
   const navigate = useNavigate()
   // Cada uno abre en SU agenda. El admin ve la de Adrián y cambia con el selector.
   const [ven, setVen] = useState<string>(
@@ -414,11 +416,14 @@ export default function AgendaCampo() {
           <h1 className="text-lg font-bold">Agenda de campo</h1>
           <p className="text-xs text-muted">Buenos Aires + GBA · canje y a recuperar · {dias.length} días · faltan {totalPend}</p>
         </div>
-        <div className="flex gap-1 bg-white border border-black/10 rounded-lg p-0.5">
-          {VEND.map((v) => (
-            <button key={v.cod} onClick={() => { setVen(v.cod); setAbierto(null) }} className={`text-xs px-3 py-1.5 rounded-md font-medium ${ven === v.cod ? 'bg-brand text-white' : 'text-muted'}`}>{v.label}</button>
-          ))}
-        </div>
+        {/* El vendedor ve SOLO su recorrido. El selector es para supervisión. */}
+        {esSupervisor && (
+          <div className="flex gap-1 bg-white border border-black/10 rounded-lg p-0.5">
+            {VEND.map((v) => (
+              <button key={v.cod} onClick={() => { setVen(v.cod); setAbierto(null) }} className={`text-xs px-3 py-1.5 rounded-md font-medium ${ven === v.cod ? 'bg-brand text-white' : 'text-muted'}`}>{v.label}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       <AjusteIAAgenda ven={ven} onAplicado={cargar} />
