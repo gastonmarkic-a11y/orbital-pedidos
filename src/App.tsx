@@ -23,6 +23,7 @@ import EnvioCatalogo from './modules/actividad/EnvioCatalogo'
 import GuionesContacto from './modules/actividad/GuionesContacto'
 import ProspeccionSocial from './modules/actividad/ProspeccionSocial'
 import MiTanda from './modules/actividad/MiTanda'
+import Seguimiento from './modules/actividad/Seguimiento'
 import AdminActividad from './modules/actividad/AdminActividad'
 import AdminMarketing from './modules/actividad/AdminMarketing'
 
@@ -195,6 +196,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   const menu: NavItem[] = []
   // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día.
   if (['vendedor', 'admin', 'administracion'].includes(rol)) principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' })
+  // Qué pasó con lo que ya mandó: abrió el catálogo, abrió la propuesta, o nada.
+  if (['vendedor', 'admin', 'administracion'].includes(rol)) secundarios.push({ to: '/seguimiento', label: 'Seguimiento' })
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
@@ -510,6 +513,7 @@ function Layout() {
           <Route path="/envio-catalogo" element={<EnvioCatalogo />} />
           {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {rol !== 'revendedor' && <Route path="/mi-tanda" element={<MiTanda />} />}
+          {rol !== 'revendedor' && <Route path="/seguimiento" element={<Seguimiento />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
