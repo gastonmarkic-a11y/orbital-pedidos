@@ -23,11 +23,13 @@ const PASOS = [
   'Ejecutás de una vez o en etapas — vos definís el ritmo.',
 ]
 
-const MIX: [string, string][] = [
-  ['ASCARI', 'Preventa 2026'],
-  ['CIVIC CENTER', 'Contemporáneo'],
-  ['CASA BLANCA', 'Preventa 2026'],
-  ['5TH AVENUE', 'Urbano'],
+// Mix de temporada del Plan Canje. Las fotos salen del bucket de destacados.
+const IMG = 'https://towcgvphxeqilpdnboki.supabase.co/storage/v1/object/public/catalogo/destacados'
+const MIX: { nombre: string; tag: string; foto: string }[] = [
+  { nombre: 'ASCARI', tag: 'Preventa 2026', foto: `${IMG}/ASCARI.png` },
+  { nombre: 'CIVIC CENTER', tag: 'Contemporáneo', foto: `${IMG}/CIVICCENTER.png` },
+  { nombre: 'CASA BLANCA', tag: 'Preventa 2026', foto: `${IMG}/CASABLANCA.png` },
+  { nombre: '5TH AVENUE', tag: 'Urbano', foto: `${IMG}/5THAVENUE.png` },
 ]
 
 const INCLUYE = [
@@ -155,11 +157,17 @@ export default function LandingCanje() {
             Cuatro modelos pensados para liderar el exhibidor renovado. Ningún cliente con Plan Canje activo se queda afuera de esta selección.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
-            {MIX.map(([m, d]) => (
-              <div key={m} className="rounded-xl border border-black/10 p-4 text-center">
-                <p className="text-[13px] font-black tracking-tight">{m}</p>
-                <p className="text-[10px] text-black/45 mt-0.5">{d}</p>
-              </div>
+            {MIX.map((m) => (
+              <a key={m.nombre} href={CATALOGO_URL} target="_blank" rel="noreferrer"
+                className="rounded-xl border border-black/10 overflow-hidden bg-white hover:border-black/25 transition-colors no-underline text-inherit block">
+                <div className="aspect-square bg-white">
+                  <img src={m.foto} alt={m.nombre} loading="lazy" className="w-full h-full object-contain" />
+                </div>
+                <div className="px-2 pb-2.5 text-center">
+                  <p className="text-[13px] font-black tracking-tight truncate">{m.nombre}</p>
+                  <p className="text-[10px] text-black/45 mt-0.5">{m.tag}</p>
+                </div>
+              </a>
             ))}
           </div>
           <p className="text-center text-black/50 text-[13px] mt-4">
