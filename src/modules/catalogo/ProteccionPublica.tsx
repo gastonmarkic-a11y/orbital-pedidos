@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useRegistrarVisita } from '../../lib/visita'
 
 interface Destacado { modelo: string; foto: string }
 
@@ -24,6 +25,7 @@ const PROTECCIONES: Prot[] = [
 ]
 
 export default function ProteccionPublica() {
+  useRegistrarVisita('tripleproteccion')
   const [sel, setSel] = useState('infrarrojo')
   const [destacados, setDestacados] = useState<Destacado[]>([])
   useEffect(() => {

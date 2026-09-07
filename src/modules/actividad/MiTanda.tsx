@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
-import { MessageCircle, Mail, RefreshCw, Undo2, CalendarClock, Copy, BookOpen } from 'lucide-react'
+import { MessageCircle, Mail, RefreshCw, Undo2, CalendarClock, Copy, BookOpen, Eye, EyeOff } from 'lucide-react'
 
 // Mi tanda de hoy — una acción por vez, decidida por el motor.
 // El prospectador no elige a quién, ni por qué canal, ni qué mandar: eso ya lo resolvió
@@ -32,6 +32,11 @@ interface Accion {
   toques_previos: number
   ultimo_toque: string | null
   ultima_compra: string | null
+  /** Cuándo abrió el catálogo con SU link. Null = no lo abrió nunca. */
+  abrio_catalogo: string | null
+  /** Cuándo abrió una propuesta (Bienvenida, Canje, Triple Protección). */
+  abrio_propuesta: string | null
+  propuesta_abierta: string | null
   /** Lo último que anotó el vendedor sobre este cliente. Se lee ANTES de escribirle. */
   nota_vendedor: string | null
 }
@@ -260,6 +265,29 @@ export default function MiTanda() {
                   {actual.ultima_compra
                     ? <span>Última compra {haceCuanto(actual.ultima_compra)}</span>
                     : <span>Nunca compró</span>}
+                </div>
+
+                {/* Lo que hizo el cliente con lo que le mandamos. Se registra solo:
+                    el link que recibe es personal, así que abrirlo ya lo identifica. */}
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  {actual.abrio_catalogo ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-goldSoft px-2 py-0.5 text-[11px] font-medium text-brandDark">
+                      <Eye size={11} /> Abrió el catálogo {haceCuanto(actual.abrio_catalogo)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] text-faint">
+                      <EyeOff size={11} /> No abrió el catálogo
+                    </span>
+                  )}
+                  {actual.abrio_propuesta ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-goldSoft px-2 py-0.5 text-[11px] font-medium text-brandDark">
+                      <Eye size={11} /> Abrió {actual.propuesta_abierta ?? 'la propuesta'} {haceCuanto(actual.abrio_propuesta)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] text-faint">
+                      <EyeOff size={11} /> No abrió la propuesta
+                    </span>
+                  )}
                 </div>
               </div>
 
