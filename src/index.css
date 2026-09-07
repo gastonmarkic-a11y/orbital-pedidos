@@ -60,3 +60,15 @@ input[type='number']::-webkit-inner-spin-button {
 .dark .text-amber-700 { color: #fcd34d; }
 .dark .text-indigo-600 { color: #a5b4fc; }
 .dark .bg-ink { background-color: #1c1c26; }
+
+/* ─── MÓDULO FINANCIERO (terminal de tesorería, siempre oscuro) ─── */
+/* La app muestra los spinners de los number a propósito; sobre fondo negro quedan
+   como manchas blancas, así que acá se los invierte en vez de ocultarlos. */
+.fin-scope input[type='number']::-webkit-inner-spin-button {
+  filter: invert(1);
+  opacity: 0.3;
+}
+.fin-scope input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.45;
+}

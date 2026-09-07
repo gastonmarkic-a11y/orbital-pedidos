@@ -1,4 +1,4 @@
-export type Rol = 'vendedor' | 'admin' | 'deposito' | 'logistica' | 'administracion' | 'produccion' | 'tienda' | 'contenido' | 'revendedor' | 'social' | 'usa'
+export type Rol = 'vendedor' | 'admin' | 'deposito' | 'logistica' | 'administracion' | 'produccion' | 'tienda' | 'contenido' | 'revendedor' | 'social' | 'usa' | 'financiero'
 
 export interface StockIngreso {
   id: number
@@ -210,4 +210,102 @@ export interface Pedido {
   exportado_tango_at: string | null
   /** Origen del pedido: 'catalogo' | 'consigna' (liquidación) | 'reposicion' | null (normal). */
   origen?: string | null
+}
+
+/* ── Módulo financiero ──────────────────────────────────────────────── */
+
+export type RazonSocial = 'Ejemplar' | 'Plenorius' | 'Plastic'
+export const RAZONES_SOCIALES: RazonSocial[] = ['Ejemplar', 'Plenorius', 'Plastic']
+
+export interface CuentaFinanciera {
+  id: number
+  tipo: 'banco' | 'mp' | 'efectivo'
+  nombre: string
+  razon_social: RazonSocial
+  saldo_actual: number
+  activo: boolean
+  orden: number
+  created_at?: string
+}
+
+export interface MovimientoFinanciero {
+  id: number
+  cuenta_id: number
+  fecha: string
+  /** Positivo = ingreso, negativo = egreso. */
+  monto: number
+  tipo: string
+  contraparte: string | null
+  detalle: string | null
+  conciliado: boolean
+  origen: 'manual' | 'import' | 'mp'
+  /** Id en el origen (payment_id de MP, hash de la linea del extracto). Evita duplicar al reimportar. */
+  ref_externa: string | null
+  created_at?: string
+  creado_por?: string | null
+}
+
+export interface SaldoDiario {
+  id: number
+  cuenta_id: number
+  fecha: string
+  saldo: number
+}
+
+export interface ChequeCartera {
+  id: number
+  numero: string
+  banco: string
+  monto: number
+  tipo: 'fisico' | 'echeck'
+  fecha_recepcion: string
+  fecha_vencimiento: string
+  cliente_id: string | null
+  cliente_nombre: string | null
+  estado: string
+  fecha_deposito: string | null
+  fecha_cobro_real: string | null
+  cuenta_deposito_id: number | null
+  razon_social: RazonSocial | null
+  pedido_id: number | null
+  nota: string | null
+  aviso_enviado_at: string | null
+  historial: { fecha: string; de: string; a: string; por: string | null }[] | null
+  created_at?: string
+  updated_at?: string
+  creado_por?: string | null
+}
+
+export interface ParametrosFin {
+  id: number
+  /** TNA de la financiera, en %. */
+  tasa_financiera: number
+  /** Gasto fijo de la financiera, en % sobre el bruto del cheque. */
+  gasto_fijo_financiera: number
+  /** TNA de descuento del banco, en %. */
+  tasa_banco: number
+  comision_fija_banco: number
+  /** % que se le ofrece al cliente para que pague en efectivo en vez de con cheque. */
+  descuento_efectivo: number
+  iva_pct: number
+  /** NULL = anualizar el descuento en efectivo con el DSO de la cartera. */
+  horizonte_efectivo_dias: number | null
+  dias_disp_banco: number
+  dias_disp_financiera: number
+  dias_disp_efectivo: number
+  peso_costo: number
+  peso_velocidad: number
+  peso_relacion: number
+  /** % de la cartera en +90 días a partir del cual salta la alerta. */
+  alerta_mora_pct: number
+  /** Cifras que ningún módulo deriva todavía y hacen falta para los indicadores. */
+  pasivo_corriente: number
+  inventario_valorizado: number
+  gasto_mensual: number
+  ref_liquidez: number
+  ref_acida: number
+  ref_runway_dias: number
+  vigente_desde: string
+  creado_por?: string | null
+  created_at?: string
 }

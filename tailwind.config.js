@@ -15,6 +15,10 @@ export default {
       },
       fontFamily: {
         sans: ['Manrope', 'system-ui', 'sans-serif'],
+        // Solo para el módulo financiero (estética "terminal de tesorería").
+        fraunces: ['Fraunces', 'Georgia', 'serif'],
+        inter: ['Inter', 'system-ui', 'sans-serif'],
+        jet: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
     },
   },
