@@ -1,5 +1,7 @@
 // Landing pública del Plan Canje 2026 — ver.orbitaleyewear.com.ar/canje
 // Independiente de /bienvenida. Contenido: renovación de stock para clientes activos.
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
 
 const AZUL = '#1e50ff'
@@ -7,8 +9,9 @@ const AZUL = '#1e50ff'
 // se mezclaba. Naranja quemado, el complementario del azul: salta a la vista y
 // combina. Más vivo que esto y el texto blanco baja de 4.5:1 de contraste.
 const CTA = '#D93A0B'
+// Número general de Orbital: solo se usa si el cliente llegó sin token y no
+// sabemos quién lo atiende.
 const WA = '5491178548316'
-const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
 // Si la óptica llegó con su token (…/canje?c=xxx) el catálogo le abre directo,
 // con sus precios y sin clave. Sin token cae en la pantalla de acceso.
@@ -77,8 +80,26 @@ const ACTIVACION = [
   'Arrancás la temporada con el exhibidor renovado.',
 ]
 
+interface Vendedor { nombre: string; telefono: string }
+
 export default function LandingCanje() {
   useRegistrarVisita('canje')
+  // El canje es para clientes que ya compraron, así que tienen vendedor asignado:
+  // el WhatsApp tiene que ser el de SU ejecutivo (Adrián, Bruno), no el genérico.
+  // Sale del token con el que llegó a la landing.
+  const [vend, setVend] = useState<Vendedor | null>(null)
+  useEffect(() => {
+    const t = tokenDeLaUrl()
+    if (!t) return
+    supabase.rpc('vendedor_del_token', { p_token: t }).then(({ data, error }) => {
+      if (error) return
+      const r = data as { ok?: boolean; nombre?: string; telefono?: string } | null
+      if (r?.ok && r.nombre && r.telefono) setVend({ nombre: r.nombre, telefono: r.telefono })
+    })
+  }, [])
+
+  const waHref = (msg: string) => `https://wa.me/${vend?.telefono ?? WA}?text=${encodeURIComponent(msg)}`
+
   return (
     <div className="min-h-screen bg-white text-[#0f0f10]" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
       {/* Barra de marca */}
@@ -180,6 +201,47 @@ export default function LandingCanje() {
           </div>
         </div>
 
+        {/* Cómo se activa: primero elige, después se define el canje.
+            Es lo que más frena — el cliente cree que tiene que saber de antemano
+            qué va a devolver, y por eso no arranca. */}
+        <div className="mt-14 rounded-2xl border p-6 sm:p-8" style={{ borderColor: `${AZUL}33`, background: `${AZUL}06` }}>
+          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-1" style={{ color: AZUL }}>Cómo se activa</p>
+          <h2 className="text-2xl sm:text-3xl font-black">Elegí lo que querés. El canje lo resolvemos juntos.</h2>
+          <p className="text-black/60 text-sm mt-2 max-w-2xl">
+            No hace falta que sepas de antemano qué vas a devolver. El orden es al revés:
+            primero mirás el catálogo y preseleccionás los modelos que te gustaría tener en tu
+            exhibidor, y después, con tu ejecutivo comercial, definimos cuáles de los productos
+            que no te rotaron entran por canje.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 mt-6">
+            <div className="rounded-xl bg-white border border-black/10 p-5">
+              <span className="font-mono text-[11px] font-bold" style={{ color: AZUL }}>01</span>
+              <h3 className="font-bold text-[15px] mt-1.5">Preseleccionás en el catálogo</h3>
+              <p className="text-black/60 text-[13px] leading-relaxed mt-1.5">
+                Entrás con tu acceso, mirás el mix de temporada y armás la lista de lo que
+                querés. Es una preselección: no es un pedido cerrado ni te compromete a nada.
+              </p>
+            </div>
+            <div className="rounded-xl bg-white border border-black/10 p-5">
+              <span className="font-mono text-[11px] font-bold" style={{ color: AZUL }}>02</span>
+              <h3 className="font-bold text-[15px] mt-1.5">Lo cerrás con tu ejecutivo</h3>
+              <p className="text-black/60 text-[13px] leading-relaxed mt-1.5">
+                {vend ? `${vend.nombre} revisa` : 'Tu ejecutivo comercial revisa'} el exhibidor
+                con vos, definen qué modelos parados entran por canje —hasta el 20 % del
+                pedido— y emitimos la nota de crédito al precio actual de esos productos.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <BotonCatalogo texto="🕶️ Preseleccionar mis modelos" />
+            <a href={waHref(`¡Hola${vend ? ' ' + vend.nombre : ''}! Quiero activar el Plan Canje y ver qué modelos puedo renovar.`)}
+              target="_blank" rel="noreferrer"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-colors text-white font-bold text-[15px] px-7 py-4 no-underline">
+              💬 {vend ? `Escribile a ${vend.nombre}` : 'Hablar con mi ejecutivo'}
+            </a>
+          </div>
+        </div>
+
         {/* Mix de temporada */}
         <div className="mt-14">
           <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-1" style={{ color: AZUL }}>Lo mejor disponible para esta temporada</p>
@@ -221,7 +283,11 @@ export default function LandingCanje() {
         {/* Activación + CTA */}
         <div className="mt-14 rounded-2xl border border-black/10 p-6 sm:p-8">
           <h2 className="text-2xl font-black">¿Activamos tu canje?</h2>
-          <p className="text-black/55 text-sm mt-1">Tu vendedor ya tiene todo listo para armar tu pedido de temporada.</p>
+          <p className="text-black/55 text-sm mt-1">
+            {vend
+              ? `${vend.nombre} ya tiene todo listo para armar tu pedido de temporada.`
+              : 'Tu vendedor ya tiene todo listo para armar tu pedido de temporada.'}
+          </p>
           <ol className="mt-5 space-y-2.5">
             {ACTIVACION.map((p, i) => (
               <li key={p} className="flex gap-3 text-[13px] text-black/75">
@@ -230,9 +296,10 @@ export default function LandingCanje() {
             ))}
           </ol>
           <div className="flex flex-col sm:flex-row gap-3 mt-7">
-            <a href={waLink('¡Hola! Quiero activar el Plan Canje para renovar el stock de mi óptica.')} target="_blank" rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-colors text-white font-bold px-6 py-3.5 no-underline">
-              💬 Activá el Plan Canje
+            <a href={waHref(`¡Hola${vend ? ' ' + vend.nombre : ''}! Quiero activar el Plan Canje para renovar el stock de mi óptica.`)}
+              target="_blank" rel="noreferrer"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-colors text-white font-bold text-[15px] px-7 py-4 no-underline">
+              💬 {vend ? `Escribile a ${vend.nombre}` : 'Activá el Plan Canje'}
             </a>
             <BotonCatalogo texto="🕶️ Ver el mix de temporada" />
           </div>
