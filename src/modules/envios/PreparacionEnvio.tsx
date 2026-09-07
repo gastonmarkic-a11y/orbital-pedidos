@@ -28,6 +28,32 @@ const CANAL_TXT: Record<string, string> = {
   reunion: 'reunión',
 }
 
+const URL_LANDINGS = 'https://ver.orbitaleyewear.com.ar'
+
+// Paquetes comerciales: son landings, no PDF. Van con el token del cliente
+// (?c=) para que al abrirlas quede registrado QUIÉN las abrió y el embudo lo
+// mueva de posta solo. Cuál corresponde depende del cliente, no del vendedor:
+// Bienvenida es para la óptica que todavía no entró, Canje para la que ya compró.
+const PAQUETES = [
+  {
+    slug: 'bienvenida',
+    emoji: '🎁',
+    titulo: 'Paquete de Bienvenida',
+    para: 'para óptica nueva',
+    nota: 'Exhibidor y POP, kit digital para redes, cambio de lo que no rota y lanzamiento conjunto. Entra sin clave y ve todo lo que incluye.',
+    linea: '🎁 Así es el paquete de bienvenida, con todo lo que va incluido:',
+  },
+  {
+    slug: 'canje',
+    emoji: '🔄',
+    titulo: 'Plan Canje',
+    para: 'para cliente que ya compró',
+    nota: 'Cambia lo que no rota por el mix nuevo: hasta el 20 % del pedido, con nota de crédito al precio actual. Entra sin clave.',
+    linea: '🔄 Así funciona el Plan Canje, sin costo y sin vueltas:',
+  },
+] as const
+type PaqueteSlug = (typeof PAQUETES)[number]['slug']
+
 /** Tema de piezas de marketing asociado a cada propuesta */
 export function temaDePropuesta(nombre: string): string {
   const n = nombre.toLowerCase()
@@ -124,6 +150,11 @@ export default function PreparacionEnvio({
   const [tokenCat, setTokenCat] = useState(false)
   const [tokenLink, setTokenLink] = useState<string | null>(null)
   const [tokenBusy, setTokenBusy] = useState(false)
+  // El código del token, aparte del link del catálogo: las landings lo usan como ?c=
+  const [tokenCodigo, setTokenCodigo] = useState<string | null>(null)
+  // Paquetes comerciales elegidos para este envío.
+  const [paquetes, setPaquetes] = useState<Set<PaqueteSlug>>(new Set())
+  const [paqueteBusy, setPaqueteBusy] = useState<PaqueteSlug | null>(null)
   // Cuántas veces entró el cliente al catálogo con token (y desde cuántos dispositivos).
   const [visitas, setVisitas] = useState<{ total: number; dispositivos: number; ultima: string | null } | null>(null)
   // Candado por dispositivo: cuántos equipos pidieron acceso (para autorizar).
@@ -267,8 +298,24 @@ export default function PreparacionEnvio({
     return `${msg}\n\n🛒 Y armá tu pedido directo, con tus precios y sin clave. Adentro vas a encontrar nuestra línea exclusiva de cristales Triple Protección (Infrarrojo + UV400 + Blue Cut), única en Argentina:\n${linkT}`
   }
 
+  // Los paquetes van con el token del cliente, si no la visita queda anónima
+  // y el sistema no se entera de que ESA óptica abrió la propuesta.
+  function conPaquetes(msg: string, elegidos: Set<PaqueteSlug>, codigo: string | null) {
+    let out = msg
+    for (const p of PAQUETES) {
+      if (!elegidos.has(p.slug)) continue
+      const q = codigo ? `?c=${codigo}` : ''
+      out += `\n\n${p.linea}\n${URL_LANDINGS}/${p.slug}${q}`
+    }
+    return out
+  }
+
   const armarMensaje = (c: Cliente, prop: Propuesta, sel: PiezaMarketing[]) =>
-    conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null)
+    conPaquetes(
+      conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null),
+      paquetes,
+      tokenCodigo,
+    )
 
   function proximoHabil(dias: number): string {
     return ymd(siguienteDiaHabil(new Date(Date.now() + dias * 86400000), feriados))
@@ -378,13 +425,17 @@ export default function PreparacionEnvio({
     const canalTxt = CANAL_TXT[prepCanal] ?? prepCanal
     const sig = SIGUIENTE_PASO[prepCanal] ?? { texto: 'Seguimiento', dias: 2 }
     const fechaSig = proximoHabil(sig.dias)
+    // Qué paquetes comerciales fueron en este envío, para que quede en la actividad.
+    const packsTxt = PAQUETES.filter((p) => paquetes.has(p.slug)).map((p) => p.titulo).join(' + ')
     // Tipo de actividad propio para el catálogo B2B con token, separado del envío de propuesta.
     const desarrollo =
       prepCanal === 'llamada'
         ? `Llamada telefónica: ${prop?.nombre ?? ''}`
         : tokenCat
-          ? `🛒 Envío catálogo B2B (con token)${prop?.nombre ? ` + ${prop.nombre}` : ''} (envío ${canalTxt})`
-          : `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`
+          ? `🛒 Envío catálogo B2B (con token)${prop?.nombre ? ` + ${prop.nombre}` : ''}${packsTxt ? ` + ${packsTxt}` : ''} (envío ${canalTxt})`
+          : packsTxt
+            ? `📦 Envío ${packsTxt} (con token)${prop?.nombre ? ` + ${prop.nombre}` : ''} (envío ${canalTxt})`
+            : `Propuesta enviada: ${prop?.nombre ?? ''} (envío ${canalTxt})`
     const { error: errAct } = await supabase.from('actividad_diaria').insert({
       vendedor: codigoEfectivo,
       cod_cliente: cliente.cod,
@@ -404,9 +455,9 @@ export default function PreparacionEnvio({
     const { error: errCli } = await supabase
       .from('clientes')
       .update({
-        nota: `${prepCanal === 'llamada' ? '📞' : tokenCat ? '🛒' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${
+        nota: `${prepCanal === 'llamada' ? '📞' : tokenCat ? '🛒' : packsTxt ? '📦' : '📤'} ${new Date().toLocaleDateString('es-AR')} — ${
           prepCanal === 'llamada' ? 'llamada' : tokenCat ? 'se envió catálogo para pedir' : 'se envió'
-        } "${tokenCat ? 'Catálogo con token' : prop?.nombre ?? ''}" por ${canalTxt}. Próximo: ${sig.texto}.${
+        } "${[tokenCat ? 'Catálogo con token' : prop?.nombre ?? '', packsTxt].filter(Boolean).join(' + ')}" por ${canalTxt}. Próximo: ${sig.texto}.${
           prepNota.trim() ? ` 🧠 ${prepNota.trim()}` : ''
         }`,
         proximo_paso: sig.texto,
@@ -552,27 +603,70 @@ export default function PreparacionEnvio({
     if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
   }
 
+  // El token del cliente lo comparten el catálogo para pedir y los paquetes:
+  // se genera una sola vez y sirve para los dos.
+  async function asegurarCodigo(): Promise<string | null> {
+    if (tokenCodigo) return tokenCodigo
+    const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod })
+    const r = data as { ok?: boolean; codigo?: string; error?: string } | null
+    if (error || !r?.ok || !r.codigo) {
+      toast(r?.error || 'No se pudo generar el link con token', 'error')
+      return null
+    }
+    setTokenCodigo(r.codigo)
+    return r.codigo
+  }
+
+  // Rearma el mensaje entero con lo que esté elegido en este momento. Los estados
+  // de React todavía no se actualizaron cuando se llama desde un toggle, así que
+  // las selecciones se pasan por parámetro.
+  function recomponer(opts: { conCat?: boolean; linkCat?: string | null; packs?: Set<PaqueteSlug>; codigo?: string | null }) {
+    if (!propSel) return
+    const seleccionadas = piezas.filter((x) => prepPiezas.has(x.id))
+    const base = armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || '')
+    const cat = opts.conCat ?? tokenCat
+    const link = opts.linkCat !== undefined ? opts.linkCat : tokenLink
+    setPrepMensaje(conPaquetes(conToken(base, cat ? link : null), opts.packs ?? paquetes, opts.codigo ?? tokenCodigo))
+  }
+
   // Catálogo B2B para pedir (con token del cliente): genera el link y lo suma al mensaje.
   async function toggleTokenCat() {
-    const seleccionadas = piezas.filter((x) => prepPiezas.has(x.id))
     if (tokenCat) {
       setTokenCat(false)
-      if (propSel) setPrepMensaje(conToken(armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || ''), null))
+      recomponer({ conCat: false })
       return
     }
     setTokenBusy(true)
     let linkT = tokenLink
+    let cod = tokenCodigo
     if (!linkT) {
-      const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod })
-      const r = data as any
-      setTokenBusy(false)
-      if (error || !r?.ok) { toast(r?.error || 'No se pudo generar el link con token', 'error'); return }
+      cod = await asegurarCodigo()
+      if (!cod) { setTokenBusy(false); return }
       // Siempre con el dominio branded, aunque el vendedor esté en la URL de Vercel.
-      linkT = 'https://ver.orbitaleyewear.com.ar/catalogo?k=' + r.codigo
+      linkT = `${URL_LANDINGS}/catalogo?k=${cod}`
       setTokenLink(linkT)
-    } else setTokenBusy(false)
+    }
+    setTokenBusy(false)
     setTokenCat(true)
-    if (propSel) setPrepMensaje(conToken(armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || ''), linkT))
+    recomponer({ conCat: true, linkCat: linkT, codigo: cod })
+  }
+
+  // Paquete comercial (Bienvenida o Canje): la landing con el token del cliente.
+  async function togglePaquete(slug: PaqueteSlug) {
+    const next = new Set(paquetes)
+    if (next.has(slug)) {
+      next.delete(slug)
+      setPaquetes(next)
+      recomponer({ packs: next })
+      return
+    }
+    setPaqueteBusy(slug)
+    const cod = await asegurarCodigo()
+    setPaqueteBusy(null)
+    if (!cod) return
+    next.add(slug)
+    setPaquetes(next)
+    recomponer({ packs: next, codigo: cod })
   }
 
   return (
@@ -697,6 +791,37 @@ export default function PreparacionEnvio({
                   </p>
                 </div>
               </button>
+            )}
+
+            {!esAgenda && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-muted">Paquetes comerciales</p>
+                {PAQUETES.map((p) => {
+                  const puesto = paquetes.has(p.slug)
+                  const cargando = paqueteBusy === p.slug
+                  return (
+                    <button
+                      key={p.slug}
+                      type="button"
+                      onClick={() => void togglePaquete(p.slug)}
+                      disabled={cargando}
+                      className={`w-full text-left rounded-lg border p-2.5 flex items-start gap-2.5 transition-colors ${
+                        puesto ? 'border-brandDark bg-brandDark/5' : 'border-black/10 hover:border-black/25'
+                      }`}
+                    >
+                      <input type="checkbox" checked={puesto} readOnly className="mt-0.5 pointer-events-none" />
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-ink">
+                          {p.emoji} {p.titulo} <span className="font-normal text-brandDark">· con token del cliente</span>
+                        </p>
+                        <p className="text-[10px] text-faint leading-snug mt-0.5">
+                          {cargando ? 'Generando link…' : `${p.nota} Es la propuesta ${p.para}. Sabés si la abrió en Seguimiento.`}
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             )}
 
             {esAgenda && (
