@@ -57,7 +57,9 @@ function armarMensaje(a: Accion, deParte: string): string {
     .replace(/\{\{\s*(nombre|contacto)\s*\}\}/gi, primerNombre(a.razon))
     .replace(/\{\{\s*(optica|cliente|razon)\s*\}\}/gi, (a.razon || '').trim())
     .replace(/\{\{\s*(vendedor|rep)\s*\}\}/gi, primerNombre(deParte))
-  return a.pieza_link && !conDatos.includes(a.pieza_link) ? `${conDatos}\n\n${a.pieza_link}`.trim() : conDatos
+  // El mensaje ya trae sus links resueltos (Triple Protección, catálogo, paquete).
+  // Solo se le cuelga el link suelto de la pieza cuando el texto no tiene ninguno.
+  return a.pieza_link && !/https?:\/\//.test(conDatos) ? `${conDatos}\n\n${a.pieza_link}`.trim() : conDatos
 }
 
 const haceCuanto = (iso: string | null): string | null => {
