@@ -1,12 +1,37 @@
 // Landing pública del Plan Canje 2026 — ver.orbitaleyewear.com.ar/canje
 // Independiente de /bienvenida. Contenido: renovación de stock para clientes activos.
-import { useRegistrarVisita } from '../../lib/visita'
+import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
 
 const AZUL = '#1e50ff'
+// El CTA no puede ser azul: el azul es el acento de toda la página y el botón
+// se mezclaba. Negro sólido, que es lo que más contrasta sobre el blanco.
+const CTA = '#0f0f10'
 const WA = '5491178548316'
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
-const CATALOGO_URL = 'https://ver.orbitaleyewear.com.ar/catalogo'
+// Si la óptica llegó con su token (…/canje?c=xxx) el catálogo le abre directo,
+// con sus precios y sin clave. Sin token cae en la pantalla de acceso.
+const catalogoUrl = () => {
+  const t = tokenDeLaUrl()
+  return t ? `https://ver.orbitaleyewear.com.ar/catalogo?k=${encodeURIComponent(t)}`
+           : 'https://ver.orbitaleyewear.com.ar/catalogo'
+}
+
+// El mismo botón arriba y en el cierre. Área de toque grande y ancho completo
+// en celular, que es donde se lee la landing.
+function BotonCatalogo({ className = '', texto = '🕶️ Ver el mix y armar mi pedido' }: { className?: string; texto?: string }) {
+  return (
+    <a
+      href={catalogoUrl()}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl text-white font-bold text-[15px] px-7 py-4 no-underline shadow-lg shadow-black/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all ${className}`}
+      style={{ background: CTA }}
+    >
+      {texto}
+    </a>
+  )
+}
 
 const CONTRASTE = [
   { estado: 'HOY', tono: 'gris', titulo: 'Stock parado', texto: 'Modelos que llevan meses en el exhibidor sin moverse, ocupando espacio visual y físico.' },
@@ -81,6 +106,11 @@ export default function LandingCanje() {
             {['Hasta 20 % del pedido', 'Descuento intacto en el resto', 'Sin pedido mínimo'].map((t) => (
               <span key={t} className="rounded-full border border-black/10 px-3 py-1 text-[11px] font-semibold text-black/60">{t}</span>
             ))}
+          </div>
+          {/* La acción principal, apenas entra: sin scrollear. */}
+          <div className="mt-6">
+            <BotonCatalogo />
+            <p className="text-[11px] text-black/40 mt-2">Entrás con tu acceso, sin clave, y armás el pedido con tus precios.</p>
           </div>
         </div>
         <div className="order-1 md:order-2">
@@ -158,7 +188,7 @@ export default function LandingCanje() {
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
             {MIX.map((m) => (
-              <a key={m.nombre} href={CATALOGO_URL} target="_blank" rel="noreferrer"
+              <a key={m.nombre} href={catalogoUrl()} target="_blank" rel="noreferrer"
                 className="rounded-xl border border-black/10 overflow-hidden bg-white hover:border-black/25 transition-colors no-underline text-inherit block">
                 <div className="aspect-square bg-white">
                   <img src={m.foto} alt={m.nombre} loading="lazy" className="w-full h-full object-contain" />
@@ -203,10 +233,7 @@ export default function LandingCanje() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-colors text-white font-bold px-6 py-3.5 no-underline">
               💬 Activá el Plan Canje
             </a>
-            <a href={CATALOGO_URL} target="_blank" rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl text-white font-bold px-6 py-3.5 transition-colors no-underline" style={{ background: AZUL }}>
-              🕶️ Ver el mix de temporada
-            </a>
+            <BotonCatalogo texto="🕶️ Ver el mix de temporada" />
           </div>
         </div>
 

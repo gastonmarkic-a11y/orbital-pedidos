@@ -3,16 +3,25 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useRegistrarVisita } from '../../lib/visita'
+import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
 
 const AZUL = '#1e50ff'
+// El CTA no puede ser azul: el azul es el color de acento de TODA la página
+// (badges, títulos, números), así que el botón se mezclaba con el resto.
+// Negro sólido: es lo que más contrasta sobre el blanco y lee como la acción
+// principal, sin pelearse con el verde del botón de WhatsApp.
+const CTA = '#0f0f10'
 const WA = '5491178548316'
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
 // Link que arma el pack: entra al catálogo con la clave de campaña y en modo pack,
 // que es el que enciende los carteles de "cómo armás tu pack".
 const CLAVE_PACK = 'bienvenida2026'
-const CATALOGO_PACK = `https://ver.orbitaleyewear.com.ar/catalogo?k=${CLAVE_PACK}&pack=bienvenida`
+// Si la óptica llegó con SU token (…/bienvenida?c=xxx) entra con ese: ve sus
+// precios y la visita al catálogo queda a su nombre. La clave de campaña es el
+// respaldo para cuando el link se comparte suelto, sin identificar a nadie.
+const catalogoPack = () =>
+  `https://ver.orbitaleyewear.com.ar/catalogo?k=${encodeURIComponent(tokenDeLaUrl() ?? CLAVE_PACK)}&pack=bienvenida`
 
 // Deportivos con toma profesional en 45° (bucket catalogo/tapa45).
 const IMG45 = 'https://towcgvphxeqilpdnboki.supabase.co/storage/v1/object/public/catalogo/tapa45'
@@ -88,6 +97,23 @@ const INCLUYE_DIGITAL = [
   'Acceso a la red oficial de Mercado Libre',
 ]
 
+// El mismo botón en los tres lugares donde aparece: arriba en el hero, en la
+// escala de piezas sin cargo y en el cierre. Área de toque grande (py-4) y
+// ancho completo en celular, que es donde se lee la landing.
+function BotonPack({ className = '' }: { className?: string }) {
+  return (
+    <a
+      href={catalogoPack()}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl text-white font-bold text-[15px] px-7 py-4 no-underline shadow-lg shadow-black/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all ${className}`}
+      style={{ background: CTA }}
+    >
+      🕶️ Armar mi pack en el catálogo
+    </a>
+  )
+}
+
 export default function LandingBienvenida() {
   useRegistrarVisita('bienvenida')
   const [destacados, setDestacados] = useState<Destacado[]>([])
@@ -123,6 +149,11 @@ export default function LandingBienvenida() {
             {['Exhibidor incluido', 'Kit digital', '100 % ventas garantizadas', 'Lanzamiento colaborativo'].map((t) => (
               <span key={t} className="rounded-full border border-black/10 px-3 py-1 text-[11px] font-semibold text-black/60">{t}</span>
             ))}
+          </div>
+          {/* La acción principal, apenas entra: sin scrollear. */}
+          <div className="mt-6">
+            <BotonPack />
+            <p className="text-[11px] text-black/40 mt-2">Entrás con tu acceso, sin clave, y armás el pedido con tus precios.</p>
           </div>
         </div>
         <div className="order-1 md:order-2">
@@ -187,7 +218,7 @@ export default function LandingBienvenida() {
           {destacados.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 mt-5">
               {destacados.map((m) => (
-                <a key={m.modelo} href={CATALOGO_PACK} target="_blank" rel="noreferrer"
+                <a key={m.modelo} href={catalogoPack()} target="_blank" rel="noreferrer"
                   className="rounded-xl border border-black/10 overflow-hidden bg-white hover:border-black/25 transition-colors no-underline text-inherit block">
                   <div className="aspect-square bg-white">
                     <img src={m.foto} alt={m.modelo} loading="lazy" className="w-full h-full object-contain" />
@@ -204,7 +235,7 @@ export default function LandingBienvenida() {
             <h3 className="text-xl font-black">Performance, en 45°</h3>
             <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 mt-4">
               {DEPORTIVOS.map(([nombre, file]) => (
-                <a key={nombre} href={CATALOGO_PACK} target="_blank" rel="noreferrer"
+                <a key={nombre} href={catalogoPack()} target="_blank" rel="noreferrer"
                   className="rounded-xl border border-black/10 overflow-hidden bg-white hover:border-black/25 transition-colors no-underline text-inherit block">
                   <div className="aspect-square bg-white">
                     <img src={`${IMG45}/${file}.png`} alt={nombre} loading="lazy" className="w-full h-full object-contain" />
@@ -234,10 +265,7 @@ export default function LandingBienvenida() {
               </div>
             ))}
           </div>
-          <a href={CATALOGO_PACK} target="_blank" rel="noreferrer"
-            className="inline-flex items-center justify-center gap-2 rounded-xl text-white font-bold px-6 py-3.5 mt-6 no-underline" style={{ background: AZUL }}>
-            🕶️ Armar mi pack en el catálogo
-          </a>
+          <BotonPack className="mt-6" />
         </div>
 
         {/* Tecnología */}
@@ -368,10 +396,7 @@ export default function LandingBienvenida() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-colors text-white font-bold px-6 py-3.5 no-underline">
               💬 Quiero el pack de bienvenida
             </a>
-            <a href={CATALOGO_PACK} target="_blank" rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl text-white font-bold px-6 py-3.5 transition-colors no-underline" style={{ background: AZUL }}>
-              🕶️ Armar mi pack en el catálogo
-            </a>
+            <BotonPack />
           </div>
         </div>
 

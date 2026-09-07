@@ -9,6 +9,17 @@ import { supabase } from './supabase'
 //
 // El prospectador no hace nada: el click del cliente ES la señal. Al día siguiente
 // el supervisor la lee y mueve la óptica de posta.
+/**
+ * El token con el que la óptica llegó a la landing (…/canje?c=xxx).
+ * Sirve para que el botón al catálogo la deje entrar con SU acceso y sus
+ * precios, en vez de mandarla a la pantalla de clave.
+ */
+export function tokenDeLaUrl(): string | null {
+  if (typeof window === 'undefined') return null
+  const p = new URLSearchParams(window.location.search)
+  return p.get('c') ?? p.get('k') ?? null
+}
+
 export function useRegistrarVisita(slug: 'bienvenida' | 'canje' | 'tripleproteccion') {
   useEffect(() => {
     if (typeof window === 'undefined') return
