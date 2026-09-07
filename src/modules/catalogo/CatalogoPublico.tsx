@@ -4,6 +4,8 @@ import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2
 import { colorLegible, colorSwatch } from './colorLegible'
 import { calcularBono, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
+import { calcularPack, esOportunidad, packObs } from './pack'
+import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -18,7 +20,7 @@ interface Variante {
   clasificacion: string | null; precio: number; precio_lista: number; tiene_preventa: boolean
   caliente: boolean; imagen: string | null; stock: number; proyectado?: boolean
 }
-interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number }
+interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean }
 interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
@@ -111,6 +113,7 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
 const CLAVE_KEY = 'orbital_catalogo_clave'
 const ACCESO_KEY = 'orbital_catalogo_acceso'
 const CART_KEY = 'orbital_catalogo_cart'
+const PACK_KEY = 'orbital_catalogo_pack'
 const DEVICE_KEY = 'orbital_catalogo_device'
 // Id estable por navegador para contar entradas y detectar si el link se comparte.
 function deviceId(): string {
@@ -529,6 +532,16 @@ export default function CatalogoPublico() {
     return localStorage.getItem(CLAVE_KEY)
   })
   const [claveOk, setClaveOk] = useState(false)
+  // ¿viene de la landing de bienvenida? El modo queda guardado para que sobreviva
+  // la navegación; se apaga solo con ?pack=0.
+  const [modoPack] = useState<boolean>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('pack')
+      if (p === '0' || p === 'off') { localStorage.removeItem(PACK_KEY); return false }
+      if (p) { localStorage.setItem(PACK_KEY, '1'); return true }
+      return localStorage.getItem(PACK_KEY) === '1'
+    } catch { return false }
+  })
   const [bloqueo, setBloqueo] = useState<{ label: string | null; vendedor_tel?: string | null } | null>(null)
   const [acceso, setAcceso] = useState<Acceso | null>(() => {
     try { return JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') } catch { return null }
@@ -612,6 +625,15 @@ export default function CatalogoPublico() {
 
   const bonoCalc = useMemo(() => calcularBono(cartTotal, bono, cartCount), [cartTotal, bono, cartCount])
 
+  // Pack de bienvenida: lo activa el link de la landing (?pack=bienvenida) y queda
+  // pegado al navegador para que sobreviva la navegación del catálogo.
+  const packCalc = useMemo(() => {
+    if (!modoPack) return null
+    const items = Object.values(cart)
+    const oport = items.filter((i) => i.oportunidad).reduce((a, c) => a + c.cantidad, 0)
+    return calcularPack(cartCount - oport, oport)
+  }, [modoPack, cart, cartCount])
+
   // Al cruzar un escalón, cartel de celebración (una sola vez por escalón).
   useEffect(() => {
     if (!bonoCalc) return
@@ -627,7 +649,7 @@ export default function CatalogoPublico() {
     setCart((c) => {
       const prev = c[v.codigo]
       const cantidad = Math.min((prev?.cantidad ?? 0) + 1, v.stock)
-      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, stock: v.stock, cantidad } }
+      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, stock: v.stock, cantidad, oportunidad: esOportunidad(v.clasificacion) } }
     })
   }
   function setQty(codigo: string, cantidad: number) {
@@ -645,6 +667,9 @@ export default function CatalogoPublico() {
   if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} codigo={clave} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
+  // ¿hay barra fija abajo (pack o bono)? Los flotantes se corren para no taparla.
+  const barraFija = !!packCalc || !!(bonoCalc && !bonoCalc.vencido)
+
   const navPill = (active: boolean, accent: Grupo['accent']) =>
     `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
@@ -660,8 +685,10 @@ export default function CatalogoPublico() {
           🔒 Catálogo con precios exclusivos de {(acceso.label.split(' - ')[1] || acceso.label).trim()} · uso personal
         </div>
       )}
+      {/* Pack de bienvenida: llega desde la landing */}
+      {packCalc && <PackBanner />}
       {/* Bono de campaña: solo si el token lo trae */}
-      {bono && <BonoBanner bono={bono} />}
+      {bono && !packCalc && <BonoBanner bono={bono} />}
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -691,6 +718,12 @@ export default function CatalogoPublico() {
       </header>
 
       <main className="max-w-6xl mx-auto px-3 py-4">
+        {/* Los tres pasos del pack, arriba de todo en la home del catálogo */}
+        {packCalc && !buscando && !grupoActivo && (
+          <div className="mb-4">
+            <PackPasos calc={packCalc} onVerOportunidades={() => verGrupo('oportunidades')} />
+          </div>
+        )}
         {buscando ? (
           <>
             <p className="text-[11px] text-neutral-400 mb-3">{resultados.length} resultado{resultados.length !== 1 ? 's' : ''} para “{q.trim()}”</p>
@@ -741,22 +774,25 @@ export default function CatalogoPublico() {
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
+      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Bono: cartel de escalón desbloqueado + barra de progreso fija */}
-      {celebra && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
-      {bonoCalc && !bonoCalc.vencido && !carritoOpen && !sel && !quick && (
+      {celebra && !packCalc && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
+      {packCalc && !carritoOpen && !sel && !quick && (
+        <PackBarra calc={packCalc} onVerOportunidades={() => verGrupo('oportunidades')} />
+      )}
+      {!packCalc && bonoCalc && !bonoCalc.vencido && !carritoOpen && !sel && !quick && (
         <BonoBarra calc={bonoCalc} onVerPares={() => verGrupo('oportunidades')} />
       )}
 
       {/* Ayuda al cliente: FAQ automática + WhatsApp del vendedor asignado */}
       {!carritoOpen && !sel && !quick && !infoGrupo && (
-        <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (bonoCalc && !bonoCalc.vencido ? "bottom-44 md:bottom-5" : "bottom-20 md:bottom-5") : (bonoCalc && !bonoCalc.vencido ? "bottom-28 md:bottom-5" : "bottom-5")} />
+        <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (barraFija ? "bottom-44 md:bottom-5" : "bottom-20 md:bottom-5") : (barraFija ? "bottom-28 md:bottom-5" : "bottom-5")} />
       )}
 
       {/* Barra flotante de pedido en mobile */}
       {cartCount > 0 && !carritoOpen && !sel && (
-        <button onClick={() => setCarritoOpen(true)} className={`md:hidden fixed ${bonoCalc && !bonoCalc.vencido ? 'bottom-28' : 'bottom-4'} inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20`}>
+        <button onClick={() => setCarritoOpen(true)} className={`md:hidden fixed ${barraFija ? 'bottom-28' : 'bottom-4'} inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20`}>
           <span className="text-sm font-medium">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</span>
           <span className="text-sm font-bold">{kAr(cartTotal)} · Ver pedido →</span>
         </button>
@@ -954,14 +990,16 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
 }
 
 // ── Carrito + checkout ──
-function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: {
-  cart: Record<string, CartItem>; clave: string; acceso: Acceso | null; bono?: BonoEstado | null
+function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, onDone }: {
+  cart: Record<string, CartItem>; clave: string; acceso: Acceso | null; bono?: BonoEstado | null; modoPack?: boolean
   onSetQty: (codigo: string, n: number) => void; onClose: () => void; onDone: () => void
 }) {
   const items = Object.values(cart)
   const total = items.reduce((a, c) => a + c.cantidad * c.precio, 0)
   const unidades = items.reduce((a, c) => a + c.cantidad, 0)
   const bonoCalc = calcularBono(total, bono ?? null, unidades)
+  const oportUnidades = items.filter((i) => i.oportunidad).reduce((a, c) => a + c.cantidad, 0)
+  const packCalc = modoPack ? calcularPack(unidades - oportUnidades, oportUnidades) : null
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
@@ -986,7 +1024,10 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
     const obsFinal = esRev
       ? ['🔁 REVENDEDOR — aplicar 15% bonif. · 30/60/90 · retira',
          paraQuien.trim() ? 'Para: ' + paraQuien.trim() : '', obs.trim()].filter(Boolean).join(' · ')
-      : obs.trim()
+      : packCalc
+        // Pack de bienvenida: el vendedor ve en el pedido qué corresponde sin cargo.
+        ? [packObs(packCalc), obs.trim()].filter(Boolean).join(' · ')
+        : obs.trim()
     const { data, error } = await supabase.rpc('catalogo_checkout', {
       p_clave: clave, p_identificador: ident.trim(), p_contacto: contacto.trim(),
       p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obsFinal, p_razon: razon.trim() || null,
@@ -1036,7 +1077,14 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{c.modelo}</p>
                     <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>
-                    <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>
+                      {packCalc && (
+                        <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${c.oportunidad ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0004FF]/10 text-[#0004FF]'}`}>
+                          {c.oportunidad ? 'Oportunidad' : 'Línea'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => onSetQty(c.codigo, c.cantidad - 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
@@ -1049,7 +1097,8 @@ function CarritoSheet({ cart, clave, acceso, bono, onSetQty, onClose, onDone }: 
             </div>
             <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
               <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
-              {bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
+              {packCalc && <PackResumen calc={packCalc} />}
+              {!packCalc && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
               <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
             </div>
           </>

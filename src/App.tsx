@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator, Tag,
+  BarChart3, Banknote, Calculator, Tag, Landmark,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -60,7 +60,10 @@ import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import LandingProximamente from './modules/landings/LandingProximamente'
+import LandingBienvenida from './modules/landings/LandingBienvenida'
+import LandingCanje from './modules/landings/LandingCanje'
 import PreciosML from './modules/mercadolibre/PreciosML'
+import FinanzasHub from './modules/finanzas/FinanzasHub'
 
 interface NavItem {
   to: string
@@ -91,6 +94,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion/generar': Factory,
   '/produccion/pedidos': Factory,
   '/ventas-historico': TrendingUp,
+  '/finanzas': Landmark,
 }
 
 function iconoDe(to: string, label: string) {
@@ -153,6 +157,9 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
     return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
+  // Rol financiero: solo el tablero de tesorería. No ve pedidos ni carteras comerciales.
+  if (rol === 'financiero')
+    return { principales: [{ to: '/finanzas', label: 'Finanzas' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
@@ -165,6 +172,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
+        { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
       ],
       menu: [],
@@ -196,6 +204,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
+      { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
@@ -223,6 +232,7 @@ function homeFor(rol: Rol): string {
   if (rol === 'produccion') return '/produccion'
   if (rol === 'contenido') return '/marketing'
   if (rol === 'social') return '/prospeccion-social'
+  if (rol === 'financiero') return '/finanzas'
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   if (rol === 'usa') return '/usa-pedidos'
@@ -343,6 +353,7 @@ const VIEW_OPTIONS = [
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
   { value: 'usa', label: 'USA' },
+  { value: 'financiero', label: 'Financiero' },
 ]
 
 function ThemeToggle() {
@@ -366,7 +377,7 @@ function Layout() {
   const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs, cuentas, setCuenta } = useAuth()
   const location = useLocation()
   // En escritorio, Cartera usa todo el ancho del monitor para ver todos los datos sin scroll
-  const anchoAmplio = location.pathname === '/cartera'
+  const anchoAmplio = location.pathname === '/cartera' || location.pathname === '/finanzas'
   const esAdminReal = vendedor?.rol === 'admin'
   const rol = rolEfectivo
   const nav = navConfig(rol, codigoEfectivo)
@@ -500,6 +511,7 @@ function Layout() {
           {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {rol !== 'revendedor' && <Route path="/mi-tanda" element={<MiTanda />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
+          {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
@@ -611,11 +623,25 @@ export default function App() {
       </ToastProvider>
     )
   }
+  // Pack de Bienvenida (incorporación de ópticas nuevas a la red)
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/bienvenida')) {
+    return (
+      <ToastProvider>
+        <LandingBienvenida />
+      </ToastProvider>
+    )
+  }
+  // Plan Canje (renovación de stock para clientes activos)
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/canje')) {
+    return (
+      <ToastProvider>
+        <LandingCanje />
+      </ToastProvider>
+    )
+  }
   // Campañas con ruta reservada (contenido a definir) → placeholder branded
   if (typeof window !== 'undefined') {
     const CAMPANAS: Record<string, string> = {
-      '/canje': 'Programa de Canje',
-      '/bienvenida': 'Bienvenida',
       '/dia-de-la-madre': 'Día de la Madre',
     }
     const slug = Object.keys(CAMPANAS).find((p) => window.location.pathname.startsWith(p))
