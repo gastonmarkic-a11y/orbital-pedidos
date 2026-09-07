@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Eye, EyeOff, MessageCircle, RefreshCw, Search } from 'lucide-react'
+import { useToast } from '../../lib/toast'
+import { Eye, EyeOff, MessageCircle, RefreshCw, Search, CheckCircle2 } from 'lucide-react'
 
 // Seguimiento — qué le mandé y qué pasó después.
 //
@@ -47,6 +48,7 @@ type Filtro = 'reaccionaron' | 'sin_reaccion' | 'todos'
 
 export default function Seguimiento() {
   const { vendedor, codigoEfectivo, rolEfectivo } = useAuth()
+  const toast = useToast()
   const [filas, setFilas] = useState<Fila[]>([])
   const [loading, setLoading] = useState(true)
   const [dias, setDias] = useState(30)
@@ -54,6 +56,8 @@ export default function Seguimiento() {
   const [busca, setBusca] = useState('')
   const [quien, setQuien] = useState<string>(codigoEfectivo ?? '')
   const [equipo, setEquipo] = useState<{ codigo: string; nombre: string }[]>([])
+  const [abierto, setAbierto] = useState<string | null>(null)
+  const [guardando, setGuardando] = useState<string | null>(null)
 
   const esAdmin = rolEfectivo === 'admin'
 
@@ -78,6 +82,32 @@ export default function Seguimiento() {
         }))
       })
   }, [esAdmin])
+
+  // Qué contestó el cliente, en un toque. El mensaje sale del WhatsApp del vendedor,
+  // así que la respuesta le llega a él: si no lo registra acá, el sistema no se entera.
+  const RESPUESTAS: [string, string][] = [
+    ['interesado', 'Le interesa'],
+    ['pidio_catalogo', 'Pidió catálogo'],
+    ['pidio_precio', 'Pidió precios'],
+    ['pidio_visita', 'Quiere visita'],
+    ['no_ahora', 'Ahora no'],
+    ['no_le_interesa', 'No le interesa'],
+    ['tel_malo', 'Teléfono mal'],
+    ['no_contactar', 'No contactar más'],
+  ]
+
+  const registrar = useCallback(async (cod: string, resultado: string) => {
+    setGuardando(cod)
+    const { data, error } = await supabase.rpc('registrar_respuesta', {
+      p_cod: cod, p_vendedor: quien, p_resultado: resultado, p_nota: null,
+    })
+    setGuardando(null)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    const r = data as { etiqueta?: string; agendado_para?: string } | null
+    toast(`${r?.etiqueta ?? 'Guardado'}${r?.agendado_para ? ' · queda en tu agenda' : ''}`, 'success')
+    setAbierto(null)
+    void cargar(quien, dias)
+  }, [quien, dias, cargar, toast])
 
   const reacciono = (f: Fila) => !!(f.abrio_catalogo || f.abrio_propuesta || f.respondio)
 
@@ -207,6 +237,32 @@ export default function Seguimiento() {
                 )}
               </div>
             </div>
+
+            {/* Un toque para dejar registrado qué contestó. Sin esto la respuesta se
+                queda en el celular del vendedor y el sistema nunca se entera. */}
+            {abierto === f.cod_cliente ? (
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                {RESPUESTAS.map(([k, l]) => (
+                  <button key={k} disabled={guardando === f.cod_cliente}
+                    onClick={() => void registrar(f.cod_cliente, k)}
+                    className={`rounded-full border px-3 py-1.5 text-[12px] transition-colors disabled:opacity-40 ${
+                      k === 'no_contactar' || k === 'no_le_interesa'
+                        ? 'border-black/10 text-muted hover:bg-black/[0.04]'
+                        : 'border-brandDark/30 text-brandDark hover:bg-goldSoft'}`}>
+                    {l}
+                  </button>
+                ))}
+                <button onClick={() => setAbierto(null)}
+                  className="rounded-full px-3 py-1.5 text-[12px] text-faint hover:text-ink transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setAbierto(f.cod_cliente)}
+                className="inline-flex items-center gap-1.5 mt-2 text-[12px] text-muted hover:text-ink transition-colors">
+                <CheckCircle2 size={13} /> ¿Qué te contestó?
+              </button>
+            )}
           </div>
         ))}
       </div>
