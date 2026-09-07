@@ -63,6 +63,13 @@ export function PackPasos({ calc, onVerOportunidades }: { calc: PackCalc; onVerO
           </div>
         ))}
       </div>
+      {/* El mínimo no es una barrera de compra: es la condición del beneficio.
+          Decirlo evita que alguien crea que no puede pedir menos y abandone. */}
+      <p className="text-[11.5px] text-neutral-500 leading-relaxed mt-3 pt-3 border-t border-[#0004FF]/10">
+        ¿Querés llevar menos de {PACK_MIN_LINEA}? Podés, el pedido se hace igual y sin problema.
+        Lo único es que por debajo de {PACK_MIN_LINEA} piezas de línea no se activan las piezas
+        sin cargo del Pack de Bienvenida.
+      </p>
       {calc.sinCargo > 0 && (
         <button
           onClick={onVerOportunidades}

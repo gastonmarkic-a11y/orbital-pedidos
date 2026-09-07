@@ -8,9 +8,10 @@ import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
 const AZUL = '#1e50ff'
 // El CTA no puede ser azul: el azul es el color de acento de TODA la página
 // (badges, títulos, números), así que el botón se mezclaba con el resto.
-// Negro sólido: es lo que más contrasta sobre el blanco y lee como la acción
-// principal, sin pelearse con el verde del botón de WhatsApp.
-const CTA = '#0f0f10'
+// Naranja quemado: es el complementario del azul, así que salta a la vista y
+// al mismo tiempo combina. Más vivo que esto (#F4511E, #FF5A1F) se ve más
+// punchy pero el texto blanco baja de 4.5:1 de contraste y cuesta leerlo.
+const CTA = '#D93A0B'
 const WA = '5491178548316'
 const waLink = (msg: string) => `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`
 const HERO = 'https://orbitaleyewear.com.ar/cdn/shop/files/Orbital_025.png?width=900'
@@ -106,7 +107,7 @@ function BotonPack({ className = '' }: { className?: string }) {
       href={catalogoPack()}
       target="_blank"
       rel="noreferrer"
-      className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl text-white font-bold text-[15px] px-7 py-4 no-underline shadow-lg shadow-black/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all ${className}`}
+      className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl text-white font-bold text-[15px] px-7 py-4 no-underline shadow-lg shadow-black/25 hover:shadow-xl hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 transition-all ${className}`}
       style={{ background: CTA }}
     >
       🕶️ Armar mi pack en el catálogo
