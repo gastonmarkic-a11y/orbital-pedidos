@@ -47,6 +47,7 @@ const PAQUETES = [
       'Podés arrancar de dos formas, la que te quede más cómoda:\n' +
       '\n🛒 Por el catálogo online, con tus precios y sin clave. Desde 12 unidades de línea te llevás 1 sin cargo cada 4 — el 25 % del pedido.' +
       '\n🤝 O te visita uno de nuestros ejecutivos y armamos el pedido juntos. El beneficio es el mismo; con visita arranca a partir de 24 unidades.' +
+      '\n\n💳 Las formas de pago las adaptamos a lo que necesites. Y si el pago es en efectivo, tenés un descuento extra único.' +
       '\n\n🎁 Así es el paquete de bienvenida, con todo lo que va incluido:',
   },
   {
@@ -59,6 +60,7 @@ const PAQUETES = [
       'Podés hacerlo de dos formas, la que te quede más cómoda:\n' +
       '\n🛒 Por el catálogo online, con tus precios y sin clave: armás el pedido y el canje entra ahí mismo.' +
       '\n🤝 O te visita uno de nuestros ejecutivos y lo armamos juntos. El beneficio es el mismo; con visita arranca a partir de 24 unidades.' +
+      '\n\n💳 Las formas de pago las adaptamos a lo que necesites. Y si el pago es en efectivo, tenés un descuento extra único.' +
       '\n\n🔄 Así funciona el Plan Canje, sin costo y sin vueltas:',
   },
 ] as const
