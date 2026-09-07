@@ -533,12 +533,21 @@ export default function CatalogoPublico() {
   })
   const [claveOk, setClaveOk] = useState(false)
   // ¿viene de la landing de bienvenida? El modo queda guardado para que sobreviva
-  // la navegación; se apaga solo con ?pack=0.
+  // una recarga en medio del armado del pedido.
+  //
+  // OJO: antes solo se apagaba con ?pack=0, así que quedaba pegado al navegador
+  // para siempre. A un cliente de Plan Canje, cuyo link no pide pack, el catálogo
+  // le seguía mostrando "Estás armando tu Pack de Bienvenida" — le hablábamos de
+  // una propuesta y le mostrábamos otra. Ahora un link de acceso sin ?pack lo
+  // apaga: el modo pertenece al link, no al navegador.
   const [modoPack] = useState<boolean>(() => {
     try {
-      const p = new URLSearchParams(window.location.search).get('pack')
+      const sp = new URLSearchParams(window.location.search)
+      const p = sp.get('pack')
       if (p === '0' || p === 'off') { localStorage.removeItem(PACK_KEY); return false }
       if (p) { localStorage.setItem(PACK_KEY, '1'); return true }
+      if (sp.get('k')) { localStorage.removeItem(PACK_KEY); return false }
+      // Sin parámetros (recarga o marcador) se respeta lo último que se abrió.
       return localStorage.getItem(PACK_KEY) === '1'
     } catch { return false }
   })
