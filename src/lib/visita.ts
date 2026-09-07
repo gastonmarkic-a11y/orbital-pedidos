@@ -15,6 +15,11 @@ export function useRegistrarVisita(slug: 'bienvenida' | 'canje' | 'tripleprotecc
     const p = new URLSearchParams(window.location.search)
     const token = p.get('c') ?? p.get('k') ?? ''
     // Sin token igual se registra: sirve para medir la landing aunque no sepamos quién.
-    void supabase.rpc('registrar_visita_landing', { p_token: token, p_slug: slug })
+    //
+    // OJO: rpc() devuelve un builder PEREZOSO. Sin .then() no se ejecuta nunca —
+    // `void supabase.rpc(...)` descarta el objeto sin llegar a mandar el request.
+    supabase
+      .rpc('registrar_visita_landing', { p_token: token, p_slug: slug })
+      .then(({ error }) => { if (error) console.warn('no se pudo registrar la visita:', error.message) })
   }, [slug])
 }
