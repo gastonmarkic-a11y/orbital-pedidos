@@ -194,10 +194,11 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/conversaciones', label: 'Conversaciones' },
   ]
   const menu: NavItem[] = []
-  // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día.
-  if (['vendedor', 'admin', 'administracion'].includes(rol)) principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' })
-  // Qué pasó con lo que ya mandó: abrió el catálogo, abrió la propuesta, o nada.
-  if (['vendedor', 'admin', 'administracion'].includes(rol)) secundarios.push({ to: '/seguimiento', label: 'Seguimiento' })
+  // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día,
+  // y al lado el resultado de lo que ya mandó (quién abrió el catálogo o la propuesta).
+  // Van juntas y arriba: en secundarios quedaban dentro de "Más" y no las encontraban.
+  if (['vendedor', 'admin', 'administracion'].includes(rol))
+    principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' }, { to: '/seguimiento', label: 'Seguimiento' })
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
