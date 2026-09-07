@@ -41,7 +41,13 @@ const PAQUETES = [
     titulo: 'Paquete de Bienvenida',
     para: 'para óptica nueva',
     nota: 'Exhibidor y POP, kit digital para redes, cambio de lo que no rota y lanzamiento conjunto. Entra sin clave y ve todo lo que incluye.',
-    linea: '🎁 Así es el paquete de bienvenida, con todo lo que va incluido:',
+    // Los dos caminos de compra. El beneficio es el mismo; cambia el piso desde el
+    // que arranca: online 12 unidades de línea (PACK_MIN_LINEA), con visita 24.
+    linea:
+      'Podés arrancar de dos formas, la que te quede más cómoda:\n' +
+      '\n🛒 Por el catálogo online, con tus precios y sin clave. Desde 12 unidades de línea te llevás 1 sin cargo cada 4 — el 25 % del pedido.' +
+      '\n🤝 O te visita uno de nuestros ejecutivos y armamos el pedido juntos. El beneficio es el mismo; con visita arranca a partir de 24 unidades.' +
+      '\n\n🎁 Así es el paquete de bienvenida, con todo lo que va incluido:',
   },
   {
     slug: 'canje',
@@ -49,7 +55,11 @@ const PAQUETES = [
     titulo: 'Plan Canje',
     para: 'para cliente que ya compró',
     nota: 'Cambia lo que no rota por el mix nuevo: hasta el 20 % del pedido, con nota de crédito al precio actual. Entra sin clave.',
-    linea: '🔄 Así funciona el Plan Canje, sin costo y sin vueltas:',
+    linea:
+      'Podés hacerlo de dos formas, la que te quede más cómoda:\n' +
+      '\n🛒 Por el catálogo online, con tus precios y sin clave: armás el pedido y el canje entra ahí mismo.' +
+      '\n🤝 O te visita uno de nuestros ejecutivos y lo armamos juntos. El beneficio es el mismo; con visita arranca a partir de 24 unidades.' +
+      '\n\n🔄 Así funciona el Plan Canje, sin costo y sin vueltas:',
   },
 ] as const
 type PaqueteSlug = (typeof PAQUETES)[number]['slug']
