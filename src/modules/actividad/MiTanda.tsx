@@ -52,19 +52,164 @@ const POSTA: Record<string, { label: string; calida: boolean }> = {
 }
 const postaInfo = (p: string) => POSTA[p] ?? { label: p, calida: false }
 
-const soloDigitos = (t: string | null) => (t ?? '').replace(/\D/g, '')
 const primerNombre = (r: string | null) => (r || '').trim().split(/\s+/)[0] || ''
+
+// Nombres de pila usuales en el padrón de ópticas. Es la única forma honesta de
+// saber si una razón social esconde una persona: "Rodriguez Monica Elida" tiene
+// nombre (Monica, en el medio), "Optica Quind" no tiene ninguno.
+const NOMBRES_PILA = new Set(`
+adriana adrian agustin agustina alberto alejandra alejandro alfredo alicia amalia ana analia andrea andres angel angela anibal antonio ariel arturo aurora
+beatriz belen benjamin bernardo betina blanca braian brenda bruno
+camila carina carla carlos carmen carolina catalina cecilia celeste cesar cintia claudia claudio clara corina cristian cristina cynthia
+dalia damian daniel daniela dario david debora diana diego dolores domingo
+edgardo eduardo elena elias elsa elvira emanuel emilia emiliano emilio enrique erica ernesto esteban estela esther eugenia eva evelyn ezequiel
+fabian fabiana facundo federico felipe fernanda fernando flavia florencia francisco franco gabriel gabriela gaston georgina geronimo gladys gloria gonzalo graciela gregorio guadalupe guillermo gustavo
+hector hernan hilda horacio hugo humberto ignacio ines irene irma isabel ismael ivan
+javier jazmin jesica jimena joaquin jorge jose josefina juan juana julian juliana julieta julio
+karina karen laura lautaro leandro leonardo leonel leticia lidia liliana lorena lucas lucia luciana luciano lucrecia luis luz
+magdalena maia maira malena manuel mara marcela marcelo marcos margarita maria mariana mariano maricel marina mario marisa marta martin mateo matias mauricio maximiliano melina mercedes micaela miguel milagros mirta monica myriam
+nadia nahuel nancy natalia natalio nelida nelson nestor nicolas nidia noelia noemi norberto norma
+octavio olga omar orlando oscar osvaldo
+pablo paola patricia patricio paula pedro pia pilar
+rafael ramiro ramon raul rebeca renata ricardo rita roberto rocio rodolfo rodrigo rogelio rolando romina rosa rosana rosario ruben rufina
+sabrina salvador samanta sandra santiago sara saul sebastian selva sergio silvana silvia simon sofia soledad sonia stella susana
+tamara tatiana teresa tomas
+ulises
+valentin valentina valeria vanesa vera veronica vicente victor victoria viviana
+walter wanda wilson
+yamila yanina yesica yolanda
+zulema
+`.trim().split(/\s+/))
+
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+/**
+ * El nombre de pila que hay adentro de una razón social, o '' si no hay ninguno.
+ * No alcanza con tomar la primera palabra: en el padrón las personas están
+ * cargadas apellido primero ("Rodriguez Monica Elida" saludaba "Hola Rodriguez")
+ * y una de cada cuatro ópticas arranca con una palabra genérica ("Hola Optica").
+ * Ante la duda devuelve vacío: un "Hola, ¿cómo estás?" pasa desapercibido;
+ * un "Hola Optica" delata que el mensaje lo mandó una máquina.
+ */
+function nombreDePila(razon: string | null): string {
+  for (const crudo of (razon || '').trim().split(/\s+/)) {
+    const tok = crudo.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, '')
+    if (tok.length < 3) continue
+    if (NOMBRES_PILA.has(sinAcentos(tok)))
+      return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase()
+  }
+  return ''
+}
+
+/** Cierra el hueco que deja el saludo sin nombre: "Hola , ¿cómo estás?" → "Hola, ¿cómo estás?". */
+const cerrarHuecos = (t: string) =>
+  t.replace(/[ \t]+([,.!?;:])/g, '$1').replace(/[ \t]{2,}/g, ' ')
+
+
+// Códigos de área argentinos de 3 dígitos. El resto se asume de 4 (o 11 para CABA/GBA).
+const AREAS_3 = new Set([
+  '220', '221', '223', '230', '236', '237', '249', '260', '261', '263', '264', '266',
+  '280', '291', '297', '299', '336', '341', '342', '343', '345', '348', '351', '353',
+  '358', '362', '364', '370', '376', '379', '380', '381', '383', '385', '387', '388',
+])
+
+/**
+ * Un número argentino en formato WhatsApp (549 + área + abonado), o null si no cierra.
+ * Los celulares vienen cargados de mil formas: con 0 adelante, con 15 en el medio,
+ * o como 15-XXXX-XXXX (que es CABA/GBA sin el 11). `celular` avisa si apareció el
+ * 15, porque cuando la ficha trae fijo y celular hay que quedarse con el celular.
+ */
+function normalizarAr(crudo: string): { numero: string; celular: boolean } | null {
+  let n = crudo.replace(/\D/g, '')
+  if (!n) return null
+  if (n.startsWith('549')) n = n.slice(3)
+  else if (n.startsWith('54')) n = n.slice(2)
+  n = n.replace(/^0/, '')
+
+  let celular = false
+  if (n.length === 10 && n.startsWith('15')) { n = '11' + n.slice(2); celular = true }
+  // Ningún código de área argentino arranca fuera de 11, 2 o 3: lo demás es basura.
+  if (!/^(?:11|2|3)/.test(n)) return null
+
+  const area = n.startsWith('11') ? '11' : AREAS_3.has(n.slice(0, 3)) ? n.slice(0, 3) : n.slice(0, 4)
+  let abonado = n.slice(area.length)
+  if (abonado.startsWith('15')) { abonado = abonado.slice(2); celular = true }
+  const full = area + abonado
+  return full.length === 10 ? { numero: '549' + full, celular } : null
+}
+
+/**
+ * Arma el número como lo necesita WhatsApp. Los teléfonos vienen de Tango sin país
+ * y con dos números metidos en el mismo campo —"44832901 / 1167009177", y a veces
+ * pegados sin separador—, así que mandarlos crudos termina en el cartel de WhatsApp
+ * diciendo que +44 8329011167009177 no existe. Se prueban los pedazos y se elige el
+ * celular. Devuelve null si ninguno cierra: mejor frenar que escribirle a cualquiera.
+ */
+function telefonoWa(crudo: string | null): string | null {
+  const texto = (crudo ?? '').trim()
+  if (!texto) return null
+
+  // Un número de otro país solo se respeta si vino declarado como tal.
+  const digitos = texto.replace(/\D/g, '')
+  if (/^(?:\+|00)/.test(texto) && !digitos.startsWith('54'))
+    return digitos.length >= 8 && digitos.length <= 15 ? digitos : null
+
+  const candidatos: string[] = []
+  for (const t of texto.split(/[/,;|]|\s{2,}|\s-\s/).map((x) => x.replace(/\D/g, '')).filter(Boolean)) {
+    candidatos.push(t)
+    // Dos números cargados sin separador: se prueban los cortes usuales (8+10 y 10+8).
+    if (t.length >= 16) candidatos.push(t.slice(0, 8), t.slice(8), t.slice(0, 10), t.slice(10))
+  }
+
+  let fijo: string | null = null
+  for (const c of candidatos) {
+    const r = normalizarAr(c)
+    if (!r) continue
+    if (r.celular) return r.numero   // el celular es el que atiende WhatsApp
+    fijo ??= r.numero
+  }
+  return fijo
+}
+
+/** Semilla estable por cliente: la misma tarjeta siempre muestra la misma redacción. */
+function semillaDe(cod: string): number {
+  let h = 0
+  for (let i = 0; i < cod.length; i++) h = (h * 31 + cod.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+/**
+ * Variantes de redacción: `{una cosa|la misma dicha distinto}` en la pieza.
+ * WhatsApp castiga las ráfagas de mensajes idénticos, así que cada contacto recibe
+ * una combinación distinta. La elección es determinística: lo que ves en la tarjeta
+ * es exactamente lo que se manda, y no cambia si recargás o si tocás Deshacer.
+ */
+function resolverVariantes(texto: string, semilla: number): string {
+  // Xorshift: cada grupo avanza el estado, así dos clientes que arrancan parecido
+  // no terminan con el mismo mensaje entero.
+  let s = semilla || 1
+  const siguiente = () => {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5
+    return Math.abs(s)
+  }
+  return texto.replace(/\{([^{}|]*\|[^{}]*)\}/g, (_, grupo: string) => {
+    const ops = grupo.split('|')
+    return ops[siguiente() % ops.length]
+  })
+}
 
 function armarMensaje(a: Accion, deParte: string): string {
   const base = (a.pieza_mensaje || '').trim()
   if (!base) return ''
-  const conDatos = base
-    .replace(/\{\{\s*(nombre|contacto)\s*\}\}/gi, primerNombre(a.razon))
+  const conDatos = resolverVariantes(base, semillaDe(a.cod_cliente))
+    .replace(/\{\{\s*(nombre|contacto)\s*\}\}/gi, nombreDePila(a.razon))
     .replace(/\{\{\s*(optica|cliente|razon)\s*\}\}/gi, (a.razon || '').trim())
     .replace(/\{\{\s*(vendedor|rep)\s*\}\}/gi, primerNombre(deParte))
   // El mensaje ya trae sus links resueltos (Triple Protección, catálogo, paquete).
   // Solo se le cuelga el link suelto de la pieza cuando el texto no tiene ninguno.
-  return a.pieza_link && !/https?:\/\//.test(conDatos) ? `${conDatos}\n\n${a.pieza_link}`.trim() : conDatos
+  // Si el saludo quedó sin nombre, se cierra el hueco que dejó el placeholder.
+  const texto = cerrarHuecos(conDatos)
+  return a.pieza_link && !/https?:\/\//.test(texto) ? `${texto}\n\n${a.pieza_link}`.trim() : texto
 }
 
 const haceCuanto = (iso: string | null): string | null => {
@@ -152,8 +297,12 @@ export default function MiTanda() {
     if (a.canal === 'mail') {
       window.open(`mailto:${a.email ?? ''}?subject=${encodeURIComponent(a.pieza_titulo ?? 'Orbital Eyewear')}&body=${encodeURIComponent(texto)}`)
     } else {
-      const tel = soloDigitos(a.telefono)
-      if (!tel) { toast('Este contacto no tiene WhatsApp cargado', 'error'); return }
+      const tel = telefonoWa(a.telefono)
+      if (!tel) {
+        toast(a.telefono ? `El teléfono está mal cargado (${a.telefono}). Corregilo en la ficha antes de escribirle.`
+                         : 'Este contacto no tiene WhatsApp cargado', 'error')
+        return
+      }
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank')
     }
     void avanzar(a, 'enviado')
