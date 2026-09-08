@@ -23,6 +23,9 @@ interface Fila {
   ultimo_canal: string | null
   visitas_catalogo: number
   abrio_catalogo: string | null
+  sesiones: number
+  minutos: number
+  ultima_sesion: string | null
   visitas_landing: number
   abrio_propuesta: string | null
   propuesta: string | null
@@ -30,8 +33,9 @@ interface Fila {
   respondio: string | null
   carrito_unidades: number | null
   carrito_importe: number | string | null
-  carrito_estado: string | null
   carrito_at: string | null
+  /** false = lo dejó cargado en la pantalla y nunca lo confirmó. */
+  carrito_confirmado: boolean
   carrito_pedido: number | null
   pedidos: number
   comprado: number | string | null
@@ -111,9 +115,10 @@ export default function PanelResultados() {
   useEffect(() => { if (habilitado) void cargar(dias) }, [dias, cargar, habilitado])
 
   const totales = useMemo(() => {
-    const t = { opticas: filas.length, envios: 0, abrio: 0, propuesta: 0, respondio: 0, carrito: 0, compro: 0, enCarrito: 0, vendido: 0 }
+    const t = { opticas: filas.length, envios: 0, abrio: 0, propuesta: 0, respondio: 0, carrito: 0, compro: 0, enCarrito: 0, vendido: 0, minutos: 0 }
     for (const f of filas) {
       t.envios += f.envios
+      t.minutos += f.minutos
       if (f.visitas_catalogo > 0) t.abrio++
       if (f.visitas_landing > 0) t.propuesta++
       if (f.respuestas > 0) t.respondio++
@@ -203,7 +208,7 @@ export default function PanelResultados() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
           { n: String(totales.envios), l: 'mensajes enviados' },
-          { n: String(totales.abrio), l: 'abrieron el catálogo' },
+          { n: String(totales.abrio), l: 'abrieron el catálogo', sub: totales.minutos ? `${totales.minutos} min mirando` : undefined },
           { n: String(totales.propuesta), l: 'abrieron una propuesta' },
           { n: String(totales.respondio), l: 'contestaron' },
           { n: String(totales.carrito), l: 'armaron carrito', sub: plata(totales.enCarrito) },
@@ -353,11 +358,16 @@ export default function PanelResultados() {
                     ) : <span className="text-faint">—</span>}
                   </td>
                   <td className="px-3 py-2">
-                    {f.visitas_catalogo > 0 ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Eye size={11} /><span className="tabular-nums">{f.visitas_catalogo}</span>
-                        <span className="text-faint">{haceCuanto(f.abrio_catalogo)}</span>
-                      </span>
+                    {f.visitas_catalogo > 0 || f.sesiones > 0 ? (
+                      <>
+                        <span className="inline-flex items-center gap-1">
+                          <Eye size={11} /><span className="tabular-nums">{Math.max(f.visitas_catalogo, f.sesiones)}</span>
+                          <span className="text-faint">{haceCuanto(f.abrio_catalogo ?? f.ultima_sesion)}</span>
+                        </span>
+                        {f.minutos > 0 && (
+                          <p className="text-[11px] tabular-nums">{f.minutos} min mirando</p>
+                        )}
+                      </>
                     ) : <span className="text-faint">—</span>}
                   </td>
                   <td className="px-3 py-2">
@@ -382,7 +392,9 @@ export default function PanelResultados() {
                       <>
                         <p className="tabular-nums">{f.carrito_unidades}u · {plata(num(f.carrito_importe))}</p>
                         <p className={`text-[11px] ${f.carrito_pedido || f.pedidos > 0 ? 'text-faint' : 'font-medium'}`}>
-                          {f.carrito_pedido || f.pedidos > 0 ? 'cerrado' : 'sin cerrar'}
+                          {f.carrito_pedido || f.pedidos > 0
+                            ? 'cerrado'
+                            : f.carrito_confirmado ? 'sin cerrar' : 'lo dejó cargado'}
                         </p>
                       </>
                     ) : <span className="text-faint">—</span>}

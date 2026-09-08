@@ -113,6 +113,8 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
 const CLAVE_KEY = 'orbital_catalogo_clave'
 const ACCESO_KEY = 'orbital_catalogo_acceso'
 const CART_KEY = 'orbital_catalogo_cart'
+// En sessionStorage, no en localStorage: la sesión de medición dura lo que dura la pestaña.
+const SESION_KEY = 'orbital_catalogo_sesion'
 const PACK_KEY = 'orbital_catalogo_pack'
 const DEVICE_KEY = 'orbital_catalogo_device'
 // Id estable por navegador para contar entradas y detectar si el link se comparte.
@@ -631,6 +633,66 @@ export default function CatalogoPublico() {
       setBono((data as BonoEstado) ?? null)
     })
   }, [claveOk, acceso?.codigo, clave])
+
+  // ── Tracking: cuánto miró y qué llegó a cargar ──────────────────────────────
+  // Hasta acá solo sabíamos que entró, y —si confirmaba— qué pidió. Lo del medio
+  // (el rato que estuvo y el carrito que armó y no cerró) es justo la señal que le
+  // sirve al vendedor para saber a quién llamar hoy.
+  const sesionRef = useRef<string | null>(null)
+  const segundosRef = useRef(0)
+
+  useEffect(() => {
+    if (!claveOk || !clave) return
+    // La sesión se guarda en la pestaña: si el componente se vuelve a montar —o React
+    // lo monta dos veces en desarrollo— seguimos escribiendo en la misma fila en vez
+    // de abrir una visita nueva. Muere cuando la óptica cierra la pestaña, que es
+    // exactamente lo que queremos contar como "una visita".
+    if (!sesionRef.current) {
+      try { sesionRef.current = sessionStorage.getItem(SESION_KEY) } catch { /* modo privado */ }
+    }
+    // OJO: rpc() es un builder perezoso. Sin .then() no sale el request.
+    const latir = () => {
+      supabase.rpc('catalogo_sesion_ping', {
+        p_codigo: clave, p_sesion: sesionRef.current,
+        p_segundos: segundosRef.current, p_device: deviceId(),
+      }).then(({ data }) => {
+        if (typeof data !== 'string') return
+        sesionRef.current = data
+        try { sessionStorage.setItem(SESION_KEY, data) } catch { /* modo privado */ }
+      })
+    }
+    latir()
+    // El reloj corre solo con la pestaña a la vista: dejarla abierta de fondo no cuenta.
+    const tic = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      segundosRef.current += 15
+      if (segundosRef.current % 30 === 0) latir()
+    }, 15000)
+    const alCambiar = () => { if (segundosRef.current) latir() }
+    document.addEventListener('visibilitychange', alCambiar)
+    return () => {
+      window.clearInterval(tic)
+      document.removeEventListener('visibilitychange', alCambiar)
+      if (segundosRef.current) latir()
+    }
+  }, [claveOk, clave])
+
+  // El carrito se guarda entero y pisado, no por diferencias: lo que queda grabado
+  // es siempre el último estado real de la pantalla. Con demora, para no escribir
+  // una fila por cada clic en el "+".
+  useEffect(() => {
+    if (!claveOk || !clave) return
+    const t = window.setTimeout(() => {
+      supabase.rpc('catalogo_carrito_guardar', {
+        p_codigo: clave, p_device: deviceId(),
+        p_items: Object.values(cart).map((i) => ({
+          codigo: i.codigo, modelo: i.modelo, cantidad: i.cantidad, precio: i.precio,
+        })),
+        p_unidades: cartCount, p_importe: cartTotal,
+      }).then(() => {})
+    }, 2500)
+    return () => window.clearTimeout(t)
+  }, [cart, cartCount, cartTotal, claveOk, clave])
 
   const bonoCalc = useMemo(() => calcularBono(cartTotal, bono, cartCount), [cartTotal, bono, cartCount])
 
