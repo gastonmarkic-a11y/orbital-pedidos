@@ -164,6 +164,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'administracion')
     return {
       principales: [
+        { to: '/mi-tanda', label: 'Mi tanda' },
         { to: '/pedidos', label: 'Facturación' },
         { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       ],
@@ -197,7 +198,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día,
   // y al lado el resultado de lo que ya mandó (quién abrió el catálogo o la propuesta).
   // Van juntas y arriba: en secundarios quedaban dentro de "Más" y no las encontraban.
-  if (['vendedor', 'admin', 'administracion'].includes(rol))
+  if (['vendedor', 'admin'].includes(rol))
     principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' }, { to: '/seguimiento', label: 'Seguimiento' })
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
