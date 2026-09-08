@@ -185,6 +185,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // por si hace falta volver a la vista completa con la cola del día).
   const principales: NavItem[] = [
     { to: '/hoy', label: 'Agenda' },
+    { to: '/panel-resultados', label: 'Resultados' },
     { to: '/cartera', label: 'Cartera' },
     { to: '/pedidos', label: 'Pedidos' },
   ]
@@ -209,7 +210,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
   if (rol === 'admin') {
-    secundarios.push({ to: '/panel-resultados', label: 'Resultados' }, { to: '/pedidos/stock', label: 'Stock' })
+    secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
     menu.push(
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
@@ -518,7 +519,7 @@ function Layout() {
           {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {rol !== 'revendedor' && <Route path="/mi-tanda" element={<MiTanda />} />}
           {rol !== 'revendedor' && <Route path="/seguimiento" element={<Seguimiento />} />}
-          {(rol === 'admin' || rol === 'administracion') && <Route path="/panel-resultados" element={<PanelResultados />} />}
+          {rol !== 'revendedor' && <Route path="/panel-resultados" element={<PanelResultados />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}

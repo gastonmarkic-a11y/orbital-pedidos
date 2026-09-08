@@ -175,7 +175,9 @@ export default function PanelResultados() {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
 
-  const habilitado = rolEfectivo === 'admin' || rolEfectivo === 'administracion'
+  // Lo ve todo el que participa del circuito comercial, con los números de todo el
+  // equipo: la idea es que cada uno vea dónde está parado respecto del resto.
+  const habilitado = rolEfectivo !== 'revendedor'
 
   const cargar = useCallback(async (d: number) => {
     setLoading(true)
@@ -228,8 +230,8 @@ export default function PanelResultados() {
   if (!habilitado)
     return (
       <div className="max-w-[1000px] mx-auto px-4 py-16 text-center">
-        <p className="text-lg font-medium tracking-tight">Este panel es de dirección</p>
-        <p className="text-sm text-muted mt-2">Si trabajás una cartera, lo tuyo está en Seguimiento.</p>
+        <p className="text-lg font-medium tracking-tight">Este panel es del equipo de Orbital</p>
+        <p className="text-sm text-muted mt-2">Lo tuyo está en Cartera y en Pedidos.</p>
       </div>
     )
 
