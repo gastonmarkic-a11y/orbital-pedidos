@@ -24,6 +24,7 @@ import GuionesContacto from './modules/actividad/GuionesContacto'
 import ProspeccionSocial from './modules/actividad/ProspeccionSocial'
 import MiTanda from './modules/actividad/MiTanda'
 import Seguimiento from './modules/actividad/Seguimiento'
+import PanelResultados from './modules/actividad/PanelResultados'
 import AdminActividad from './modules/actividad/AdminActividad'
 import AdminMarketing from './modules/actividad/AdminMarketing'
 
@@ -169,6 +170,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       ],
       secundarios: [
+        { to: '/panel-resultados', label: 'Resultados' },
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
@@ -211,6 +213,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     menu.push(
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
+      { to: '/panel-resultados', label: 'Resultados' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
@@ -516,6 +519,7 @@ function Layout() {
           {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {rol !== 'revendedor' && <Route path="/mi-tanda" element={<MiTanda />} />}
           {rol !== 'revendedor' && <Route path="/seguimiento" element={<Seguimiento />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/panel-resultados" element={<PanelResultados />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
