@@ -51,6 +51,14 @@ interface Lead {
   created_at: string
 }
 
+interface Equipo {
+  codigo: string
+  nombre: string
+  /** Tanda asignada que todavía no trabajó. */
+  pendientes: number
+  cupo: number
+}
+
 const POSTA: Record<string, string> = {
   P0_frio: 'Primer contacto', P1_presentacion: 'Seguimiento', P2_interaccion: 'Respondió',
   P3_propuesta: 'Está decidiendo', P4_activo: 'Cliente activo',
@@ -168,6 +176,10 @@ export default function PanelResultados() {
   const { rolEfectivo } = useAuth()
   const [filas, setFilas] = useState<Fila[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
+  /** Todos los que prospectan, hayan mandado algo o no: el que está en cero también es un dato. */
+  const [equipo, setEquipo] = useState<string[]>([])
+  /** Tanda asignada y todavía sin trabajar, por persona. */
+  const [pendientes, setPendientes] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [dias, setDias] = useState(30)
   const [foco, setFoco] = useState<string>('sin_cerrar')
@@ -182,14 +194,18 @@ export default function PanelResultados() {
   const cargar = useCallback(async (d: number) => {
     setLoading(true)
     const desde = new Date(Date.now() - d * 86400000).toISOString()
-    const [res, lea] = await Promise.all([
+    const [res, lea, eq] = await Promise.all([
       supabase.rpc('panel_resultados', { p_dias: d }),
       supabase.from('prospeccion_social')
         .select('id, nombre, estado, zona, asignado_a, created_at')
         .eq('canal', 'meta_b2b').gte('created_at', desde).order('created_at', { ascending: false }),
+      supabase.rpc('panel_equipo'),
     ])
     setFilas(res.error ? [] : ((res.data as Fila[]) ?? []))
     setLeads(lea.error ? [] : ((lea.data as Lead[]) ?? []))
+    const roster = (eq.error ? [] : ((eq.data as Equipo[]) ?? []))
+    setEquipo(roster.map((r) => r.codigo))
+    setPendientes(Object.fromEntries(roster.map((r) => [r.codigo, r.pendientes])))
     setLoading(false)
   }, [])
 
@@ -214,6 +230,9 @@ export default function PanelResultados() {
 
   const porVendedor = useMemo(() => {
     const m = new Map<string, { opticas: number; envios: number; abrio: number; carrito: number; vendido: number }>()
+    // Primero todo el equipo en cero: el que no mandó nada tiene que aparecer igual,
+    // porque justamente eso es lo que hay que ver.
+    for (const k of equipo) m.set(k, { opticas: 0, envios: 0, abrio: 0, carrito: 0, vendido: 0 })
     for (const f of filas) {
       const k = f.vendedor || 'sin asignar'
       const v = m.get(k) ?? { opticas: 0, envios: 0, abrio: 0, carrito: 0, vendido: 0 }
@@ -225,7 +244,7 @@ export default function PanelResultados() {
       m.set(k, v)
     }
     return [...m.entries()].sort((a, b) => b[1].vendido - a[1].vendido || b[1].envios - a[1].envios)
-  }, [filas])
+  }, [filas, equipo])
 
   if (!habilitado)
     return (
@@ -302,6 +321,7 @@ export default function PanelResultados() {
             <thead>
               <tr className="text-faint text-left border-b border-black/[0.07]">
                 <th className="px-3 py-2 font-medium">Vendedor</th>
+                <th className="px-3 py-2 font-medium text-right">Sin trabajar</th>
                 <th className="px-3 py-2 font-medium text-right">Enviados</th>
                 <th className="px-3 py-2 font-medium text-right">Ópticas</th>
                 <th className="px-3 py-2 font-medium text-right">Abrieron</th>
@@ -315,6 +335,10 @@ export default function PanelResultados() {
                   className={`border-b border-black/[0.04] last:border-0 cursor-pointer transition-colors ${
                     vendedorFoco === k ? 'bg-brand/[0.06]' : 'hover:bg-black/[0.02]'}`}>
                   <td className="px-3 py-2 font-medium">{k}</td>
+                  {/* Tanda asignada que todavía no tocó: es lo primero que hay que mirar. */}
+                  <td className={`px-3 py-2 text-right tabular-nums ${pendientes[k] ? 'font-medium text-brandDark' : 'text-faint'}`}>
+                    {pendientes[k] || '—'}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.envios || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.opticas}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.abrio || '—'}</td>
