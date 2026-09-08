@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
-import { Eye, EyeOff, MessageCircle, RefreshCw, Search, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, MessageCircle, RefreshCw, Search, CheckCircle2, ShoppingCart } from 'lucide-react'
 
 // Seguimiento — qué le mandé y qué pasó después.
 //
@@ -26,6 +26,13 @@ interface Fila {
   propuesta_abierta: string | null
   respondio: string | null
   nota: string | null
+  /** Minutos con el catálogo a la vista, sumando todas sus visitas. */
+  minutos: number
+  sesiones: number
+  carrito_unidades: number | null
+  carrito_importe: number | string | null
+  /** false = lo dejó cargado en la pantalla y nunca lo confirmó. */
+  carrito_confirmado: boolean
 }
 
 const POSTA: Record<string, string> = {
@@ -43,6 +50,9 @@ const haceCuanto = (iso: string | null): string => {
   const m = Math.round(d / 30)
   return `hace ${m} ${m === 1 ? 'mes' : 'meses'}`
 }
+
+const plata = (n: number) =>
+  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`
 
 type Filtro = 'reaccionaron' | 'sin_reaccion' | 'todos'
 
@@ -109,7 +119,7 @@ export default function Seguimiento() {
     void cargar(quien, dias)
   }, [quien, dias, cargar, toast])
 
-  const reacciono = (f: Fila) => !!(f.abrio_catalogo || f.abrio_propuesta || f.respondio)
+  const reacciono = (f: Fila) => !!(f.abrio_catalogo || f.abrio_propuesta || f.respondio || f.carrito_unidades)
 
   const visibles = useMemo(() => {
     const q = busca.trim().toLowerCase()
@@ -220,9 +230,17 @@ export default function Seguimiento() {
                     <MessageCircle size={11} /> Te escribió {haceCuanto(f.respondio)}
                   </span>
                 )}
+                {/* El carrito es la señal más fuerte: estuvo eligiendo, no mirando. */}
+                {!!f.carrito_unidades && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brandDark px-2 py-0.5 text-[11px] font-medium text-white">
+                    <ShoppingCart size={11} /> {f.carrito_unidades}u · {plata(Number(f.carrito_importe ?? 0))}
+                    {f.carrito_confirmado ? '' : ' sin confirmar'}
+                  </span>
+                )}
                 {f.abrio_catalogo && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-goldSoft px-2 py-0.5 text-[11px] font-medium text-brandDark">
                     <Eye size={11} /> Catálogo {haceCuanto(f.abrio_catalogo)}
+                    {f.minutos > 0 ? ` · ${f.minutos} min` : ''}
                   </span>
                 )}
                 {f.abrio_propuesta && (

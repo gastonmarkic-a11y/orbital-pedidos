@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { RefreshCw, Search, ShoppingCart, MessageCircle, Eye, FileText } from 'lucide-react'
+import { RefreshCw, Search, ShoppingCart, MessageCircle, Eye, FileText, Clock, Send, Wallet, ChevronDown } from 'lucide-react'
 
-// Panel de resultados — qué pasó con cada óptica, venga de donde venga el contacto.
+// Panel de resultados — tablero de variables con el detalle abajo.
 //
-// Seguimiento le contesta al vendedor "qué pasó con lo que MANDÉ". Este panel le
-// contesta a la dirección "qué está pasando con TODO": la tanda, los leads de Meta,
-// el que entró al catálogo solo. Una fila por óptica con la interacción entera, y
-// arriba el embudo, que es lo que dice dónde se está cayendo la venta.
+// La idea es leerlo en dos tiempos: arriba las variables, y al tocar cualquiera
+// se abre exactamente el listado de ópticas que hay detrás de ese número, ordenado
+// por lo que importa en esa variable. Después, tocando una óptica, se abre todo lo
+// que sabemos de ella. Nada de buscar a mano en una tabla larga.
 
 interface Fila {
   cod: string
@@ -71,21 +71,98 @@ const haceCuanto = (iso: string | null): string => {
   return `hace ${m} ${m === 1 ? 'mes' : 'meses'}`
 }
 
+const fecha = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—'
+
 const plata = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`
 
 const num = (v: number | string | null | undefined) => Number(v ?? 0) || 0
 
-/** El escalón más alto que alcanzó la óptica: define en qué fila del embudo cuenta. */
-function escalon(f: Fila): 'compro' | 'carrito' | 'respondio' | 'abrio' | 'contactado' {
-  if (f.pedidos > 0) return 'compro'
-  if (f.carrito_unidades) return 'carrito'
-  if (f.respuestas > 0) return 'respondio'
-  if (f.visitas_catalogo > 0 || f.visitas_landing > 0) return 'abrio'
-  return 'contactado'
+const sinCerrar = (f: Fila) => !!f.carrito_unidades && !f.carrito_pedido && f.pedidos === 0
+
+/**
+ * Las variables del tablero. Cada una sabe contarse, filtrar su propio listado y
+ * ordenarlo por lo que importa en ella: al abrir "minutos mirando" el primero tiene
+ * que ser el que más miró, no el último que entró.
+ */
+interface Variable {
+  key: string
+  label: string
+  icono: typeof Eye
+  /** Quiénes están detrás del número. */
+  filtro: (f: Fila) => boolean
+  /** El número grande. Por defecto, cuántas ópticas. */
+  valor?: (fs: Fila[]) => string
+  /** La línea chica de abajo. */
+  pie?: (fs: Fila[]) => string
+  orden: (a: Fila, b: Fila) => number
+  /** Qué explicar cuando se abre el detalle. */
+  ayuda: string
+  destacar?: boolean
 }
 
-type Filtro = 'todos' | 'abandonaron' | 'reaccionaron' | 'sin_reaccion'
+const desc = (v: (f: Fila) => number) => (a: Fila, b: Fila) => v(b) - v(a)
+const fechaDesc = (v: (f: Fila) => string | null) => (a: Fila, b: Fila) =>
+  new Date(v(b) ?? 0).getTime() - new Date(v(a) ?? 0).getTime()
+
+const VARIABLES: Variable[] = [
+  {
+    key: 'enviados', label: 'Mensajes enviados', icono: Send,
+    filtro: (f) => f.envios > 0,
+    valor: (fs) => String(fs.reduce((a, f) => a + f.envios, 0)),
+    pie: (fs) => `a ${fs.length} ${fs.length === 1 ? 'óptica' : 'ópticas'}`,
+    orden: desc((f) => f.envios),
+    ayuda: 'Lo que salió desde Mi tanda en el período. El número grande son mensajes; abajo, a cuántas ópticas.',
+  },
+  {
+    key: 'abrieron', label: 'Abrieron el catálogo', icono: Eye,
+    filtro: (f) => f.visitas_catalogo > 0 || f.sesiones > 0,
+    orden: desc((f) => Math.max(f.visitas_catalogo, f.sesiones)),
+    ayuda: 'Entraron al catálogo con su propio link. Ordenadas por cuántas veces volvieron.',
+  },
+  {
+    key: 'tiempo', label: 'Minutos mirando', icono: Clock,
+    filtro: (f) => f.minutos > 0,
+    valor: (fs) => String(fs.reduce((a, f) => a + f.minutos, 0)),
+    pie: (fs) => `${fs.length} ${fs.length === 1 ? 'óptica' : 'ópticas'} con tiempo medido`,
+    orden: desc((f) => f.minutos),
+    ayuda: 'Tiempo con el catálogo a la vista. No cuenta la pestaña abierta de fondo. La que más miró va primero.',
+  },
+  {
+    key: 'propuesta', label: 'Abrieron una propuesta', icono: FileText,
+    filtro: (f) => f.visitas_landing > 0,
+    orden: fechaDesc((f) => f.abrio_propuesta),
+    ayuda: 'Abrieron Bienvenida, Plan Canje o Triple Protección desde su link.',
+  },
+  {
+    key: 'contestaron', label: 'Contestaron', icono: MessageCircle,
+    filtro: (f) => f.respuestas > 0,
+    orden: fechaDesc((f) => f.respondio),
+    ayuda: 'Escribieron de vuelta. La respuesta más fresca arriba.',
+  },
+  {
+    key: 'carrito', label: 'Armaron carrito', icono: ShoppingCart,
+    filtro: (f) => !!f.carrito_unidades,
+    pie: (fs) => plata(fs.reduce((a, f) => a + num(f.carrito_importe), 0)) + ' cargados',
+    orden: desc((f) => num(f.carrito_importe)),
+    ayuda: 'Eligieron productos en el catálogo. Ordenadas por lo que tienen cargado.',
+  },
+  {
+    key: 'sin_cerrar', label: 'Carrito sin cerrar', icono: Wallet, destacar: true,
+    filtro: sinCerrar,
+    pie: (fs) => plata(fs.reduce((a, f) => a + num(f.carrito_importe), 0)) + ' sin cerrar',
+    orden: desc((f) => num(f.carrito_importe)),
+    ayuda: 'Armaron el pedido y no lo terminaron. Es la plata más cerca de entrar: son las llamadas de hoy.',
+  },
+  {
+    key: 'compraron', label: 'Compraron', icono: Wallet,
+    filtro: (f) => f.pedidos > 0,
+    pie: (fs) => plata(fs.reduce((a, f) => a + num(f.comprado), 0)) + ' facturados',
+    orden: desc((f) => num(f.comprado)),
+    ayuda: 'Terminaron en pedido dentro del período.',
+  },
+]
 
 export default function PanelResultados() {
   const { rolEfectivo } = useAuth()
@@ -93,7 +170,9 @@ export default function PanelResultados() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [dias, setDias] = useState(30)
-  const [filtro, setFiltro] = useState<Filtro>('todos')
+  const [foco, setFoco] = useState<string>('sin_cerrar')
+  const [vendedorFoco, setVendedorFoco] = useState<string | null>(null)
+  const [abierta, setAbierta] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
 
   const habilitado = rolEfectivo === 'admin' || rolEfectivo === 'administracion'
@@ -114,53 +193,37 @@ export default function PanelResultados() {
 
   useEffect(() => { if (habilitado) void cargar(dias) }, [dias, cargar, habilitado])
 
-  const totales = useMemo(() => {
-    const t = { opticas: filas.length, envios: 0, abrio: 0, propuesta: 0, respondio: 0, carrito: 0, compro: 0, enCarrito: 0, vendido: 0, minutos: 0 }
-    for (const f of filas) {
-      t.envios += f.envios
-      t.minutos += f.minutos
-      if (f.visitas_catalogo > 0) t.abrio++
-      if (f.visitas_landing > 0) t.propuesta++
-      if (f.respuestas > 0) t.respondio++
-      if (f.carrito_unidades) { t.carrito++; t.enCarrito += num(f.carrito_importe) }
-      if (f.pedidos > 0) { t.compro++; t.vendido += num(f.comprado) }
-    }
-    return t
-  }, [filas])
-
-  // Carritos que quedaron a mitad de camino: armó el pedido en el catálogo y no cerró.
-  const abandonados = useMemo(
-    () => filas.filter((f) => f.carrito_unidades && !f.carrito_pedido && f.pedidos === 0),
-    [filas],
+  // El corte por vendedor manda sobre todo el tablero: si elegís uno, las variables
+  // pasan a contar solo lo suyo.
+  const base = useMemo(
+    () => (vendedorFoco ? filas.filter((f) => (f.vendedor || 'sin asignar') === vendedorFoco) : filas),
+    [filas, vendedorFoco],
   )
 
+  const variable = VARIABLES.find((v) => v.key === foco) ?? VARIABLES[0]
+
+  const detalle = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return base
+      .filter(variable.filtro)
+      .filter((f) => !q || (f.nombre ?? '').toLowerCase().includes(q) || f.cod.toLowerCase().includes(q))
+      .sort(variable.orden)
+  }, [base, variable, busca])
+
   const porVendedor = useMemo(() => {
-    const m = new Map<string, { envios: number; opticas: number; abrio: number; respondio: number; carrito: number; compro: number; vendido: number }>()
+    const m = new Map<string, { opticas: number; envios: number; abrio: number; carrito: number; vendido: number }>()
     for (const f of filas) {
       const k = f.vendedor || 'sin asignar'
-      const v = m.get(k) ?? { envios: 0, opticas: 0, abrio: 0, respondio: 0, carrito: 0, compro: 0, vendido: 0 }
-      v.envios += f.envios
+      const v = m.get(k) ?? { opticas: 0, envios: 0, abrio: 0, carrito: 0, vendido: 0 }
       v.opticas++
+      v.envios += f.envios
       if (f.visitas_catalogo > 0 || f.visitas_landing > 0) v.abrio++
-      if (f.respuestas > 0) v.respondio++
       if (f.carrito_unidades) v.carrito++
-      if (f.pedidos > 0) { v.compro++; v.vendido += num(f.comprado) }
+      if (f.pedidos > 0) v.vendido += num(f.comprado)
       m.set(k, v)
     }
     return [...m.entries()].sort((a, b) => b[1].vendido - a[1].vendido || b[1].envios - a[1].envios)
   }, [filas])
-
-  const visibles = useMemo(() => {
-    const q = busca.trim().toLowerCase()
-    return filas.filter((f) => {
-      const e = escalon(f)
-      if (filtro === 'abandonaron' && !(f.carrito_unidades && !f.carrito_pedido && f.pedidos === 0)) return false
-      if (filtro === 'reaccionaron' && e === 'contactado') return false
-      if (filtro === 'sin_reaccion' && e !== 'contactado') return false
-      if (!q) return true
-      return (f.nombre ?? '').toLowerCase().includes(q) || f.cod.toLowerCase().includes(q)
-    })
-  }, [filas, filtro, busca])
 
   if (!habilitado)
     return (
@@ -170,24 +233,13 @@ export default function PanelResultados() {
       </div>
     )
 
-  // El escalón "abrió" cuenta ópticas, no aperturas: la que abrió las dos cosas es una sola.
-  const abrioAlgo = filas.filter((f) => f.visitas_catalogo > 0 || f.visitas_landing > 0).length
-  const embudo: [string, number][] = [
-    ['Ópticas con alguna interacción', totales.opticas],
-    ['Abrieron el catálogo o una propuesta', abrioAlgo],
-    ['Contestaron', totales.respondio],
-    ['Armaron un carrito', totales.carrito],
-    ['Terminaron comprando', totales.compro],
-  ]
-  const tope = Math.max(1, embudo[0][1])
-
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Panel de resultados</h1>
           <p className="text-sm text-muted mt-1">
-            Toda la interacción de cada óptica: lo que le mandamos y lo que hizo con eso.
+            Tocá cualquier variable y abajo se abre el detalle de las ópticas que hay detrás.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -204,44 +256,44 @@ export default function PanelResultados() {
         </div>
       </div>
 
-      {/* Los números de arriba. El que manda es lo vendido, no lo enviado. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        {[
-          { n: String(totales.envios), l: 'mensajes enviados' },
-          { n: String(totales.abrio), l: 'abrieron el catálogo', sub: totales.minutos ? `${totales.minutos} min mirando` : undefined },
-          { n: String(totales.propuesta), l: 'abrieron una propuesta' },
-          { n: String(totales.respondio), l: 'contestaron' },
-          { n: String(totales.carrito), l: 'armaron carrito', sub: plata(totales.enCarrito) },
-          { n: String(totales.compro), l: 'compraron', sub: plata(totales.vendido), destacar: true },
-        ].map((t) => (
-          <div key={t.l} className={`rounded-lg border p-3 ${t.destacar ? 'border-brandDark/30 bg-goldSoft/40' : 'border-black/10 bg-white'}`}>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">{t.n}</p>
-            <p className="text-[11px] text-muted mt-0.5">{t.l}</p>
-            {t.sub && <p className="text-[11px] font-medium tabular-nums mt-0.5">{t.sub}</p>}
-          </div>
-        ))}
-      </div>
-
-      {/* Embudo: dónde se cae la venta. */}
-      <div className="rounded-lg border border-black/10 bg-white p-4 mb-6">
-        <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-faint mb-3">Embudo</p>
-        <div className="space-y-2">
-          {embudo.map(([l, n]) => (
-            <div key={l} className="flex items-center gap-3">
-              <div className="w-56 shrink-0 text-[12px] text-muted">{l}</div>
-              <div className="flex-1 h-5 rounded bg-black/[0.04] overflow-hidden">
-                <div className="h-full bg-brand/70" style={{ width: `${Math.round((n / tope) * 100)}%` }} />
-              </div>
-              <div className="w-24 shrink-0 text-right text-[12px] tabular-nums">
-                <span className="font-semibold">{n}</span>
-                <span className="text-faint ml-1.5">{Math.round((n / tope) * 100)}%</span>
-              </div>
-            </div>
-          ))}
+      {vendedorFoco && (
+        <div className="flex items-center gap-2 mb-4 text-[12px]">
+          <span className="text-muted">Mirando solo</span>
+          <span className="rounded-full bg-brand text-white px-3 py-1 font-medium">{vendedorFoco}</span>
+          <button onClick={() => setVendedorFoco(null)} className="text-faint hover:text-ink transition-colors">
+            ver todo el equipo
+          </button>
         </div>
+      )}
+
+      {/* Las variables. La que está abierta queda marcada. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {VARIABLES.map((v) => {
+          const suyas = base.filter(v.filtro)
+          const activa = v.key === foco
+          const Icono = v.icono
+          return (
+            <button key={v.key} onClick={() => { setFoco(v.key); setAbierta(null) }}
+              className={`text-left rounded-lg border p-3 transition-colors ${
+                activa ? 'border-brand bg-brand/[0.06] ring-1 ring-brand/20'
+                       : v.destacar && suyas.length > 0 ? 'border-brandDark/30 bg-goldSoft/40 hover:bg-goldSoft/60'
+                       : 'border-black/10 bg-white hover:bg-black/[0.02]'}`}>
+              <div className="flex items-center gap-1.5 text-faint mb-1">
+                <Icono size={12} />
+                <p className="text-[11px] leading-tight">{v.label}</p>
+              </div>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight">
+                {v.valor ? v.valor(suyas) : suyas.length}
+              </p>
+              <p className="text-[11px] text-muted mt-0.5 tabular-nums">
+                {v.pie ? v.pie(suyas) : `${suyas.length} ${suyas.length === 1 ? 'óptica' : 'ópticas'}`}
+              </p>
+            </button>
+          )
+        })}
       </div>
 
-      {/* Por vendedor: cuántos contactos mueve cada uno y en qué terminan. */}
+      {/* Por vendedor. Tocando una fila, todo el tablero se acota a esa persona. */}
       {porVendedor.length > 0 && (
         <div className="rounded-lg border border-black/10 bg-white overflow-x-auto mb-6">
           <table className="w-full text-[12px]">
@@ -251,22 +303,20 @@ export default function PanelResultados() {
                 <th className="px-3 py-2 font-medium text-right">Enviados</th>
                 <th className="px-3 py-2 font-medium text-right">Ópticas</th>
                 <th className="px-3 py-2 font-medium text-right">Abrieron</th>
-                <th className="px-3 py-2 font-medium text-right">Contestaron</th>
                 <th className="px-3 py-2 font-medium text-right">Carrito</th>
-                <th className="px-3 py-2 font-medium text-right">Compraron</th>
                 <th className="px-3 py-2 font-medium text-right">Vendido</th>
               </tr>
             </thead>
             <tbody>
               {porVendedor.map(([k, v]) => (
-                <tr key={k} className="border-b border-black/[0.04] last:border-0">
+                <tr key={k} onClick={() => setVendedorFoco(vendedorFoco === k ? null : k)}
+                  className={`border-b border-black/[0.04] last:border-0 cursor-pointer transition-colors ${
+                    vendedorFoco === k ? 'bg-brand/[0.06]' : 'hover:bg-black/[0.02]'}`}>
                   <td className="px-3 py-2 font-medium">{k}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.envios || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.opticas}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.abrio || '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{v.respondio || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.carrito || '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{v.compro || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-medium">{v.vendido ? plata(v.vendido) : '—'}</td>
                 </tr>
               ))}
@@ -275,38 +325,15 @@ export default function PanelResultados() {
         </div>
       )}
 
-      {/* Carritos a medio armar: es la plata que está más cerca de entrar. */}
-      {abandonados.length > 0 && (
-        <div className="rounded-lg border border-brandDark/30 bg-goldSoft/30 p-4 mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <ShoppingCart size={14} />
-            <p className="text-sm font-semibold">
-              {abandonados.length} {abandonados.length === 1 ? 'óptica dejó' : 'ópticas dejaron'} el carrito sin cerrar
-            </p>
-          </div>
-          <p className="text-[12px] text-muted mb-3">
-            Armaron el pedido en el catálogo y no lo terminaron. Es lo primero para llamar hoy.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {abandonados.slice(0, 12).map((f) => (
-              <span key={f.cod} className="rounded-full bg-white border border-black/10 px-3 py-1 text-[11px]">
-                {f.nombre} · <span className="tabular-nums">{f.carrito_unidades}u {plata(num(f.carrito_importe))}</span>
-                <span className="text-faint ml-1">{haceCuanto(f.carrito_at)}</span>
-              </span>
-            ))}
-          </div>
+      {/* El detalle de la variable abierta. */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-[15px] font-semibold tracking-tight">
+            {variable.label} · {detalle.length}
+          </h2>
+          <p className="text-[12px] text-muted mt-0.5 max-w-2xl">{variable.ayuda}</p>
         </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {([['todos', 'Todas'], ['reaccionaron', 'Reaccionaron'], ['abandonaron', 'Carrito sin cerrar'], ['sin_reaccion', 'Sin reacción']] as [Filtro, string][]).map(([k, l]) => (
-          <button key={k} onClick={() => setFiltro(k)}
-            className={`rounded-full px-3 py-1 text-xs transition-colors ${
-              filtro === k ? 'bg-brand text-white' : 'border border-black/10 text-muted hover:bg-black/[0.03]'}`}>
-            {l}
-          </button>
-        ))}
-        <div className="relative ml-auto">
+        <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar óptica"
             className="rounded-md border border-black/10 bg-white pl-8 pr-3 py-1.5 text-xs w-48 focus:outline-none focus:ring-2 focus:ring-brand/20" />
@@ -315,102 +342,79 @@ export default function PanelResultados() {
 
       {loading && <p className="text-sm text-faint text-center py-16">Cargando…</p>}
 
-      {!loading && visibles.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-lg font-medium tracking-tight">Todavía no hay interacciones en el período</p>
-          <p className="text-sm text-muted mt-2">
-            Acá aparece toda óptica que reciba un mensaje, abra el catálogo o conteste.
-          </p>
+      {!loading && detalle.length === 0 && (
+        <div className="rounded-lg border border-black/10 bg-white text-center py-14">
+          <p className="text-[15px] font-medium tracking-tight">Todavía no hay ninguna acá</p>
+          <p className="text-sm text-muted mt-1.5">{variable.ayuda}</p>
         </div>
       )}
 
-      {!loading && visibles.length > 0 && (
-        <div className="rounded-lg border border-black/10 bg-white overflow-x-auto">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="text-faint text-left border-b border-black/[0.07]">
-                <th className="px-3 py-2 font-medium">Óptica</th>
-                <th className="px-3 py-2 font-medium">Vendedor</th>
-                <th className="px-3 py-2 font-medium">Estado</th>
-                <th className="px-3 py-2 font-medium">Le mandamos</th>
-                <th className="px-3 py-2 font-medium">Catálogo</th>
-                <th className="px-3 py-2 font-medium">Propuesta</th>
-                <th className="px-3 py-2 font-medium">Contestó</th>
-                <th className="px-3 py-2 font-medium">Carrito</th>
-                <th className="px-3 py-2 font-medium text-right">Compró</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((f) => (
-                <tr key={f.cod} className="border-b border-black/[0.04] last:border-0 align-top">
-                  <td className="px-3 py-2">
-                    <p className="font-medium">{f.nombre}</p>
-                    <p className="text-faint text-[11px]">{f.zona || f.provincia || f.cod}</p>
-                  </td>
-                  <td className="px-3 py-2 text-muted">{f.vendedor || '—'}</td>
-                  <td className="px-3 py-2 text-muted">{f.posta ? POSTA[f.posta] ?? f.posta : '—'}</td>
-                  <td className="px-3 py-2">
-                    {f.envios > 0 ? (
-                      <>
-                        <p className="tabular-nums">{f.envios} {f.envios === 1 ? 'mensaje' : 'mensajes'}</p>
-                        <p className="text-faint text-[11px]">{haceCuanto(f.ultimo_envio)} · {f.ultima_pieza ?? f.ultimo_canal ?? ''}</p>
-                      </>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {f.visitas_catalogo > 0 || f.sesiones > 0 ? (
-                      <>
-                        <span className="inline-flex items-center gap-1">
-                          <Eye size={11} /><span className="tabular-nums">{Math.max(f.visitas_catalogo, f.sesiones)}</span>
-                          <span className="text-faint">{haceCuanto(f.abrio_catalogo ?? f.ultima_sesion)}</span>
-                        </span>
-                        {f.minutos > 0 && (
-                          <p className="text-[11px] tabular-nums">{f.minutos} min mirando</p>
-                        )}
-                      </>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {f.visitas_landing > 0 ? (
-                      <span className="inline-flex items-center gap-1">
-                        <FileText size={11} />
-                        <span>{f.propuesta ? PROPUESTA[f.propuesta] ?? f.propuesta : ''}</span>
-                        <span className="text-faint">{haceCuanto(f.abrio_propuesta)}</span>
-                      </span>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {f.respuestas > 0 ? (
-                      <span className="inline-flex items-center gap-1">
-                        <MessageCircle size={11} /><span className="tabular-nums">{f.respuestas}</span>
-                        <span className="text-faint">{haceCuanto(f.respondio)}</span>
-                      </span>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {f.carrito_unidades ? (
-                      <>
-                        <p className="tabular-nums">{f.carrito_unidades}u · {plata(num(f.carrito_importe))}</p>
-                        <p className={`text-[11px] ${f.carrito_pedido || f.pedidos > 0 ? 'text-faint' : 'font-medium'}`}>
-                          {f.carrito_pedido || f.pedidos > 0
-                            ? 'cerrado'
-                            : f.carrito_confirmado ? 'sin cerrar' : 'lo dejó cargado'}
-                        </p>
-                      </>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {f.pedidos > 0 ? (
-                      <>
-                        <p className="font-medium tabular-nums">{plata(num(f.comprado))}</p>
-                        <p className="text-faint text-[11px] tabular-nums">{f.pedidos} {f.pedidos === 1 ? 'pedido' : 'pedidos'}</p>
-                      </>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!loading && detalle.length > 0 && (
+        <div className="rounded-lg border border-black/10 bg-white divide-y divide-black/[0.05]">
+          {detalle.map((f) => (
+            <div key={f.cod}>
+              <button onClick={() => setAbierta(abierta === f.cod ? null : f.cod)}
+                className="w-full text-left px-3 py-2.5 hover:bg-black/[0.02] transition-colors">
+                <div className="flex items-center gap-3">
+                  <ChevronDown size={13}
+                    className={`shrink-0 text-faint transition-transform ${abierta === f.cod ? '' : '-rotate-90'}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-[13px] truncate">{f.nombre}</p>
+                    <p className="text-[11px] text-faint truncate">
+                      {[f.vendedor, f.zona || f.provincia, f.posta ? POSTA[f.posta] ?? f.posta : null]
+                        .filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  {/* A la derecha, el número por el que está en esta lista. */}
+                  <div className="shrink-0 text-right text-[12px] tabular-nums">
+                    {foco === 'enviados' && <span>{f.envios} {f.envios === 1 ? 'mensaje' : 'mensajes'}</span>}
+                    {foco === 'abrieron' && <span>{Math.max(f.visitas_catalogo, f.sesiones)} visitas</span>}
+                    {foco === 'tiempo' && <span className="font-medium">{f.minutos} min</span>}
+                    {foco === 'propuesta' && <span>{f.propuesta ? PROPUESTA[f.propuesta] ?? f.propuesta : 'Propuesta'}</span>}
+                    {foco === 'contestaron' && <span>{f.respuestas} {f.respuestas === 1 ? 'respuesta' : 'respuestas'}</span>}
+                    {(foco === 'carrito' || foco === 'sin_cerrar') && (
+                      <span className="font-medium">{f.carrito_unidades}u · {plata(num(f.carrito_importe))}</span>
+                    )}
+                    {foco === 'compraron' && <span className="font-medium">{plata(num(f.comprado))}</span>}
+                    <p className="text-faint text-[11px]">
+                      {foco === 'tiempo' ? haceCuanto(f.ultima_sesion)
+                        : foco === 'contestaron' ? haceCuanto(f.respondio)
+                        : foco === 'propuesta' ? haceCuanto(f.abrio_propuesta)
+                        : foco === 'carrito' || foco === 'sin_cerrar' ? haceCuanto(f.carrito_at)
+                        : haceCuanto(f.abrio_catalogo ?? f.ultimo_envio)}
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Todo lo que sabemos de esa óptica, para no tener que ir a buscarlo. */}
+              {abierta === f.cod && (
+                <div className="px-3 pb-3.5 pt-1 bg-black/[0.015]">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {[
+                      { l: 'Le mandamos', v: f.envios ? `${f.envios} mensajes` : '—', s: f.ultima_pieza ?? f.ultimo_canal ?? '', d: f.ultimo_envio },
+                      { l: 'Catálogo', v: f.visitas_catalogo || f.sesiones ? `${Math.max(f.visitas_catalogo, f.sesiones)} visitas` : '—', s: f.minutos ? `${f.minutos} min mirando` : '', d: f.abrio_catalogo ?? f.ultima_sesion },
+                      { l: 'Propuesta', v: f.visitas_landing ? (f.propuesta ? PROPUESTA[f.propuesta] ?? f.propuesta : 'Abrió') : '—', s: '', d: f.abrio_propuesta },
+                      { l: 'Contestó', v: f.respuestas ? `${f.respuestas} mensajes` : '—', s: '', d: f.respondio },
+                      { l: 'Carrito', v: f.carrito_unidades ? `${f.carrito_unidades}u · ${plata(num(f.carrito_importe))}` : '—', s: f.carrito_unidades ? (f.carrito_pedido || f.pedidos > 0 ? 'cerrado' : f.carrito_confirmado ? 'sin cerrar' : 'lo dejó cargado') : '', d: f.carrito_at },
+                      { l: 'Compró', v: f.pedidos ? plata(num(f.comprado)) : '—', s: f.pedidos ? `${f.pedidos} ${f.pedidos === 1 ? 'pedido' : 'pedidos'}` : '', d: null },
+                    ].map((c) => (
+                      <div key={c.l} className="rounded-md border border-black/[0.07] bg-white p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-faint">{c.l}</p>
+                        <p className="text-[13px] font-medium tabular-nums mt-0.5">{c.v}</p>
+                        {c.s && <p className="text-[11px] text-muted truncate">{c.s}</p>}
+                        {c.d && <p className="text-[11px] text-faint tabular-nums">{fecha(c.d)}</p>}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-faint mt-2 tabular-nums">
+                    {f.cod}
+                    {f.ultima_compra ? ` · última compra ${fecha(f.ultima_compra)}` : ' · nunca compró'}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -434,7 +438,7 @@ export default function PanelResultados() {
             ))}
           </div>
           <p className="text-[11px] text-muted mt-3">
-            Los que ya tienen ficha de cliente aparecen también en la tabla de arriba, con toda su interacción.
+            Los que ya tienen ficha de cliente aparecen también arriba, con toda su interacción.
           </p>
         </div>
       )}
