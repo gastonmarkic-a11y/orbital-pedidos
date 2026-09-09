@@ -46,7 +46,33 @@ const ROLES: Rol[] = [
   'produccion', 'tienda', 'contenido', 'revendedor', 'social', 'usa', 'financiero',
 ]
 
-const BASE_CATALOGO = 'https://orbital-pedidos-zu5qorbital-suite.vercel.app/catalogo'
+// El mismo dominio que reciben las ópticas en el WhatsApp.
+const BASE = 'https://ver.orbitaleyewear.com.ar'
+const BASE_CATALOGO = `${BASE}/catalogo`
+
+/** Los cuatro links de una óptica. El token es el mismo: cambia el parámetro. */
+const linksDe = (token: string) => [
+  { l: 'Catálogo', u: `${BASE}/catalogo?k=${token}` },
+  { l: 'Triple Protección', u: `${BASE}/tripleproteccion?c=${token}` },
+  { l: 'Bienvenida', u: `${BASE}/bienvenida?c=${token}` },
+  { l: 'Plan Canje', u: `${BASE}/canje?c=${token}` },
+]
+
+interface ClienteLinks {
+  cod: string
+  razon: string | null
+  vendedor: string | null
+  provincia: string | null
+  localidad: string | null
+  token: string | null
+  token_activo: boolean | null
+  visitas: number
+  ultima_visita: string | null
+  minutos: number
+  propuesta: string | null
+  ultima_propuesta: string | null
+  pedidos: number
+}
 
 const haceCuanto = (iso: string | null): string => {
   if (!iso) return 'nunca'
@@ -65,7 +91,10 @@ const vacio: Omit<Usuario, 'entro' | 'prospecta' | 'cupo' | 'pendientes' | 'ulti
 export default function Usuarios() {
   const { rolEfectivo } = useAuth()
   const toast = useToast()
-  const [tab, setTab] = useState<'usuarios' | 'catalogo'>('usuarios')
+  const [tab, setTab] = useState<'usuarios' | 'catalogo' | 'buscador'>('usuarios')
+  const [buscaCliente, setBuscaCliente] = useState('')
+  const [resultados, setResultados] = useState<ClienteLinks[]>([])
+  const [buscando, setBuscando] = useState(false)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [accesos, setAccesos] = useState<Acceso[]>([])
   const [loading, setLoading] = useState(true)
@@ -122,6 +151,23 @@ export default function Usuarios() {
     setAccesos((xs) => xs.map((x) => (x.codigo === a.codigo ? { ...x, activo: !x.activo } : x)))
   }, [toast])
 
+  // Busca sobre TODAS las ópticas, tengan link o no.
+  const buscarCliente = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setResultados([]); return }
+    setBuscando(true)
+    const { data, error } = await supabase.rpc('admin_links_cliente', { p_busca: q, p_limite: 40 })
+    setBuscando(false)
+    setResultados(error ? [] : ((data as ClienteLinks[]) ?? []))
+  }, [])
+
+  const generarToken = useCallback(async (c: ClienteLinks) => {
+    const { data, error } = await supabase.rpc('admin_token_generar', { p_cod: c.cod })
+    const r = data as { ok?: boolean; token?: string; error?: string } | null
+    if (error || !r?.ok) { toast(r?.error ?? 'No se pudo generar', 'error'); return }
+    setResultados((xs) => xs.map((x) => (x.cod === c.cod ? { ...x, token: r.token ?? null, token_activo: true } : x)))
+    toast('Link generado', 'success')
+  }, [toast])
+
   const copiar = useCallback((texto: string, aviso: string) => {
     navigator.clipboard.writeText(texto).then(
       () => toast(aviso, 'success'),
@@ -166,7 +212,8 @@ export default function Usuarios() {
 
       <div className="flex items-center gap-2 mb-5">
         {([['usuarios', `Usuarios de la Suite · ${usuarios.filter((u) => u.activo).length}`],
-           ['catalogo', `Accesos al catálogo · ${conToken.length}`]] as ['usuarios' | 'catalogo', string][]).map(([k, l]) => (
+           ['catalogo', `Accesos al catálogo · ${conToken.length}`],
+           ['buscador', 'Buscar los links de una óptica']] as ['usuarios' | 'catalogo' | 'buscador', string][]).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`rounded-full px-3 py-1 text-xs transition-colors ${
               tab === k ? 'bg-brand text-white' : 'border border-black/10 text-muted hover:bg-black/[0.03]'}`}>
@@ -320,6 +367,77 @@ export default function Usuarios() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </>
+      )}
+
+      {/* ── Buscador de links por óptica ─────────────────────────────────── */}
+      {tab === 'buscador' && (
+        <>
+          <div className="relative mb-4">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+            <input autoFocus value={buscaCliente}
+              onChange={(e) => { setBuscaCliente(e.target.value); void buscarCliente(e.target.value) }}
+              placeholder="Nombre de la óptica, código de cliente, teléfono o token"
+              className="w-full rounded-md border border-black/10 bg-white pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/20" />
+          </div>
+
+          {buscaCliente.trim().length < 2 && (
+            <p className="text-sm text-faint text-center py-14">
+              Escribí al menos dos letras. Busca sobre todas las ópticas, tengan link o no.
+            </p>
+          )}
+
+          {buscaCliente.trim().length >= 2 && !buscando && resultados.length === 0 && (
+            <p className="text-sm text-faint text-center py-14">Ninguna óptica coincide con eso.</p>
+          )}
+
+          <div className="space-y-3">
+            {resultados.map((c) => (
+              <div key={c.cod} className="rounded-lg border border-black/10 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-[15px] tracking-tight">{c.razon}</p>
+                    <p className="text-[11px] text-faint">
+                      {[c.cod, c.vendedor, c.localidad || c.provincia].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-muted tabular-nums shrink-0">
+                    {c.visitas > 0
+                      ? <p>{c.visitas} entradas al catálogo{c.minutos > 0 ? ` · ${c.minutos} min` : ''} · {haceCuanto(c.ultima_visita)}</p>
+                      : <p className="text-faint">nunca entró al catálogo</p>}
+                    {c.propuesta && <p>abrió {c.propuesta} · {haceCuanto(c.ultima_propuesta)}</p>}
+                    {c.pedidos > 0 && <p className="font-medium">{c.pedidos} pedidos</p>}
+                  </div>
+                </div>
+
+                {c.token ? (
+                  <div className="space-y-1.5">
+                    {linksDe(c.token).map((x) => (
+                      <div key={x.l} className="flex items-center gap-2">
+                        <span className="w-32 shrink-0 text-[11px] text-muted">{x.l}</span>
+                        <code className="flex-1 min-w-0 truncate text-[11px] text-ink bg-black/[0.03] rounded px-2 py-1">{x.u}</code>
+                        <button onClick={() => copiar(x.u, `Link de ${x.l} copiado`)}
+                          className="rounded-md p-1.5 text-faint hover:bg-black/5 transition-colors shrink-0" title="Copiar">
+                          <Copy size={13} />
+                        </button>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-faint pt-1">
+                      Token <code>{c.token}</code>{c.token_activo ? '' : ' · dado de baja'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] text-muted">Esta óptica todavía no tiene link propio.</p>
+                    <button onClick={() => void generarToken(c)}
+                      className="rounded-md bg-brand text-white px-3 py-1.5 text-xs font-medium shrink-0">
+                      Generar link
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </>
       )}
