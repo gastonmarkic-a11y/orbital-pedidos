@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../lib/toast'
 import Derivaciones from './Derivaciones'
 
 // Panel de Conversaciones del bot de atención: estadísticas + Derivaciones (pendientes) adentro +
@@ -27,15 +28,23 @@ export default function Conversaciones() {
   const [msgs, setMsgs] = useState<Record<string, { emisor: string; contenido: string }[]>>({})
   const [resp, setResp] = useState<Record<string, string>>({})
   const [enviando, setEnviando] = useState<string | null>(null)
+  const toast = useToast()
 
   async function responder(id: string) {
     const texto = (resp[id] ?? '').trim(); if (!texto) return
     setEnviando(id)
-    const { error } = await supabase.functions.invoke('at-responder', { body: { conversacion_id: id, texto } })
+    const { data, error } = await supabase.functions.invoke('at-responder', { body: { conversacion_id: id, texto } })
     setEnviando(null)
-    if (error) return
+    if (error) { toast('No se pudo enviar: ' + error.message, 'error'); return }
+    const res = data as { enviado?: boolean; canal?: string; detalle?: string }
     setMsgs((m) => ({ ...m, [id]: [...(m[id] ?? []), { emisor: 'agente', contenido: texto }] }))
     setResp((r) => ({ ...r, [id]: '' }))
+    // Si el envío falla (pasaron las 24 h, el contacto no tiene identificador de ese canal)
+    // el mensaje queda registrado pero el cliente NO lo recibe: hay que decirlo.
+    toast(
+      res?.enviado ? `✓ Enviado por ${res.canal ?? 'el canal'}` : `⚠ Quedó registrado pero NO le llegó al cliente${res?.detalle ? ': ' + res.detalle : ''}`,
+      res?.enviado ? 'success' : 'error',
+    )
   }
 
   useEffect(() => {

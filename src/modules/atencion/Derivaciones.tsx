@@ -69,10 +69,14 @@ export default function Derivaciones() {
     })
     setEnviando(null)
     if (error) { toast('No se pudo enviar: ' + error.message, 'error'); return }
-    const res = data as { enviado?: boolean; detalle?: string }
+    const res = data as { enviado?: boolean; canal?: string; detalle?: string }
     setConv((c) => ({ ...c, [d.conversacion_id]: [...(c[d.conversacion_id] ?? []), { emisor: 'agente', contenido: texto }] }))
     setRespuesta((r) => ({ ...r, [d.conversacion_id]: '' }))
-    toast(res?.enviado ? '✓ Respuesta enviada por WhatsApp' : res?.detalle || 'Respuesta registrada', 'success')
+    // No dar por enviado lo que no salió: si el push falla queda registrado pero el cliente no lo ve.
+    toast(
+      res?.enviado ? `✓ Respuesta enviada por ${res.canal ?? 'el canal'}` : `⚠ Quedó registrada pero NO le llegó al cliente${res?.detalle ? ': ' + res.detalle : ''}`,
+      res?.enviado ? 'success' : 'error',
+    )
   }
 
   async function verConversacion(d: Derivacion) {
