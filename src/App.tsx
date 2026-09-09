@@ -160,6 +160,26 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'revendedor')
     return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
   // Rol financiero: solo el tablero de tesorería. No ve pedidos ni carteras comerciales.
+  // Postventa: lo de después de la venta (devoluciones, envíos, reclamos) y además
+  // su propia cola de prospección del interior. No ve plata: ni cobranzas ni finanzas.
+  if (rol === 'postventa')
+    return {
+      principales: [
+        { to: '/mi-tanda', label: 'Mi tanda' },
+        { to: '/panel-resultados', label: 'Resultados' },
+        { to: '/devoluciones', label: 'Devoluciones (NC)' },
+        { to: '/envios-ecom', label: 'Envíos' },
+      ],
+      secundarios: [
+        { to: '/seguimiento', label: 'Seguimiento' },
+        { to: '/pedidos', label: 'Pedidos' },
+        { to: '/conversaciones', label: 'Conversaciones' },
+        { to: '/guiones', label: 'Guiones' },
+        { to: '/marketing', label: 'Marketing' },
+      ],
+      menu: [],
+    }
+
   if (rol === 'financiero')
     return { principales: [{ to: '/finanzas', label: 'Finanzas' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
@@ -241,6 +261,7 @@ function homeFor(rol: Rol): string {
   if (rol === 'contenido') return '/marketing'
   if (rol === 'social') return '/prospeccion-social'
   if (rol === 'financiero') return '/finanzas'
+  if (rol === 'postventa') return '/mi-tanda'
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   if (rol === 'usa') return '/usa-pedidos'
@@ -360,6 +381,7 @@ const VIEW_OPTIONS = [
   { value: 'tienda', label: 'Tienda online' },
   { value: 'logistica', label: 'Logística' },
   { value: 'administracion', label: 'Administración' },
+  { value: 'postventa', label: 'Postventa' },
   { value: 'usa', label: 'USA' },
   { value: 'financiero', label: 'Financiero' },
 ]
@@ -484,7 +506,7 @@ function Layout() {
               <Route path="/usa-stock" element={<StockUSAAdmin />} />
             </>
           )}
-          {(rol === 'admin' || rol === 'administracion' || rol === 'deposito') && <Route path="/devoluciones" element={<Devoluciones />} />}
+          {(rol === 'admin' || rol === 'administracion' || rol === 'deposito' || rol === 'postventa') && <Route path="/devoluciones" element={<Devoluciones />} />}
           {(rol === 'admin' || rol === 'administracion') && (
             <>
               <Route path="/pedidos/dashboard" element={<DashboardHub />} />
