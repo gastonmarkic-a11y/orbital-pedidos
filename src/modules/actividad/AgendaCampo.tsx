@@ -8,7 +8,7 @@ import PreparacionEnvio from '../envios/PreparacionEnvio'
 import { Cliente } from '../../lib/types'
 import LlamarBtn from '../../lib/LlamarBtn'
 
-// Agenda de CAMPO (Martín / Adrián): recorrido diario en Buenos Aires + GBA de sus
+// Agenda de CAMPO (Adrián / Bruno): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
 // Cada día es un bloque: se puede POSPONER el día completo (mover en bloque al final).
 // El interior queda encapsulado aparte (viajes).
@@ -546,10 +546,10 @@ export default function AgendaCampo() {
                     {/* Prospección */}
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-muted uppercase tracking-wide">
-                        Prospección ({turnosDia.length}/{sugeridos}) <span className="text-[10px] font-normal text-faint normal-case">— {ven === 'Adrian' ? 'Luna' : 'Damián'} · "va a pasar el vendedor"</span>
+                        Prospección ({turnosDia.length}/{sugeridos}) <span className="text-[10px] font-normal text-faint normal-case">— "va a pasar el vendedor"</span>
                       </p>
                       {turnosDia.length === 0 ? (
-                        <p className="text-[11px] text-faint bg-[#F6F4EF] rounded-xl border border-dashed border-black/15 p-3">Faltan <b>{sugeridos}</b> turnos para llegar a {META_DIA} visitas del día. {ven === 'Adrian' ? 'Luna' : 'Damián'} los carga 2 días antes en esta zona.</p>
+                        <p className="text-[11px] text-faint bg-[#F6F4EF] rounded-xl border border-dashed border-black/15 p-3">Faltan <b>{sugeridos}</b> turnos para llegar a {META_DIA} visitas del día. Se cargan 2 días antes en esta zona.</p>
                       ) : turnosDia.map((t) => (
                         <div key={t.id} className="bg-[#F6F4EF] rounded-xl border border-black/10 p-3 flex items-center justify-between gap-2">
                           <div className="min-w-0">

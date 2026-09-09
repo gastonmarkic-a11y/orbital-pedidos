@@ -2,22 +2,20 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ChevronDown, ChevronRight, CalendarDays, Plane, MapPin } from 'lucide-react'
 
-// Panel ADMIN de la agenda de campo: ve a Martín y Adrián juntos, el doble trabajo de
-// prospección (turnos para vendedores + base de julio a cerrar), y los resultados del
-// día + acumulados. Abajo: el FUTURO de las agendas día por día (con fechas, desplegable),
-// el trabajo de los prospectores y dos reseñas (julio a cerrar + cartera del interior).
+// Panel ADMIN de la agenda de campo: ve a Adrián y Bruno juntos (los dos que hacen
+// recorrido), los turnos de prospección cargados para cada uno y los resultados del
+// día + acumulados. Abajo: el FUTURO de las agendas día por día (con fechas, desplegable)
+// y dos reseñas (julio a cerrar + cartera del interior).
 
 interface Row { dia_num: number; bloque: string; cohorte: string; localidad: string | null; provincia?: string | null; region?: string | null; cod: string; nombre: string | null; visitado: boolean; resultado: string | null; unidades?: number | null }
 interface Turno { vendedor: string; dia_num: number; cargado_por: string | null; cliente?: string | null; localidad?: string | null }
 interface Act { vendedor: string; cod_cliente: string; resultado_contacto: string | null; monto_vendido: number | null; unidades_vendidas: number | null; origen?: string | null; propuesta_enviada_id?: number | null }
 interface PJ { prospector: string; cerrado: boolean; nombre: string | null; codigo: string | null; localidad?: string | null }
 
-// Personas del resumen del día, con su objetivo propio. Luna prospecta la zona de Adrián; Damián la de Martín.
+// Personas del resumen del día, con su objetivo propio: los dos que hacen recorrido de campo.
 const ACTORES = [
-  { code: 'Adrian', label: 'Adrián', rol: 'Vendedor · campo', tipo: 'vend' as const, para: null as string | null, paraLabel: '' },
-  { code: 'Martin', label: 'Martín', rol: 'Vendedor · campo', tipo: 'vend' as const, para: null as string | null, paraLabel: '' },
-  { code: 'Marketing', label: 'Luna', rol: 'Prospección · zona de Adrián', tipo: 'prosp' as const, para: 'Adrian' as string | null, paraLabel: 'Adrián' },
-  { code: 'Damian', label: 'Damián', rol: 'Prospección · zona de Martín', tipo: 'prosp' as const, para: 'Martin' as string | null, paraLabel: 'Martín' },
+  { code: 'Adrian', label: 'Adrián', rol: 'Vendedor · campo' },
+  { code: 'Bruno', label: 'Bruno', rol: 'Vendedor · campo' },
 ]
 // Feriados nacionales AR (editar si cambia el calendario oficial / feriados con fines turísticos).
 const FERIADOS: string[] = [
@@ -42,10 +40,9 @@ function diasHabilesRestantes(): number {
   return Math.max(1, c)
 }
 const META_CAMPO_DIA = 12 // visitas de campo por día (agenda diaria del vendedor)
-const META_ZONA_DIA = 5 // turnos de prospección de zona por día que arma cada prospector
-const META_NUEVOS_MES = 150 // prospectos nuevos por prospector en el mes (bienvenida por WS)
 
-const VEND = [{ cod: 'Adrian', label: 'Adrián', prosp: 'Luna', prospCod: 'Marketing' }, { cod: 'Martin', label: 'Martín', prosp: 'Damián', prospCod: 'Damian' }]
+// Los que hacen recorrido de campo. Martín salió del equipo; Bruno tomó CABA/norte/oeste.
+const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }]
 const RES = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' } as const
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
@@ -119,16 +116,16 @@ export default function AgendaEquipo() {
     async function cargar() {
       setLoading(true)
       const hoy = new Date().toISOString().slice(0, 10)
-      const [a, m, t, ah, th] = await Promise.all([
+      const [a, b, t, ah, th] = await Promise.all([
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Adrian' }),
-        supabase.rpc('agenda_campo_plan', { p_vendedor: 'Martin' }),
+        supabase.rpc('agenda_campo_plan', { p_vendedor: 'Bruno' }),
         supabase.from('agenda_turnos').select('vendedor,dia_num,cargado_por,cliente,localidad'),
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas').eq('origen', 'agenda_campo').eq('fecha', hoy),
         // TODAS las actividades del día (cualquier origen y persona): contactos, ventas y propuestas por persona
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas,origen,propuesta_enviada_id').eq('fecha', hoy),
       ])
       const pj = await supabase.from('prospectos_julio').select('prospector,cerrado,nombre,codigo,localidad')
-      setPlanes({ Adrian: (a.data as Row[]) ?? [], Martin: (m.data as Row[]) ?? [] })
+      setPlanes({ Adrian: (a.data as Row[]) ?? [], Bruno: (b.data as Row[]) ?? [] })
       setTurnos((t.data as Turno[]) ?? [])
       setActHoy((ah.data as Act[]) ?? [])
       setTodoHoy((th.data as Act[]) ?? [])
@@ -152,7 +149,7 @@ export default function AgendaEquipo() {
       </div>
 
       {(() => {
-        const allBa = [...(planes.Adrian ?? []), ...(planes.Martin ?? [])].filter((r) => r.bloque === 'ba_gba')
+        const allBa = [...(planes.Adrian ?? []), ...(planes.Bruno ?? [])].filter((r) => r.bloque === 'ba_gba')
         const total = allBa.length, visit = allBa.filter((r) => r.visitado).length
         const vh = actHoy.length, ventas = actHoy.filter((a) => a.resultado_contacto === 'vendio')
         const monto = ventas.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
@@ -209,13 +206,8 @@ export default function AgendaEquipo() {
             const monto = ventas.reduce((s, x) => s + (x.monto_vendido ?? 0), 0)
             const propuestas = filas.filter((x) => x.propuesta_enviada_id != null).length
             const checkin = actHoy.filter((x) => x.vendedor === ac.code).length
-            const turnosZona = ac.para ? turnos.filter((t) => t.vendedor === ac.para).length : 0
-            const julioAb = julio.filter((j) => j.prospector === ac.code && !j.cerrado).length
-            // Objetivos por rol
-            const interiorCartera = ac.tipo === 'vend' ? (planes[ac.code] ?? []).filter((r) => r.bloque === 'interior').length : 0
+            const interiorCartera = (planes[ac.code] ?? []).filter((r) => r.bloque === 'interior').length
             const interiorDia = Math.ceil(interiorCartera / dr)
-            const julioDia = Math.ceil(julioAb / dr)
-            const nuevosDia = Math.ceil(META_NUEVOS_MES / dr)
             return (
               <div key={ac.code} className="bg-[#F7F5F0] rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -227,23 +219,15 @@ export default function AgendaEquipo() {
                   <div className="bg-white rounded-lg p-1.5"><p className="text-base font-bold tabular-nums">{propuestas}</p><p className="text-[9px] text-muted">propuestas hoy</p></div>
                   <div className="bg-white rounded-lg p-1.5"><p className="text-base font-bold text-emerald-700 tabular-nums">{ventas.length}</p><p className="text-[9px] text-muted">ventas{monto ? ` · ${kAr(monto)}` : ''}</p></div>
                 </div>
-                {ac.tipo === 'vend' && (
-                  <div className="text-[10px] text-muted space-y-0.5">
-                    <p>🎯 <b>Hoy:</b> {META_CAMPO_DIA} en campo · {interiorDia} de interior (por zona)</p>
-                    <p>🔵 Campo: <b>{checkin}</b>/{META_CAMPO_DIA} check-in · 🗺️ cartera interior: {interiorCartera} en {dr} días hábiles</p>
-                  </div>
-                )}
-                {ac.tipo === 'prosp' && (
-                  <div className="text-[10px] text-muted space-y-0.5">
-                    <p>🎯 <b>Hoy:</b> {META_ZONA_DIA} turnos de zona · {julioDia} de julio · {nuevosDia} nuevos (bienvenida WS)</p>
-                    <p>📍 Zona p/ {ac.paraLabel}: <b>{turnosZona}</b>/{META_ZONA_DIA} · 🗂️ Julio abiertos: <b>{julioAb}</b> · 🆕 nuevos: {META_NUEVOS_MES} en {dr} días</p>
-                  </div>
-                )}
+                <div className="text-[10px] text-muted space-y-0.5">
+                  <p>🎯 <b>Hoy:</b> {META_CAMPO_DIA} en campo · {interiorDia} de interior (por zona)</p>
+                  <p>🔵 Campo: <b>{checkin}</b>/{META_CAMPO_DIA} check-in · 🗺️ cartera interior: {interiorCartera} en {dr} días hábiles</p>
+                </div>
               </div>
             )
           })}
         </div>
-        <p className="text-[10px] text-faint mt-2">Objetivos diarios de interior/julio/nuevos = total ÷ días hábiles que quedan en el mes (sin sáb/dom/feriados). Etapa 2: la lista concreta de 150 nuevos por zona.</p>
+        <p className="text-[10px] text-faint mt-2">El objetivo diario de interior = cartera de interior ÷ días hábiles que quedan en el mes (sin sáb/dom/feriados).</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -267,7 +251,7 @@ export default function AgendaEquipo() {
             <div key={v.cod} className="bg-white rounded-2xl border border-black/10 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold">{v.label}</h2>
-                <span className="text-[11px] text-faint">{dias.length} días · prospecta {v.prosp}</span>
+                <span className="text-[11px] text-faint">{dias.length} días de recorrido</span>
               </div>
               <div>
                 <div className="flex justify-between text-[11px] text-muted mb-1"><span>Avance del recorrido</span><span>{visit}/{total}</span></div>
@@ -284,10 +268,10 @@ export default function AgendaEquipo() {
                 ))}
               </div>
               <div className="border-t border-black/5 pt-2">
-                <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">Prospección ({v.prosp})</p>
+                <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">Prospección</p>
                 <div className="grid grid-cols-2 gap-2 text-[12px]">
                   <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold">{turnosV.length}</p><p className="text-[10px] text-muted">turnos para {v.label}</p></div>
-                  <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold">{julio.filter((j) => j.prospector === v.prospCod && !j.cerrado).length}<span className="text-[10px] text-faint">/{julio.filter((j) => j.prospector === v.prospCod).length}</span></p><p className="text-[10px] text-muted">base julio a cerrar</p></div>
+                  <div className="bg-[#F6F4EF] rounded-lg p-2"><p className="font-bold">{interiorN}</p><p className="text-[10px] text-muted">cartera de interior</p></div>
                 </div>
               </div>
               <div className="border-t border-black/5 pt-2">
@@ -316,7 +300,7 @@ export default function AgendaEquipo() {
         return (
           <Seccion key={v.cod} icon={<CalendarDays size={18} />}
             titulo={`Próximos días — ${v.label}`}
-            sub={`${dias.length} días de recorrido · prospección de ${v.prosp} 2 días antes · tocá un día para ver los clientes`}>
+            sub={`${dias.length} días de recorrido · la prospección se carga 2 días antes · tocá un día para ver los clientes`}>
             <div>
               {dias.map((d) => {
                 const del = baGba.filter((r) => r.dia_num === d)
@@ -345,7 +329,7 @@ export default function AgendaEquipo() {
                       ))}
                       {turnosDia.length > 0 && (
                         <div className="pt-1 mt-1 border-t border-black/5">
-                          <p className="text-[10px] font-semibold text-[#8F6A34] uppercase tracking-wide mb-0.5">Prospección ({v.prosp}) — {turnosDia.length} turno{turnosDia.length === 1 ? '' : 's'}</p>
+                          <p className="text-[10px] font-semibold text-[#8F6A34] uppercase tracking-wide mb-0.5">Prospección — {turnosDia.length} turno{turnosDia.length === 1 ? '' : 's'}</p>
                           {turnosDia.map((t, i) => <p key={i} className="text-[11px] text-muted truncate">• {t.cliente}{t.localidad ? ` · ${t.localidad}` : ''}</p>)}
                         </div>
                       )}
@@ -354,7 +338,7 @@ export default function AgendaEquipo() {
                   />
                 )
               })}
-              <p className="text-[10px] text-faint pt-2">Pendiente pasar prospección hacia adelante: cada día se completa hasta 12 visitas con los turnos de {v.prosp}.</p>
+              <p className="text-[10px] text-faint pt-2">Pendiente pasar prospección hacia adelante: cada día se completa hasta 12 visitas con los turnos cargados en esa zona.</p>
             </div>
           </Seccion>
         )
@@ -363,33 +347,30 @@ export default function AgendaEquipo() {
       {/* ===== RESEÑA 1: prospección paralela — +100 contactos de julio a cerrar ===== */}
       <Seccion icon={<CalendarDays size={18} />}
         titulo="Reseña · Prospección de julio a cerrar este mes"
-        sub={`Contactos que ya se hablaron el mes pasado y hay que cerrar por catálogo — trabajo en paralelo de Luna y Damián`}>
-        <div className="grid gap-3 md:grid-cols-2">
-          {VEND.map((v) => {
-            const propios = julio.filter((j) => j.prospector === v.prospCod)
-            const abiertos = propios.filter((j) => !j.cerrado)
-            const cerrados = propios.length - abiertos.length
-            return (
-              <div key={v.prospCod} className="bg-[#F7F5F0] rounded-xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-bold">{v.prosp}</p>
-                  <p className="text-[11px] text-muted">{abiertos.length} <span className="text-faint">abiertos</span> · {cerrados} cerrados · {propios.length} total</p>
-                </div>
-                <div className="h-2 bg-black/10 rounded-full overflow-hidden mb-2"><div className="h-full bg-emerald-500" style={{ width: `${propios.length ? (cerrados / propios.length) * 100 : 0}%` }} /></div>
-                <div className="max-h-56 overflow-y-auto space-y-0.5">
-                  {abiertos.slice(0, 60).map((j, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2 text-[12px]">
-                      <span className="truncate">{j.nombre}</span>
-                      <span className="text-[10px] text-faint shrink-0">{[j.codigo, j.localidad].filter(Boolean).join(' · ')}</span>
-                    </div>
-                  ))}
-                  {abiertos.length > 60 && <p className="text-[10px] text-faint">+{abiertos.length - 60} más…</p>}
-                  {abiertos.length === 0 && <p className="text-[11px] text-emerald-600">✓ Todos cerrados</p>}
-                </div>
+        sub="Contactos que ya se hablaron el mes pasado y hay que cerrar por catálogo">
+        {(() => {
+          const abiertos = julio.filter((j) => !j.cerrado)
+          const cerrados = julio.length - abiertos.length
+          return (
+            <div className="bg-[#F7F5F0] rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-bold">Base de julio</p>
+                <p className="text-[11px] text-muted">{abiertos.length} <span className="text-faint">abiertos</span> · {cerrados} cerrados · {julio.length} total</p>
               </div>
-            )
-          })}
-        </div>
+              <div className="h-2 bg-black/10 rounded-full overflow-hidden mb-2"><div className="h-full bg-emerald-500" style={{ width: `${julio.length ? (cerrados / julio.length) * 100 : 0}%` }} /></div>
+              <div className="max-h-56 overflow-y-auto space-y-0.5">
+                {abiertos.slice(0, 60).map((j, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="truncate">{j.nombre}</span>
+                    <span className="text-[10px] text-faint shrink-0">{[j.codigo, j.localidad].filter(Boolean).join(' · ')}</span>
+                  </div>
+                ))}
+                {abiertos.length > 60 && <p className="text-[10px] text-faint">+{abiertos.length - 60} más…</p>}
+                {abiertos.length === 0 && <p className="text-[11px] text-emerald-600">✓ Todos cerrados</p>}
+              </div>
+            </div>
+          )
+        })()}
       </Seccion>
 
       {/* ===== RESEÑA 2: cartera del interior del país (viajes) de los vendedores ===== */}
