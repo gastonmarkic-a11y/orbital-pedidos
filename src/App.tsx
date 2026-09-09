@@ -235,7 +235,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     menu.push(
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
-      { to: '/accesos', label: 'Accesos y usuarios' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
@@ -252,7 +251,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/guiones', label: 'Guiones de contacto' },
       { to: '/prospeccion-social', label: 'Cola de prospección social' },
       { to: '/mi-tanda', label: 'Tanda diaria del equipo' },
-      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' }
+      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' },
+      { to: '/accesos', label: 'Accesos y usuarios' }
     )
   }
   return { principales, secundarios, menu }
