@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, HelpCircle, MessageCircle, ChevronDown } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { calcularBono, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
@@ -461,9 +461,176 @@ const FAQ: { q: string; a: string }[] = [
     a: 'Una vez que tu vendedor confirma el pedido, se prepara y se despacha por el transporte que tengas acordado. Él te pasa el número de seguimiento cuando sale.' },
 ]
 
+// Chat en vivo con IRIS, adentro del catálogo. La diferencia con el widget de la
+// web pública es que acá sabemos QUIÉN está mirando (el token de acceso trae el
+// cod_cliente), así que el bot no pregunta "¿sos óptica o consumidor?" y cotiza
+// con la lista que corresponde. Si no puede resolver, deriva y la consulta le
+// llega al equipo por Telegram con la razón social.
+const CHAT_CONV_KEY = 'orbital_catalogo_conv'
+const CHAT_SES_KEY = 'orbital_catalogo_chat_ses'
+const SALUDO_KEY = 'orbital_catalogo_saludo'
+
+type MsgChat = { de: 'cliente' | 'bot'; texto: string }
+
+function ChatIris({ acceso, entrantes }: { acceso: Acceso | null; entrantes: string[] }) {
+  const [msgs, setMsgs] = useState<MsgChat[]>([])
+  const [texto, setTexto] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const cont = useRef<HTMLDivElement | null>(null)
+  const vistos = useRef(0)
+
+  // Lo que escribe el equipo desde Orbital Suite o desde Telegram entra acá y se
+  // muestra como un mensaje más: para el cliente es la misma conversación.
+  useEffect(() => {
+    if (entrantes.length > vistos.current) {
+      const nuevos = entrantes.slice(vistos.current)
+      vistos.current = entrantes.length
+      setMsgs((m) => [...m, ...nuevos.map((t) => ({ de: 'bot' as const, texto: t }))])
+    }
+  }, [entrantes])
+
+  const sesionId = useMemo(() => {
+    let s = localStorage.getItem(CHAT_SES_KEY)
+    if (!s) { s = 'cat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); localStorage.setItem(CHAT_SES_KEY, s) }
+    return s
+  }, [])
+
+  // Scrollea el cuadro del chat, no la página: si no, al enviar saltaba todo el panel.
+  useEffect(() => { if (cont.current) cont.current.scrollTop = cont.current.scrollHeight }, [msgs])
+
+  async function mandar(t?: string) {
+    const q = (t ?? texto).trim()
+    if (!q || enviando) return
+    setTexto('')
+    setMsgs((m) => [...m, { de: 'cliente', texto: q }])
+    setEnviando(true)
+    try {
+      const res = await fetch('https://towcgvphxeqilpdnboki.supabase.co/functions/v1/webhook-web', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          conversacionId: localStorage.getItem(CHAT_CONV_KEY) || null,
+          sesionId,
+          texto: q,
+          identidad: {
+            cod_cliente: acceso?.cod_cliente ?? null,
+            label: acceso?.label ?? null,
+            vendedor: acceso?.vendedor ?? null,
+            origen: 'catalogo',
+          },
+        }),
+      })
+      const data = await res.json()
+      if (data.conversacionId) localStorage.setItem(CHAT_CONV_KEY, data.conversacionId)
+      setMsgs((m) => [...m, { de: 'bot', texto: data.texto || 'Gracias, en un rato te respondemos.' }])
+    } catch {
+      setMsgs((m) => [...m, { de: 'bot', texto: 'Uy, hubo un problema de conexión. Probá de nuevo en un momento.' }])
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Las dudas que frenan la compra son siempre las mismas: cómo se paga, cuándo
+  // llega y qué conviene pedir. Se ofrecen hechas para que no tengan que escribir.
+  const sugerencias = ['Formas de pago', '¿Cuándo me llega?', '¿Qué modelos me convienen?', '¿Cuál es el mínimo de compra?']
+
+  return (
+    <div className="px-4 pt-3">
+      <div className="rounded-xl border border-black/10 overflow-hidden">
+        <div className="bg-[#0004FF] text-white px-4 py-2.5">
+          <p className="text-[13px] font-semibold leading-tight">Chateá con nosotros</p>
+          <p className="text-[11px] text-white/70">Te respondemos ahora mismo</p>
+        </div>
+
+        <div ref={cont} className="max-h-56 overflow-y-auto bg-[#F5F5F7] px-3 py-3 space-y-2">
+          {msgs.length === 0 && (
+            <p className="text-[13px] text-neutral-500 leading-snug">
+              Preguntanos lo que necesites del catálogo: colores, medidas, precios o cómo cerrar el pedido.
+            </p>
+          )}
+          {msgs.map((m, i) => (
+            <div key={i} className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13.5px] leading-snug whitespace-pre-wrap ${
+              m.de === 'cliente'
+                ? 'ml-auto bg-[#0004FF] text-white rounded-br-md'
+                : 'bg-white border border-black/5 rounded-bl-md'}`}>
+              {m.texto}
+            </div>
+          ))}
+          {enviando && <div className="bg-white border border-black/5 rounded-2xl rounded-bl-md px-3 py-2 text-[13.5px] text-neutral-400 w-16">…</div>}
+        </div>
+
+        {msgs.length === 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 py-2 bg-white border-t border-black/5">
+            {sugerencias.map((s) => (
+              <button key={s} onClick={() => mandar(s)}
+                className="rounded-full border border-[#0004FF]/30 text-[#0004FF] px-2.5 py-1 text-[11.5px]">
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 border-t border-black/5 bg-white px-3 py-2">
+          <input value={texto} onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') mandar() }}
+            placeholder="Escribí tu consulta…"
+            className="flex-1 text-[13.5px] outline-none bg-transparent py-1.5" />
+          <button onClick={() => mandar()} disabled={enviando || !texto.trim()}
+            className="rounded-full bg-[#0004FF] text-white p-2 disabled:opacity-40">
+            <Send size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: string }) {
   const [open, setOpen] = useState(false)
   const [abierta, setAbierta] = useState<number | null>(null)
+  const [entrantes, setEntrantes] = useState<string[]>([])
+  const [sinLeer, setSinLeer] = useState(0)
+
+  // Si alguien del equipo le escribe (desde Orbital Suite o contestando el aviso en
+  // Telegram), el mensaje aparece acá mientras el cliente sigue mirando el catálogo:
+  // el panel se abre solo. Se consulta cada 8 s y solo desde que se cargó la página,
+  // así no le saltan mensajes viejos al volver a entrar.
+  const desde = useRef<string>(new Date().toISOString())
+  useEffect(() => {
+    const tick = async () => {
+      if (!acceso?.codigo) return
+      const { data } = await supabase.rpc('catalogo_chat_escuchar', { p_acceso: acceso.codigo, p_desde: desde.current })
+      const nuevos = (data ?? []) as { contenido: string; created_at: string }[]
+      if (!nuevos.length) return
+      desde.current = nuevos[nuevos.length - 1].created_at
+      setEntrantes((prev) => [...prev, ...nuevos.map((m) => m.contenido)])
+      setOpen((abierto) => { if (!abierto) setSinLeer((n) => n + nuevos.length); return true })
+    }
+    const id = setInterval(tick, 8000)
+    return () => clearInterval(id)
+  }, [acceso])
+
+  useEffect(() => { if (open) setSinLeer(0) }, [open])
+
+  // Comprar acá es con asesoramiento: la duda es la forma de pago, la entrega o qué
+  // conviene pedir, y si nadie abre la charla el cliente se va con la duda puesta.
+  // Al minuto de estar mirando, el asistente saluda una vez y ofrece esos tres temas.
+  // Una sola vez por día y por cliente: si ya escribió, no aparece.
+  useEffect(() => {
+    const hoy = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem(SALUDO_KEY) === hoy) return
+    const t = setTimeout(() => {
+      if (localStorage.getItem(CHAT_CONV_KEY)) return // ya está charlando
+      localStorage.setItem(SALUDO_KEY, hoy)
+      const quien = (acceso?.label?.split(' - ')[1] || '').trim()
+      const vend = acceso?.vendedor
+      setEntrantes((prev) => [...prev, `👋 Hola${quien ? ' ' + quien : ''}! Soy IRIS, de Orbital.\n\n` +
+        `Si te queda alguna duda con las formas de pago, la entrega o qué modelos te convienen, escribime por acá y te ayudo` +
+        `${vend ? `. También podés hablar directo con ${vend}` : ''}.`])
+      setOpen(true)
+    }, 60000)
+    return () => clearTimeout(t)
+  }, [acceso])
   const optica = (acceso?.label?.split(' - ')[1] || acceso?.label || '').trim()
   const vendedor = acceso?.vendedor || null
   const tel = (acceso?.vendedor_tel || '').replace(/\D/g, '') || TEL_IRIS
@@ -473,10 +640,15 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
 
   return (
     <>
-      <button onClick={() => setOpen(true)} aria-label="Ayuda"
-        className={`fixed ${offset ?? "bottom-5"} right-5 z-30 flex items-center gap-2 rounded-full bg-white border border-black/10 shadow-lg px-4 py-3 text-sm font-medium text-[#0a0a0a] hover:border-[#0004FF]/40 transition-colors`}>
-        <HelpCircle size={18} className="text-[#0004FF]" />
-        <span className="hidden sm:inline">Ayuda</span>
+      {/* El botón blanco pasaba desapercibido y nadie lo tocaba: ahora va en el azul
+          de marca y dice qué hace, porque atrás hay alguien que contesta al toque. */}
+      <button onClick={() => setOpen(true)} aria-label="Chatear con Orbital"
+        className={`fixed ${offset ?? "bottom-5"} right-5 z-30 flex items-center gap-2 rounded-full bg-[#0004FF] text-white shadow-xl shadow-[#0004FF]/25 px-5 py-3.5 text-sm font-semibold hover:brightness-110 transition`}>
+        <MessageCircle size={18} />
+        <span>¿Te ayudo?</span>
+        {sinLeer > 0
+          ? <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-[#00E07B] text-[#0a0a0a] text-[11px] font-bold flex items-center justify-center ring-2 ring-white">{sinLeer}</span>
+          : <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-[#00E07B] ring-2 ring-white" />}
       </button>
 
       {open && (
@@ -487,8 +659,10 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
               <button onClick={() => setOpen(false)} className="p-1"><X size={20} /></button>
             </div>
 
-            <div className="px-4 pt-3 pb-1">
-              <p className="text-[13px] text-neutral-500">Las dudas más comunes, respondidas. Si necesitás algo puntual, escribinos.</p>
+            <ChatIris acceso={acceso} entrantes={entrantes} />
+
+            <div className="px-4 pt-4 pb-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Dudas frecuentes</p>
             </div>
 
             <div className="px-4 py-2 divide-y divide-black/5">
