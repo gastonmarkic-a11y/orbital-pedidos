@@ -243,14 +243,10 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/mercadolibre/precios', label: 'Precios Mercado Libre' },
       { to: '/publicidad', label: 'Publicidad / ROAS' },
       { to: '/conversaciones', label: 'Conversaciones (bot)' },
-      { to: '/liquidacion', label: 'Liquidación prospectores' },
       { to: '/envios-ecom', label: 'Envíos' },
       { to: '/actividad-admin', label: 'Equipo' },
-      { to: '/agenda-equipo', label: 'Agenda equipo (campo)' },
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
-      { to: '/guiones', label: 'Guiones de contacto' },
       { to: '/prospeccion-social', label: 'Cola de prospección social' },
-      { to: '/mi-tanda', label: 'Tanda diaria del equipo' },
       { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' },
       { to: '/accesos', label: 'Accesos y usuarios' }
     )
