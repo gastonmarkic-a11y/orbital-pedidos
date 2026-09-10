@@ -14,13 +14,14 @@ export function useDestinos() {
       .from('vendedores')
       .select('codigo,nombre,rol')
       .eq('activo', true)
-      .in('rol', ['vendedor', 'revendedor'])
+      // Mauro es admin pero también recibe clientes.
+      .or('rol.in.(vendedor,revendedor),codigo.eq.Mauro')
       .then(({ data }) => {
-        const filas = (data as { codigo: string; nombre: string | null; rol: Destino['rol'] }[]) ?? []
-        const lista = filas.map((v) => ({
+        const filas = (data as { codigo: string; nombre: string | null; rol: string }[]) ?? []
+        const lista: Destino[] = filas.map((v) => ({
           codigo: v.codigo,
-          rol: v.rol,
-          label: (v.rol === 'revendedor' ? '🔁 ' : '') + (v.nombre || v.codigo).replace(/\s*\((Vendedor|Revendedor)\)\s*$/i, ''),
+          rol: v.rol === 'revendedor' ? 'revendedor' : 'vendedor',
+          label: (v.rol === 'revendedor' ? '🔁 ' : '') + (v.nombre || v.codigo).replace(/\s*\((Vendedor|Revendedor|Admin)\)\s*$/i, ''),
         }))
         // Vendedores primero, revendedores al final; alfabético dentro de cada grupo.
         lista.sort((a, b) => (a.rol === b.rol ? a.label.localeCompare(b.label, 'es') : a.rol === 'vendedor' ? -1 : 1))
