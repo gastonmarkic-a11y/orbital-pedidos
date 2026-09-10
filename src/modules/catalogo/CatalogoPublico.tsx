@@ -623,7 +623,10 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
       if (localStorage.getItem(CHAT_CONV_KEY)) return // ya está charlando
       localStorage.setItem(SALUDO_KEY, hoy)
       const quien = (acceso?.label?.split(' - ')[1] || '').trim()
-      const vend = acceso?.vendedor
+      // El campo vendedor del link muchas veces trae una etiqueta ("asignado", "propio",
+      // "ex_vendedor"...) y no una persona: solo se nombra si es un vendedor real, que es
+      // el que tiene teléfono (el mismo criterio que la tarjeta de ayuda de abajo).
+      const vend = acceso?.vendedor_tel ? acceso?.vendedor : null
       setEntrantes((prev) => [...prev, `👋 Hola${quien ? ' ' + quien : ''}! Soy IRIS, de Orbital.\n\n` +
         `Si te queda alguna duda con las formas de pago, la entrega o qué modelos te convienen, escribime por acá y te ayudo` +
         `${vend ? `. También podés hablar directo con ${vend}` : ''}.`])
