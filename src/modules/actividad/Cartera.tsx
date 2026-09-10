@@ -12,6 +12,7 @@ import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
 import { NOMBRE_OPERADOR } from '../../lib/operadores'
 import { regionDeProvincia } from '../../lib/territorios'
+import { useDestinos } from '../../lib/destinos'
 
 // Propuesta comercial de cada cohorte (qué ofrecerle a esa base).
 const PROPUESTA: Record<string, { t: string; d: string }> = {
@@ -80,14 +81,6 @@ const TABS_VENDEDOR = [
 ]
 
 // Destinos de derivación. Disponibles para todos los roles; se descarta el propio.
-const DERIVAR_OPTS = [
-  { codigo: 'Adrian', label: 'Adrián' },
-  { codigo: 'Martin', label: 'Martín' },
-  { codigo: 'Corporativo', label: 'Corporativo' },
-  { codigo: 'Marketing', label: '🔍 Prospección' },
-  { codigo: 'ProspeccionVenta', label: '💰 Venta directa' },
-]
-
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
 type ColOrden = 'comercio' | 'contacto' | 'mail' | 'zona' | 'whatsapp' | 'u2025' | 'canje' | 'ultima_compra' | 'clasificacion' | 'actividad'
 
@@ -127,6 +120,7 @@ export default function Cartera() {
   const [borrando, setBorrando] = useState(false)
   const [derivar, setDerivar] = useState<Cliente | null>(null)
   const [derivando, setDerivando] = useState(false)
+  const destinos = useDestinos()
   // Nota / recordatorio manual desde la cartera
   const [notaCli, setNotaCli] = useState<Cliente | null>(null)
   const [notaTxt, setNotaTxt] = useState('')
@@ -472,7 +466,7 @@ export default function Cartera() {
     }
     // Ya no pertenece a esta vista de prospección: lo sacamos de la lista
     setClientes((prev) => prev.filter((x) => x.cod !== derivar.cod))
-    const destLabel = DERIVAR_OPTS.find((d) => d.codigo === codigoDest)?.label ?? codigoDest
+    const destLabel = destinos.find((d) => d.codigo === codigoDest)?.label ?? codigoDest
     setDerivar(null)
     toast(`✓ ${derivar.nomcomerc || derivar.razon} derivado a ${destLabel}`, 'success')
   }
@@ -1200,7 +1194,7 @@ export default function Cartera() {
               <b>{derivar.nomcomerc || derivar.razon}</b> pasa a manos de:
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {DERIVAR_OPTS.filter((d) => d.codigo !== codigoActivo).map((d) => (
+              {destinos.filter((d) => d.codigo !== codigoActivo).map((d) => (
                 <button
                   key={d.codigo}
                   onClick={() => derivarA(d.codigo)}

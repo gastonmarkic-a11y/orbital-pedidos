@@ -6,12 +6,8 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { clasificarVoz } from './voz'
 import HistorialModal from './HistorialModal'
+import { useDestinos } from '../../lib/destinos'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
-
-const VENDEDORES_CAMPO = [
-  { codigo: 'Adrian', label: 'Adrián' },
-  { codigo: 'Martin', label: 'Martín' },
-]
 
 export default function CargarActividad() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
@@ -19,6 +15,8 @@ export default function CargarActividad() {
   const esAdmin = rolEfectivo === 'admin'
   const esProspeccion = codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian'
   const toast = useToast()
+  // Derivar para visita: solo vendedores de campo (los revendedores no visitan).
+  const vendedoresCampo = useDestinos().filter((d) => d.rol === 'vendedor')
 
   const [resultados, setResultados] = useState<Cliente[]>([])
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
@@ -179,7 +177,7 @@ export default function CargarActividad() {
     e.preventDefault()
     if (!cliente || !derivarA) return
     setDerivando(true)
-    const label = VENDEDORES_CAMPO.find((v) => v.codigo === derivarA)?.label ?? derivarA
+    const label = vendedoresCampo.find((v) => v.codigo === derivarA)?.label ?? derivarA
     const nota = fechaVisita
       ? `Visita coordinada por Prospección para el ${fechaVisita}`
       : 'Visita coordinada por Prospección'
@@ -455,7 +453,7 @@ export default function CargarActividad() {
                   className="w-full mt-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm text-ink"
                 >
                   <option value="">Elegir vendedor...</option>
-                  {VENDEDORES_CAMPO.map((v) => (
+                  {vendedoresCampo.map((v) => (
                     <option key={v.codigo} value={v.codigo}>
                       {v.label}
                     </option>

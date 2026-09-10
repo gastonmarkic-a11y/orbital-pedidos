@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { daysSince } from '../../lib/dates'
+import { useDestinos } from '../../lib/destinos'
 
 const ORIGEN_LABELS: Record<string, string> = {
   propio: '👤 Propio',
@@ -22,14 +23,6 @@ const CLASIF_LABELS: Record<string, string> = {
   '2022_2023': '📋 A recuperar (2022-23)',
   '2021_o_antes': '📋 A recuperar (2021 o antes)',
 }
-
-const DESTINOS = [
-  { codigo: 'Adrian', label: 'Adrián' },
-  { codigo: 'Martin', label: 'Martín' },
-  { codigo: 'Corporativo', label: 'Corporativo' },
-  { codigo: 'Marketing', label: 'Prospección (Luna)' },
-  { codigo: 'ProspeccionVenta', label: 'Prosp. venta directa (Damián)' },
-]
 
 function origenDe(c: Cliente): string {
   const partes = [
@@ -59,6 +52,7 @@ interface ContactoBusqueda {
 export default function GestionClientes() {
   const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
+  const destinos = useDestinos()
   const [seccion, setSeccion] = useState<Seccion>('buscar')
 
   // ── Búsqueda general en toda la base ──
@@ -167,7 +161,7 @@ export default function GestionClientes() {
     e.preventDefault()
     if (!elegido || !destino) return
     setReasignando(true)
-    const destinoLabel = DESTINOS.find((d) => d.codigo === destino)?.label ?? destino
+    const destinoLabel = destinos.find((d) => d.codigo === destino)?.label ?? destino
     const { error } = await supabase
       .from('clientes')
       .update({
@@ -434,7 +428,7 @@ export default function GestionClientes() {
                 Pasar a
                 <select value={destino} onChange={(e) => setDestino(e.target.value)} className={inputCls}>
                   <option value="">Elegir vendedor...</option>
-                  {DESTINOS.filter((d) => d.codigo !== codigoEfectivo).map((d) => (
+                  {destinos.filter((d) => d.codigo !== codigoEfectivo).map((d) => (
                     <option key={d.codigo} value={d.codigo}>
                       {d.label}
                     </option>
