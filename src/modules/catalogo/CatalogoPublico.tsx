@@ -226,6 +226,9 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 }
 
 // ── Portón de bloqueo: el link ya está en uso en otro dispositivo ──
+// Si ya no se puede habilitar solo, el pedido le llega a Gastón por Telegram (edge function
+// catalogo-pedir-acceso, botones Habilitar/No) y esta pantalla se abre sola cuando lo aprueba:
+// el cliente no tiene que volver a entrar ni recargar.
 function BloqueoGate({ label, vendedorTel, codigo }: {
   label: string | null; vendedorTel?: string | null; codigo?: string | null
 }) {
@@ -233,13 +236,14 @@ function BloqueoGate({ label, vendedorTel, codigo }: {
   const [tel, setTel] = useState(vendedorTel || null)
   const [agotado, setAgotado] = useState(false)
   const [yendo, setYendo] = useState(false)
-  // El pedido de acceso va al vendedor del token; si no tiene teléfono cargado, cae en IRIS.
+  const [pedido, setPedido] = useState<'no' | 'enviando' | 'enviado' | 'error'>('no')
+  // Alternativa manual: WhatsApp al vendedor del token; si no tiene teléfono cargado, cae en IRIS.
   const wa = (tel || '').replace(/\D/g, '') || '5491178548316'
   const msg = `Hola! Soy ${optica}. Quiero abrir mi catálogo Orbital desde este dispositivo, ¿me lo habilitás?`
   const waLink = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`
 
   // Primera vez que un cliente choca con el candado, se habilita solo y entra.
-  // A partir de la segunda ya necesita que lo habilite el vendedor.
+  // Cuando se agotan las habilitaciones automáticas, pide acceso por Telegram.
   async function entrarIgual() {
     if (!codigo) return
     setYendo(true)
@@ -250,6 +254,30 @@ function BloqueoGate({ label, vendedorTel, codigo }: {
     setAgotado(true); setYendo(false)
   }
 
+  async function pedirAcceso() {
+    if (!codigo) return
+    setPedido('enviando')
+    const { data, error } = await supabase.functions.invoke('catalogo-pedir-acceso', { body: { codigo, device: deviceId() } })
+    const r = data as { permitido?: boolean; pedido?: boolean } | null
+    if (r?.permitido) { window.location.reload(); return }
+    setPedido(!error && r?.pedido ? 'enviado' : 'error')
+  }
+
+  // Sin habilitación automática disponible, el pedido sale solo.
+  useEffect(() => { if (agotado) pedirAcceso() }, [agotado]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Esperando el OK: se fija cada 8 s y entra apenas lo habilitan (deja de mirar a la hora).
+  useEffect(() => {
+    if (pedido !== 'enviado' || !codigo) return
+    const t0 = Date.now()
+    const id = window.setInterval(async () => {
+      if (Date.now() - t0 > 3_600_000) { window.clearInterval(id); return }
+      const { data } = await supabase.rpc('catalogo_dispositivo_ok', { p: codigo, p_device: deviceId() })
+      if (data === true) { window.clearInterval(id); window.location.reload() }
+    }, 8000)
+    return () => window.clearInterval(id)
+  }, [pedido, codigo])
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
       <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8 text-center">
@@ -257,16 +285,36 @@ function BloqueoGate({ label, vendedorTel, codigo }: {
         <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
         <div className="text-4xl mb-3">🔒</div>
         <p className="text-sm font-bold text-[#0a0a0a] mb-1">Catálogo exclusivo de {optica}</p>
-        {agotado ? (
+        {pedido === 'enviando' || pedido === 'enviado' ? (
+          <>
+            <p className="text-sm text-neutral-600 mb-4">
+              {pedido === 'enviando'
+                ? 'Pidiendo acceso…'
+                : 'Listo, pedimos tu acceso a Orbital. Apenas lo aprueben, esta página se abre sola: no hace falta que hagas nada.'}
+            </p>
+            {pedido === 'enviado' && (
+              <div className="flex items-center justify-center gap-2 text-[11px] text-neutral-400">
+                <span className="w-2 h-2 rounded-full bg-[#0004FF] animate-pulse" /> Esperando la aprobación…
+              </div>
+            )}
+            <a href={waLink} target="_blank" rel="noreferrer" className="block text-[11px] text-neutral-400 underline mt-4">
+              ¿Estás apurado? Escribile a tu vendedor
+            </a>
+          </>
+        ) : agotado ? (
           <>
             <p className="text-sm text-neutral-600 mb-5">
-              Este link ya se abrió en varios dispositivos. Para sumar uno más te lo tiene que habilitar tu vendedor.
+              Este link ya se abrió en varios dispositivos. Para sumar uno más hay que pedir acceso.
             </p>
-            <a href={waLink} target="_blank" rel="noreferrer"
+            {pedido === 'error' && <p className="text-sm text-red-600 mb-3">No pudimos enviar el pedido. Probá de nuevo.</p>}
+            <button onClick={pedirAcceso}
               className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium">
-              Pedir acceso a mi vendedor
+              Pedir acceso
+            </button>
+            <a href={waLink} target="_blank" rel="noreferrer"
+              className="block w-full rounded-lg border border-black/10 text-neutral-600 py-2.5 text-sm font-medium mt-2">
+              Escribirle a mi vendedor
             </a>
-            <p className="text-[11px] text-neutral-400 mt-3">Ya le avisamos. En cuanto te habilite, recargá esta página.</p>
           </>
         ) : (
           <>
@@ -277,10 +325,10 @@ function BloqueoGate({ label, vendedorTel, codigo }: {
               className="block w-full rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium disabled:opacity-60">
               {yendo ? 'Habilitando…' : 'Habilitar este dispositivo y entrar'}
             </button>
-            <a href={waLink} target="_blank" rel="noreferrer"
+            <button onClick={pedirAcceso}
               className="block w-full rounded-lg border border-black/10 text-neutral-600 py-2.5 text-sm font-medium mt-2">
-              Prefiero avisarle a mi vendedor
-            </a>
+              Prefiero pedir acceso a Orbital
+            </button>
           </>
         )}
       </div>
@@ -757,7 +805,7 @@ export default function CatalogoPublico() {
   // validar clave/token guardado o del link al entrar
   useEffect(() => {
     if (!clave) { setLoading(false); return }
-    supabase.rpc('catalogo_entrar', { p: clave, p_device: deviceId() }).then(({ data }) => {
+    supabase.rpc('catalogo_entrar', { p: clave, p_device: deviceId() }).then(({ data, error }) => {
       const r = data as any
       if (r?.ok) {
         setClaveOk(true); setBloqueo(null)
@@ -765,7 +813,9 @@ export default function CatalogoPublico() {
         const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor, vendedor_tel: r.vendedor_tel ?? null }
         setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
       } else if (r?.motivo === 'otro_dispositivo') {
-        // El link ya está en uso en otro equipo: no lo borramos, mostramos la pantalla de pedir acceso.
+        // El link ya está en uso en otro equipo: mostramos la pantalla de pedir acceso. El token se
+        // guarda para que, si vuelve sin el link, caiga otra vez acá y no en la pantalla de clave.
+        localStorage.setItem(CLAVE_KEY, clave)
         setBloqueo({ label: r.label ?? null, vendedor_tel: r.vendedor_tel ?? null })
       } else {
         localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setClave(null); setAcceso(null)
@@ -847,6 +897,8 @@ export default function CatalogoPublico() {
     }, 15000)
     const alCambiar = () => { if (segundosRef.current) latir() }
     document.addEventListener('visibilitychange', alCambiar)
+      } else if (error) {
+        // Falla de red: no se borra nada, al recargar vuelve a intentar con el mismo token.
     return () => {
       window.clearInterval(tic)
       document.removeEventListener('visibilitychange', alCambiar)
