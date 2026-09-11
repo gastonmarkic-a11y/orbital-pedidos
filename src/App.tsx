@@ -58,6 +58,8 @@ import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import CatalogoZN from './modules/catalogo/CatalogoZN'
+import Colab from './modules/colab/Colab'
+import ColabRedireccion from './modules/colab/ColabRedireccion'
 import MiCatalogo from './modules/catalogo/MiCatalogo'
 import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
@@ -683,6 +685,14 @@ export default function App() {
         </ToastProvider>
       )
     }
+  }
+  // Colaboradores (influencers): panel por clave (Orbital / administrador / promotor).
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/colab')) {
+    return <Colab />
+  }
+  // Link público de un promotor: genera el código de descuento único y manda a la tienda.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/r/')) {
+    return <ColabRedireccion />
   }
   // Catálogo B2B público: ruta independiente del login por mail (acceso con clave propia).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/catalogo')) {
