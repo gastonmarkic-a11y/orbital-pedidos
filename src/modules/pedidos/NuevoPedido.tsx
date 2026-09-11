@@ -808,6 +808,7 @@ export default function NuevoPedido() {
           {webs.map((w) => (
             <div key={w.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-indigo-100 p-2">
               <div className="min-w-0 text-xs">
+                <span className="font-mono text-indigo-700 font-semibold">#{w.id}</span>{' '}
                 <b>{w.cliente_razon ?? w.cod_cliente ?? 'Sin cliente'}</b>
                 <span className="text-muted"> · {w.total_units} u. · ${Math.round(w.importe).toLocaleString('es-AR')}</span>
                 {w.vendedor ? <span className="text-muted"> · {w.vendedor}</span> : null}
