@@ -4,6 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icon-512.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <script>
+      // Catálogo (/catalogo): manifest propio con el token, así el ícono instalado abre
+      // el catálogo de esa óptica. Corre antes de que el navegador lea el manifest.
+      (function () {
+        try {
+          if (location.pathname.indexOf('/catalogo') !== 0) return
+          var sp = new URLSearchParams(location.search)
+          // Id de dispositivo: si la app instalada trae el del navegador donde se instaló
+          // (iPhone separa el almacenamiento), lo adopta para no contar un equipo nuevo.
+          var DK = 'orbital_catalogo_device'
+          var d = localStorage.getItem(DK)
+          var dUrl = sp.get('d')
+          if (!d && dUrl && /^[A-Za-z0-9_-]{1,80}$/.test(dUrl)) { d = dUrl; localStorage.setItem(DK, d) }
+          if (!d) {
+            d = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)
+            localStorage.setItem(DK, d)
+          }
+          var k = sp.get('k') || localStorage.getItem('orbital_catalogo_clave') || ''
+          var q = new URLSearchParams()
+          if (k) q.set('k', k.trim())
+          q.set('d', d)
+          document.querySelector('link[rel="manifest"]').setAttribute('href', '/api/catalogo-manifest?' + q.toString())
+          // El pedido de instalación llega antes de que React monte el botón: lo guardamos.
+          window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orbitalInstall = e })
+        } catch (e) { /* sin almacenamiento: queda el manifest general */ }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

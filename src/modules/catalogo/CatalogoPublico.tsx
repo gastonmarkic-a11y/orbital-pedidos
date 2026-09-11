@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send, Download } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { calcularBono, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
@@ -752,6 +752,86 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
   )
 }
 
+// ── Instalar el catálogo como app: ícono en el teléfono o la compu ─────────────
+// El manifest con el token lo arma index.html; acá solo el botón y la ayuda.
+function esStandalone(): boolean {
+  try { return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true } catch { return false }
+}
+function InstalarApp() {
+  const [evento, setEvento] = useState<any>(() => (window as any).__orbitalInstall ?? null)
+  const [instalada, setInstalada] = useState(esStandalone)
+  const [ayuda, setAyuda] = useState(false)
+  useEffect(() => {
+    const onPrompt = (e: Event) => { e.preventDefault(); (window as any).__orbitalInstall = e; setEvento(e) }
+    const onInstalada = () => { setInstalada(true); setEvento(null) }
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    window.addEventListener('appinstalled', onInstalada)
+    return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalada) }
+  }, [])
+  if (instalada) return null
+
+  const ua = navigator.userAgent
+  const ios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const android = /android/i.test(ua)
+  const enWhatsApp = /WhatsApp|FBAN|FBAV|Instagram/i.test(ua)
+
+  async function instalar() {
+    if (evento) {
+      evento.prompt()
+      const r = await evento.userChoice.catch(() => null)
+      if (r?.outcome === 'accepted') setInstalada(true)
+      ;(window as any).__orbitalInstall = null; setEvento(null)
+      return
+    }
+    setAyuda(true)
+  }
+
+  return (
+    <>
+      <button onClick={instalar} title="Guardar el catálogo con ícono en tu teléfono o compu"
+        className="flex items-center gap-1.5 text-sm border border-black/15 rounded-full px-3 py-2 font-medium text-neutral-700 hover:border-[#0004FF]/40">
+        <Download size={15} /> <span className="hidden sm:inline">Instalar</span>
+      </button>
+      {ayuda && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={() => setAyuda(false)}>
+          <div className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 font-mono" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wide">Guardá el catálogo en tu {ios || android ? 'teléfono' : 'compu'}</h3>
+              <button onClick={() => setAyuda(false)} className="p-1 rounded-full hover:bg-black/5"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-neutral-500 mb-3">Queda con el ícono de Orbital y entra directo a tu catálogo, sin clave.</p>
+            {enWhatsApp && (
+              <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-2.5 mb-3">
+                Lo abriste desde WhatsApp: primero abrilo en {ios ? 'Safari (ícono de brújula o "Abrir en Safari")' : 'Chrome (menú ⋮ → "Abrir en Chrome")'}.
+              </p>
+            )}
+            <ol className="text-sm space-y-2 list-decimal pl-5">
+              {ios ? (
+                <>
+                  <li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha ⬆️).</li>
+                  <li>Elegí <b>“Agregar a inicio”</b>.</li>
+                  <li>Tocá <b>Agregar</b>.</li>
+                </>
+              ) : android ? (
+                <>
+                  <li>Abrí el menú <b>⋮</b> del navegador (arriba a la derecha).</li>
+                  <li>Elegí <b>“Instalar app”</b> o <b>“Agregar a pantalla de inicio”</b>.</li>
+                  <li>Confirmá con <b>Instalar</b>.</li>
+                </>
+              ) : (
+                <>
+                  <li>En <b>Chrome o Edge</b>: tocá el ícono de instalar en la barra de direcciones, o menú <b>⋮</b> → <b>“Instalar Catálogo Orbital”</b>.</li>
+                  <li>En <b>Safari (Mac)</b>: menú <b>Archivo → Agregar al Dock</b>.</li>
+                </>
+              )}
+            </ol>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function CatalogoPublico() {
   // token del link (?k=) tiene prioridad sobre la clave guardada
   const [clave, setClave] = useState<string | null>(() => {
@@ -817,6 +897,8 @@ export default function CatalogoPublico() {
         // guarda para que, si vuelve sin el link, caiga otra vez acá y no en la pantalla de clave.
         localStorage.setItem(CLAVE_KEY, clave)
         setBloqueo({ label: r.label ?? null, vendedor_tel: r.vendedor_tel ?? null })
+      } else if (error) {
+        // Falla de red: no se borra nada, al recargar vuelve a intentar con el mismo token.
       } else {
         localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setClave(null); setAcceso(null)
       }
@@ -897,8 +979,6 @@ export default function CatalogoPublico() {
     }, 15000)
     const alCambiar = () => { if (segundosRef.current) latir() }
     document.addEventListener('visibilitychange', alCambiar)
-      } else if (error) {
-        // Falla de red: no se borra nada, al recargar vuelve a intentar con el mismo token.
     return () => {
       window.clearInterval(tic)
       document.removeEventListener('visibilitychange', alCambiar)
@@ -993,10 +1073,13 @@ export default function CatalogoPublico() {
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <button onClick={irInicio} className="shrink-0"><Logo /></button>
-          <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
-            <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
-            {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{cartCount}</span>}
-          </button>
+          <div className="flex items-center gap-2">
+            <InstalarApp />
+            <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
+              <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
+              {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{cartCount}</span>}
+            </button>
+          </div>
         </div>
         {/* Buscador */}
         <div className="max-w-6xl mx-auto px-4 pb-2">
