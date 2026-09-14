@@ -36,7 +36,7 @@ function texto(html: string | null | undefined): string | null {
   return t || null
 }
 
-type Variante = { title: string; sku: string | null; price: string; compare_at_price: string | null; available: boolean }
+type Variante = { id: number; title: string; sku: string | null; price: string; compare_at_price: string | null; available: boolean }
 type Producto = {
   id: number; title: string; handle: string; product_type: string; tags: string[] | string
   body_html: string | null; images: { src: string }[]; variants: Variante[]
@@ -85,6 +85,7 @@ Deno.serve(async (req) => {
     if (!v) continue
     filas.push({
       product_id: p.id,
+      variant_id: v.id ?? null,
       handle: p.handle,
       modelo: String(p.title).replace(/\s+/g, ' ').trim().toUpperCase(),
       color: v.title && v.title !== 'Default Title' ? v.title.replace(/\s+/g, ' ').trim() : null,

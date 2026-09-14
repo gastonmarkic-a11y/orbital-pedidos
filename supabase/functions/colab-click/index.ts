@@ -1,20 +1,23 @@
 // Edge Function: colab-click  (pública, verify_jwt=false)
-// La llama la página ver.orbitaleyewear.com.ar/r/<codigo> cuando alguien toca el link
-// que un influencer pegó en su historia o publicación:
-//   1) valida el link (y que el influencer y su admin estén activos)
-//   2) consigue la regla de descuento del modelo en Shopify (1 price rule por modelo + %)
-//   3) crea un código ÚNICO de un solo uso para este visitante (ORB + 6)
-//   4) registra el click y devuelve la URL /discount/<code>?redirect=/products/<handle>
+// La llama la landing ver.orbitaleyewear.com.ar/r/<codigo> (el link que un promotor pegó
+// en su historia o publicación). Dos pasos:
+//   accion 'ver'     → datos de la landing (modelo, colores con stock, precios, % y promotor)
+//                      y registra el toque (1 por visitante cada 30 min).
+//   accion 'comprar' → consigue la regla del modelo en Shopify (1 price rule por modelo + %),
+//                      crea un código ÚNICO de un solo uso (ORB + 6) y devuelve adónde ir:
+//                        · SOL    → checkout directo /cart/<variant_id>:1?discount=<code>
+//                        · RECETA → la ficha con el código aplicado (ahí se eligen las lentes)
+//   sin accion       → como 'comprar' con el color del link (compatibilidad con la versión vieja).
 // El pedido que use ese código se atribuye al link (lo hace colab-ventas-sync).
-// Si el mismo navegador vuelve a tocar el mismo link, reusa su código.
-// Si Shopify falla (p.ej. falta el permiso write_discounts) lo manda igual al anteojo, sin descuento.
-// Se genera desde el navegador (JS), así los bots que solo leen la vista previa no gastan códigos.
+// El código se genera recién al tocar Comprar: mirar la landing no gasta códigos.
+// Si el mismo navegador ya tenía código para ese link y no se usó en un pedido, lo reusa.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const TIENDA = 'https://www.orbitaleyewear.com.ar'
 const ALFA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const FRENO_POR_MINUTO = 60
+const VENTANA_TOQUE_MS = 30 * 60_000
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -96,12 +99,21 @@ async function crearCodigo(db: SupabaseClient, modelo: string, pct: number, inte
   throw new Error('no_se_pudo_generar_codigo')
 }
 
+type Prod = {
+  handle: string; color: string | null; imagen: string | null; imagenes: string[] | null
+  price: number | null; compare_at: number | null; variant_id: number | null; tipo: string | null
+  linea: string | null; descripcion: string | null
+}
+const COLS = 'handle, color, imagen, imagenes, price, compare_at, variant_id, tipo, linea, descripcion'
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
-  const body = await req.json().catch(() => ({})) as { codigo?: string; visitante?: string }
+  const body = await req.json().catch(() => ({})) as { codigo?: string; visitante?: string; accion?: string; handle?: string }
   const codigo = String(body.codigo ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
   const visitante = String(body.visitante ?? '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 40) || null
+  const accion = body.accion === 'ver' ? 'ver' : 'comprar'
+  const legacy = !body.accion
   if (!codigo) return json({ ok: false, error: 'falta_codigo', redirect: TIENDA }, 400)
 
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -116,47 +128,73 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: 'link_inactivo', redirect: `${TIENDA}/products/${link.handle}` })
   }
 
-  // Destino: el color del link si sigue disponible; si no, otro color disponible del mismo modelo.
-  const cols = 'handle, modelo, color, imagen, price, compare_at, disponible'
-  const { data: prod } = await db.from('colab_producto').select(cols).eq('handle', link.handle).limit(1).maybeSingle()
-  let destino = prod
-  if (!prod?.disponible) {
-    const { data: alt } = await db.from('colab_producto').select(cols).eq('modelo', link.modelo).eq('disponible', true).limit(1).maybeSingle()
-    if (alt) destino = alt
-  }
-  const handle = destino?.handle ?? link.handle
-  const utm = new URLSearchParams({ utm_source: 'colab', utm_medium: link.red, utm_campaign: `colab_${inf.ref}`, utm_content: link.codigo })
-  const productoPath = `/products/${handle}?${utm}`
   const pct = Number(inf.pct_descuento) || 30
-  const info = {
-    modelo: link.modelo, color: destino?.color ?? null, imagen: destino?.imagen ?? null,
-    price: destino?.price ?? null, compare_at: destino?.compare_at ?? null, pct, influencer: inf.nombre,
+  const utm = new URLSearchParams({ utm_source: 'colab', utm_medium: link.red, utm_campaign: `colab_${inf.ref}`, utm_content: link.codigo })
+  const { data: disp } = await db.from('colab_producto').select(COLS).eq('modelo', link.modelo).eq('disponible', true).order('handle')
+  const colores = (disp ?? []) as Prod[]
+
+  // ── ver: datos de la landing + toque ──
+  if (accion === 'ver') {
+    if (visitante) {
+      const { count } = await db.from('colab_click').select('id', { count: 'exact', head: true })
+        .eq('link_id', link.id).eq('visitante', visitante).gte('ts', new Date(Date.now() - VENTANA_TOQUE_MS).toISOString())
+      if (!count) await db.from('colab_click').insert({ link_id: link.id, visitante })
+    } else {
+      await db.from('colab_click').insert({ link_id: link.id, visitante: null })
+    }
+    const { data: store } = await db.from('shopify_stores').select('scope').eq('id', 'linea').maybeSingle()
+    const descuentoActivo = /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
+    return json({
+      ok: true, modelo: link.modelo, influencer: inf.nombre, pct, descuento_activo: descuentoActivo,
+      seleccionado: colores.some((c) => c.handle === link.handle) ? link.handle : colores[0]?.handle ?? null,
+      colores, tienda: `${TIENDA}/products/${link.handle}?${utm}`,
+    })
   }
-  const conDescuento = (code: string) => `${TIENDA}/discount/${encodeURIComponent(code)}?redirect=${encodeURIComponent(productoPath)}`
-  const registrar = (code: string | null) => db.from('colab_click').insert({ link_id: link.id, codigo_descuento: code, visitante })
+
+  // ── comprar ──
+  const handlePedido = legacy ? link.handle : String(body.handle ?? '')
+  const prod = colores.find((c) => c.handle === handlePedido) ?? colores[0]
+  if (!prod) return json({ ok: false, error: 'sin_stock', redirect: `${TIENDA}/products/${link.handle}?${utm}` })
+
+  const productoPath = `/products/${prod.handle}?${utm}`
+  const directo = prod.tipo === 'SOL' && !!prod.variant_id && !legacy
+  const destino = (code: string) => directo
+    ? `${TIENDA}/cart/${prod.variant_id}:1?${new URLSearchParams({ discount: code, ...Object.fromEntries(utm) })}`
+    : `${TIENDA}/discount/${encodeURIComponent(code)}?redirect=${encodeURIComponent(productoPath)}`
+  const info = { modelo: link.modelo, color: prod.color, imagen: prod.imagen, price: prod.price, compare_at: prod.compare_at, pct, influencer: inf.nombre, directo }
+
+  // El código queda en el toque de este visitante (así el toque no se cuenta dos veces).
+  const anotar = async (code: string) => {
+    if (visitante) {
+      const { data: t } = await db.from('colab_click').select('id').eq('link_id', link.id).eq('visitante', visitante)
+        .is('codigo_descuento', null).order('ts', { ascending: false }).limit(1).maybeSingle()
+      if (t) { await db.from('colab_click').update({ codigo_descuento: code }).eq('id', t.id); return }
+    }
+    await db.from('colab_click').insert({ link_id: link.id, codigo_descuento: code, visitante })
+  }
 
   if (visitante) {
     const { data: prev } = await db.from('colab_click').select('codigo_descuento')
       .eq('link_id', link.id).eq('visitante', visitante).not('codigo_descuento', 'is', null)
       .order('ts', { ascending: false }).limit(1).maybeSingle()
     if (prev?.codigo_descuento) {
-      return json({ ok: true, reuso: true, code: prev.codigo_descuento, redirect: conDescuento(prev.codigo_descuento), ...info })
+      const { count: usado } = await db.from('colab_venta').select('order_id', { count: 'exact', head: true }).eq('codigo_descuento', prev.codigo_descuento)
+      if (!usado) return json({ ok: true, reuso: true, code: prev.codigo_descuento, redirect: destino(prev.codigo_descuento), ...info })
     }
   }
 
   const { count } = await db.from('colab_click').select('id', { count: 'exact', head: true })
-    .eq('link_id', link.id).gte('ts', new Date(Date.now() - 60_000).toISOString())
+    .eq('link_id', link.id).not('codigo_descuento', 'is', null).gte('ts', new Date(Date.now() - 60_000).toISOString())
   if ((count ?? 0) > FRENO_POR_MINUTO) {
-    await registrar(null)
     return json({ ok: false, error: 'freno', redirect: TIENDA + productoPath, ...info })
   }
 
   try {
     const code = await crearCodigo(db, link.modelo, pct)
-    await registrar(code)
-    return json({ ok: true, code, redirect: conDescuento(code), ...info })
+    await anotar(code)
+    return json({ ok: true, code, redirect: destino(code), ...info })
   } catch (e) {
-    await registrar(null)
+    if (legacy) await db.from('colab_click').insert({ link_id: link.id, codigo_descuento: null, visitante })
     return json({ ok: false, error: 'sin_descuento', detalle: String((e as Error)?.message ?? e), redirect: TIENDA + productoPath, ...info })
   }
 })
