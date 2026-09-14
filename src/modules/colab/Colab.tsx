@@ -13,6 +13,8 @@ import {
 } from './colabUtil'
 import ColabAnteojos, { BotonCopiar } from './ColabAnteojos'
 import ColabDashboard, { Liquidacion } from './ColabDashboard'
+import ColabAgregar from './ColabAgregar'
+import ColabPropuestas from './ColabPropuestas'
 import InstalarApp from '../../components/InstalarApp'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
@@ -78,9 +80,9 @@ export default function Colab() {
   return <Panel clave={clave} ent={ent} salir={() => { localStorage.removeItem(CLAVE_KEY); setClave(null); setEnt(null) }} />
 }
 
-type Tab = 'admins' | 'promotores' | 'anteojos' | 'links' | 'dashboard' | 'liquidacion'
+type Tab = 'admins' | 'promotores' | 'propuestas' | 'anteojos' | 'links' | 'dashboard' | 'liquidacion'
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
-  orbital: [['admins', 'Administradores'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   admin: [['promotores', 'Promotores'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   influencer: [['anteojos', 'Anteojos'], ['links', 'Mis links'], ['dashboard', 'Dashboard']],
 }
@@ -91,6 +93,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
   const [version, setVersion] = useState(0)
   const [adminSel, setAdminSel] = useState<number | null>(null)
   const [admins, setAdmins] = useState<Admin[] | null>(null)
+  // Promotor de colección: "Agregar anteojos" abre toda la tienda para proponer SKU.
+  const [agregando, setAgregando] = useState(false)
 
   useEffect(() => {
     if (ent.rol === 'orbital') supabase.rpc('colab_orbital_admins', { p_clave: clave }).then(({ data }) => setAdmins((data as Admin[]) ?? []))
@@ -129,10 +133,24 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
 
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
-        {tab === 'anteojos' && <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)} />}
+        {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
+        {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
+        {tab === 'anteojos' && !(ent.coleccion && agregando) && (
+          <>
+            {ent.coleccion && (
+              <div className="mb-3 flex justify-end">
+                <button onClick={() => setAgregando(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg text-white px-3 py-2 text-[12px] font-semibold" style={{ background: ACENTO }}>
+                  <Plus size={14} /> Agregar anteojos
+                </button>
+              </div>
+            )}
+            <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)} />
+          </>
+        )}
         {tab === 'links' && <MisLinks key={version} clave={clave} pct={ent.pct ?? 15} irAnteojos={() => setTab('anteojos')} />}
         {tab === 'dashboard' && (
-          <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel}
+          <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}
             pctInf={ent.rol === 'influencer' ? ent.pct : 15} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
         )}
         {tab === 'liquidacion' && (

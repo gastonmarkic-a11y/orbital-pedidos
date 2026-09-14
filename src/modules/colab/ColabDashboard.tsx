@@ -40,8 +40,9 @@ const EJEMPLO: Resumen = {
 
 const C_RED: Record<string, string> = { instagram: '#c13584', tiktok: '#111827', youtube: '#dc2626', facebook: '#2a78d6', x: '#525252', otra: '#8d8a82' }
 
-export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId }: {
+export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, coleccion }: {
   clave: string; rol: Rol; pctInf?: number; pctAdm?: number; adminId?: number | null
+  coleccion?: boolean   // promotor de colección: cuenta toda la venta de la colección, sin cupón
 }) {
   const [r, setR] = useState<Resumen | null>(null)
   const [actualizando, setActualizando] = useState(false)
@@ -135,18 +136,18 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId }: 
         <div className="flex items-baseline justify-between gap-3 rounded-lg bg-[#F5F5F7] px-3 py-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wide">Toques al link</div>
-            <div className="text-[10px] text-neutral-500">cada uno recibe su código único</div>
+            <div className="text-[10px] text-neutral-500">{coleccion ? 'personas que abrieron tus links' : 'cada uno recibe su código único'}</div>
           </div>
           <div className="text-[20px] font-bold tabular-nums leading-none">{nAr(ult?.clicks)}</div>
         </div>
         <div className="flex items-center gap-2 py-1 pl-3">
           <span className="w-px h-4 bg-black/15" />
-          <span className="text-[10px] text-neutral-500">compró el <b className="text-black">{conv.toFixed(1)}%</b></span>
+          <span className="text-[10px] text-neutral-500">{coleccion ? 'y en la tienda' : <>compró el <b className="text-black">{conv.toFixed(1)}%</b></>}</span>
         </div>
         <div className="flex items-baseline justify-between gap-3 rounded-lg bg-[#F5F5F7] px-3 py-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wide">Pedidos pagados</div>
-            <div className="text-[10px] text-neutral-500">con el código de tu link</div>
+            <div className="text-[10px] text-neutral-500">{coleccion ? 'de tu colección, por tu link o directo en la tienda' : 'con el código de tu link'}</div>
           </div>
           <div className="text-[20px] font-bold tabular-nums leading-none">{nAr(ult?.pedidos)}</div>
         </div>
@@ -276,7 +277,9 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId }: 
       {rol === 'influencer' && <Liquidacion clave={clave} rol={rol} pctInf={pctInf} pctAdm={pctAdm} compacta />}
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
-        Cuenta la venta de los pedidos que usan un código generado por un link (se genera uno único por persona que lo toca).
+        {coleccion
+          ? 'Cuenta toda venta de tu colección en la tienda desde el lanzamiento, entre o no por tu link. '
+          : 'Cuenta la venta de los pedidos que usan un código generado por un link (se genera uno único por persona que lo toca). '}
         Venta neta = productos después de descuentos y devoluciones, sin IVA y sin envío. Solo suman los pedidos pagados;
         los cancelados y reembolsados no. Las comisiones se liquidan sobre ese neto, sin IVA.
       </p>

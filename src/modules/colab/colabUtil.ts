@@ -13,6 +13,7 @@ export type Rol = 'orbital' | 'admin' | 'influencer'
 export type Entrada = {
   rol: Rol; id: number; nombre: string
   pct?: number; pct_descuento?: number; ref?: string; admin?: string
+  coleccion?: string | null   // promotor de colección (cobranding ZN)
 }
 
 export type Red = { red: string; usuario: string; url?: string; seguidores?: string }

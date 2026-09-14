@@ -18,6 +18,8 @@ type Ver = {
   modelo?: string; influencer?: string; pct?: number; descuento_activo?: boolean
   seleccionado?: string | null; colores?: ColorLanding[]; tienda?: string; utm?: string
   ver_mas?: string | null  // promotor de una colección (cobranding ZN): la colección de la tienda con UTM
+  banner?: { desktop: string | null; mobile: string | null; titulo: string | null; texto: string | null } | null
+  coleccion?: { modelo: string; imagen: string | null; price: number | null; compare_at: number | null; url: string }[]
 }
 
 const TIENDA = 'https://www.orbitaleyewear.com.ar'
@@ -117,6 +119,22 @@ export default function ColabRedireccion() {
       <header className="max-w-md mx-auto px-4 pt-4 flex items-center justify-between">
         <img src="/logo-orbital.png" alt="Orbital" className="h-5" />      </header>
 
+      {/* Cobranding: el banner de la colección, como el de la tienda (la versión apaisada entra mejor en el celular) */}
+      {d.banner && (d.banner.desktop || d.banner.mobile) && (
+        <a href={d.ver_mas ?? d.tienda ?? TIENDA} className="block max-w-md mx-auto px-4 mt-3">
+          <div className="relative overflow-hidden rounded-2xl bg-neutral-900">
+            <img src={d.banner.desktop ?? d.banner.mobile ?? ''} alt={d.banner.titulo ?? ''} className="block w-full h-auto" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-transparent" />
+            <div className="absolute inset-y-0 left-0 w-[62%] flex flex-col justify-center pl-4 text-white">
+              <div className="font-mono text-[9px] tracking-[0.2em] opacity-80">■ ORBITAL</div>
+              {d.banner.titulo && <div className="font-mono text-[21px] font-bold uppercase leading-none mt-1">{d.banner.titulo}</div>}
+              {d.banner.texto && <p className="text-[11px] leading-snug opacity-90 mt-1.5">{d.banner.texto}</p>}
+              <span className="mt-2 self-start rounded-full text-white font-mono text-[10px] px-3 py-1" style={{ background: ACENTO }}>[ VER LOS ELEGIDOS ]</span>
+            </div>
+          </div>
+        </a>
+      )}
+
       {!c ? (
         <div className="max-w-md mx-auto px-4 py-16 text-center">
           <div className="text-[13px] font-bold uppercase tracking-[0.2em]">{d.modelo}</div>
@@ -180,6 +198,32 @@ export default function ColabRedireccion() {
           )}
 
           {texto && <p className="text-[13px] text-neutral-600 leading-relaxed mt-5">{texto}</p>}
+
+          {/* Cobranding: el resto de la colección, un anteojo por modelo (con el UTM del link) */}
+          {(d.coleccion?.length ?? 0) > 0 && (
+            <div className="mt-6">
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">Más de la colección</div>
+                {d.ver_mas && <a href={d.ver_mas} className="text-[11px] font-semibold underline" style={{ color: ACENTO }}>Ver todos</a>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(d.coleccion ?? []).map((x) => (
+                  <a key={x.modelo} href={x.url} className="rounded-xl border border-black/10 bg-white overflow-hidden">
+                    <div className="aspect-[4/3] p-1.5">{x.imagen && <img src={x.imagen} alt={x.modelo} className="w-full h-full object-contain" loading="lazy" />}</div>
+                    <div className="px-2 pb-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wide truncate">{x.modelo}</div>
+                      {x.price != null && (
+                        <div className="text-[11px] tabular-nums">
+                          <b>{kAr(x.price)}</b>
+                          {x.compare_at != null && x.compare_at > x.price && <span className="text-neutral-400 line-through ml-1">{kAr(x.compare_at)}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           <ul className="mt-5 space-y-1.5 text-[12px] text-neutral-600">
             {conDesc && <li>✔ Código único, solo para vos y de un solo uso</li>}
