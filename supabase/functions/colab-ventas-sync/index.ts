@@ -3,6 +3,8 @@
 // descuento: cada toque del link genera un código único, así que el pedido que lo usa
 // vino de ese link. Recorre los pedidos ACTUALIZADOS en los últimos N días (default 40)
 // para capturar pagos, cancelaciones y devoluciones, y recalcula cada venta atribuida.
+// Promotores SIN cupón (pct_descuento 0, cobranding ZN): se atribuye por el landing_site
+// del pedido con utm_source=colab y utm_content = codigo del link. El código tiene prioridad.
 //
 // Base de comisión = productos después de descuentos y devoluciones (current_subtotal_price),
 // SIN IVA y SIN envío. Solo comisiona si está pagado (paid / partially_refunded).
@@ -30,8 +32,18 @@ type Orden = {
   id: number; name: string; created_at: string; cancelled_at: string | null
   financial_status: string | null; taxes_included: boolean | null
   discount_codes: { code: string }[] | null
+  landing_site?: string | null
   current_subtotal_price?: string; subtotal_price?: string; current_total_price?: string; total_price?: string
   line_items: { quantity: number; current_quantity?: number }[]
+}
+
+function utmDe(landing: string | null | undefined) {
+  if (!landing) return null
+  try {
+    const u = new URL(landing, 'https://x.local')
+    if (u.searchParams.get('utm_source') !== 'colab') return null
+    return (u.searchParams.get('utm_content') ?? '').toLowerCase() || null
+  } catch { return null }
 }
 
 Deno.serve(async (req) => {
@@ -63,12 +75,18 @@ Deno.serve(async (req) => {
     for (const c of data ?? []) porCodigo.set(String(c.codigo_descuento).toUpperCase(), c.link_id)
     if (!data || data.length < 1000) break
   }
-  if (!porCodigo.size) return json({ ok: true, codigos: 0, pedidos_revisados: 0, atribuidos: 0 })
 
   const { data: links } = await db.from('colab_link')
-    .select('id, modelo, influencer_id, influencer:colab_influencer(pct_comision, admin_id, admin:colab_admin(pct_comision))')
+    .select('id, codigo, modelo, influencer_id, influencer:colab_influencer(pct_comision, pct_descuento, admin_id, admin:colab_admin(pct_comision))')
   // deno-lint-ignore no-explicit-any
   const linkPor = new Map((links ?? []).map((l: any) => [l.id, l]))
+  // Links de promotores sin cupón → se atribuyen por utm_content
+  const porUtm = new Map<string, number>()
+  // deno-lint-ignore no-explicit-any
+  for (const l of (links ?? []) as any[]) {
+    if (l.influencer && l.influencer.pct_descuento != null && Number(l.influencer.pct_descuento) <= 0) porUtm.set(String(l.codigo).toLowerCase(), l.id)
+  }
+  if (!porCodigo.size && !porUtm.size) return json({ ok: true, codigos: 0, links_utm: 0, pedidos_revisados: 0, atribuidos: 0 })
 
   const { data: store } = await db.from('shopify_stores').select('shop_domain, access_token').eq('id', 'linea').maybeSingle()
   if (!store) return json({ error: 'tienda_no_conectada' }, 400)
@@ -78,7 +96,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url)
   const dias = Math.min(Number(url.searchParams.get('dias') ?? 40), 120)
   const desde = new Date(Date.now() - dias * 86_400_000).toISOString()
-  const campos = 'id,name,created_at,cancelled_at,financial_status,taxes_included,discount_codes,' +
+  const campos = 'id,name,created_at,cancelled_at,financial_status,taxes_included,discount_codes,landing_site,' +
     'current_subtotal_price,subtotal_price,current_total_price,total_price,line_items'
   let next: string | null =
     `https://${store.shop_domain}/admin/api/${ver}/orders.json?status=any&limit=250&updated_at_min=${desde}&fields=${campos}`
@@ -92,10 +110,18 @@ Deno.serve(async (req) => {
     revisados += ordenes.length
     for (const o of ordenes) {
       const dc = (o.discount_codes ?? []).find((d) => porCodigo.has(String(d.code).toUpperCase()))
-      if (!dc) continue
-      const code = String(dc.code).toUpperCase()
+      let linkId: number | undefined
+      let code: string | null = null
+      if (dc) {
+        code = String(dc.code).toUpperCase()
+        linkId = porCodigo.get(code)
+      } else {
+        const c = utmDe(o.landing_site)
+        if (c) linkId = porUtm.get(c)
+      }
+      if (!linkId) continue
       // deno-lint-ignore no-explicit-any
-      const l: any = linkPor.get(porCodigo.get(code)!)
+      const l: any = linkPor.get(linkId)
       if (!l) continue
       const fs = o.financial_status ?? ''
       const estado = o.cancelled_at ? 'cancelado'
@@ -126,8 +152,9 @@ Deno.serve(async (req) => {
         com_admin: r2(base * pctAdm / 100),
         raw: {
           name: o.name, financial_status: o.financial_status, cancelled_at: o.cancelled_at,
-          discount_codes: o.discount_codes, current_subtotal_price: o.current_subtotal_price,
-          taxes_included: o.taxes_included,
+          discount_codes: o.discount_codes, landing_site: o.landing_site ?? null,
+          current_subtotal_price: o.current_subtotal_price, taxes_included: o.taxes_included,
+          atribucion: code ? 'codigo' : 'utm',
         },
         updated_at: new Date().toISOString(),
       })
@@ -140,5 +167,5 @@ Deno.serve(async (req) => {
     const { error } = await db.from('colab_venta').upsert(filas, { onConflict: 'order_id' })
     if (error) return json({ error: 'db_error', detalle: error.message }, 500)
   }
-  return json({ ok: true, codigos: porCodigo.size, pedidos_revisados: revisados, atribuidos: filas.length })
+  return json({ ok: true, codigos: porCodigo.size, links_utm: porUtm.size, pedidos_revisados: revisados, atribuidos: filas.length })
 })

@@ -16,7 +16,7 @@ type ColorLanding = {
 type Ver = {
   ok: boolean; error?: string; redirect?: string
   modelo?: string; influencer?: string; pct?: number; descuento_activo?: boolean
-  seleccionado?: string | null; colores?: ColorLanding[]; tienda?: string
+  seleccionado?: string | null; colores?: ColorLanding[]; tienda?: string; utm?: string
 }
 
 const TIENDA = 'https://www.orbitaleyewear.com.ar'
@@ -79,17 +79,22 @@ export default function ColabRedireccion() {
   const c = colores.find((x) => x.handle === sel) ?? colores[0]
   const pct = d.pct ?? 30
   const conDesc = !!d.descuento_activo
+  const utm = d.utm
   const fotos = c ? (c.imagenes?.length ? c.imagenes : c.imagen ? [c.imagen] : []) : []
   // Siempre parte del precio tachado de la tienda (compare_at) y el final queda por debajo
   // del precio de venta de la web: precio web − pct%.
   const precioFinal = c?.price ? Math.round(c.price * (1 - (conDesc ? pct : 0) / 100)) : null
   const precioRef = c ? (c.compare_at && c.price && c.compare_at > c.price ? c.compare_at : c.price) : null
+  // Lo que el promotor le da a su comunidad: contra el tachado, siempre redondeado para arriba
+  // (199.000 → 143.650 = 27,8% → 28%). El -1e-9 evita que un 28,0 exacto pase a 29 por decimales.
+  const offPublico = conDesc && precioRef && precioFinal && precioRef > precioFinal ? Math.ceil((1 - precioFinal / precioRef) * 100 - 1e-9) : null
   const esReceta = c?.tipo === 'RECETA'
   const texto = intro(c?.descripcion ?? null)
 
   async function comprar() {
     if (!c) return
-    if (!conDesc) { window.location.href = `${TIENDA}/products/${c.handle}`; return }
+    // Sin descuento el link igual lleva su UTM: con eso se atribuye el pedido (promotor sin cupón).
+    if (!conDesc) { window.location.href = `${TIENDA}/products/${c.handle}${utm ? `?${utm}` : ''}`; return }
     setYendo(true); setFallo(null)
     const { data } = await supabase.functions.invoke('colab-click', { body: { codigo, visitante: visitante(), accion: 'comprar', handle: c.handle } })
     const r = data as { ok: boolean; redirect?: string; error?: string } | null
@@ -102,7 +107,7 @@ export default function ColabRedireccion() {
     <div className="min-h-screen bg-white pb-28">
       {/* Franja exclusiva */}
       <div className="text-white text-center text-[11px] font-semibold tracking-wide py-2 px-4" style={{ background: ACENTO }}>
-        {conDesc ? `Precio exclusivo de parte de ${d.influencer}` : `Recomendado por ${d.influencer}`}
+        {conDesc ? `${offPublico ? `${offPublico}% OFF exclusivo` : 'Precio exclusivo'} de parte de ${d.influencer}` : `Recomendado por ${d.influencer}`}
       </div>
 
       <header className="max-w-md mx-auto px-4 pt-4 flex items-center justify-between">
@@ -145,6 +150,7 @@ export default function ColabRedireccion() {
             <div className="mt-3 flex items-end gap-3">
               <div className="text-[30px] font-bold leading-none tabular-nums" style={{ color: conDesc ? ACENTO : undefined }}>{kAr(precioFinal)}</div>
               {precioRef && precioRef > (precioFinal ?? 0) && <div className="text-[14px] text-neutral-400 line-through tabular-nums pb-0.5">{kAr(precioRef)}</div>}
+              {offPublico && <div className="rounded-full text-white text-[12px] font-bold px-2.5 py-0.5 mb-0.5" style={{ background: ACENTO }}>{offPublico}% OFF</div>}
             </div>
           )}
           {conDesc && c.price != null && (
@@ -191,7 +197,7 @@ export default function ColabRedireccion() {
             <button onClick={comprar} disabled={yendo}
               className="w-full rounded-xl text-white py-3.5 text-[15px] font-bold disabled:opacity-70" style={{ background: ACENTO }}>
               {yendo ? 'Aplicando tu descuento…'
-                : conDesc ? `${esReceta ? 'Elegir lentes' : 'Comprar'}${precioFinal ? ` a ${kAr(precioFinal)}` : ''}`
+                : conDesc ? `${esReceta ? 'Elegir lentes' : 'Comprar'}${offPublico ? ` con ${offPublico}% OFF` : ''}${precioFinal ? ` · ${kAr(precioFinal)}` : ''}`
                 : 'Ver en la tienda'}
             </button>
           </div>

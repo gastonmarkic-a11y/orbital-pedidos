@@ -156,6 +156,7 @@ export type Copies = {
   precio: number | null
   precioRef: number | null
   precioCodigo: number | null
+  offPublico: number | null
 }
 
 export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null): Copies {
@@ -198,13 +199,20 @@ export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null)
 
   const precio = c.price ?? null
   const precioRef = c.compare_at && c.price && c.compare_at > c.price ? c.compare_at : null
-  const precioCodigo = precio ? Math.round(precio * (1 - pct / 100)) : null
+  // pct 0 = promotor sin cupón (cobranding ZN): se habla del precio de la web, sin código.
+  const sinCodigo = pct <= 0
+  const precioCodigo = precio && !sinCodigo ? Math.round(precio * (1 - pct / 100)) : null
 
   // El % es interno (sale el precio promocional): lo que publica el promotor habla de precios.
   const antes = precioRef ?? precio
-  const promo = precioCodigo
-    ? `de ${kAr(antes)} a ${kAr(precioCodigo)} con mi código`
-    : 'a precio exclusivo con mi código'
+  // % público = contra el tachado (lo que el promotor le da a su comunidad), no el % interno.
+  // Siempre redondeado para arriba (27,8 → 28); el -1e-9 evita que un entero exacto suba por decimales.
+  const offPublico = !sinCodigo && antes && precioCodigo && antes > precioCodigo ? Math.ceil((1 - precioCodigo / antes) * 100 - 1e-9) : null
+  const promo = sinCodigo
+    ? (precio ? (precioRef ? `de ${kAr(precioRef)} a ${kAr(precio)} en la web` : `a ${kAr(precio)} en la web`) : 'en la web de Orbital')
+    : precioCodigo
+      ? `de ${kAr(antes)} a ${kAr(precioCodigo)} con mi código${offPublico ? ` (${offPublico}% OFF)` : ''}`
+      : 'a precio exclusivo con mi código'
 
   const nombre = titulo(m.modelo)
   const tag = m.modelo.replace(/[^A-Za-z0-9]/g, '')
@@ -231,8 +239,8 @@ export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null)
     '0–3 s · Mostralo en la mano: "Miren lo que me llegó".',
     `3–8 s · Ponételo y mirá a cámara. Texto en pantalla: "${nombre}${lente ? ` · ${lente}` : ''}".`,
     `8–12 s · Detalle de cerca${destacados.length ? `: ${destacados.slice(0, 2).join(' + ')}` : ''}.`,
-    `12–15 s · Cierre: "${precioCodigo ? `Con mi link lo pagás ${kAr(precioCodigo)}` : 'Con mi link tenés precio exclusivo'}, es un código único". Sumá el sticker de enlace.`,
+    `12–15 s · Cierre: "${precioCodigo ? `Con mi link lo pagás ${kAr(precioCodigo)}${offPublico ? `, ${offPublico}% OFF` : ''}` : 'Con mi link tenés precio exclusivo'}, es un código único". Sumá el sticker de enlace.`,
   ].join('\n')
 
-  return { intro, datos, destacados, historia, posteo, guion, precio, precioRef, precioCodigo }
+  return { intro, datos, destacados, historia, posteo, guion, precio, precioRef, precioCodigo, offPublico }
 }

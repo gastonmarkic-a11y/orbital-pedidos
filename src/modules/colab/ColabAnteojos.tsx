@@ -56,7 +56,8 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
         <h1 className="text-[15px] font-bold tracking-wide uppercase">Anteojos para promocionar</h1>
         <p className="text-[11px] text-neutral-500 mt-1">
           Solo los que hay en stock en la tienda. Tocá uno para ver su data, los copies y
-          {puedeLink ? ' generar tu link.' : ' los textos.'} Quien toque tu link tiene <b>{pct}% OFF extra</b> sobre el precio de la web.
+          {puedeLink ? ' generar tu link.' : ' los textos.'}{' '}
+          {pct > 0 ? <>Quien toque tu link tiene <b>{pct}% OFF extra</b> sobre el precio de la web.</> : 'Tu link lleva al precio de la web y cuenta lo que se vende por ahí.'}
         </p>
       </div>
 
@@ -93,7 +94,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
                 </div>
                 {m.precio_desde && (
                   <div className="text-[11px] mt-0.5">
-                    <span className="text-neutral-400 line-through mr-1">{kAr(m.precio_desde)}</span>
+                    {pct > 0 && <span className="text-neutral-400 line-through mr-1">{kAr(m.precio_desde)}</span>}
                     <b style={{ color: ACENTO }}>{kAr(m.precio_desde * (1 - pct / 100))}</b>
                   </div>
                 )}
@@ -171,7 +172,7 @@ function Hoja({ m, pct, clave, puedeLink, onLink, onClose, onPrev, onNext }: {
             <div className="flex flex-wrap items-baseline gap-x-3 mt-1">
               {cp.precioRef && <span className="text-[11px] text-neutral-400 line-through">{kAr(cp.precioRef)}</span>}
               {cp.precio && <span className="text-[12px]">Web <b>{kAr(cp.precio)}</b></span>}
-              {cp.precioCodigo && <span className="text-[12px]" style={{ color: ACENTO }}>Con tu link <b>{kAr(cp.precioCodigo)}</b> (−{pct}%)</span>}
+              {cp.precioCodigo && <span className="text-[12px]" style={{ color: ACENTO }}>Con tu link <b>{kAr(cp.precioCodigo)}</b>{cp.offPublico ? ` · ${cp.offPublico}% OFF para tu comunidad` : ''}</span>}
             </div>
           </div>
 

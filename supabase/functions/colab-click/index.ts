@@ -11,6 +11,8 @@
 // El pedido que use ese código se atribuye al link (lo hace colab-ventas-sync).
 // El código se genera recién al tocar Comprar: mirar la landing no gasta códigos.
 // Si el mismo navegador ya tenía código para ese link y no se usó en un pedido, lo reusa.
+// Promotor con pct_descuento 0 (cobranding ZN): no hay código; va a la ficha con UTM y
+// colab-ventas-sync atribuye por utm_content = codigo del link.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -128,7 +130,8 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: 'link_inactivo', redirect: `${TIENDA}/products/${link.handle}` })
   }
 
-  const pct = Number(inf.pct_descuento) || 30
+  // 0 es un valor válido (promotor sin cupón); solo sin dato se usa el 30 por defecto.
+  const pct = inf.pct_descuento == null ? 30 : Number(inf.pct_descuento) || 0
   const utm = new URLSearchParams({ utm_source: 'colab', utm_medium: link.red, utm_campaign: `colab_${inf.ref}`, utm_content: link.codigo })
   const { data: disp } = await db.from('colab_producto').select(COLS).eq('modelo', link.modelo).eq('disponible', true).order('handle')
   const colores = (disp ?? []) as Prod[]
@@ -143,11 +146,11 @@ Deno.serve(async (req) => {
       await db.from('colab_click').insert({ link_id: link.id, visitante: null })
     }
     const { data: store } = await db.from('shopify_stores').select('scope').eq('id', 'linea').maybeSingle()
-    const descuentoActivo = /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
+    const descuentoActivo = pct > 0 && /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
     return json({
       ok: true, modelo: link.modelo, influencer: inf.nombre, pct, descuento_activo: descuentoActivo,
       seleccionado: colores.some((c) => c.handle === link.handle) ? link.handle : colores[0]?.handle ?? null,
-      colores, tienda: `${TIENDA}/products/${link.handle}?${utm}`,
+      colores, tienda: `${TIENDA}/products/${link.handle}?${utm}`, utm: utm.toString(),
     })
   }
 
@@ -157,6 +160,10 @@ Deno.serve(async (req) => {
   if (!prod) return json({ ok: false, error: 'sin_stock', redirect: `${TIENDA}/products/${link.handle}?${utm}` })
 
   const productoPath = `/products/${prod.handle}?${utm}`
+  if (pct <= 0) {
+    if (legacy) await db.from('colab_click').insert({ link_id: link.id, codigo_descuento: null, visitante })
+    return json({ ok: true, sin_codigo: true, redirect: TIENDA + productoPath })
+  }
   const directo = prod.tipo === 'SOL' && !!prod.variant_id && !legacy
   const destino = (code: string) => directo
     ? `${TIENDA}/cart/${prod.variant_id}:1?${new URLSearchParams({ discount: code, ...Object.fromEntries(utm) })}`

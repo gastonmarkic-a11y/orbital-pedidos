@@ -456,7 +456,7 @@ function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicia
 }
 
 // ── INFLUENCER: mis links ────────────────────────────────────────────────────
-function MisLinks({ clave, pct, irAnteojos }: { clave: string; pct: number; irAnteojos: () => void }) {
+export function MisLinks({ clave, pct, irAnteojos }: { clave: string; pct: number; irAnteojos: () => void }) {
   const [filas, setFilas] = useState<MiLink[] | null>(null)
   const cargar = () => supabase.rpc('colab_mis_links', { p_clave: clave }).then(({ data }) => setFilas((data as MiLink[]) ?? []))
   useEffect(() => { cargar() }, [clave])
