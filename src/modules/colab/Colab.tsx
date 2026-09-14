@@ -13,6 +13,7 @@ import {
 } from './colabUtil'
 import ColabAnteojos, { BotonCopiar } from './ColabAnteojos'
 import ColabDashboard, { Liquidacion } from './ColabDashboard'
+import InstalarApp from '../../components/InstalarApp'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
 
@@ -104,6 +105,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
             <div className="text-[12px] font-bold">{ent.nombre}</div>
             <div className="text-[10px] text-neutral-500">{ROL_TXT[ent.rol]}{ent.rol === 'admin' ? ` · ${ent.pct}%` : ent.rol === 'influencer' ? ` · ${ent.pct}% · ${ent.admin}` : ''}</div>
           </div>
+          <InstalarApp nombre="Orbital Colaboradores" que="tu panel" urlParaInstalar={`/colab?k=${clave}`}
+            bajada="Queda con el ícono de Orbital y entra directo a tu panel, sin clave." />
           <button onClick={salir} title="Salir" className="p-1.5 rounded-md hover:bg-black/5"><LogOut size={16} /></button>
         </div>
         <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">

@@ -6,6 +6,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-512.png" />
     <script>
+      // Colaboradores (/colab): manifest propio con la clave, así el ícono instalado abre
+      // el panel de esa persona (Orbital, administrador o promotor).
+      (function () {
+        try {
+          if (location.pathname.indexOf('/colab') !== 0) return
+          var k = new URLSearchParams(location.search).get('k') || localStorage.getItem('orbital_colab_clave') || ''
+          var q = new URLSearchParams()
+          if (k) q.set('k', k.trim())
+          document.querySelector('link[rel="manifest"]').setAttribute('href', '/api/colab-manifest?' + q.toString())
+          window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orbitalInstall = e })
+        } catch (e) { /* sin almacenamiento: queda el manifest general */ }
+      })()
       // Catálogo (/catalogo): manifest propio con el token, así el ícono instalado abre
       // el catálogo de esa óptica. Corre antes de que el navegador lea el manifest.
       (function () {
