@@ -17,7 +17,7 @@
           document.querySelector('link[rel="manifest"]').setAttribute('href', '/api/colab-manifest?' + q.toString())
           window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orbitalInstall = e })
         } catch (e) { /* sin almacenamiento: queda el manifest general */ }
-      })()
+      })();
       // Catálogo (/catalogo): manifest propio con el token, así el ícono instalado abre
       // el catálogo de esa óptica. Corre antes de que el navegador lea el manifest.
       (function () {
