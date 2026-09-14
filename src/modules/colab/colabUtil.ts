@@ -200,6 +200,12 @@ export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null)
   const precioRef = c.compare_at && c.price && c.compare_at > c.price ? c.compare_at : null
   const precioCodigo = precio ? Math.round(precio * (1 - pct / 100)) : null
 
+  // El % es interno (sale el precio promocional): lo que publica el promotor habla de precios.
+  const antes = precioRef ?? precio
+  const promo = precioCodigo
+    ? `de ${kAr(antes)} a ${kAr(precioCodigo)} con mi código`
+    : 'a precio exclusivo con mi código'
+
   const nombre = titulo(m.modelo)
   const tag = m.modelo.replace(/[^A-Za-z0-9]/g, '')
   const donde = link ?? '👉 link en mi historia'
@@ -208,14 +214,14 @@ export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null)
   const historia = [
     `Mis ${nombre} de Orbital 🕶️`,
     colorTxt ? colorTxt.charAt(0).toUpperCase() + colorTxt.slice(1) : null,
-    `${pct}% OFF exclusivo con mi link 👇`,
+    `${promo.charAt(0).toUpperCase() + promo.slice(1)} 👇`,
   ].filter(Boolean).join('\n')
 
   const posteo = [
     `${nombre}${colorTxt ? ` · ${colorTxt}` : ''} ✨`,
     intro,
     destacados.length ? `✔ ${destacados.slice(0, 4).join('\n✔ ')}` : null,
-    `🎁 Con mi link tenés ${pct}% OFF extra sobre el precio de la web. Es un código único, solo para vos.`,
+    `🎁 Con mi link lo tenés ${promo.replace(' con mi código', '')}. Es un código único, solo para vos.`,
     donde,
     `#OrbitalEyewear #${tag} ${esSol ? '#AnteojosDeSol' : '#AnteojosDeReceta'} #HechoEnArgentina`,
   ].filter(Boolean).join('\n\n')
@@ -225,7 +231,7 @@ export function copiesDe(m: Modelo, c: Color, pct: number, link?: string | null)
     '0–3 s · Mostralo en la mano: "Miren lo que me llegó".',
     `3–8 s · Ponételo y mirá a cámara. Texto en pantalla: "${nombre}${lente ? ` · ${lente}` : ''}".`,
     `8–12 s · Detalle de cerca${destacados.length ? `: ${destacados.slice(0, 2).join(' + ')}` : ''}.`,
-    `12–15 s · Cierre: "${pct}% OFF con mi link, es un código único". Sumá el sticker de enlace.`,
+    `12–15 s · Cierre: "${precioCodigo ? `Con mi link lo pagás ${kAr(precioCodigo)}` : 'Con mi link tenés precio exclusivo'}, es un código único". Sumá el sticker de enlace.`,
   ].join('\n')
 
   return { intro, datos, destacados, historia, posteo, guion, precio, precioRef, precioCodigo }

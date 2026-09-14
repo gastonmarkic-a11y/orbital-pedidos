@@ -102,13 +102,11 @@ export default function ColabRedireccion() {
     <div className="min-h-screen bg-white pb-28">
       {/* Franja exclusiva */}
       <div className="text-white text-center text-[11px] font-semibold tracking-wide py-2 px-4" style={{ background: ACENTO }}>
-        {conDesc ? `${pct}% OFF exclusivo de parte de ${d.influencer}` : `Recomendado por ${d.influencer}`}
+        {conDesc ? `Precio exclusivo de parte de ${d.influencer}` : `Recomendado por ${d.influencer}`}
       </div>
 
       <header className="max-w-md mx-auto px-4 pt-4 flex items-center justify-between">
-        <img src="/logo-orbital.png" alt="Orbital" className="h-5" />
-        {conDesc && <span className="rounded-full border-2 px-2.5 py-0.5 text-[11px] font-bold" style={{ borderColor: ACENTO, color: ACENTO }}>-{pct}%</span>}
-      </header>
+        <img src="/logo-orbital.png" alt="Orbital" className="h-5" />      </header>
 
       {!c ? (
         <div className="max-w-md mx-auto px-4 py-16 text-center">
@@ -151,7 +149,7 @@ export default function ColabRedireccion() {
           )}
           {conDesc && c.price != null && (
             <p className="text-[11px] text-neutral-500 mt-1">
-              En la web está a {kAr(c.price)}: con este link pagás {pct}% menos. El descuento ya va aplicado al pagar.
+              Precio con tu código de descuento. Ya va aplicado al pagar.
             </p>
           )}
 
@@ -193,7 +191,7 @@ export default function ColabRedireccion() {
             <button onClick={comprar} disabled={yendo}
               className="w-full rounded-xl text-white py-3.5 text-[15px] font-bold disabled:opacity-70" style={{ background: ACENTO }}>
               {yendo ? 'Aplicando tu descuento…'
-                : conDesc ? `${esReceta ? 'Elegir lentes' : 'Comprar'} con ${pct}% OFF${precioFinal ? ` · ${kAr(precioFinal)}` : ''}`
+                : conDesc ? `${esReceta ? 'Elegir lentes' : 'Comprar'}${precioFinal ? ` a ${kAr(precioFinal)}` : ''}`
                 : 'Ver en la tienda'}
             </button>
           </div>
