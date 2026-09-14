@@ -84,9 +84,17 @@ export default function ColabRedireccion() {
   const conDesc = !!d.descuento_activo
   const utm = d.utm
   const fotosBase = c ? (c.imagenes?.length ? c.imagenes : c.imagen ? [c.imagen] : []) : []
-  // Cobranding ZN: primero la foto "en cara" (Zaira con el anteojo puesto), después las de producto.
+  // Cobranding ZN: primero las fotos del anteojo, después la "en cara" (Zaira con el anteojo
+  // puesto) y al final el aplique de marca y el packaging.
   const enCara = (u: string) => /en[_-]?cara/i.test(u)
-  const fotos = d.ver_mas ? [...fotosBase.filter(enCara), ...fotosBase.filter((u) => !enCara(u))] : fotosBase
+  const extra = (u: string) => /aplicacion|aplique|packaging/i.test(u)
+  const fotos = d.ver_mas
+    ? [
+        ...fotosBase.filter((u) => !enCara(u) && !extra(u)),
+        ...fotosBase.filter(enCara),
+        ...fotosBase.filter((u) => !enCara(u) && extra(u)),
+      ]
+    : fotosBase
   // Siempre parte del precio tachado de la tienda (compare_at) y el final queda por debajo
   // del precio de venta de la web: precio web − pct%.
   const precioFinal = c?.price ? Math.round(c.price * (1 - (conDesc ? pct : 0) / 100)) : null
