@@ -17,6 +17,7 @@ type Ver = {
   ok: boolean; error?: string; redirect?: string
   modelo?: string; influencer?: string; pct?: number; descuento_activo?: boolean
   seleccionado?: string | null; colores?: ColorLanding[]; tienda?: string; utm?: string
+  ver_mas?: string | null  // promotor de una colección (cobranding ZN): la colección de la tienda con UTM
 }
 
 const TIENDA = 'https://www.orbitaleyewear.com.ar'
@@ -80,7 +81,10 @@ export default function ColabRedireccion() {
   const pct = d.pct ?? 30
   const conDesc = !!d.descuento_activo
   const utm = d.utm
-  const fotos = c ? (c.imagenes?.length ? c.imagenes : c.imagen ? [c.imagen] : []) : []
+  const fotosBase = c ? (c.imagenes?.length ? c.imagenes : c.imagen ? [c.imagen] : []) : []
+  // Cobranding ZN: primero la foto "en cara" (Zaira con el anteojo puesto), después las de producto.
+  const enCara = (u: string) => /en[_-]?cara/i.test(u)
+  const fotos = d.ver_mas ? [...fotosBase.filter(enCara), ...fotosBase.filter((u) => !enCara(u))] : fotosBase
   // Siempre parte del precio tachado de la tienda (compare_at) y el final queda por debajo
   // del precio de venta de la web: precio web − pct%.
   const precioFinal = c?.price ? Math.round(c.price * (1 - (conDesc ? pct : 0) / 100)) : null
@@ -104,7 +108,7 @@ export default function ColabRedireccion() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-28">
+    <div className={`min-h-screen bg-white ${d.ver_mas ? 'pb-44' : 'pb-28'}`}>
       {/* Franja exclusiva */}
       <div className="text-white text-center text-[11px] font-semibold tracking-wide py-2 px-4" style={{ background: ACENTO }}>
         {conDesc ? `${offPublico ? `${offPublico}% OFF exclusivo` : 'Precio exclusivo'} de parte de ${d.influencer}` : `Recomendado por ${d.influencer}`}
@@ -117,7 +121,7 @@ export default function ColabRedireccion() {
         <div className="max-w-md mx-auto px-4 py-16 text-center">
           <div className="text-[13px] font-bold uppercase tracking-[0.2em]">{d.modelo}</div>
           <p className="text-sm text-neutral-500 mt-2">Por ahora no hay stock de este modelo.</p>
-          <a href={d.tienda ?? TIENDA} className="mt-5 inline-block rounded-xl text-white px-5 py-3 text-sm font-semibold" style={{ background: ACENTO }}>Ver la tienda</a>
+          <a href={d.ver_mas ?? d.tienda ?? TIENDA} className="mt-5 inline-block rounded-xl text-white px-5 py-3 text-sm font-semibold" style={{ background: ACENTO }}>Ver la tienda</a>
         </div>
       ) : (
         <main className="max-w-md mx-auto px-4">
@@ -200,6 +204,12 @@ export default function ColabRedireccion() {
                 : conDesc ? `${esReceta ? 'Elegir lentes' : 'Comprar'}${offPublico ? ` con ${offPublico}% OFF` : ''}${precioFinal ? ` · ${kAr(precioFinal)}` : ''}`
                 : 'Ver en la tienda'}
             </button>
+            {d.ver_mas && (
+              <a href={d.ver_mas} className="block w-full text-center mt-2 rounded-xl border-2 py-3 text-[14px] font-bold"
+                style={{ borderColor: ACENTO, color: ACENTO }}>
+                Ver más modelos de la colección
+              </a>
+            )}
           </div>
         </div>
       )}

@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2, BarChart3 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
+import ColabAnteojos from '../colab/ColabAnteojos'
+import { MisLinks as ColabMisLinks } from '../colab/Colab'
 
 const CLAVE_KEY = 'orbital_zn_clave'
 const SEL_KEY = 'orbital_zn_seleccion'   // + ':' + rol
@@ -34,6 +36,7 @@ type ZFoto = {
   nv: boolean        // novedad $72.000
   pr: boolean        // tiene proyectado
   fp: boolean        // la foto es de producto (no "en cara")
+  sb: boolean        // ya está subido a la colección Orbital x Zaira de la tienda
 }
 type ZModelo = {
   modelo: string
@@ -98,13 +101,15 @@ function ClaveGate({ onOk }: { onOk: (c: string) => void }) {
   )
 }
 
-// Estado visual de un SKU según las dos selecciones.
-type Estado = 'ideal' | 'zn' | 'orb' | 'no'
-const estadoDe = (cod: string, zn: Set<string>, orb: Set<string>): Estado => {
+// Estado visual de un SKU. "subido" = ya está en la colección de la tienda: se ve marcado
+// y no se toca. El resto es pendiente: con las dos marcas (ZN + Orbital) queda listo para subir.
+type Estado = 'subido' | 'ideal' | 'zn' | 'orb' | 'no'
+const estadoDe = (cod: string, zn: Set<string>, orb: Set<string>, sub: Set<string>): Estado => {
+  if (sub.has(cod)) return 'subido'
   const a = zn.has(cod), b = orb.has(cod)
   return a && b ? 'ideal' : a ? 'zn' : b ? 'orb' : 'no'
 }
-const BORDE: Record<Estado, string> = { ideal: '#111827', zn: VERDE, orb: ROJO, no: 'rgba(0,0,0,0.1)' }
+const BORDE: Record<Estado, string> = { subido: AZUL, ideal: '#111827', zn: VERDE, orb: ROJO, no: 'rgba(0,0,0,0.1)' }
 
 // Chips ✓ de esquina: verde = ZN, rojo = Orbital.
 function Marcas({ e, size = 20 }: { e: Estado; size?: number }) {
@@ -117,6 +122,7 @@ function Marcas({ e, size = 20 }: { e: Estado; size?: number }) {
   )
   return (
     <span className="absolute top-1.5 right-1.5 flex gap-1">
+      {e === 'subido' && chip(AZUL)}
       {(e === 'zn' || e === 'ideal') && chip(VERDE)}
       {(e === 'orb' || e === 'ideal') && chip(ROJO)}
     </span>
@@ -124,14 +130,14 @@ function Marcas({ e, size = 20 }: { e: Estado; size?: number }) {
 }
 
 // ── Tarjeta de SKU: el detalle del color, con las dos marcas ──
-function SkuCard({ modelo, f, zn, orb, onToggle, onQuitar }: {
-  modelo: string; f: ZFoto; zn: Set<string>; orb: Set<string>
+function SkuCard({ modelo, f, zn, orb, sub, onToggle, onQuitar }: {
+  modelo: string; f: ZFoto; zn: Set<string>; orb: Set<string>; sub: Set<string>
   onToggle?: () => void; onQuitar?: () => void
 }) {
-  const e = estadoDe(f.cod, zn, orb)
+  const e = estadoDe(f.cod, zn, orb, sub)
   return (
     <div className="relative rounded-xl overflow-hidden bg-white flex flex-col" style={{ border: `2px solid ${BORDE[e]}` }}>
-      <button onClick={onToggle} disabled={!onToggle} className="block text-left">
+      <button onClick={onToggle} disabled={!onToggle || e === 'subido'} className="block text-left">
         <div className="aspect-[4/3]">
           {f.u ? <img src={f.u} alt={f.c || ''} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder />}
         </div>
@@ -144,10 +150,11 @@ function SkuCard({ modelo, f, zn, orb, onToggle, onQuitar }: {
         </div>
         <div className="text-[8px] text-neutral-400 uppercase tracking-wide mt-1">{f.tp || ''}{f.t ? ` · ${f.t}` : ''}</div>
         <div className="text-[8px] text-neutral-400 tracking-wide">REF {f.cod}</div>
-        {e === 'ideal' && <div className="text-[8px] font-bold uppercase mt-0.5 tracking-widest">★ Ideal · ZN + Orbital</div>}
-        {e === 'zn' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: VERDE }}>Elige ZN</div>}
-        {e === 'orb' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: ROJO }}>Sugiere Orbital</div>}
-        {!f.ok && <div className="text-[8px] text-amber-600 font-bold uppercase mt-0.5">Sin stock futuro</div>}
+        {e === 'subido' && <div className="text-[8px] font-bold uppercase mt-0.5 tracking-widest" style={{ color: AZUL }}>✓ En la colección</div>}
+        {e === 'ideal' && <div className="text-[8px] font-bold uppercase mt-0.5 tracking-widest">★ Listo para subir · ZN + Orbital</div>}
+        {e === 'zn' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: VERDE }}>Elige ZN · falta Orbital</div>}
+        {e === 'orb' && <div className="text-[8px] font-bold uppercase mt-0.5" style={{ color: ROJO }}>Sugiere Orbital · falta ZN</div>}
+        {!f.ok && e !== 'subido' && <div className="text-[8px] text-amber-600 font-bold uppercase mt-0.5">Sin stock futuro</div>}
       </div>
       <Marcas e={e} />
       {onQuitar && (
@@ -164,17 +171,22 @@ const cover = (m: ZModelo): ZFoto | null => {
   if (!con.length) return null
   const prod = con.filter((f) => f.fp)
   const pool = prod.length ? prod : con
-  return pool.find((f) => f.ez || f.eo) || pool.find((f) => f.ok) || pool[0]
+  return pool.find((f) => f.sb) || pool.find((f) => f.ez || f.eo) || pool.find((f) => f.ok) || pool[0]
 }
 
 // ── Tarjeta de modelo (selector general) ──
-function ModeloCard({ m, nZN, nOrb, onOpen }: { m: ZModelo; nZN: number; nOrb: number; onOpen: () => void }) {
+function ModeloCard({ m, nSub, nZN, nOrb, onOpen }: { m: ZModelo; nSub: number; nZN: number; nOrb: number; onOpen: () => void }) {
   const f = cover(m)
   return (
     <button onClick={onOpen} className="text-left group">
       <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-white border border-black/10 group-hover:border-[#0004FF]/50 transition">
         {f?.u ? <img src={f.u} alt={m.modelo} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder label="Próximamente" />}
         <span className="absolute top-2 left-2 flex gap-1">
+          {nSub > 0 && (
+            <span className="inline-flex items-center gap-0.5 rounded-full text-white text-[10px] font-bold px-2 py-0.5" style={{ background: AZUL }} title="En la colección de la tienda">
+              <Check size={10} strokeWidth={3} />{nSub}
+            </span>
+          )}
           {nZN > 0 && (
             <span className="inline-flex items-center gap-0.5 rounded-full text-white text-[10px] font-bold px-2 py-0.5" style={{ background: VERDE }}>
               <Check size={10} strokeWidth={3} />{nZN}
@@ -201,8 +213,8 @@ function ModeloCard({ m, nZN, nOrb, onOpen }: { m: ZModelo; nZN: number; nOrb: n
 }
 
 // ── Selector particular: colores / SKU de un modelo ──
-function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
-  m: ZModelo; rol: Rol; zn: Set<string>; orb: Set<string>; toggle: (cod: string) => void
+function ColorSheet({ m, rol, zn, orb, sub, toggle, onClose, onPrev, onNext }: {
+  m: ZModelo; rol: Rol; zn: Set<string>; orb: Set<string>; sub: Set<string>; toggle: (cod: string) => void
   onClose: () => void; onPrev?: () => void; onNext?: () => void
 }) {
   const fotos = m.fotos || []
@@ -230,9 +242,9 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
         {act && (
           <div className="p-4 max-w-3xl mx-auto w-full">
             <div className="aspect-[4/3] max-h-[52vh] mx-auto rounded-2xl overflow-hidden bg-white relative"
-              style={{ border: `2px solid ${BORDE[estadoDe(act.cod, zn, orb)]}` }}>
+              style={{ border: `2px solid ${BORDE[estadoDe(act.cod, zn, orb, sub)]}` }}>
               {act.u ? <img src={act.u} alt={act.c || m.modelo} className="w-full h-full object-contain p-3" /> : <Placeholder label="Sin foto" />}
-              <Marcas e={estadoDe(act.cod, zn, orb)} size={26} />
+              <Marcas e={estadoDe(act.cod, zn, orb, sub)} size={26} />
               {!act.ok && (
                 <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-amber-500 text-white text-[10px] font-bold px-2 py-1">
                   <AlertTriangle size={11} />Sin stock futuro
@@ -245,15 +257,20 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
                 <div className="text-[10px] text-neutral-500 uppercase tracking-wide">
                   {act.tp || '—'}{act.t ? ` · ${act.t}` : ''} · REF {act.cod}
                 </div>
-                {estadoDe(act.cod, zn, orb) === 'ideal' && <div className="text-[10px] font-bold uppercase tracking-widest mt-1">★ Ideal · ZN + Orbital</div>}
-                {estadoDe(act.cod, zn, orb) === 'orb' && rol === 'zn' && <div className="text-[10px] font-bold mt-1" style={{ color: ROJO }}>Sugerido por Orbital</div>}
-                {estadoDe(act.cod, zn, orb) === 'zn' && rol === 'orbital' && <div className="text-[10px] font-bold mt-1" style={{ color: VERDE }}>Elegido por ZN</div>}
+                {sub.has(act.cod) && <div className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: AZUL }}>✓ Ya está en la colección de la tienda</div>}
+                {estadoDe(act.cod, zn, orb, sub) === 'ideal' && <div className="text-[10px] font-bold uppercase tracking-widest mt-1">★ Listo para subir · ZN + Orbital</div>}
+                {estadoDe(act.cod, zn, orb, sub) === 'orb' && rol === 'zn' && <div className="text-[10px] font-bold mt-1" style={{ color: ROJO }}>Sugerido por Orbital</div>}
+                {estadoDe(act.cod, zn, orb, sub) === 'zn' && rol === 'orbital' && <div className="text-[10px] font-bold mt-1" style={{ color: VERDE }}>Elegido por ZN</div>}
               </div>
-              <button onClick={() => toggle(act.cod)}
-                className="shrink-0 rounded-full px-4 py-2 text-[12px] font-bold text-white"
-                style={{ background: mio.has(act.cod) ? '#404040' : miColor }}>
-                {mio.has(act.cod) ? '✓ Quitar' : rol === 'zn' ? 'Elegir' : 'Sugerir'}
-              </button>
+              {sub.has(act.cod) ? (
+                <span className="shrink-0 rounded-full px-4 py-2 text-[12px] font-bold text-white" style={{ background: AZUL }}>✓ En la colección</span>
+              ) : (
+                <button onClick={() => toggle(act.cod)}
+                  className="shrink-0 rounded-full px-4 py-2 text-[12px] font-bold text-white"
+                  style={{ background: mio.has(act.cod) ? '#404040' : miColor }}>
+                  {mio.has(act.cod) ? '✓ Quitar' : rol === 'zn' ? 'Elegir' : 'Sugerir'}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -262,7 +279,7 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
           <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 mb-2">Colores del modelo</div>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
             {fotos.map((f, k) => {
-              const e = estadoDe(f.cod, zn, orb)
+              const e = estadoDe(f.cod, zn, orb, sub)
               return (
                 <button key={f.cod} onClick={() => { setI(k); toggle(f.cod) }}
                   className="relative rounded-lg overflow-hidden transition"
@@ -293,8 +310,8 @@ function ColorSheet({ m, rol, zn, orb, toggle, onClose, onPrev, onNext }: {
 }
 
 // ── Resumen comparado: el ideal (coincidencias) + lo de cada uno ──
-function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }: {
-  modelos: ZModelo[]; rol: Rol; zn: Set<string>; orb: Set<string>
+function ResumenSheet({ modelos, rol, zn, orb, sub, toggle, limpiar, onClose, clave }: {
+  modelos: ZModelo[]; rol: Rol; zn: Set<string>; orb: Set<string>; sub: Set<string>
   toggle: (c: string) => void; limpiar: () => void; onClose: () => void; clave: string
 }) {
   const [guardando, setGuardando] = useState(false)
@@ -305,18 +322,19 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
   const items = useMemo(() => {
     const out: { modelo: string; f: ZFoto; e: Estado }[] = []
     for (const m of modelos) for (const f of m.fotos || []) {
-      const e = estadoDe(f.cod, zn, orb)
+      const e = estadoDe(f.cod, zn, orb, sub)
       if (e !== 'no') out.push({ modelo: m.modelo, f, e })
     }
     return out.sort((a, b) => a.modelo.localeCompare(b.modelo) || colorLegible(a.f.c).localeCompare(colorLegible(b.f.c)))
   }, [modelos, zn, orb])
 
   const bloques: { key: Estado; titulo: string; color: string; bajada: string }[] = [
-    { key: 'ideal', titulo: '★ El ideal · coinciden ZN y Orbital', color: '#111827', bajada: 'Lo que las dos partes quieren. Es la base de la colección.' },
-    { key: 'zn', titulo: 'Solo ZN', color: VERDE, bajada: 'Elegido por ZN, Orbital todavía no lo sugirió.' },
-    { key: 'orb', titulo: 'Solo Orbital', color: ROJO, bajada: 'Sugerido por Orbital, ZN todavía no lo eligió.' },
+    { key: 'ideal', titulo: '★ Listos para subir · ZN + Orbital', color: '#111827', bajada: 'Tienen las dos autorizaciones. Orbital los agrega a la colección Orbital x Zaira de la tienda (con la REF).' },
+    { key: 'zn', titulo: 'Pendiente · falta Orbital', color: VERDE, bajada: 'Elegido por ZN, Orbital todavía no lo autorizó.' },
+    { key: 'orb', titulo: 'Pendiente · falta ZN', color: ROJO, bajada: 'Sugerido por Orbital, ZN todavía no lo autorizó.' },
+    { key: 'subido', titulo: 'En la colección de la tienda', color: AZUL, bajada: 'Ya están subidos en orbitaleyewear.com.ar/collections/orbital-x-zaira.' },
   ]
-  const alerta = items.filter((i) => !i.f.ok)
+  const alerta = items.filter((i) => !i.f.ok && i.e !== 'subido')
 
   // Borra TODAS mis marcas (las de este rol): en pantalla, en el navegador y en la base.
   // No toca las del otro rol.
@@ -335,7 +353,7 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
         <div className="text-center">
           <div className="text-[13px] font-bold tracking-wide uppercase">La colección</div>
           <div className="text-[10px] text-neutral-500">
-            {items.filter((i) => i.e === 'ideal').length} ideal · {zn.size} ZN · {orb.size} Orbital
+            {items.filter((i) => i.e === 'subido').length} en la tienda · {items.filter((i) => i.e === 'ideal').length} para subir · {items.filter((i) => i.e === 'zn' || i.e === 'orb').length} pendientes
           </div>
         </div>
         <div className="w-8" />
@@ -366,8 +384,8 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {del.map(({ modelo, f }) => (
-                  <SkuCard key={f.cod} modelo={modelo} f={f} zn={zn} orb={orb}
-                    onQuitar={mio.has(f.cod) ? () => toggle(f.cod) : undefined}
+                  <SkuCard key={f.cod} modelo={modelo} f={f} zn={zn} orb={orb} sub={sub}
+                    onQuitar={mio.has(f.cod) && !sub.has(f.cod) ? () => toggle(f.cod) : undefined}
                     onToggle={() => toggle(f.cod)} />
                 ))}
               </div>
@@ -406,127 +424,37 @@ function ResumenSheet({ modelos, rol, zn, orb, toggle, limpiar, onClose, clave }
   )
 }
 
-// ── Mis links · vista de ZN sobre lo que promociona ─────────────────────────
-// Canal exclusivo digital: cada anteojo que promociona tiene su propio link.
-//   Shopify → link del producto + UTM (la atribución la da el UTM).
-//   Mercado Libre → link del Programa de Colaboradores (ML atribuye el ítem
-//   con su propio tracking, no usa UTM).
+// ── Mis links · Zaira como promotora del panel de Colaboradores ─────────────
+// Misma lógica que /colab: un link /r/<codigo> por publicación (red + formato),
+// se pega el link de la publicación y cuenta toques, pedidos y su 10%.
+// El catálogo se limita a la colección "Orbital x Zaira" de la tienda (zn_links_color).
+// Sin cupón: la colección ya tiene su precio; el pedido se atribuye por el
+// utm_content del link. Comisión: 10% sobre la venta sin IVA ni envío (colab-ventas-sync).
 const PCT_ZN = 10
 
-type ZLink = {
-  modelo: string; imagen: string | null; colores: number
-  url_shopify: string | null; url_ml: string | null
-  visitas: number; pedidos: number; venta_neta: number
-}
-
-function LinkFila({ label, url, color }: { label: string; url: string | null; color: string }) {
-  const [copiado, setCopiado] = useState(false)
-  if (!url) {
-    return (
-      <div className="flex items-center gap-2 text-[10px] text-neutral-400 py-1">
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color, opacity: 0.3 }} />
-        <span className="flex-1">{label}</span>
-        <span className="italic">falta cargar</span>
-      </div>
-    )
-  }
-  return (
-    <div className="flex items-center gap-2 text-[10px] py-1">
-      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-      <a href={url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate underline decoration-black/20">{label}</a>
-      <button
-        onClick={() => { navigator.clipboard?.writeText(url).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }) }}
-        className="shrink-0 inline-flex items-center gap-1 rounded-md border border-black/10 px-1.5 py-0.5 font-bold">
-        {copiado ? <><Check size={9} strokeWidth={3} />Copiado</> : <><Copy size={9} />Copiar</>}
-      </button>
-    </div>
-  )
-}
-
 function MisLinks({ clave }: { clave: string }) {
-  const [filas, setFilas] = useState<ZLink[] | null>(null)
+  const [colab, setColab] = useState<{ clave: string; pct: number } | null | undefined>(undefined)
+  const [vista, setVista] = useState<'links' | 'anteojos'>('links')
+  const [version, setVersion] = useState(0)
   useEffect(() => {
-    supabase.rpc('zn_mis_links', { p_clave: clave, p_periodo: null }).then(({ data }) => setFilas((data as ZLink[]) || []))
+    supabase.rpc('zn_colab_clave', { p_clave: clave }).then(({ data }) => setColab((data as { clave: string; pct: number } | null) ?? null))
   }, [clave])
 
-  if (!filas) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
-
-  const neta = filas.reduce((a, f) => a + Number(f.venta_neta || 0), 0)
-  const visitas = filas.reduce((a, f) => a + f.visitas, 0)
-  const pedidos = filas.reduce((a, f) => a + f.pedidos, 0)
-  const comision = neta * (PCT_ZN / 100)
-  const sinLink = filas.filter((f) => !f.url_shopify && !f.url_ml).length
-  const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+  if (colab === undefined) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
+  if (!colab) return <p className="text-sm text-neutral-500 py-16 text-center">El panel de links no está activo.</p>
 
   return (
     <>
-      <div className="mb-4">
-        <h1 className="text-[15px] font-bold tracking-wide uppercase">Mis links</h1>
-        <p className="text-[11px] text-neutral-500 mt-1">
-          Canal <b>exclusivo digital</b>. Cada anteojo que promocionás tiene su link propio: el de la tienda
-          lleva tu etiqueta y el de Mercado Libre sale del Programa de Colaboradores. Lo que entra por ahí
-          es lo que se cuenta.
-        </p>
-      </div>
-
-      {/* Resumen del período: la venta neta y el 10% */}
-      <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">Mes en curso</div>
-            <div className="text-[30px] font-bold leading-none mt-1">{kAr(comision)}</div>
-          </div>
-          <div className="flex gap-5 text-[11px]">
-            {[['Visitas', visitas.toLocaleString('es-AR')], ['Pedidos', pedidos.toLocaleString('es-AR')], ['Venta neta', kAr(neta)]].map(([k, v]) => (
-              <div key={k}>
-                <div className="text-[9px] uppercase tracking-wide opacity-50">{k}</div>
-                <div className="font-bold">{v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {sinLink > 0 && (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900 flex gap-2">
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          <span>
-            <b>{sinLink} de {filas.length} modelos todavía no tienen link cargado.</b> Hasta que estén, esos
-            anteojos no suman visitas ni ventas — el conteo arranca cuando el link existe.
-          </span>
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {filas.map((f) => (
-          <div key={f.modelo} className="bg-white rounded-xl border border-black/10 overflow-hidden">
-            <div className="aspect-[4/3] bg-white">
-              {f.imagen ? <img src={f.imagen} alt={f.modelo} className="w-full h-full object-contain p-2" loading="lazy" /> : <Placeholder />}
-            </div>
-            <div className="px-3 py-2.5 border-t border-black/5">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[12px] font-bold tracking-wide uppercase">{f.modelo}</span>
-                <span className="text-[10px] text-neutral-400">{f.colores} {f.colores === 1 ? 'color' : 'colores'}</span>
-              </div>
-              <div className="mt-1.5 border-t border-black/5 pt-1">
-                <LinkFila label="Link tienda Orbital" url={f.url_shopify} color={AZUL} />
-                <LinkFila label="Link Mercado Libre" url={f.url_ml} color="#1baf7a" />
-              </div>
-              <div className="mt-1.5 border-t border-black/5 pt-1.5 flex justify-between text-[10px]">
-                <span className="text-neutral-500">Visitas <b className="text-black">{f.visitas.toLocaleString('es-AR')}</b></span>
-                <span className="text-neutral-500">Pedidos <b className="text-black">{f.pedidos.toLocaleString('es-AR')}</b></span>
-                <span className="text-neutral-500">Tu {PCT_ZN}% <b className="text-black">{kAr(Number(f.venta_neta || 0) * PCT_ZN / 100)}</b></span>
-              </div>
-            </div>
-          </div>
+      <div className="flex gap-2 mb-4">
+        {([['links', 'Mis links'], ['anteojos', 'Generar link']] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setVista(k)}
+            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${vista === k ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
+            style={vista === k ? { background: AZUL } : undefined}>{lbl}</button>
         ))}
       </div>
-
-      <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
-        La venta neta es sin IVA y sin el envío, y descuenta devoluciones y pedidos cancelados del mes.
-        En la tienda se cuenta lo que entra por tu link; en Mercado Libre, lo que Colaboradores registra como
-        convertido en ese artículo.
-      </p>
+      {vista === 'anteojos'
+        ? <ColabAnteojos clave={colab.clave} pct={0} puedeLink onLink={() => setVersion((v) => v + 1)} />
+        : <ColabMisLinks key={version} clave={colab.clave} pct={Number(colab.pct) || PCT_ZN} irAnteojos={() => setVista('anteojos')} />}
     </>
   )
 }
@@ -864,10 +792,10 @@ function Dashboard({ clave }: { clave: string }) {
   )
 }
 
-const FILTROS = ['Todos', 'Elegidos ZN', 'Sugeridos Orbital', 'Coincidencias', 'Sin marcar', 'Novedades'] as const
+const FILTROS = ['Todos', 'En la colección', 'Listos para subir', 'Elegidos ZN', 'Sugeridos Orbital', 'Sin marcar', 'Novedades'] as const
 type Filtro = typeof FILTROS[number]
 // Con estos filtros la grilla muestra directamente el SKU, no la tarjeta de modelo.
-const FILTROS_SKU: Filtro[] = ['Elegidos ZN', 'Sugeridos Orbital', 'Coincidencias']
+const FILTROS_SKU: Filtro[] = ['En la colección', 'Listos para subir', 'Elegidos ZN', 'Sugeridos Orbital']
 
 // La grilla se muestra dividida por categoría, en este orden.
 const CATEGORIAS: { key: string; label: string }[] = [
@@ -1045,7 +973,10 @@ export default function CatalogoZN() {
     return () => { document.body.style.overflow = '' }
   }, [abierto, resumen])
 
+  // Lo que ya está en la colección de la tienda: se ve marcado y no se toca.
+  const subidos = useMemo(() => new Set<string>(modelos.flatMap((m) => (m.fotos || []).filter((f) => f.sb).map((f) => f.cod))), [modelos])
   const toggle = (cod: string) => {
+    if (subidos.has(cod)) return
     const set = rol === 'zn' ? setSelZN : setSelOrb
     set((p) => { const n = new Set(p); if (n.has(cod)) n.delete(cod); else n.add(cod); return n })
   }
@@ -1054,8 +985,9 @@ export default function CatalogoZN() {
     localStorage.removeItem(SEL_KEY + ':' + rol)
     ;(rol === 'zn' ? setSelZN : setSelOrb)(new Set())
   }
-  const nZN = (m: ZModelo) => (m.fotos || []).filter((f) => selZN.has(f.cod)).length
-  const nOrb = (m: ZModelo) => (m.fotos || []).filter((f) => selOrb.has(f.cod)).length
+  const nSub = (m: ZModelo) => (m.fotos || []).filter((f) => f.sb).length
+  const nZN = (m: ZModelo) => (m.fotos || []).filter((f) => selZN.has(f.cod) && !f.sb).length
+  const nOrb = (m: ZModelo) => (m.fotos || []).filter((f) => selOrb.has(f.cod) && !f.sb).length
 
   const lista = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -1063,8 +995,9 @@ export default function CatalogoZN() {
       if (t && !m.modelo.toLowerCase().includes(t)) return false
       if (filtro === 'Elegidos ZN') return nZN(m) > 0
       if (filtro === 'Sugeridos Orbital') return nOrb(m) > 0
-      if (filtro === 'Coincidencias') return (m.fotos || []).some((f) => selZN.has(f.cod) && selOrb.has(f.cod))
-      if (filtro === 'Sin marcar') return nZN(m) === 0 && nOrb(m) === 0
+      if (filtro === 'En la colección') return nSub(m) > 0
+      if (filtro === 'Listos para subir') return (m.fotos || []).some((f) => selZN.has(f.cod) && selOrb.has(f.cod) && !f.sb)
+      if (filtro === 'Sin marcar') return nZN(m) === 0 && nOrb(m) === 0 && nSub(m) === 0
       if (filtro === 'Novedades') return m.novedad
       return true
     })
@@ -1085,13 +1018,17 @@ export default function CatalogoZN() {
     const out: { modelo: string; f: ZFoto }[] = []
     for (const m of orden) for (const f of m.fotos || []) {
       const a = selZN.has(f.cod), b = selOrb.has(f.cod)
-      const pasa = filtro === 'Elegidos ZN' ? a : filtro === 'Sugeridos Orbital' ? b : a && b
+      const pasa = filtro === 'En la colección' ? f.sb
+        : !f.sb && (filtro === 'Elegidos ZN' ? a : filtro === 'Sugeridos Orbital' ? b : a && b)
       if (pasa) out.push({ modelo: m.modelo, f })
     }
     return out
   }, [orden, filtro, selZN, selOrb, modoSku])
 
-  const ideal = useMemo(() => Array.from(selZN).filter((c) => selOrb.has(c)).length, [selZN, selOrb])
+  // listos para subir = las dos autorizaciones y todavía no está en la tienda
+  const ideal = useMemo(() => Array.from(selZN).filter((c) => selOrb.has(c) && !subidos.has(c)).length, [selZN, selOrb, subidos])
+  const pendZN = Array.from(selZN).filter((c) => !subidos.has(c)).length
+  const pendOrb = Array.from(selOrb).filter((c) => !subidos.has(c)).length
 
   if (!clave) return <ClaveGate onOk={setClave} />
 
@@ -1140,11 +1077,13 @@ export default function CatalogoZN() {
           <h1 className="text-[15px] font-bold tracking-wide uppercase">Selección de colección</h1>
           <p className="text-[11px] text-neutral-500 mt-1">
             Elegí primero el <b>modelo</b> y después los <b>colores</b>. Sin precios: es solo para armar la colección.
+            Lo azul ya está en la colección de la tienda. Para sumar un anteojo hacen falta las dos marcas: ZN y Orbital.
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10px]">
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: VERDE }} /><b>{selZN.size}</b> elige ZN</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: ROJO }} /><b>{selOrb.size}</b> sugiere Orbital</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-neutral-900" /><b>{ideal}</b> coinciden · el ideal</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: AZUL }} /><b>{subidos.size}</b> en la colección</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: VERDE }} /><b>{pendZN}</b> elige ZN</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full" style={{ background: ROJO }} /><b>{pendOrb}</b> sugiere Orbital</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-neutral-900" /><b>{ideal}</b> listos para subir</span>
           </div>
         </div>
 
@@ -1159,7 +1098,7 @@ export default function CatalogoZN() {
           {FILTROS.map((f) => (
             <button key={f} onClick={() => setFiltro(f)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium border ${filtro === f ? 'text-white border-transparent' : 'bg-white border-black/10 text-neutral-600'}`}
-              style={filtro === f ? { background: f === 'Elegidos ZN' ? VERDE : f === 'Sugeridos Orbital' ? ROJO : f === 'Coincidencias' ? '#111827' : AZUL } : undefined}>{f}</button>
+              style={filtro === f ? { background: f === 'Elegidos ZN' ? VERDE : f === 'Sugeridos Orbital' ? ROJO : f === 'Listos para subir' ? '#111827' : AZUL } : undefined}>{f}</button>
           ))}
         </div>
 
@@ -1174,7 +1113,7 @@ export default function CatalogoZN() {
                 <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 mb-2">{skus.length} SKU</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {skus.map(({ modelo, f }) => (
-                    <SkuCard key={f.cod} modelo={modelo} f={f} zn={selZN} orb={selOrb} onToggle={() => toggle(f.cod)} />
+                    <SkuCard key={f.cod} modelo={modelo} f={f} zn={selZN} orb={selOrb} sub={subidos} onToggle={() => toggle(f.cod)} />
                   ))}
                 </div>
               </>
@@ -1210,7 +1149,7 @@ export default function CatalogoZN() {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {s.items.map((m) => (
-                      <ModeloCard key={m.modelo} m={m} nZN={nZN(m)} nOrb={nOrb(m)} onOpen={() => setAbierto(orden.indexOf(m))} />
+                      <ModeloCard key={m.modelo} m={m} nSub={nSub(m)} nZN={nZN(m)} nOrb={nOrb(m)} onOpen={() => setAbierto(orden.indexOf(m))} />
                     ))}
                   </div>
                 </section>
@@ -1222,12 +1161,12 @@ export default function CatalogoZN() {
       )}
 
       {abierto !== null && orden[abierto] && (
-        <ColorSheet m={orden[abierto]} rol={rol} zn={selZN} orb={selOrb} toggle={toggle} onClose={() => setAbierto(null)}
+        <ColorSheet m={orden[abierto]} rol={rol} zn={selZN} orb={selOrb} sub={subidos} toggle={toggle} onClose={() => setAbierto(null)}
           onPrev={abierto > 0 ? () => setAbierto(abierto - 1) : undefined}
           onNext={abierto < orden.length - 1 ? () => setAbierto(abierto + 1) : undefined} />
       )}
       {resumen && (
-        <ResumenSheet modelos={modelos} rol={rol} zn={selZN} orb={selOrb} toggle={toggle} limpiar={limpiar}
+        <ResumenSheet modelos={modelos} rol={rol} zn={selZN} orb={selOrb} sub={subidos} toggle={toggle} limpiar={limpiar}
           onClose={() => setResumen(false)} clave={clave} />
       )}
     </div>
