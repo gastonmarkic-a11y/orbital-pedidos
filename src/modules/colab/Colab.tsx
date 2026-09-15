@@ -99,8 +99,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
   const [agregando, setAgregando] = useState(false)
   // Desde Inspiración → Triple protección se abre Anteojos filtrado por esos anteojos.
   const [filtroAnteojos, setFiltroAnteojos] = useState<'triple' | null>(null)
-  // El promotor ve el panel en negro, como la tienda.
-  const oscuro = ent.rol === 'influencer'
+  // Anteojos en negro, como la tienda; Inspiración, Mis links y Dashboard en blanco (se leen mejor).
+  const oscuro = ent.rol === 'influencer' && tab === 'anteojos'
 
   useEffect(() => {
     if (ent.rol === 'orbital') supabase.rpc('colab_orbital_admins', { p_clave: clave }).then(({ data }) => setAdmins((data as Admin[]) ?? []))
@@ -131,7 +131,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         ) : (
           <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
             {tabs.map(([id, t]) => (
-              <button key={id} onClick={() => setTab(id)}
+              <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
                 className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
                 style={tab === id ? { borderColor: ACENTO, color: ACENTO } : undefined}>{t}</button>
             ))}
