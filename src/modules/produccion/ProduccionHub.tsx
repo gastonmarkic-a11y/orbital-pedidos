@@ -4,11 +4,12 @@ import Produccion from '../pedidos/Produccion'
 import GeneradorProduccion from './GeneradorProduccion'
 import PedidosProduccion from './PedidosProduccion'
 import PanelCosteo from './PanelCosteo'
+import CristalesProduccion from './CristalesProduccion'
 
-// Hub de Producción: un solo ítem de menú con pestañas (Ingresos / Generar / Pedidos / Costeo),
-// para no tener 4 entradas sueltas. Depósito solo ve Ingresos.
+// Hub de Producción: un solo ítem de menú con pestañas (Ingresos / Generar / Pedidos / Cristales / Costeo),
+// para no tener entradas sueltas. Depósito solo ve Ingresos.
 
-type Tab = 'ingresos' | 'generar' | 'pedidos' | 'costeo'
+type Tab = 'ingresos' | 'generar' | 'pedidos' | 'cristales' | 'costeo'
 
 export default function ProduccionHub() {
   const { rolEfectivo } = useAuth()
@@ -17,6 +18,7 @@ export default function ProduccionHub() {
     ? [
         { key: 'pedidos', label: '📋 Pedidos' },
         { key: 'generar', label: '⚙️ Orden de producción' },
+        { key: 'cristales', label: '🔬 Cristales' },
         { key: 'costeo', label: '🧮 Costeo' },
       ]
     : [{ key: 'ingresos', label: '📦 Ingresos a confirmar' }]
@@ -40,6 +42,7 @@ export default function ProduccionHub() {
       {tab === 'ingresos' && <Produccion />}
       {tab === 'generar' && <GeneradorProduccion />}
       {tab === 'pedidos' && <PedidosProduccion />}
+      {tab === 'cristales' && <CristalesProduccion />}
       {tab === 'costeo' && <PanelCosteo />}
     </div>
   )

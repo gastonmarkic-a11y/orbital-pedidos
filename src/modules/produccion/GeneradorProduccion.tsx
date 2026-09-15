@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
+import { cristalLabel, type CristalResumen } from './CristalesProduccion'
 
 // Generador de pedidos de producción (Fase 2): detecta SKUs en alarma, agrupa por familia
 // de armazón y reparte el lote mínimo entre los SKUs según déficit de demanda, con cap por SKU
@@ -30,6 +31,7 @@ interface SkuRow {
   stockObjetivo: number
   deficit: number
   enAlarma: boolean
+  cristal_id: number | null
 }
 interface ItemProp {
   sku: string
@@ -38,6 +40,7 @@ interface ItemProp {
   stock: number
   deficit: number
   cantidad: number
+  cristal_id: number | null
 }
 interface Propuesta {
   familia: string
@@ -117,6 +120,19 @@ export default function GeneradorProduccion() {
   const [overrides, setOverrides] = useState<Record<string, Record<string, number>>>({})
   const setOverride = (familia: string, sku: string, val: number) =>
     setOverrides((prev) => ({ ...prev, [familia]: { ...(prev[familia] ?? {}), [sku]: Math.max(0, Math.floor(val || 0)) } }))
+  const [cristales, setCristales] = useState<Record<number, CristalResumen>>({})
+
+  async function cargarCristales() {
+    const { data } = await supabase.rpc('cristales_resumen')
+    const m: Record<number, CristalResumen> = {}
+    for (const c of (data as CristalResumen[]) ?? []) m[c.cristal_id] = c
+    setCristales(m)
+  }
+
+  useEffect(() => {
+    cargarCristales()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     async function cargar() {
@@ -124,10 +140,10 @@ export default function GeneradorProduccion() {
       const p: Params = { ...DEF_PARAMS, ...(par ?? {}) }
       setParams(p)
       const [{ data: hab }, { data: dem }] = await Promise.all([
-        supabase.from('skus_habilitados_produccion').select('sku, armazon_id, color_armazon').eq('activo', true),
+        supabase.from('skus_habilitados_produccion').select('sku, armazon_id, color_armazon, cristal_id').eq('activo', true),
         supabase.rpc('demanda_ventana', { p_dias: p.ventana_dias }),
       ])
-      const habil = (hab as { sku: string; armazon_id: string; color_armazon: string }[]) ?? []
+      const habil = (hab as { sku: string; armazon_id: string; color_armazon: string; cristal_id: number | null }[]) ?? []
       const codigos = habil.map((h) => h.sku)
       const stockRows: { codigo: string; modelo: string; descripcion: string; clasificacion: string | null; cantidad: number; demanda: number | null }[] = []
       for (let i = 0; i < codigos.length; i += 300) {
@@ -164,6 +180,7 @@ export default function GeneradorProduccion() {
             stockObjetivo,
             deficit,
             enAlarma: stock <= p.alarma_min,
+            cristal_id: h.cristal_id,
           } as SkuRow
         })
         .filter(Boolean) as SkuRow[]
@@ -199,7 +216,7 @@ export default function GeneradorProduccion() {
       const capUnits = loteTotal * params.cap_sku_pct
       const asign = repartir(conDeficit.map((i) => ({ sku: i.sku, deficit: i.deficit })), loteTotal, capUnits)
       const itemsProp: ItemProp[] = conDeficit
-        .map((i) => ({ sku: i.sku, modelo: i.modelo, descripcion: i.descripcion, stock: i.stock, deficit: i.deficit, cantidad: asign[i.sku] ?? 0 }))
+        .map((i) => ({ sku: i.sku, modelo: i.modelo, descripcion: i.descripcion, stock: i.stock, deficit: i.deficit, cantidad: asign[i.sku] ?? 0, cristal_id: i.cristal_id }))
         .filter((i) => i.cantidad > 0)
         .sort((a, b) => b.cantidad - a.cantidad)
       const capOk = itemsProp.every((i) => i.cantidad <= capUnits + 1)
@@ -219,6 +236,26 @@ export default function GeneradorProduccion() {
   const cantEfectiva = (familia: string, i: ItemProp) => overrides[familia]?.[i.sku] ?? i.cantidad
   const loteEfectivo = (p: Propuesta) => p.items.reduce((a, i) => a + cantEfectiva(p.familia, i), 0)
 
+  // Cristales que usa la orden (con los ajustes) contra el proyectado (stock − comprometido en pendientes)
+  const necesidadCristales = (p: Propuesta) => {
+    const porCristal = new Map<number, number>()
+    let sinCristal = 0
+    for (const i of p.items) {
+      const cant = cantEfectiva(p.familia, i)
+      if (cant <= 0) continue
+      if (!i.cristal_id || !cristales[i.cristal_id]) {
+        sinCristal += cant
+        continue
+      }
+      porCristal.set(i.cristal_id, (porCristal.get(i.cristal_id) ?? 0) + cant)
+    }
+    const filas = [...porCristal.entries()].map(([id, cant]) => {
+      const c = cristales[id]
+      return { id, label: cristalLabel(c), necesita: Math.ceil(cant * Number(c.consumo_por_unidad ?? 1)), proyectado: c.proyectado }
+    })
+    return { filas, sinCristal }
+  }
+
   async function generar(p: Propuesta) {
     const itemsAjust = p.items
       .map((i) => ({ ...i, cantidad: cantEfectiva(p.familia, i) }))
@@ -228,6 +265,14 @@ export default function GeneradorProduccion() {
       toast('La orden quedó en 0 unidades — ajustá las cantidades', 'error')
       return
     }
+    const faltantes = necesidadCristales(p).filas.filter((f) => f.proyectado - f.necesita < 0)
+    if (
+      faltantes.length &&
+      !window.confirm(
+        `Faltan cristales:\n${faltantes.map((f) => `• ${f.label}: usa ${f.necesita}, proyectado ${f.proyectado}`).join('\n')}\n\n¿Generar igual?`
+      )
+    )
+      return
     setGenerando(p.familia)
     const { data: ped, error } = await supabase
       .from('pedidos_produccion')
@@ -247,6 +292,7 @@ export default function GeneradorProduccion() {
       cantidad: i.cantidad,
       stock_al_momento: i.stock,
       deficit_calculado: i.deficit,
+      cristal_id: i.cristal_id,
     }))
     const { error: e2 } = await supabase.from('pedidos_produccion_items').insert(items)
     setGenerando(null)
@@ -255,6 +301,7 @@ export default function GeneradorProduccion() {
       return
     }
     setGeneradas((prev) => new Set(prev).add(p.familia))
+    cargarCristales()
     toast(`✓ Orden de producción generada — ${p.titulo} (${loteTotal} u.)`, 'success')
   }
 
@@ -362,6 +409,31 @@ export default function GeneradorProduccion() {
                   </tbody>
                 </table>
               </div>
+              {(() => {
+                const { filas, sinCristal } = necesidadCristales(p)
+                if (!filas.length && !sinCristal) return null
+                return (
+                  <div className="px-4 pb-4 text-[11px]">
+                    <p className="text-faint uppercase font-medium mb-1">🔬 Cristales {generada ? '(ya comprometidos)' : 'que usa esta orden'}</p>
+                    {filas.map((f) => {
+                      // generada: el proyectado ya incluye esta orden
+                      const queda = generada ? f.proyectado : f.proyectado - f.necesita
+                      return (
+                        <div key={f.id} className="flex justify-between gap-2 flex-wrap border-t border-black/5 py-1">
+                          <span>{f.label}</span>
+                          <span className={queda < 0 ? 'text-red-600 font-semibold' : 'text-muted'}>
+                            usa {ent.format(f.necesita)} · quedan {ent.format(queda)}
+                            {queda < 0 && ' ⚠ faltan'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                    {sinCristal > 0 && (
+                      <p className="text-amber-600 pt-1">⚠ {ent.format(sinCristal)} u. sin cristal asociado (asignalo en la pestaña Cristales)</p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })

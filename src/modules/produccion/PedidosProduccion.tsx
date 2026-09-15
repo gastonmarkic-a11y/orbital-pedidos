@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
+import { cristalLabel } from './CristalesProduccion'
 
-// Fase 3 (flujo del jefe de producción: aceptar/observar/fechar → activa y carga el proyectado)
-// + Fase 4 (dashboard: producción futura, costos por modelo editables, sobrante de cristales).
+// Fase 3 (flujo del jefe de producción: aceptar/observar/fechar → activa, carga el proyectado y descuenta cristales)
+// + Fase 4 (dashboard: producción futura, costos por modelo editables). El stock de cristales vive en la pestaña Cristales.
 
 interface Pedido {
   id: number
@@ -26,6 +27,7 @@ interface Item {
   cantidad: number
   stock_al_momento: number | null
   deficit_calculado: number | null
+  cristal_id: number | null
 }
 interface Costo {
   sku_o_familia: string
@@ -44,8 +46,7 @@ export default function PedidosProduccion() {
   const [items, setItems] = useState<Item[]>([])
   const [costos, setCostos] = useState<Record<string, number>>({}) // familia(modelo) -> costo USD vigente
   const [placeholder, setPlaceholder] = useState(10)
-  const [reservados, setReservados] = useState<{ color_cristal: string; reservado: number }[]>([])
-  const [stockCristales, setStockCristales] = useState<Record<string, number>>({})
+  const [cristalesLbl, setCristalesLbl] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [fechas, setFechas] = useState<Record<number, string>>({})
   const [obs, setObs] = useState<Record<number, string>>({})
@@ -53,12 +54,11 @@ export default function PedidosProduccion() {
   const [busy, setBusy] = useState<number | null>(null)
 
   async function cargar() {
-    const [{ data: par }, { data: peds }, { data: cost }, { data: res }, { data: scr }] = await Promise.all([
+    const [{ data: par }, { data: peds }, { data: cost }, { data: cri }] = await Promise.all([
       supabase.from('parametros_produccion').select('costo_placeholder_usd').eq('id', 1).maybeSingle(),
       supabase.from('pedidos_produccion').select('*').neq('estado', 'anulado').order('fecha_generado', { ascending: false }),
       supabase.from('costos_produccion').select('sku_o_familia, costo_unitario_usd, vigente_desde').eq('nivel', 'familia'),
-      supabase.rpc('cristales_reservados'),
-      supabase.from('stock_cristales').select('color_cristal, cantidad_disponible'),
+      supabase.from('cristales').select('id, base, color, tipo'),
     ])
     setPlaceholder(Number(par?.costo_placeholder_usd ?? 10))
     const lista = (peds as Pedido[]) ?? []
@@ -78,10 +78,9 @@ export default function PedidosProduccion() {
       }
     }
     setCostos(cmap)
-    setReservados((res as { color_cristal: string; reservado: number }[]) ?? [])
-    const sc: Record<string, number> = {}
-    for (const r of (scr as { color_cristal: string; cantidad_disponible: number }[]) ?? []) sc[r.color_cristal] = r.cantidad_disponible
-    setStockCristales(sc)
+    const lbl: Record<number, string> = {}
+    for (const c of (cri as { id: number; base: string; color: string; tipo: string }[]) ?? []) lbl[c.id] = cristalLabel(c)
+    setCristalesLbl(lbl)
     setLoading(false)
   }
 
@@ -200,7 +199,12 @@ export default function PedidosProduccion() {
                     <tbody>
                       {itemsDe(p.id).map((i) => (
                         <tr key={i.id} className="border-b border-black/5 last:border-0">
-                          <td className="py-1">{i.descripcion} <span className="text-faint font-mono">· {i.sku}</span></td>
+                          <td className="py-1">
+                            {i.descripcion} <span className="text-faint font-mono">· {i.sku}</span>
+                            <span className={`block ${i.cristal_id ? 'text-faint' : 'text-amber-600'}`}>
+                              🔬 {i.cristal_id ? cristalesLbl[i.cristal_id] ?? '—' : 'sin cristal asociado'}
+                            </span>
+                          </td>
                           <td className="py-1 text-right text-muted">stock {i.stock_al_momento}</td>
                           <td className="py-1 text-right font-bold w-20">{ent.format(i.cantidad)} u.</td>
                         </tr>
@@ -306,44 +310,6 @@ export default function PedidosProduccion() {
         </div>
       )}
 
-      {/* SOBRANTE / RESERVAS DE CRISTALES */}
-      <div className="bg-white rounded-xl p-4 border border-black/10">
-        <p className="text-sm font-semibold mb-1">🔬 Cristales — reservados y sobrante</p>
-        <p className="text-[11px] text-faint mb-2">
-          Cristales asignados a pedidos activos/pendientes por color. El sobrante = comprados − asignados (cargá el stock de
-          cristales comprados para ver el disponible).
-        </p>
-        {reservados.length === 0 ? (
-          <p className="text-sm text-faint">Sin cristales reservados todavía.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-[10px] text-faint uppercase">
-              <tr>
-                <th className="text-left font-medium pb-1">Color de cristal</th>
-                <th className="text-right font-medium pb-1">Reservado</th>
-                <th className="text-right font-medium pb-1">Comprado</th>
-                <th className="text-right font-medium pb-1">Sobrante</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reservados.map((r) => {
-                const comprado = stockCristales[r.color_cristal] ?? null
-                const sobrante = comprado != null ? comprado - Number(r.reservado) : null
-                return (
-                  <tr key={r.color_cristal} className="border-t border-black/5">
-                    <td className="py-1">{r.color_cristal}</td>
-                    <td className="py-1 text-right font-medium">{ent.format(Number(r.reservado))}</td>
-                    <td className="py-1 text-right text-muted">{comprado != null ? ent.format(comprado) : '—'}</td>
-                    <td className={`py-1 text-right font-semibold ${sobrante != null && sobrante < 0 ? 'text-red-600' : ''}`}>
-                      {sobrante != null ? ent.format(sobrante) : '—'}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
     </div>
   )
 }
