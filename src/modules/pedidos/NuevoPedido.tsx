@@ -39,6 +39,9 @@ export default function NuevoPedido() {
   // Reposición de consigna: modo especial que despacha desde el CENTRAL y rellena la consigna.
   const [repoMode, setRepoMode] = useState(false)
   const [repoActualId, setRepoActualId] = useState<number | null>(null)
+  // Precarga abierta en el formulario: se marca 'cargado' recién al confirmar el pedido.
+  const [precargaWebId, setPrecargaWebId] = useState<number | null>(null)
+  const [precargaFotoId, setPrecargaFotoId] = useState<string | null>(null)
   type RepoDraft = { id: number; cod_cliente: string; cliente_razon: string | null; vendedor: string | null; items: { codigo: string | null; modelo: string | null; descripcion: string | null; cantidad: number }[] }
   const [reposiciones, setReposiciones] = useState<RepoDraft[]>([])
   // Venta de consigna: descuenta de la consigna. Reposición: NO (despacha del central y rellena).
@@ -238,7 +241,8 @@ export default function NuevoPedido() {
     const nuevo: Record<string, number> = {}
     for (const it of w.items || []) if (it.codigo) nuevo[it.codigo] = (nuevo[it.codigo] || 0) + (it.cantidad || 1)
     setCart(nuevo)
-    await supabase.from('catalogo_precarga').update({ estado: 'cargado' }).eq('id', w.id)
+    setPrecargaWebId(w.id)
+    setPrecargaFotoId(null)
     setWebs((prev) => prev.filter((x) => x.id !== w.id))
     toast(`🛒 Pedido web cargado${w.cod_cliente ? '' : ' · sin cliente identificado, elegilo a mano'}. Poné lista y condiciones y confirmá.`, 'success')
   }
@@ -268,7 +272,8 @@ export default function NuevoPedido() {
       else faltantes++
     }
     setCart(nuevo)
-    await supabase.from('bot_foto_pedido').update({ estado: 'cargado' }).eq('conversacion_id', p.conversacion_id)
+    setPrecargaFotoId(p.conversacion_id)
+    setPrecargaWebId(null)
     setPrecargas((prev) => prev.filter((x) => x.conversacion_id !== p.conversacion_id))
     toast(`📸 Precarga cargada${faltantes ? ` · ${faltantes} sin match (agregalos a mano)` : ''}. Revisá los sin stock, poné condiciones y confirmá.`, 'success')
   }
@@ -567,6 +572,14 @@ export default function NuevoPedido() {
       toast('El pedido está vacío', 'error')
       return
     }
+    // La precarga ya no se "reserva" al abrirla: si otro la confirmó o descartó mientras tanto, no duplicar.
+    if (precargaWebId) {
+      const { data: pw } = await supabase.from('catalogo_precarga').select('estado').eq('id', precargaWebId).maybeSingle()
+      if (pw && (pw as { estado: string }).estado !== 'pendiente') {
+        toast('Ese pedido del catálogo ya fue cargado o descartado por otra persona. Revisá antes de duplicarlo.', 'error')
+        return
+      }
+    }
     setConfirmando(true)
     try {
       // Verificar stock actual: se puede pedir hasta lo disponible + lo que está en producción
@@ -691,6 +704,12 @@ export default function NuevoPedido() {
       }).select('id').single()
       const pedidoId = (pedIns as { id: number } | null)?.id ?? null
 
+      // Recién con el pedido creado la precarga sale de la lista (y queda atada al pedido).
+      if (pedidoId && precargaWebId)
+        await supabase.from('catalogo_precarga').update({ estado: 'cargado', pedido_id: pedidoId }).eq('id', precargaWebId)
+      if (pedidoId && precargaFotoId)
+        await supabase.from('bot_foto_pedido').update({ estado: 'cargado' }).eq('conversacion_id', precargaFotoId)
+
       if (repoMode) {
         // Reposición: además del descuento del central (ya hecho arriba), rellena la consigna del cliente.
         const { data: csNow } = await supabase.from('consignacion_stock').select('codigo, cantidad').eq('cod_cliente', cliente.cod)
@@ -745,6 +764,8 @@ export default function NuevoPedido() {
       setCliente(null)
       setRepoMode(false)
       setRepoActualId(null)
+      setPrecargaWebId(null)
+      setPrecargaFotoId(null)
       setConsignaItems(null)
       cargarReposiciones()
       setEntregaCanal('')
