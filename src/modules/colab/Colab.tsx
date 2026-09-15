@@ -119,13 +119,24 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
             bajada="Queda con el ícono de Orbital y entra directo a tu panel, sin clave." />
           <button onClick={salir} title="Salir" className="p-1.5 rounded-md hover:bg-black/5"><LogOut size={16} /></button>
         </div>
-        <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          {tabs.map(([id, t]) => (
-            <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
-              className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
-              style={tab === id ? { borderColor: ACENTO, color: oscuro ? '#FFFFFF' : ACENTO } : undefined}>{t}</button>
-          ))}
-        </div>
+        {oscuro ? (
+          // Panel del promotor: pestañas como botones blancos; la activa en azul
+          <div className="max-w-5xl mx-auto px-4 pt-1 pb-3 flex gap-2 overflow-x-auto">
+            {tabs.map(([id, t]) => (
+              <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
+                className="rounded-full px-4 py-1.5 text-[12px] font-semibold whitespace-nowrap"
+                style={tab === id ? { background: ACENTO, color: '#FFFFFF' } : { background: '#FFFFFF', color: '#0A0A0A' }}>{t}</button>
+            ))}
+          </div>
+        ) : (
+          <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
+            {tabs.map(([id, t]) => (
+              <button key={id} onClick={() => setTab(id)}
+                className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
+                style={tab === id ? { borderColor: ACENTO, color: ACENTO } : undefined}>{t}</button>
+            ))}
+          </div>
+        )}
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-5">
