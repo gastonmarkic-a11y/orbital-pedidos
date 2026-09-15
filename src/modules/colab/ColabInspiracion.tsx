@@ -92,7 +92,7 @@ export default function ColabInspiracion({ clave, rol }: { clave: string; rol: R
         )}
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
-        Usá la música de la biblioteca de cada red y aclarás que es publicidad (#publi o "Colaboración pagada").
+        Usá la música de la biblioteca de cada red y aclará que es publicidad (#publi o "Colaboración pagada").
         No descargues ni vuelvas a subir videos de otras personas.
       </p>
     </>
