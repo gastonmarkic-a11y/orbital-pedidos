@@ -15,7 +15,8 @@
 //   'completar' trae los datos de las publicaciones que todavía no los tienen (curadas y viejas)
 //   'fichas'    regenera "de qué se trata" y "por qué es viral" con los datos guardados (sin Apify)
 // Solo se guarda el LINK y el texto: nada se descarga ni se vuelve a subir.
-// Ficha con Groq si hay GROQ_API_KEY (de a 5 publicaciones, reintenta si pide esperar); si no, textos fijos.
+// Ficha con Groq si hay GROQ_API_KEY (de a 3 publicaciones, reintenta si pide esperar o si una tanda
+// vuelve con JSON inválido la parte de a una); si no, textos fijos.
 // Auth (verify_jwt=false): x-cron-key == app_config.cron_key, o body.clave de Orbital.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -217,27 +218,33 @@ async function fichasIA(items: ParaIA[], modelosColor: string[]): Promise<{ fich
   if (!key) return { fichas: null, errores: ['sin GROQ_API_KEY'] }
   if (!items.length) return { fichas: null, errores }
   const out = new Map<number, FichaIA>()
-  let algunaOk = false
-  // De a 5 para no pasar el límite de tokens por minuto de la capa gratis de Groq
-  for (let desde = 0; desde < items.length; desde += 5) {
-    const tanda = items.slice(desde, desde + 5)
+  // De a 3 para no pasar el límite de tokens por minuto de la capa gratis de Groq.
+  // Si una tanda vuelve con JSON inválido, se reintenta de a una publicación.
+  const cola: number[][] = []
+  for (let desde = 0; desde < items.length; desde += 3) cola.push(items.slice(desde, desde + 3).map((_, k) => desde + k))
+  while (cola.length) {
+    const indices = cola.shift()!
     const pedido = JSON.stringify({
       model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
-      temperature: 0.3,
+      temperature: 0.2,
+      max_tokens: 1800,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SISTEMA },
         {
           role: 'user', content: JSON.stringify({
             modelos_lente_color: modelosColor,
-            publicaciones: tanda.map((x, k) => ({
-              i: desde + k, seccion: x.seccion, red: x.fuente, autor: x.d.autor,
-              texto: (x.d.texto ?? '').slice(0, 500), subtitulos: x.subtitulos ?? null,
-              hashtags: x.d.hashtags, audio: x.d.audio, duracion_seg: x.d.duracion_seg,
-              vistas: x.d.vistas, me_gusta: x.d.likes, comentarios: x.d.comentarios,
-              compartidos: x.d.compartidos, guardados: x.d.guardados, seguidores_autor: x.d.seguidores,
-              ...senales(x.d),
-            })),
+            publicaciones: indices.map((i) => {
+              const x = items[i]
+              return {
+                i, seccion: x.seccion, red: x.fuente, autor: x.d.autor,
+                texto: (x.d.texto ?? '').slice(0, 500), subtitulos: x.subtitulos ?? null,
+                hashtags: x.d.hashtags, audio: x.d.audio, duracion_seg: x.d.duracion_seg,
+                vistas: x.d.vistas, me_gusta: x.d.likes, comentarios: x.d.comentarios,
+                compartidos: x.d.compartidos, guardados: x.d.guardados, seguidores_autor: x.d.seguidores,
+                ...senales(x.d),
+              }
+            }),
           }),
         },
       ],
@@ -251,28 +258,33 @@ async function fichasIA(items: ParaIA[], modelosColor: string[]): Promise<{ fich
         })
         if (r.status === 429) {
           const espera = Math.min(Number(r.headers.get('retry-after')) || 10, 25)
-          errores.push(`tanda ${desde}: Groq pidió esperar ${espera}s`)
+          errores.push(`publicaciones ${indices.join(',')}: Groq pidió esperar ${espera}s`)
           await dormir(espera)
           continue
         }
-        if (!r.ok) { errores.push(`tanda ${desde}: Groq ${r.status} ${(await r.text()).slice(0, 150)}`); break }
+        if (!r.ok) {
+          const t = await r.text()
+          if (r.status === 400 && /validate json/i.test(t) && indices.length > 1) { indices.forEach((i) => cola.push([i])); break }
+          errores.push(`publicaciones ${indices.join(',')}: Groq ${r.status} ${t.slice(0, 120)}`)
+          break
+        }
         const d = await r.json()
         const res = JSON.parse(d.choices?.[0]?.message?.content ?? '{}')
         const lista: FichaIA[] = Array.isArray(res) ? res : (res.fichas ?? res.publicaciones ?? [])
-        if (!lista.length) errores.push(`tanda ${desde}: respuesta sin fichas`)
+        if (!lista.length) errores.push(`publicaciones ${indices.join(',')}: respuesta sin fichas`)
         lista.forEach((f, k) => {
           const i = Number(f?.i)
-          out.set(Number.isInteger(i) && i >= desde && i < desde + tanda.length ? i : desde + k, f)
+          if (indices.includes(i)) out.set(i, f)
+          else if (k < indices.length) out.set(indices[k], f)
         })
-        algunaOk = true
         break
       } catch (e) {
-        errores.push(`tanda ${desde}: ${String((e as Error)?.message ?? e).slice(0, 150)}`)
+        errores.push(`publicaciones ${indices.join(',')}: ${String((e as Error)?.message ?? e).slice(0, 120)}`)
         break
       }
     }
   }
-  return { fichas: algunaOk ? out : null, errores }
+  return { fichas: out.size ? out : null, errores }
 }
 
 // La IA a veces pega la Triple Protección en cualquier sección: fuera de "triple" se descarta.
@@ -337,7 +349,7 @@ async function completar(db: SupabaseClient, token: string, modelosColor: string
 async function regenerarFichas(db: SupabaseClient, modelosColor: string[]) {
   const { data } = await db.from('colab_inspiracion')
     .select('id, seccion, fuente, url, autor, texto, vistas, likes, comentarios, compartidos, guardados, duracion_seg, seguidores, audio, hashtags, publicado_at')
-    .eq('activo', true).is('de_que_trata', null).limit(40)
+    .eq('activo', true).is('de_que_trata', null).limit(9)
   const filas = (data ?? []) as (Datos & { id: number; seccion: Seccion; fuente: Fuente })[]
   if (!filas.length) return { ok: true, modo: 'fichas', filas: 0, actualizadas: 0 }
   const { fichas, errores } = await fichasIA(filas.map((f) => ({ seccion: f.seccion, fuente: f.fuente, d: f })), modelosColor)
