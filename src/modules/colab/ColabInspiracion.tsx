@@ -18,7 +18,8 @@ type Item = {
   formato: string | null; de_que_trata: string | null; por_que: string | null; como_orbital: string | null; aviso: string | null
   fijo: boolean; created_at: string
 }
-type Datos = { items: Item[]; modelos_color: string[] }
+type Datos = { items: Item[]; modelos_color: string[]; modelos_triple?: string[] }
+const ROJO_TRIPLE = '#E11D2E'
 
 export const LANDING_TRIPLE = 'https://ver.orbitaleyewear.com.ar/tripleproteccion'
 
@@ -36,7 +37,7 @@ const corto = (n: number) =>
     : n.toLocaleString('es-AR')
 const duracion = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 
-export default function ColabInspiracion({ clave, rol }: { clave: string; rol: Rol }) {
+export default function ColabInspiracion({ clave, rol, onVerTriple }: { clave: string; rol: Rol; onVerTriple?: () => void }) {
   const [datos, setDatos] = useState<Datos | null>(null)
   const [sec, setSec] = useState<Seccion>('viral')
   const [buscando, setBuscando] = useState(false)
@@ -80,16 +81,20 @@ export default function ColabInspiracion({ clave, rol }: { clave: string; rol: R
       {aviso && <p className="mb-3 text-[11px] text-neutral-600">{aviso}</p>}
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {SECCIONES.map(([id, t]) => (
-          <button key={id} onClick={() => setSec(id)}
-            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${sec === id ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
-            style={sec === id ? { background: ACENTO } : undefined}>
-            {t} <span className="opacity-60">{(datos.items ?? []).filter((i) => i.seccion === id).length}</span>
-          </button>
-        ))}
+        {SECCIONES.map(([id, t]) => {
+          // Triple protección va en rojo: es lo que Orbital más quiere que se promocione
+          const color = id === 'triple' ? ROJO_TRIPLE : ACENTO
+          return (
+            <button key={id} onClick={() => setSec(id)}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${sec === id ? 'text-white border-transparent' : id === 'triple' ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
+              style={sec === id || id === 'triple' ? { background: color, opacity: sec === id || id !== 'triple' ? 1 : 0.85 } : undefined}>
+              {t} <span className="opacity-70">{(datos.items ?? []).filter((i) => i.seccion === id).length}</span>
+            </button>
+          )
+        })}
       </div>
 
-      {sec === 'triple' && <KitTriple />}
+      {sec === 'triple' && <KitTriple modelos={datos.modelos_triple ?? []} onVer={onVerTriple} />}
       {sec === 'color' && <KitColor modelos={datos.modelos_color} />}
 
       {items.length === 0
@@ -185,10 +190,29 @@ function Tarjeta({ i }: { i: Item }) {
   )
 }
 
-function KitTriple() {
+function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }) {
   return (
-    <div className="bg-white rounded-xl border-2 p-4 mb-4" style={{ borderColor: ACENTO }}>
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ACENTO }}>Infrarrojo · UV400 · Blue Cut</div>
+    <div className="bg-white rounded-xl border-2 p-4 mb-4" style={{ borderColor: ROJO_TRIPLE }}>
+      <div className="-mx-4 -mt-4 mb-3 rounded-t-[10px] px-4 py-2.5 text-white text-center" style={{ background: ROJO_TRIPLE }}>
+        <div className="text-[13px] font-extrabold tracking-wide">TE RECOMIENDO PROMOCIONARLO</div>
+        <div className="text-[10px] font-bold tracking-[0.18em] opacity-90">ÚNICO EN EL MERCADO ARGENTINO</div>
+      </div>
+      {modelos.length > 0 && (
+        <div className="mb-3 rounded-lg bg-[#F5F5F7] p-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-[11px] font-bold">{modelos.length} modelos de sol con Triple Protección en stock</div>
+            {onVer && (
+              <button onClick={onVer} className="rounded-full text-white px-3 py-1.5 text-[11px] font-bold" style={{ background: ROJO_TRIPLE }}>
+                Ver los anteojos con Triple Protección →
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1 mt-2">
+            {modelos.map((m) => <span key={m} className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[10px] font-semibold">{m}</span>)}
+          </div>
+        </div>
+      )}
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ROJO_TRIPLE }}>Infrarrojo · UV400 · Blue Cut</div>
       <h2 className="text-[14px] font-bold mt-1">Triple Protección: tres protecciones en un mismo cristal</h2>
       <ul className="text-[11px] text-neutral-600 mt-2 space-y-1">
         <li><b className="text-black">Infrarrojo:</b> bloquea la radiación que genera calor y fatiga visual bajo sol fuerte.</li>

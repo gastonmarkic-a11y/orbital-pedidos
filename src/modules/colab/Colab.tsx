@@ -17,13 +17,14 @@ import ColabAgregar from './ColabAgregar'
 import ColabPropuestas from './ColabPropuestas'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from './ColabInspiracion'
+import './colab-oscuro.css'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
 
 function Marca() {
   return (
     <div className="flex items-center gap-2">
-      <img src="/logo-orbital.png" alt="Orbital" style={{ height: 18 }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+      <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" style={{ height: 18 }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
       <span className="text-[10px] font-bold tracking-[0.3em] uppercase" style={{ color: ACENTO }}>Colaboradores</span>
     </div>
   )
@@ -96,13 +97,17 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
   const [admins, setAdmins] = useState<Admin[] | null>(null)
   // Promotor de colección: "Agregar anteojos" abre toda la tienda para proponer SKU.
   const [agregando, setAgregando] = useState(false)
+  // Desde Inspiración → Triple protección se abre Anteojos filtrado por esos anteojos.
+  const [filtroAnteojos, setFiltroAnteojos] = useState<'triple' | null>(null)
+  // El promotor ve el panel en negro, como la tienda.
+  const oscuro = ent.rol === 'influencer'
 
   useEffect(() => {
     if (ent.rol === 'orbital') supabase.rpc('colab_orbital_admins', { p_clave: clave }).then(({ data }) => setAdmins((data as Admin[]) ?? []))
   }, [clave, ent.rol, version])
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
+    <div className={`min-h-screen ${oscuro ? 'colab-oscuro' : 'bg-[#FAFAFA]'}`}>
       <header className="bg-white border-b border-black/5 sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <Marca />
@@ -116,7 +121,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         </div>
         <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {tabs.map(([id, t]) => (
-            <button key={id} onClick={() => setTab(id)}
+            <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
               className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
               style={tab === id ? { borderColor: ACENTO, color: ACENTO } : undefined}>{t}</button>
           ))}
@@ -135,7 +140,10 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
         {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
-        {tab === 'inspiracion' && <ColabInspiracion clave={clave} rol={ent.rol} />}
+        {tab === 'inspiracion' && (
+          <ColabInspiracion clave={clave} rol={ent.rol}
+            onVerTriple={ent.rol === 'influencer' ? () => { setFiltroAnteojos('triple'); setTab('anteojos'); window.scrollTo({ top: 0 }) } : undefined} />
+        )}
         {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
         {tab === 'anteojos' && !(ent.coleccion && agregando) && (
           <>
@@ -147,7 +155,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
                 </button>
               </div>
             )}
-            <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)} />
+            <ColabAnteojos key={filtroAnteojos ?? 'todos'} clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)}
+              oscuro={oscuro} filtroInicial={filtroAnteojos} />
           </>
         )}
         {tab === 'links' && <MisLinks key={version} clave={clave} pct={ent.pct ?? 15} irAnteojos={() => setTab('anteojos')} />}
@@ -524,7 +533,38 @@ export function MisLinks({ clave, pct, irAnteojos }: { clave: string; pct: numbe
 function FilaLink({ l, clave, pct, onCambio }: { l: MiLink; clave: string; pct: number; onCambio: () => void }) {
   const [pub, setPub] = useState(l.url_pub ?? '')
   const [guardado, setGuardado] = useState(false)
+  const [subiendo, setSubiendo] = useState(false)
+  const [errVideo, setErrVideo] = useState<string | null>(null)
   const url = linkPublico(l.codigo)
+
+  async function eliminar() {
+    if (!window.confirm('Eliminar este link: deja de funcionar y se borran sus toques. ¿Seguimos?')) return
+    const { error } = await supabase.rpc('colab_link_eliminar', { p_clave: clave, p_id: l.id })
+    if (error) {
+      window.alert(/tiene_ventas/.test(error.message) ? 'Este link ya tiene ventas: no se puede eliminar. Pausalo.' : 'No se pudo eliminar. Probá de nuevo.')
+      return
+    }
+    onCambio()
+  }
+  // El video de reacción se sube directo al almacenamiento con una URL firmada (colab-video)
+  async function subirVideo(file: File) {
+    setErrVideo(null)
+    if (file.size > 50 * 1024 * 1024) { setErrVideo('El video pesa más de 50 MB. Recortalo o bajale la calidad.'); return }
+    setSubiendo(true)
+    const { data, error } = await supabase.functions.invoke('colab-video', { body: { clave, link_id: l.id, tipo: file.type } })
+    const r = data as { path?: string; token?: string; url?: string } | null
+    if (error || !r?.path || !r.token || !r.url) { setSubiendo(false); setErrVideo('No se pudo preparar la subida. Probá de nuevo.'); return }
+    const subida = await supabase.storage.from('colab-videos').uploadToSignedUrl(r.path, r.token, file, { contentType: file.type })
+    if (subida.error) { setSubiendo(false); setErrVideo('No se pudo subir el video. Probá de nuevo.'); return }
+    await supabase.rpc('colab_link_video', { p_clave: clave, p_id: l.id, p_url: r.url })
+    setSubiendo(false)
+    onCambio()
+  }
+  async function quitarVideo() {
+    if (!window.confirm('¿Quitar el video de este link?')) return
+    await supabase.rpc('colab_link_video', { p_clave: clave, p_id: l.id, p_url: null })
+    onCambio()
+  }
 
   async function guardarPub() {
     if (!pub.trim() || pub.trim() === l.url_pub) return
@@ -540,14 +580,17 @@ function FilaLink({ l, clave, pct, onCambio }: { l: MiLink; clave: string; pct: 
   return (
     <div className={`bg-white rounded-xl border border-black/10 p-3 ${l.activo ? '' : 'opacity-60'}`}>
       <div className="flex gap-3">
-        <div className="w-20 h-14 shrink-0 bg-white">{l.imagen && <img src={l.imagen} alt={l.modelo} className="w-full h-full object-contain" />}</div>
+        <div className="w-20 h-14 shrink-0 bg-white foto-clara rounded-md p-1">{l.imagen && <img src={l.imagen} alt={l.modelo} className="w-full h-full object-contain" />}</div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[12px] font-bold uppercase tracking-wide truncate">{l.modelo}</div>
               <div className="text-[10px] text-neutral-500 truncate">{l.color} · {labelRed(l.red)} · {labelFormato(l.formato)} · {new Date(l.created_at).toLocaleDateString('es-AR')}</div>
             </div>
-            <button onClick={pausar} className="shrink-0 text-[10px] font-semibold text-neutral-500 underline">{l.activo ? 'Pausar' : 'Reactivar'}</button>
+            <div className="shrink-0 flex gap-1.5">
+              <button onClick={pausar} className="rounded-md border border-black/10 px-2 py-1 text-[10px] font-semibold">{l.activo ? 'Pausar' : 'Reactivar'}</button>
+              <button onClick={eliminar} className="rounded-md border border-red-500/50 text-red-500 px-2 py-1 text-[10px] font-semibold">Eliminar</button>
+            </div>
           </div>
           <div className="flex gap-4 text-[10px] text-neutral-500 mt-1">
             <span>Toques <b className="text-black">{nAr(l.clicks)}</b></span>
@@ -564,6 +607,28 @@ function FilaLink({ l, clave, pct, onCambio }: { l: MiLink; clave: string; pct: 
         <input value={pub} onChange={(e) => setPub(e.target.value)} onBlur={guardarPub}
           placeholder="Pegá el link de tu publicación (opcional)" className={`${input} text-[11px]`} />
         {guardado && <span className="text-[10px] font-bold text-emerald-600 shrink-0">Guardado</span>}
+      </div>
+
+      {/* Video de reacción: se ve en la página de este link */}
+      <div className="mt-1.5 rounded-lg border border-dashed border-black/20 px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px]"><b>Video de reacción</b> <span className="text-neutral-500">· se ve en la página de este link</span></div>
+          {l.video_url && <button onClick={quitarVideo} className="text-[10px] font-semibold underline text-neutral-500">Quitar</button>}
+        </div>
+        {l.video_url ? (
+          <div className="mt-1.5 flex items-center gap-2">
+            <video src={l.video_url} className="h-24 rounded-md bg-black" muted playsInline controls />
+            {l.video_ejemplo && <span className="text-[10px] rounded bg-amber-400 text-black px-1.5 py-0.5 font-bold">VIDEO DE EJEMPLO</span>}
+          </div>
+        ) : (
+          <label className={`mt-1.5 inline-flex items-center gap-1.5 rounded-md text-white px-2.5 py-1.5 text-[11px] font-semibold ${subiendo ? 'opacity-60' : 'cursor-pointer'}`} style={{ background: ACENTO }}>
+            {subiendo ? 'Subiendo…' : 'Subir video'}
+            <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" disabled={subiendo}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) subirVideo(f); e.target.value = '' }} />
+          </label>
+        )}
+        {errVideo && <p className="text-[10px] text-red-500 mt-1">{errVideo}</p>}
+        <p className="text-[9px] text-neutral-400 mt-1">Hasta 50 MB · mp4, mov o webm · ideal vertical.</p>
       </div>
     </div>
   )

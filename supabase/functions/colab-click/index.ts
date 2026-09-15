@@ -13,6 +13,12 @@
 // Si el mismo navegador ya tenía código para ese link y no se usó en un pedido, lo reusa.
 // Promotor con pct_descuento 0 (cobranding ZN): no hay código; va a la ficha con UTM y
 // colab-ventas-sync atribuye por utm_content = codigo del link.
+// Promotor de una colección (colab_influencer.coleccion): 'ver' devuelve ver_mas = la colección
+// de la tienda con el mismo UTM, el banner de la colección y los otros modelos de la colección
+// (uno por modelo, con el UTM del link: lo que compren desde ahí también se atribuye).
+// Promotor común: solo anteojos de sol fuera de las colecciones (colab_landing_colores / colab_ids_regla),
+// banner de Orbital si no tiene uno propio, "su catálogo" (sus otros links activos, uno por modelo)
+// y el video de reacción del link si lo subió.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -20,6 +26,11 @@ const TIENDA = 'https://www.orbitaleyewear.com.ar'
 const ALFA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const FRENO_POR_MINUTO = 60
 const VENTANA_TOQUE_MS = 30 * 60_000
+// Banner de la tienda (Black Edit) para los promotores sin banner propio
+const BANNER_ORBITAL = {
+  desktop: 'https://www.orbitaleyewear.com.ar/cdn/shop/files/black-edit-hero-desktop.png?v=1787973841&width=1600',
+  mobile: 'https://www.orbitaleyewear.com.ar/cdn/shop/files/hero-mobile_black.png?v=1787973942&width=900',
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -43,9 +54,9 @@ async function crearCodigo(db: SupabaseClient, modelo: string, pct: number, inte
   const api = (p: string) => `https://${store.shop_domain}/admin/api/${ver}/${p}`
   const H = { 'X-Shopify-Access-Token': store.access_token, 'Content-Type': 'application/json' }
 
-  // El descuento aplica a TODOS los colores disponibles del modelo promocionado.
-  const { data: prods } = await db.from('colab_producto').select('product_id').eq('modelo', modelo).eq('disponible', true)
-  const ids = (prods ?? []).map((p: { product_id: number }) => Number(p.product_id)).sort((a, b) => a - b)
+  // El descuento aplica a los colores de sol disponibles del modelo, fuera de las colecciones.
+  const { data: idsRegla } = await db.rpc('colab_ids_regla', { p_modelo: modelo })
+  const ids = ((idsRegla ?? []) as (number | string)[]).map(Number).sort((a, b) => a - b)
   if (!ids.length) throw new Error('modelo_sin_stock')
 
   const { data: regla } = await db.from('colab_regla').select('price_rule_id, product_ids').eq('modelo', modelo).eq('pct', pct).maybeSingle()
@@ -106,7 +117,7 @@ type Prod = {
   price: number | null; compare_at: number | null; variant_id: number | null; tipo: string | null
   linea: string | null; descripcion: string | null
 }
-const COLS = 'handle, color, imagen, imagenes, price, compare_at, variant_id, tipo, linea, descripcion'
+type Elegido = { codigo: string; modelo: string; imagen: string | null; price: number | null; compare_at: number | null }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -121,7 +132,7 @@ Deno.serve(async (req) => {
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   const { data: link } = await db.from('colab_link')
-    .select('id, codigo, modelo, handle, red, activo, influencer:colab_influencer(id, nombre, ref, pct_descuento, activo, admin:colab_admin(activo))')
+    .select('id, codigo, modelo, handle, red, activo, video_url, video_ejemplo, influencer:colab_influencer(id, nombre, ref, pct_descuento, coleccion, coleccion_tag, banner_desktop, banner_mobile, banner_titulo, banner_texto, activo, admin:colab_admin(activo))')
     .eq('codigo', codigo).maybeSingle()
   // deno-lint-ignore no-explicit-any
   const inf = (link as any)?.influencer
@@ -133,7 +144,7 @@ Deno.serve(async (req) => {
   // 0 es un valor válido (promotor sin cupón); solo sin dato se usa el 30 por defecto.
   const pct = inf.pct_descuento == null ? 30 : Number(inf.pct_descuento) || 0
   const utm = new URLSearchParams({ utm_source: 'colab', utm_medium: link.red, utm_campaign: `colab_${inf.ref}`, utm_content: link.codigo })
-  const { data: disp } = await db.from('colab_producto').select(COLS).eq('modelo', link.modelo).eq('disponible', true).order('handle')
+  const { data: disp } = await db.rpc('colab_landing_colores', { p_link_id: link.id })
   const colores = (disp ?? []) as Prod[]
 
   // ── ver: datos de la landing + toque ──
@@ -147,10 +158,47 @@ Deno.serve(async (req) => {
     }
     const { data: store } = await db.from('shopify_stores').select('scope').eq('id', 'linea').maybeSingle()
     const descuentoActivo = pct > 0 && /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
+
+    const bannerPropio = inf.banner_desktop || inf.banner_mobile
+      ? { desktop: inf.banner_desktop, mobile: inf.banner_mobile, titulo: inf.banner_titulo, texto: inf.banner_texto }
+      : null
+
+    // Cobranding: banner y el resto de la colección (un anteojo por modelo).
+    let banner: Record<string, string | null> | null = null
+    const coleccion: { modelo: string; imagen: string | null; price: number | null; compare_at: number | null; url: string }[] = []
+    let catalogo: Elegido[] = []
+    if (inf.coleccion) {
+      banner = bannerPropio
+      const handles = new Set<string>()
+      if (inf.coleccion === 'orbital-x-zaira') {
+        const { data: zl } = await db.from('zn_links_color').select('handle').eq('activo', true)
+        for (const z of zl ?? []) handles.add(z.handle)
+      }
+      const { data: cps } = await db.from('colab_producto').select('handle, modelo, imagen, price, compare_at, tags').eq('disponible', true).order('handle')
+      const vistos = new Set<string>([link.modelo])
+      for (const p of cps ?? []) {
+        const en = handles.has(p.handle) || (!!inf.coleccion_tag && ((p.tags ?? []) as string[]).includes(inf.coleccion_tag))
+        if (!en || vistos.has(p.modelo)) continue
+        vistos.add(p.modelo)
+        coleccion.push({ modelo: p.modelo, imagen: p.imagen, price: p.price, compare_at: p.compare_at, url: `${TIENDA}/products/${p.handle}?${utm}` })
+      }
+    } else {
+      // Promotor común: su banner o el de Orbital, y su catálogo (sus otros anteojos promocionados).
+      banner = bannerPropio ?? {
+        desktop: BANNER_ORBITAL.desktop, mobile: BANNER_ORBITAL.mobile,
+        titulo: `Elegidos por ${inf.nombre}`, texto: 'Su selección de Orbital, con precio exclusivo para su comunidad.',
+      }
+      const { data: cat } = await db.rpc('colab_landing_catalogo', { p_link_id: link.id })
+      catalogo = (cat ?? []) as Elegido[]
+    }
+
     return json({
       ok: true, modelo: link.modelo, influencer: inf.nombre, pct, descuento_activo: descuentoActivo,
       seleccionado: colores.some((c) => c.handle === link.handle) ? link.handle : colores[0]?.handle ?? null,
       colores, tienda: `${TIENDA}/products/${link.handle}?${utm}`, utm: utm.toString(),
+      ver_mas: inf.coleccion ? `${TIENDA}/collections/${encodeURIComponent(inf.coleccion)}?${utm}` : null,
+      banner, coleccion, catalogo,
+      video: link.video_url ? { url: link.video_url, ejemplo: !!link.video_ejemplo } : null,
     })
   }
 

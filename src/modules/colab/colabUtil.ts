@@ -47,6 +47,7 @@ export type MiLink = {
   id: number; codigo: string; modelo: string; handle: string; color: string | null; imagen: string | null
   red: string; formato: string; url_pub: string | null; activo: boolean; created_at: string
   clicks: number; pedidos: number; neto: number; com: number
+  video_url?: string | null; video_ejemplo?: boolean
 }
 
 export type SerieMes = { periodo: string; clicks: number; pedidos: number; pendientes: number; neto: number; com_inf: number; com_adm: number }

@@ -1,12 +1,18 @@
 // ── Anteojos · el panel operativo del influencer ──────────────────────────────
-// Solo lo que la tienda tiene con stock (colab_catalogo). Por anteojo:
+// Solo lo que la tienda tiene con stock (colab_catalogo; al promotor común, solo anteojos de sol).
+// Por anteojo:
 //   · la data real (sale de la descripción y la ficha de la tienda)
 //   · copies listos: historia, posteo y guion de reel/tiktok
 //   · "Generar mi link" por publicación (red + formato) → ver.orbitaleyewear.com.ar/r/<codigo>
+// Filtro "Triple protección": colores con tratamiento Infrarrojo + Blue cut en el stock de la Suite.
+// oscuro: tarjetas como las de la tienda (foto sobre tarjeta clara, texto blanco, [ VER MODELO ]).
 import { useEffect, useMemo, useState } from 'react'
 import { Search, X, Copy, Check, Link2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { ACENTO, Modelo, REDES, FORMATOS, copiesDe, copiar, kAr, linkPublico, partesColor } from './colabUtil'
+import { ACENTO, Color, Modelo, REDES, FORMATOS, copiesDe, copiar, kAr, linkPublico, partesColor } from './colabUtil'
+
+export const ROJO_TRIPLE = '#E11D2E'
+export const esTriple = (c: Color) => /infrarrojo/i.test(c.tratamiento ?? '')
 
 export function BotonCopiar({ texto, label = 'Copiar', grande }: { texto: string; label?: string; grande?: boolean }) {
   const [ok, setOk] = useState(false)
@@ -26,22 +32,34 @@ function Foto({ src, alt }: { src: string | null; alt: string }) {
     : <div className="w-full h-full bg-gradient-to-br from-[#F0F0F2] to-[#E4E4E8]" />
 }
 
-const FILTROS = ['Todos', 'Sol', 'Receta', 'Nuevos'] as const
+type Filtro = 'Todos' | 'Triple protección' | 'Sol' | 'Receta' | 'Nuevos'
 
-export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
+export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, filtroInicial }: {
   clave: string; pct: number; puedeLink: boolean; onLink?: () => void
+  oscuro?: boolean; filtroInicial?: 'triple' | null
 }) {
   const [modelos, setModelos] = useState<Modelo[] | null>(null)
   const [q, setQ] = useState('')
-  const [filtro, setFiltro] = useState<typeof FILTROS[number]>('Todos')
+  const [filtro, setFiltro] = useState<Filtro>(filtroInicial === 'triple' ? 'Triple protección' : 'Todos')
   const [abierto, setAbierto] = useState<number | null>(null)
 
   useEffect(() => {
     supabase.rpc('colab_catalogo', { p_clave: clave }).then(({ data }) => setModelos((data as Modelo[]) ?? []))
   }, [clave])
 
+  // Solo los filtros que tienen sentido con lo que hay (el promotor común ya ve solo sol).
+  const filtros = useMemo<Filtro[]>(() => {
+    const ms = modelos ?? []
+    const f: Filtro[] = ['Todos']
+    if (ms.some((m) => m.colores.some(esTriple))) f.push('Triple protección')
+    if (ms.some((m) => m.tipos.includes('SOL')) && ms.some((m) => m.tipos.includes('RECETA'))) f.push('Sol', 'Receta')
+    f.push('Nuevos')
+    return f
+  }, [modelos])
+
   const lista = useMemo(() => (modelos ?? []).filter((m) => {
     if (q && !m.modelo.toLowerCase().includes(q.toLowerCase().trim())) return false
+    if (filtro === 'Triple protección') return m.colores.some(esTriple)
     if (filtro === 'Sol') return m.tipos.includes('SOL')
     if (filtro === 'Receta') return m.tipos.includes('RECETA')
     if (filtro === 'Nuevos') return m.nuevo
@@ -67,35 +85,67 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo"
             className="w-full rounded-lg border border-black/10 bg-white pl-8 pr-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
         </div>
-        {FILTROS.map((f) => (
-          <button key={f} onClick={() => setFiltro(f)}
-            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${filtro === f ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
-            style={filtro === f ? { background: ACENTO } : undefined}>{f}</button>
-        ))}
+        {filtros.map((f) => {
+          const color = f === 'Triple protección' ? ROJO_TRIPLE : ACENTO
+          return (
+            <button key={f} onClick={() => setFiltro(f)}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${filtro === f ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
+              style={filtro === f ? { background: color } : f === 'Triple protección' ? { borderColor: color, color } : undefined}>{f}</button>
+          )
+        })}
       </div>
 
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+      <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 ${oscuro ? 'gap-x-3 gap-y-6' : 'gap-3'}`}>
         {lista.map((m) => {
-          const c0 = m.colores[0]
+          const c0 = (filtro === 'Triple protección' ? m.colores.find(esTriple) : null) ?? m.colores[0]
           const idx = modelos.indexOf(m)
+          const triple = m.colores.some(esTriple)
+          const precio = m.precio_desde
+          const insignias = (
+            <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+              {m.nuevo && <span className="rounded-full bg-black text-white text-[8px] font-bold px-1.5 py-0.5">NUEVO</span>}
+              {m.best && <span className="rounded-full text-white text-[8px] font-bold px-1.5 py-0.5" style={{ background: ACENTO }}>BEST SELLER</span>}
+              {triple && <span className="rounded-full text-white text-[8px] font-bold px-1.5 py-0.5" style={{ background: ROJO_TRIPLE }}>TRIPLE PROTECCIÓN</span>}
+            </div>
+          )
+          if (oscuro) {
+            return (
+              <button key={m.modelo} onClick={() => setAbierto(idx)} className="text-left group">
+                <div className="aspect-square p-3 relative rounded-md overflow-hidden" style={{ background: '#E9E9E9' }}>
+                  <Foto src={c0?.imagen} alt={m.modelo} />
+                  {insignias}
+                </div>
+                <div className="pt-2.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="text-[14px] font-bold uppercase tracking-wide truncate">{m.modelo}</div>
+                    <div className="font-mono text-[9px] uppercase text-neutral-500 shrink-0">{m.colores.length} {m.colores.length === 1 ? 'color' : 'colores'}</div>
+                  </div>
+                  {precio && (
+                    <div className="mt-0.5 flex items-baseline gap-2 tabular-nums">
+                      <b className="text-[14px] text-white">{kAr(precio * (1 - pct / 100))}</b>
+                      {pct > 0 && <span className="font-mono text-[10px] text-neutral-500 line-through">{kAr(precio)}</span>}
+                    </div>
+                  )}
+                  <div className="font-mono text-[10px] tracking-wide mt-2 text-neutral-400 group-hover:text-white">[ VER MODELO ]</div>
+                </div>
+              </button>
+            )
+          }
           return (
             <button key={m.modelo} onClick={() => setAbierto(idx)} className="text-left bg-white rounded-xl border border-black/10 overflow-hidden hover:border-black/30">
               <div className="aspect-[4/3] bg-white p-2 relative">
                 <Foto src={c0?.imagen} alt={m.modelo} />
-                <div className="absolute top-1.5 left-1.5 flex gap-1">
-                  {m.nuevo && <span className="rounded-full bg-black text-white text-[8px] font-bold px-1.5 py-0.5">NUEVO</span>}
-                  {m.best && <span className="rounded-full text-white text-[8px] font-bold px-1.5 py-0.5" style={{ background: ACENTO }}>BEST SELLER</span>}
-                </div>
+                {insignias}
               </div>
               <div className="px-2.5 py-2 border-t border-black/5">
                 <div className="text-[12px] font-bold uppercase tracking-wide truncate">{m.modelo}</div>
                 <div className="text-[10px] text-neutral-500">
                   {m.tipos.map((t) => (t === 'SOL' ? 'Sol' : 'Receta')).join(' · ')} · {m.colores.length} {m.colores.length === 1 ? 'color' : 'colores'}
                 </div>
-                {m.precio_desde && (
+                {precio && (
                   <div className="text-[11px] mt-0.5">
-                    {pct > 0 && <span className="text-neutral-400 line-through mr-1">{kAr(m.precio_desde)}</span>}
-                    <b style={{ color: ACENTO }}>{kAr(m.precio_desde * (1 - pct / 100))}</b>
+                    {pct > 0 && <span className="text-neutral-400 line-through mr-1">{kAr(precio)}</span>}
+                    <b style={{ color: ACENTO }}>{kAr(precio * (1 - pct / 100))}</b>
                   </div>
                 )}
               </div>
@@ -107,6 +157,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
 
       {abierto != null && modelos[abierto] && (
         <Hoja key={abierto} m={modelos[abierto]} pct={pct} clave={clave} puedeLink={puedeLink} onLink={onLink}
+          soloTriple={filtro === 'Triple protección'}
           onClose={() => setAbierto(null)}
           onPrev={() => setAbierto((abierto - 1 + modelos.length) % modelos.length)}
           onNext={() => setAbierto((abierto + 1) % modelos.length)} />
@@ -115,11 +166,11 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink }: {
   )
 }
 
-function Hoja({ m, pct, clave, puedeLink, onLink, onClose, onPrev, onNext }: {
-  m: Modelo; pct: number; clave: string; puedeLink: boolean; onLink?: () => void
+function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, onNext }: {
+  m: Modelo; pct: number; clave: string; puedeLink: boolean; onLink?: () => void; soloTriple?: boolean
   onClose: () => void; onPrev: () => void; onNext: () => void
 }) {
-  const [ci, setCi] = useState(0)
+  const [ci, setCi] = useState(() => (soloTriple ? Math.max(0, m.colores.findIndex(esTriple)) : 0))
   const c = m.colores[ci] ?? m.colores[0]
   const [red, setRed] = useState('instagram')
   const [formato, setFormato] = useState('historia')
@@ -137,7 +188,13 @@ function Hoja({ m, pct, clave, puedeLink, onLink, onClose, onPrev, onNext }: {
     setCreando(true); setErr(null)
     const { data, error } = await supabase.rpc('colab_crear_link', { p_clave: clave, p_handle: c.handle, p_red: red, p_formato: formato })
     setCreando(false)
-    if (error) { setErr(/sin_stock/.test(error.message) ? 'Este color se quedó sin stock. Elegí otro.' : 'No se pudo generar el link. Probá de nuevo.'); return }
+    if (error) {
+      setErr(/sin_stock/.test(error.message) ? 'Este color se quedó sin stock. Elegí otro.'
+        : /solo_sol/.test(error.message) ? 'Solo se pueden promocionar anteojos de sol.'
+        : /solo_coleccion/.test(error.message) ? 'Este anteojo es de una colección exclusiva.'
+        : 'No se pudo generar el link. Probá de nuevo.')
+      return
+    }
     setLink(linkPublico((data as { codigo: string }).codigo))
     onLink?.()
   }
@@ -158,17 +215,21 @@ function Hoja({ m, pct, clave, puedeLink, onLink, onClose, onPrev, onNext }: {
         <div className="p-4 space-y-4">
           {/* Foto + colores */}
           <div className="bg-white rounded-xl border border-black/10 p-3">
-            <div className="aspect-[16/9]"><Foto src={c.imagen} alt={m.modelo} /></div>
+            <div className="aspect-[16/9] foto-clara rounded-lg p-2"><Foto src={c.imagen} alt={m.modelo} /></div>
             <div className="flex gap-2 overflow-x-auto mt-3 pb-1">
               {m.colores.map((x, i) => (
                 <button key={x.product_id} onClick={() => setCi(i)} title={x.color ?? ''}
-                  className="shrink-0 w-16 rounded-lg border-2 overflow-hidden bg-white"
+                  className="shrink-0 w-16 rounded-lg border-2 overflow-hidden bg-white relative"
                   style={{ borderColor: i === ci ? ACENTO : 'rgba(0,0,0,0.08)' }}>
-                  <div className="h-10 p-0.5"><Foto src={x.imagen} alt={x.color ?? ''} /></div>
+                  <div className="h-10 p-0.5 foto-clara"><Foto src={x.imagen} alt={x.color ?? ''} /></div>
+                  {esTriple(x) && <span className="absolute bottom-0 inset-x-0 text-[7px] font-bold text-white text-center" style={{ background: ROJO_TRIPLE }}>TRIPLE</span>}
                 </button>
               ))}
             </div>
-            <div className="mt-2 text-[12px] font-semibold">{c.color}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-semibold">{c.color}</span>
+              {esTriple(c) && <span className="rounded-full text-white text-[9px] font-bold px-2 py-0.5" style={{ background: ROJO_TRIPLE }}>TRIPLE PROTECCIÓN · Infrarrojo + UV400 + Blue Cut</span>}
+            </div>
             <div className="flex flex-wrap items-baseline gap-x-3 mt-1">
               {cp.precioRef && <span className="text-[11px] text-neutral-400 line-through">{kAr(cp.precioRef)}</span>}
               {cp.precio && <span className="text-[12px]">Web <b>{kAr(cp.precio)}</b></span>}
