@@ -59,12 +59,24 @@ export type Resumen = {
   posts: { id: number; codigo: string; modelo: string; red: string; formato: string; url_pub: string | null; created_at: string; influencer: string; clicks: number; pedidos: number; neto: number }[]
   influencers: (Omit<Numeros, 'links'> & { id: number; nombre: string; activo: boolean; admin: string; links: number })[]
   admins: (Omit<Numeros, 'links'> & { id: number; nombre: string; activo: boolean; influencers: number })[]
+  origenes?: { canal: string; pedidos: number; neto: number; com_inf: number }[]
+  // Campañas de Meta asociadas por colab-meta-sync. Sin inversión: eso no se muestra fuera de Orbital.
+  meta?: { campaign_id: string; nombre: string; activo: boolean; desde: string | null; impresiones: number; clicks: number; pedidos: number; neto: number; com_inf: number }[]
 }
 export type FilaLiq = {
   order_name: string; fecha: string; influencer: string; admin: string; modelo: string
   estado: 'pagado' | 'pendiente' | 'cancelado' | 'reembolsado'; unidades: number
   total_cliente: number; neto: number; com_inf: number; com_adm: number | null
   red: string | null; formato: string | null
+  canal?: string | null; campana?: string | null
+}
+
+// De dónde vino cada pedido (vista colab_venta_origen)
+export const CANALES: Record<string, { label: string; det: string; color: string }> = {
+  link: { label: 'Tus links', det: 'entraron por un link tuyo', color: '#4a3aa7' },
+  meta: { label: 'Anuncios de Orbital', det: 'publicidad de Orbital en Instagram y Facebook', color: '#8d8a82' },
+  redes: { label: 'Instagram y redes', det: 'llegaron desde una red, sin anuncio ni link tuyo', color: '#c13584' },
+  tienda: { label: 'Directo en la tienda', det: 'entraron por su cuenta o desde Google', color: '#111827' },
 }
 
 export const REDES = [

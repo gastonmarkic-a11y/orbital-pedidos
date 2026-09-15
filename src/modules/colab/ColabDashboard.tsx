@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { ACENTO, Resumen, Rol, FilaLiq, kAr, kM, nAr, mesCorto, mesLargo, labelRed, labelFormato, periodoActual } from './colabUtil'
+import { ACENTO, CANALES, Resumen, Rol, FilaLiq, kAr, kM, nAr, mesCorto, mesLargo, labelRed, labelFormato, periodoActual } from './colabUtil'
 
 const EJEMPLO: Resumen = {
   rol: 'influencer', hay_datos: false,
@@ -147,11 +147,83 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         <div className="flex items-baseline justify-between gap-3 rounded-lg bg-[#F5F5F7] px-3 py-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wide">Pedidos pagados</div>
-            <div className="text-[10px] text-neutral-500">{coleccion ? 'de tu colección, por tu link o directo en la tienda' : 'con el código de tu link'}</div>
+            <div className="text-[10px] text-neutral-500">{coleccion ? 'de tu colección: por tu link, anuncios de Orbital o directo en la tienda' : 'con el código de tu link'}</div>
           </div>
           <div className="text-[20px] font-bold tabular-nums leading-none">{nAr(ult?.pedidos)}</div>
         </div>
       </div>
+
+      {/* De dónde vienen las ventas del mes */}
+      {r.origenes && r.origenes.length > 0 && (() => {
+        const tot = r.origenes.reduce((a, o) => a + Number(o.neto || 0), 0) || 1
+        return (
+          <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+            <h2 className="text-[12px] font-bold uppercase tracking-wide">De dónde vienen las ventas</h2>
+            <p className="text-[10px] text-neutral-500 mb-3">{ult ? mesLargo(ult.periodo) : ''} · pedidos pagados.{coleccion ? ' Todas suman a tu comisión.' : ''}</p>
+            <div className="flex h-3 rounded-full overflow-hidden bg-[#F5F5F7]">
+              {r.origenes.map((o) => (
+                <div key={o.canal} style={{ width: `${(Number(o.neto) / tot) * 100}%`, background: CANALES[o.canal]?.color ?? '#8d8a82' }} />
+              ))}
+            </div>
+            <div className="mt-3 space-y-2">
+              {r.origenes.map((o) => (
+                <div key={o.canal} className="flex items-start justify-between gap-3 text-[11px]">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-sm mt-1 shrink-0" style={{ background: CANALES[o.canal]?.color ?? '#8d8a82' }} />
+                    <div className="min-w-0">
+                      <div className="font-bold">{CANALES[o.canal]?.label ?? o.canal}</div>
+                      <div className="text-[10px] text-neutral-500">{CANALES[o.canal]?.det}</div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 tabular-nums">
+                    <div className="font-bold">{kAr(o.neto)}</div>
+                    <div className="text-[9px] text-neutral-500">
+                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctInf ?? 15}%: ${kAr(o.com_inf)}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Anuncios de Orbital en Meta que llevan a lo del promotor. Sin inversión: eso queda en los paneles internos. */}
+      {r.meta && r.meta.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+          <h2 className="text-[12px] font-bold uppercase tracking-wide">Anuncios de Orbital con {coleccion ? 'tu colección' : 'tus anteojos'}</h2>
+          <p className="text-[10px] text-neutral-500 mb-3">Publicidad que Orbital hace en Instagram y Facebook y lleva a {coleccion ? 'tu colección' : 'tus anteojos'}. Números desde que arrancó cada campaña.</p>
+          <div className="space-y-2">
+            {r.meta.map((c) => (
+              <div key={c.campaign_id} className="rounded-lg border border-black/10 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-wide">{c.nombre}</div>
+                    {c.desde && <div className="text-[10px] text-neutral-500">desde el {new Date(`${c.desde}T12:00:00`).toLocaleDateString('es-AR')}</div>}
+                  </div>
+                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold"
+                    style={c.activo ? { background: '#E3F4EC', color: '#047857' } : { background: '#F3F4F6', color: '#6b7280' }}>
+                    {c.activo ? '● Activo' : '❚❚ Pausado'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[10px]">
+                  {([
+                    ['Impresiones', nAr(c.impresiones)],
+                    ['Clics', nAr(c.clicks)],
+                    ['Pedidos', nAr(c.pedidos)],
+                    rol === 'influencer' ? [`Tu ${pctInf ?? 15}%`, kAr(c.com_inf)] : ['Venta neta', kAr(c.neto)],
+                  ] as [string, string][]).map(([k, v]) => (
+                    <div key={k}>
+                      <div className="text-[9px] uppercase tracking-wide text-neutral-400">{k}</div>
+                      <div className="font-bold tabular-nums">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Evolución mensual */}
       <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
@@ -406,7 +478,7 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
                   <span className="text-[10px] font-bold" style={{ color: ESTADO[f.estado]?.c }}>{ESTADO[f.estado]?.t ?? f.estado}</span>
                 </div>
                 <div className="flex flex-wrap justify-between gap-x-3 text-[10px] text-neutral-500 mt-0.5">
-                  <span>{new Date(f.fecha).toLocaleDateString('es-AR')}{rol !== 'influencer' ? ` · ${f.influencer}` : ''}{f.red ? ` · ${labelRed(f.red)}` : ''}</span>
+                  <span>{new Date(f.fecha).toLocaleDateString('es-AR')}{rol !== 'influencer' ? ` · ${f.influencer}` : ''}{origenFila(f)}</span>
                   <span>neto <b className="text-black">{kAr(f.neto)}</b>
                     {' · '}{rol === 'admin' ? `tu ${pctAdm ?? 5}%` : `inf.`} <b className="text-black">{kAr(rol === 'admin' ? f.com_adm : f.com_inf)}</b>
                     {rol === 'orbital' && <> · adm. <b className="text-black">{kAr(f.com_adm)}</b></>}
@@ -418,6 +490,14 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
         )}
     </div>
   )
+}
+
+// "· Tu link · Instagram" / "· Anuncio ORBITAL x ZAIRA · 40% OFF" / "· Directo en la tienda"
+function origenFila(f: FilaLiq) {
+  if (!f.canal) return f.red ? ` · ${labelRed(f.red)}` : ''
+  if (f.canal === 'link') return ` · Tu link${f.red ? ` · ${labelRed(f.red)}` : ''}`
+  if (f.canal === 'meta' && f.campana) return ` · Anuncio ${f.campana}`
+  return ` · ${CANALES[f.canal]?.label ?? f.canal}`
 }
 
 function Kpi({ k, v, fuerte }: { k: string; v: string; fuerte?: boolean }) {
