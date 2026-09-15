@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ACENTO, Rol } from './colabUtil'
-import { BotonCopiar } from './ColabAnteojos'
 
 type Seccion = 'viral' | 'triple' | 'color'
 type Item = {
@@ -20,6 +19,8 @@ type Item = {
 }
 type Datos = { items: Item[]; modelos_color: string[]; modelos_triple?: string[] }
 const ROJO_TRIPLE = '#E11D2E'
+// Video que explica la Triple Protección (se muestra en el kit cuando está cargado)
+const VIDEO_TRIPLE: string | null = null
 
 export const LANDING_TRIPLE = 'https://ver.orbitaleyewear.com.ar/tripleproteccion'
 
@@ -212,25 +213,117 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
           </div>
         </div>
       )}
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ROJO_TRIPLE }}>Infrarrojo · UV400 · Blue Cut</div>
-      <h2 className="text-[14px] font-bold mt-1">Triple Protección: tres protecciones en un mismo cristal</h2>
-      <ul className="text-[11px] text-neutral-600 mt-2 space-y-1">
-        <li><b className="text-black">Infrarrojo:</b> bloquea la radiación que genera calor y fatiga visual bajo sol fuerte.</li>
-        <li><b className="text-black">UV400:</b> bloquea el 100% de los rayos UVA y UVB.</li>
-        <li><b className="text-black">Blue Cut:</b> filtra la luz azul de pantallas y LEDs.</li>
-      </ul>
-      <div className="mt-3 flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-1.5">
-        <span className="flex-1 truncate font-mono text-[11px] font-bold">{LANDING_TRIPLE.replace('https://', '')}</span>
-        <BotonCopiar texto={LANDING_TRIPLE} label="Copiar link" />
-        <a href={LANDING_TRIPLE} target="_blank" rel="noopener noreferrer" className="shrink-0 p-1 rounded-md border border-black/10 bg-white" title="Abrir"><ExternalLink size={12} /></a>
-      </div>
-      <p className="text-[10px] text-neutral-500 mt-1">Sumalo en el posteo o en un sticker de enlace para que tu comunidad lo lea completo.</p>
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ROJO_TRIPLE }}>UV400 · Blue Cut 420 nm · Infrarrojo</div>
+      <h2 className="text-[15px] font-bold mt-1">Protección total. Adentro y afuera, en un mismo cristal.</h2>
 
+      {/* El foco del promotor: la landing es la explicación para él, no un link para compartir */}
+      <div className="mt-3 rounded-lg border-2 p-3" style={{ borderColor: ROJO_TRIPLE }}>
+        <div className="text-[14px] font-extrabold tracking-wide">ESTE ES TU FOCO PARA DIFERENCIARTE</div>
+        <p className="text-[11px] text-neutral-600 mt-1">
+          Acá te explico los beneficios para que los cuentes con tus palabras. No hace falta que compartas el link: es la explicación completa y te puede servir para armar tus contenidos.
+        </p>
+        <a href={LANDING_TRIPLE} target="_blank" rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full text-white px-3 py-1.5 text-[11px] font-bold" style={{ background: ROJO_TRIPLE }}>
+          <ExternalLink size={12} /> Ver la explicación de la Triple Protección
+        </a>
+        {VIDEO_TRIPLE && (
+          <div className="mt-3">
+            <div className="text-[10px] uppercase tracking-wide text-neutral-400 font-bold mb-1">Video: cómo funciona la Triple Protección</div>
+            <video src={VIDEO_TRIPLE} controls playsInline className="w-full max-h-[60vh] rounded-lg bg-black" />
+          </div>
+        )}
+      </div>
+
+      {/* La idea fuerza */}
+      <div className="mt-3 rounded-lg bg-[#F5F5F7] p-3">
+        <div className="text-[10px] uppercase tracking-wide text-neutral-400 font-bold">La idea fuerza</div>
+        <div className="text-[13px] font-bold mt-0.5">El único lugar de la cara donde no llega el protector solar.</div>
+        <p className="text-[11px] text-neutral-600 mt-1 italic">
+          "Te ponés protector solar en toda la cara y esquivás el contorno de ojos. Esto es lo único que protege esa zona. Y encima ves mejor."
+        </p>
+        <p className="text-[10px] text-neutral-500 mt-1">El 90% de los cambios visibles del envejecimiento de la piel se explican por el sol (fotoenvejecimiento).</p>
+      </div>
+
+      {/* Qué lleva el cristal */}
+      <div className="mt-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide">Qué lleva el cristal</div>
+        <ul className="text-[11px] text-neutral-600 mt-1.5 space-y-1">
+          <li><b className="text-black">UV400:</b> protección total contra rayos UVA y UVB.</li>
+          <li><b className="text-black">Blue Light Cut 420 nm:</b> hasta 98% menos luz azul nociva de pantallas y LEDs.</li>
+          <li><b className="text-black">Filtro infrarrojo:</b> bloquea el calor radiante del sol que llega a la retina y reduce el efecto de humo, neblina y niebla.</li>
+          <li><b className="text-black">VSL™ HD Real:</b> más contraste y definición, colores naturales, sin el tinte amarillo de los filtros comunes.</li>
+          <li><b className="text-black">Armazón Xylon®:</b> liviano, flexible y resistente, cómodo todo el día.</li>
+        </ul>
+      </div>
+
+      {/* Adentro y afuera */}
+      <div className="grid gap-2 sm:grid-cols-2 mt-3">
+        {[
+          ['Adentro · Blue Light Cut', 'Luz azul de pantallas y LEDs. Trabajo digital, estudio, celular.', 'Menos fatiga visual y mejor descanso.'],
+          ['Afuera · Filtro infrarrojo', 'Calor del sol (infrarrojo cercano). Manejo, deporte, ciudad.', 'Ojos más frescos y visión más nítida.'],
+        ].map(([t, d, b]) => (
+          <div key={t} className="rounded-lg bg-[#F5F5F7] p-2.5">
+            <div className="text-[11px] font-bold">{t}</div>
+            <p className="text-[10px] text-neutral-600 mt-0.5">{d}</p>
+            <p className="text-[10px] font-semibold mt-1" style={{ color: ROJO_TRIPLE }}>{b}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Beneficios para contar */}
+      <div className="mt-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide">Cuatro beneficios que se explican en un minuto</div>
+        <div className="grid gap-2 sm:grid-cols-2 mt-1.5">
+          {[
+            ['01', 'Antiage en el contorno de ojos', 'El filtro UV + infrarrojo frena el envejecimiento por sol en la única zona donde no llega el protector: menos patas de gallo y flacidez a largo plazo.'],
+            ['02', 'Descanso con pantallas', 'El Blue Cut reduce la luz azul de pantallas que afecta el descanso. Usarlos desde la tarde ayuda a llegar mejor a la noche.'],
+            ['03', 'Protección completa', 'Un solo cristal cubre UV, luz azul y calor infrarrojo. Menos fatiga visual en el día a día.'],
+            ['04', 'Manejo de día más cómodo', 'Menos encandilamiento y mejor contraste al volante.'],
+          ].map(([n, t, d]) => (
+            <div key={n} className="rounded-lg border border-black/10 p-2.5">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-[11px] font-bold" style={{ color: ROJO_TRIPLE }}>{n}</span>
+                <span className="text-[11px] font-bold">{t}</span>
+              </div>
+              <p className="text-[10px] text-neutral-600 mt-0.5">{d}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* A quién le hablás */}
+      <div className="mt-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide">A quién le hablás en cada contenido</div>
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 mt-1.5">
+          {[
+            ['Profesional digital', '8 a 10 horas de pantalla, cansancio de ojos.', 'Fatiga + descanso + antiage'],
+            ['Conductor / urbano', 'Maneja todos los días y se encandila.', 'Contraste y ojos frescos'],
+            ['Público antiage', 'Ya usa cremas y protector solar.', 'El paso que le falta a su rutina'],
+            ['Práctico', 'No quiere pensar qué anteojo usar.', 'Un solo anteojo, adentro y afuera'],
+          ].map(([t, d, a]) => (
+            <div key={t} className="rounded-lg bg-[#F5F5F7] p-2.5">
+              <div className="text-[11px] font-bold">{t}</div>
+              <p className="text-[10px] text-neutral-600 mt-0.5">{d}</p>
+              <p className="text-[10px] font-semibold mt-1">{a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Datos para contar */}
+      <div className="mt-3 rounded-lg bg-[#F5F5F7] p-3 space-y-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-neutral-400 font-bold">Datos para contar</div>
+        <p className="text-[11px]"><b>El color del cristal no define la protección.</b> <span className="text-neutral-600">Un cristal oscuro sin filtro es peor que no usar nada: dilata la pupila y deja entrar más radiación.</span></p>
+        <p className="text-[11px]"><b>Blue cut lo vende todo el mundo. El infrarrojo no lo nombra nadie.</b> <span className="text-neutral-600">Ese es el diferencial.</span></p>
+        <p className="text-[11px]"><b>Sin tinte amarillo.</b> <span className="text-neutral-600">El filtro trabaja sobre la luz que daña y deja intacta la luz visible.</span></p>
+      </div>
+
+      {/* Guiones */}
       <div className="grid gap-2 sm:grid-cols-3 mt-3">
         {[
-          ['3 protecciones en 15 segundos', '0–3 s: "¿Sabés todo lo que te protege este anteojo?". 3–12 s: una por una, con texto en pantalla. 12–15 s: "Te dejo el link".'],
-          ['Del sol a la pantalla', 'Primero al sol en la calle, después con la compu o el celular. Contá que el Blue Cut filtra la luz azul de pantallas y LEDs.'],
-          ['Lo que no se ve', 'Plano de cerca del cristal y el texto "Infrarrojo + UV400 + Blue Cut". Cerrá con el link de la Triple Protección.'],
+          ['El protector solar de tus ojos', '0–3 s: "¿Sabés qué es lo único que protege el contorno de tus ojos?". 3–12 s: protector en la cara… y el anteojo. 12–15 s: "Y encima ves mejor".'],
+          ['Adentro y afuera', 'Primero con la compu o el celular (Blue Cut), después al sol (infrarrojo). Cierre: "Un solo anteojo para todo el día".'],
+          ['3 protecciones en 15 segundos', 'Plano de cerca del cristal: UV400, Blue Cut e infrarrojo, una por una con texto en pantalla. Cierre con tu código de descuento.'],
         ].map(([t, d]) => (
           <div key={t} className="rounded-lg bg-[#F5F5F7] p-2.5">
             <div className="text-[11px] font-bold">{t}</div>
@@ -238,7 +331,9 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-neutral-500 mt-2">Antes de publicar, confirmá con Orbital que el anteojo que mostrás tiene cristales con Triple Protección.</p>
+      <p className="text-[10px] text-neutral-500 mt-2">
+        Contalo como lo explica Orbital: son beneficios de protección y confort, no tratamientos médicos. Antes de publicar, fijate que el anteojo que mostrás tenga la etiqueta roja de Triple Protección en Anteojos.
+      </p>
     </div>
   )
 }
