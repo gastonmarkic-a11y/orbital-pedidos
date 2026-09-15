@@ -21,6 +21,8 @@ type Datos = { items: Item[]; modelos_color: string[]; modelos_triple?: string[]
 const ROJO_TRIPLE = '#E11D2E'
 // Video que explica la Triple Protección (se muestra en el kit cuando está cargado)
 const VIDEO_TRIPLE: string | null = null
+// Presentación completa de Blue Cut + Infrarrojo (Drive de Orbital)
+const PDF_TRIPLE = 'https://drive.google.com/file/d/1UK0wi3Z_HuB60bFMFtmAckWZCg6ujG4T/view'
 
 export const LANDING_TRIPLE = 'https://ver.orbitaleyewear.com.ar/tripleproteccion'
 
@@ -225,6 +227,10 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
         <a href={LANDING_TRIPLE} target="_blank" rel="noopener noreferrer"
           className="mt-2 inline-flex items-center gap-1.5 rounded-full text-white px-3 py-1.5 text-[11px] font-bold" style={{ background: ROJO_TRIPLE }}>
           <ExternalLink size={12} /> Ver la explicación de la Triple Protección
+        </a>
+        <a href={PDF_TRIPLE} target="_blank" rel="noopener noreferrer"
+          className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1 text-[11px] font-bold" style={{ borderColor: ROJO_TRIPLE, color: ROJO_TRIPLE }}>
+          <ExternalLink size={12} /> Ver más en detalle (PDF)
         </a>
         {VIDEO_TRIPLE && (
           <div className="mt-3">
