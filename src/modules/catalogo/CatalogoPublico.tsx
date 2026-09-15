@@ -571,7 +571,8 @@ function ChatIris({ acceso, entrantes }: { acceso: Acceso | null; entrantes: str
       })
       const data = await res.json()
       if (data.conversacionId) localStorage.setItem(CHAT_CONV_KEY, data.conversacionId)
-      setMsgs((m) => [...m, { de: 'bot', texto: data.texto || 'Gracias, en un rato te respondemos.' }])
+      // silencio: el cliente está charlando con su vendedor; la respuesta llega por el chat en vivo.
+      if (!data.silencio) setMsgs((m) => [...m, { de: 'bot', texto: data.texto || 'Gracias, en un rato te respondemos.' }])
     } catch {
       setMsgs((m) => [...m, { de: 'bot', texto: 'Uy, hubo un problema de conexión. Probá de nuevo en un momento.' }])
     } finally {
