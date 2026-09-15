@@ -13,8 +13,9 @@
 //               TikTok 1 búsqueda por sección (3 videos, última semana) · Instagram 1 hashtag (4 reels)
 //               · TikTok Creative Center (top videos) día por medio
 //   'completar' trae los datos de las publicaciones que todavía no los tienen (curadas y viejas)
+//   'fichas'    regenera "de qué se trata" y "por qué es viral" con los datos guardados (sin Apify)
 // Solo se guarda el LINK y el texto: nada se descarga ni se vuelve a subir.
-// Ficha con Groq si hay GROQ_API_KEY (de a 5 publicaciones); si no, textos fijos.
+// Ficha con Groq si hay GROQ_API_KEY (de a 5 publicaciones, reintenta si pide esperar); si no, textos fijos.
 // Auth (verify_jwt=false): x-cron-key == app_config.cron_key, o body.clave de Orbital.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -30,7 +31,7 @@ type Datos = {
   publicado_at: string | null
 }
 type Nuevo = Datos & { seccion: Seccion; fuente: Fuente; busqueda: string; subtitulos?: string | null; crudo?: Crudo }
-type FichaIA = { apto?: boolean; formato?: string; de_que_trata?: string; por_que?: string; como_orbital?: string; aviso?: string | null }
+type FichaIA = { i?: unknown; apto?: boolean; formato?: string; de_que_trata?: string; por_que?: string; como_orbital?: string; aviso?: string | null }
 
 const LANDING_TRIPLE = 'https://ver.orbitaleyewear.com.ar/tripleproteccion'
 
@@ -73,6 +74,7 @@ function fecha(v: unknown) {
   const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v))
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
+const dormir = (seg: number) => new Promise((listo) => setTimeout(listo, seg * 1000))
 
 async function apify(token: string, actor: string, input: unknown, maxItems: number): Promise<Crudo[]> {
   const r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?timeout=120&maxItems=${maxItems}`, {
@@ -194,6 +196,7 @@ function fichaFija(s: Seccion, modelosColor: string[], texto: string | null) {
 const SISTEMA = `Sos el director creativo de Orbital Eyewear, marca argentina de anteojos.
 Recibís publicaciones de TikTok e Instagram con sus datos reales. Los influencers de Orbital las usan SOLO como referencia de formato (no se copian).
 Para cada publicación devolvé:
+- i: el mismo número i que recibiste (número entero).
 - apto: false si es sexual, violenta, política, religiosa, discriminatoria, si no sirve como idea para mostrar anteojos, o si no se entiende de qué trata.
 - formato: 2 a 4 palabras EN ESPAÑOL, nunca en inglés (ej.: "Prueba en cámara", "POV en primera persona", "Antes y después", "Unboxing").
 - de_que_trata: 1 o 2 oraciones en español: qué se ve o qué pasa en el video. Basate SOLO en texto, subtitulos, hashtags y audio; no inventes escenas. Si la información no alcanza, empezá con "Según el texto de la publicación,".
@@ -208,50 +211,68 @@ Respondé solo JSON: {"fichas":[{"i":0,"apto":true,"formato":"","de_que_trata":"
 
 type ParaIA = { seccion: Seccion; fuente: Fuente; d: Datos; subtitulos?: string | null }
 
-async function fichasIA(items: ParaIA[], modelosColor: string[]) {
+async function fichasIA(items: ParaIA[], modelosColor: string[]): Promise<{ fichas: Map<number, FichaIA> | null; errores: string[] }> {
   const key = Deno.env.get('GROQ_API_KEY')
-  if (!key || !items.length) return null
+  const errores: string[] = []
+  if (!key) return { fichas: null, errores: ['sin GROQ_API_KEY'] }
+  if (!items.length) return { fichas: null, errores }
   const out = new Map<number, FichaIA>()
   let algunaOk = false
   // De a 5 para no pasar el límite de tokens por minuto de la capa gratis de Groq
   for (let desde = 0; desde < items.length; desde += 5) {
     const tanda = items.slice(desde, desde + 5)
-    try {
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
-          temperature: 0.3,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: SISTEMA },
-            {
-              role: 'user', content: JSON.stringify({
-                modelos_lente_color: modelosColor,
-                publicaciones: tanda.map((x, k) => ({
-                  i: desde + k, seccion: x.seccion, red: x.fuente, autor: x.d.autor,
-                  texto: (x.d.texto ?? '').slice(0, 500), subtitulos: x.subtitulos ?? null,
-                  hashtags: x.d.hashtags, audio: x.d.audio, duracion_seg: x.d.duracion_seg,
-                  vistas: x.d.vistas, me_gusta: x.d.likes, comentarios: x.d.comentarios,
-                  compartidos: x.d.compartidos, guardados: x.d.guardados, seguidores_autor: x.d.seguidores,
-                  ...senales(x.d),
-                })),
-              }),
-            },
-          ],
-        }),
-      })
-      if (!r.ok) continue
-      const d = await r.json()
-      const res = JSON.parse(d.choices?.[0]?.message?.content ?? '{}')
-      for (const f of res.fichas ?? []) if (typeof f?.i === 'number') out.set(f.i, f)
-      algunaOk = true
-    } catch {
-      // sigue con la próxima tanda
+    const pedido = JSON.stringify({
+      model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SISTEMA },
+        {
+          role: 'user', content: JSON.stringify({
+            modelos_lente_color: modelosColor,
+            publicaciones: tanda.map((x, k) => ({
+              i: desde + k, seccion: x.seccion, red: x.fuente, autor: x.d.autor,
+              texto: (x.d.texto ?? '').slice(0, 500), subtitulos: x.subtitulos ?? null,
+              hashtags: x.d.hashtags, audio: x.d.audio, duracion_seg: x.d.duracion_seg,
+              vistas: x.d.vistas, me_gusta: x.d.likes, comentarios: x.d.comentarios,
+              compartidos: x.d.compartidos, guardados: x.d.guardados, seguidores_autor: x.d.seguidores,
+              ...senales(x.d),
+            })),
+          }),
+        },
+      ],
+    })
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: pedido,
+        })
+        if (r.status === 429) {
+          const espera = Math.min(Number(r.headers.get('retry-after')) || 10, 25)
+          errores.push(`tanda ${desde}: Groq pidió esperar ${espera}s`)
+          await dormir(espera)
+          continue
+        }
+        if (!r.ok) { errores.push(`tanda ${desde}: Groq ${r.status} ${(await r.text()).slice(0, 150)}`); break }
+        const d = await r.json()
+        const res = JSON.parse(d.choices?.[0]?.message?.content ?? '{}')
+        const lista: FichaIA[] = Array.isArray(res) ? res : (res.fichas ?? res.publicaciones ?? [])
+        if (!lista.length) errores.push(`tanda ${desde}: respuesta sin fichas`)
+        lista.forEach((f, k) => {
+          const i = Number(f?.i)
+          out.set(Number.isInteger(i) && i >= desde && i < desde + tanda.length ? i : desde + k, f)
+        })
+        algunaOk = true
+        break
+      } catch (e) {
+        errores.push(`tanda ${desde}: ${String((e as Error)?.message ?? e).slice(0, 150)}`)
+        break
+      }
     }
   }
-  return algunaOk ? out : null
+  return { fichas: algunaOk ? out : null, errores }
 }
 
 // La IA a veces pega la Triple Protección en cualquier sección: fuera de "triple" se descarta.
@@ -293,7 +314,7 @@ async function completar(db: SupabaseClient, token: string, modelosColor: string
     }
   } else errores.push(String(ri.reason))
 
-  const ia = await fichasIA(hallados.map((h) => ({ seccion: h.fila.seccion, fuente: h.fila.fuente, d: h.d, subtitulos: h.subtitulos })), modelosColor)
+  const { fichas: ia, errores: erroresIA } = await fichasIA(hallados.map((h) => ({ seccion: h.fila.seccion, fuente: h.fila.fuente, d: h.d, subtitulos: h.subtitulos })), modelosColor)
   const ahora = new Date().toISOString()
   for (const [i, h] of hallados.entries()) {
     const f = ia?.get(i)
@@ -309,7 +330,28 @@ async function completar(db: SupabaseClient, token: string, modelosColor: string
   const sinDatos = filas.filter((f) => !hallados.some((h) => h.fila.id === f.id)).map((f) => f.id)
   if (sinDatos.length && !errores.length) await db.from('colab_inspiracion').update({ datos_at: ahora }).in('id', sinDatos)
 
-  return { ok: true, modo: 'completar', filas: filas.length, completadas: hallados.length, sin_datos: sinDatos.length, ia: ia ? 'groq' : 'sin_ia', errores }
+  return { ok: true, modo: 'completar', filas: filas.length, completadas: hallados.length, sin_datos: sinDatos.length, ia: ia ? 'groq' : 'sin_ia', errores, errores_ia: erroresIA }
+}
+
+// Regenera "de qué se trata" y "por qué es viral" con los datos que ya están guardados (no usa Apify).
+async function regenerarFichas(db: SupabaseClient, modelosColor: string[]) {
+  const { data } = await db.from('colab_inspiracion')
+    .select('id, seccion, fuente, url, autor, texto, vistas, likes, comentarios, compartidos, guardados, duracion_seg, seguidores, audio, hashtags, publicado_at')
+    .eq('activo', true).is('de_que_trata', null).limit(40)
+  const filas = (data ?? []) as (Datos & { id: number; seccion: Seccion; fuente: Fuente })[]
+  if (!filas.length) return { ok: true, modo: 'fichas', filas: 0, actualizadas: 0 }
+  const { fichas, errores } = await fichasIA(filas.map((f) => ({ seccion: f.seccion, fuente: f.fuente, d: f })), modelosColor)
+  let actualizadas = 0
+  for (const [i, f] of filas.entries()) {
+    const x = fichas?.get(i)
+    if (!x?.de_que_trata && !x?.por_que) continue
+    const cambios: Record<string, unknown> = {}
+    if (x.de_que_trata) cambios.de_que_trata = x.de_que_trata
+    if (x.por_que) cambios.por_que = x.por_que
+    await db.from('colab_inspiracion').update(cambios).eq('id', f.id)
+    actualizadas++
+  }
+  return { ok: true, modo: 'fichas', filas: filas.length, actualizadas, errores_ia: errores }
 }
 
 Deno.serve(async (req) => {
@@ -329,13 +371,15 @@ Deno.serve(async (req) => {
   }
   if (!ok) return json({ error: 'no_autorizado' }, 401)
 
-  const token = Deno.env.get('APIFY_TOKEN')
-  if (!token) return json({ error: 'falta_token', detalle: 'Cargar APIFY_TOKEN en los secrets de Edge Functions' }, 400)
-
   const { data: prods } = await db.from('colab_producto').select('modelo, color').eq('disponible', true)
   const modelosColor = [...new Set((prods ?? [])
     .filter((p: { color: string | null }) => /(ocre|naranja|rojo)/i.test((p.color ?? '').split('/')[1] ?? ''))
     .map((p: { modelo: string }) => p.modelo))].sort()
+
+  if (body.modo === 'fichas') return json(await regenerarFichas(db, modelosColor))
+
+  const token = Deno.env.get('APIFY_TOKEN')
+  if (!token) return json({ error: 'falta_token', detalle: 'Cargar APIFY_TOKEN en los secrets de Edge Functions' }, 400)
 
   if (body.modo === 'completar') return json(await completar(db, token, modelosColor))
 
@@ -404,7 +448,7 @@ Deno.serve(async (req) => {
 
   await Promise.all(frescos.map(async (n) => { if (n.crudo) n.subtitulos = await subtitulos(n.crudo) }))
 
-  const ia = await fichasIA(frescos.map((n) => ({ seccion: n.seccion, fuente: n.fuente, d: n, subtitulos: n.subtitulos })), modelosColor)
+  const { fichas: ia, errores: erroresIA } = await fichasIA(frescos.map((n) => ({ seccion: n.seccion, fuente: n.fuente, d: n, subtitulos: n.subtitulos })), modelosColor)
   const ahora = new Date().toISOString()
   let descartados = 0
   const filas = []
@@ -437,5 +481,6 @@ Deno.serve(async (req) => {
     descartados,
     ia: ia ? 'groq' : 'textos_fijos',
     errores,
+    errores_ia: erroresIA,
   })
 })
