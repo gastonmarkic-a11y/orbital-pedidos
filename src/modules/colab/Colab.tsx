@@ -16,6 +16,7 @@ import ColabDashboard, { Liquidacion } from './ColabDashboard'
 import ColabAgregar from './ColabAgregar'
 import ColabPropuestas from './ColabPropuestas'
 import InstalarApp from '../../components/InstalarApp'
+import ColabInspiracion from './ColabInspiracion'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
 
@@ -80,11 +81,11 @@ export default function Colab() {
   return <Panel clave={clave} ent={ent} salir={() => { localStorage.removeItem(CLAVE_KEY); setClave(null); setEnt(null) }} />
 }
 
-type Tab = 'admins' | 'promotores' | 'propuestas' | 'anteojos' | 'links' | 'dashboard' | 'liquidacion'
+type Tab = 'admins' | 'promotores' | 'propuestas' | 'anteojos' | 'inspiracion' | 'links' | 'dashboard' | 'liquidacion'
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
-  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['inspiracion', 'Inspiración'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   admin: [['promotores', 'Promotores'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  influencer: [['anteojos', 'Anteojos'], ['links', 'Mis links'], ['dashboard', 'Dashboard']],
+  influencer: [['anteojos', 'Anteojos'], ['inspiracion', 'Inspiración'], ['links', 'Mis links'], ['dashboard', 'Dashboard']],
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {
@@ -134,6 +135,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
         {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
+        {tab === 'inspiracion' && <ColabInspiracion clave={clave} rol={ent.rol} />}
         {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
         {tab === 'anteojos' && !(ent.coleccion && agregando) && (
           <>
