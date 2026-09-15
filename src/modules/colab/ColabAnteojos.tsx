@@ -228,7 +228,7 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-semibold">{c.color}</span>
-              {esTriple(c) && <span className="rounded-full text-white text-[9px] font-bold px-2 py-0.5" style={{ background: ROJO_TRIPLE }}>TRIPLE PROTECCIÓN · Infrarrojo + UV400 + Blue Cut</span>}
+              {esTriple(c) && <span className="rounded-full text-white text-[9px] font-bold px-2 py-0.5" style={{ background: ROJO_TRIPLE }}>TRIPLE PROTECCIÓN · UV400 + Blue Cut 420 nm + Infrarrojo 808 nm</span>}
             </div>
             <div className="flex flex-wrap items-baseline gap-x-3 mt-1">
               {cp.precioRef && <span className="text-[11px] text-neutral-400 line-through">{kAr(cp.precioRef)}</span>}

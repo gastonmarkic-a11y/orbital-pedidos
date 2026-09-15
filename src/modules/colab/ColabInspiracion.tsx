@@ -213,7 +213,7 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
           </div>
         </div>
       )}
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ROJO_TRIPLE }}>UV400 · Blue Cut 420 nm · Infrarrojo</div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ROJO_TRIPLE }}>UV400 · Blue Cut 420 nm · Infrarrojo 808 nm</div>
       <h2 className="text-[15px] font-bold mt-1">Protección total. Adentro y afuera, en un mismo cristal.</h2>
 
       {/* El foco del promotor: la landing es la explicación para él, no un link para compartir */}
@@ -250,7 +250,7 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
         <ul className="text-[11px] text-neutral-600 mt-1.5 space-y-1">
           <li><b className="text-black">UV400:</b> protección total contra rayos UVA y UVB.</li>
           <li><b className="text-black">Blue Light Cut 420 nm:</b> hasta 98% menos luz azul nociva de pantallas y LEDs.</li>
-          <li><b className="text-black">Filtro infrarrojo:</b> bloquea el calor radiante del sol que llega a la retina y reduce el efecto de humo, neblina y niebla.</li>
+          <li><b className="text-black">Filtro infrarrojo 808 nm:</b> bloquea el calor radiante del sol que llega a la retina y reduce el efecto de humo, neblina y niebla.</li>
           <li><b className="text-black">VSL™ HD Real:</b> más contraste y definición, colores naturales, sin el tinte amarillo de los filtros comunes.</li>
           <li><b className="text-black">Armazón Xylon®:</b> liviano, flexible y resistente, cómodo todo el día.</li>
         </ul>
@@ -260,7 +260,7 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
       <div className="grid gap-2 sm:grid-cols-2 mt-3">
         {[
           ['Adentro · Blue Light Cut', 'Luz azul de pantallas y LEDs. Trabajo digital, estudio, celular.', 'Menos fatiga visual y mejor descanso.'],
-          ['Afuera · Filtro infrarrojo', 'Calor del sol (infrarrojo cercano). Manejo, deporte, ciudad.', 'Ojos más frescos y visión más nítida.'],
+          ['Afuera · Infrarrojo 808 nm','Calor del sol (infrarrojo cercano). Manejo, deporte, ciudad.', 'Ojos más frescos y visión más nítida.'],
         ].map(([t, d, b]) => (
           <div key={t} className="rounded-lg bg-[#F5F5F7] p-2.5">
             <div className="text-[11px] font-bold">{t}</div>
