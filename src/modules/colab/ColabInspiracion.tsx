@@ -111,10 +111,10 @@ function Tarjeta({ i }: { i: Item }) {
       <div>
         <div className="text-[12px] font-bold">@{(i.autor ?? '').replace(/^@/, '') || 'publicación'}</div>
         {i.texto && <p className="text-[11px] text-neutral-600 line-clamp-2">{i.texto}</p>}
-        {(i.vistas || i.likes) ? (
+        {((i.vistas ?? 0) > 0 || (i.likes ?? 0) > 0) ? (
           <div className="flex gap-3 text-[10px] text-neutral-500 mt-0.5">
-            {i.vistas ? <span>Vistas <b className="text-black">{nAr(i.vistas)}</b></span> : null}
-            {i.likes ? <span>Me gusta <b className="text-black">{nAr(i.likes)}</b></span> : null}
+            {(i.vistas ?? 0) > 0 ? <span>Vistas <b className="text-black">{nAr(i.vistas)}</b></span> : null}
+            {(i.likes ?? 0) > 0 ? <span>Me gusta <b className="text-black">{nAr(i.likes)}</b></span> : null}
           </div>
         ) : null}
       </div>

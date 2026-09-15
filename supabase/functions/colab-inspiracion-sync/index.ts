@@ -45,7 +45,15 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json', ...cors } })
 }
 
-const num = (v: unknown) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v))
+// Instagram devuelve -1 cuando el autor oculta los "me gusta": se toma como sin dato.
+const num = (v: unknown) => {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+// Piso para que "viral" sea viral de verdad
+const MIN_VISTAS_TIKTOK = 3000
+const MIN_LIKES_IG = 100
 function fecha(v: unknown) {
   if (v == null || v === '') return null
   const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v))
@@ -94,13 +102,14 @@ const SISTEMA = `Sos el director creativo de Orbital Eyewear, marca argentina de
 Recibís publicaciones de TikTok e Instagram que los influencers de Orbital van a usar SOLO como referencia de formato (no se copian).
 Para cada publicación devolvé:
 - apto: false si es sexual, violenta, política, religiosa, discriminatoria, si no sirve como idea para mostrar anteojos, o si no se entiende de qué trata.
-- formato: 2 a 4 palabras (ej.: "Prueba en cámara", "POV en primera persona", "Antes y después").
+- formato: 2 a 4 palabras EN ESPAÑOL, nunca en inglés (ej.: "Prueba en cámara", "POV en primera persona", "Antes y después", "Unboxing").
 - por_que: 1 oración, por qué funciona.
 - como_orbital: 1 o 2 oraciones en español rioplatense (voseo), cómo hacerlo con un anteojo de Orbital.
 - aviso: 1 oración solo si hace falta una advertencia; si no, null.
 Datos de Orbital: la Triple Protección de sus cristales = filtro Infrarrojo (bloquea la radiación que genera calor y fatiga visual bajo sol fuerte) + UV400 (100% de rayos UVA y UVB) + Blue Cut (filtra la luz azul de pantallas y LEDs). Se explica en ${LANDING_TRIPLE}.
-En la sección "triple" mencioná la Triple Protección y ese link. En la sección "color" sugerí modelos de la lista modelos_lente_color.
-Reglas: nunca prometas beneficios para dormir ni para la salud (melatonina, dormir mejor, curar); nunca sugieras manejar de noche con anteojos de sol; no afirmes que un modelo puntual tiene Triple Protección, hablá de "los cristales con Triple Protección de Orbital".
+Mencioná la Triple Protección y ese link SOLO en la sección "triple". En las secciones "viral" y "color" NO la menciones.
+En la sección "color" sugerí modelos de la lista modelos_lente_color, sin inventar colores.
+Reglas: nunca prometas beneficios para dormir ni para la salud (melatonina, dormir mejor, curar); nunca sugieras manejar de noche con anteojos de sol; no afirmes que un modelo puntual o todos los anteojos de Orbital tienen Triple Protección: hablá de "los cristales con Triple Protección de Orbital".
 Respondé solo JSON: {"fichas":[{"i":0,"apto":true,"formato":"","por_que":"","como_orbital":"","aviso":null}]}`
 
 async function fichasIA(items: Nuevo[], modelosColor: string[]) {
@@ -112,7 +121,7 @@ async function fichasIA(items: Nuevo[], modelosColor: string[]) {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
-        temperature: 0.4,
+        temperature: 0.3,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SISTEMA },
@@ -191,7 +200,7 @@ Deno.serve(async (req) => {
     const r = resultados[k]
     if (r.status !== 'fulfilled') { errores.push(String(r.reason)); return }
     r.value
-      .filter((x) => x?.webVideoUrl && !x.isAd)
+      .filter((x) => x?.webVideoUrl && !x.isAd && (x.playCount ?? 0) >= MIN_VISTAS_TIKTOK)
       .sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0))
       .slice(0, 2)
       .forEach((x) => nuevos.push({
@@ -205,8 +214,8 @@ Deno.serve(async (req) => {
   const rIg = resultados[secciones.length]
   if (rIg.status === 'fulfilled') {
     rIg.value
-      .filter((x) => x?.url && !x.error)
-      .sort((a, b) => (b.likesCount ?? 0) - (a.likesCount ?? 0))
+      .filter((x) => x?.url && !x.error && ((x.likesCount ?? 0) >= MIN_LIKES_IG || (x.videoPlayCount ?? x.igPlayCount ?? 0) >= MIN_VISTAS_TIKTOK))
+      .sort((a, b) => Math.max(b.likesCount ?? 0, 0) - Math.max(a.likesCount ?? 0, 0))
       .slice(0, 2)
       .forEach((x) => nuevos.push({
         seccion: ig.s, fuente: 'instagram', url: String(x.url).split('?')[0],
@@ -250,12 +259,14 @@ Deno.serve(async (req) => {
     const f = ia?.get(i)
     if (f && f.apto === false) { descartados++; continue }
     const base = fichaFija(n.seccion, modelosColor)
+    // Control final: fuera de "triple" no se habla de Triple Protección (no todos los modelos la llevan).
+    const comoIA = f?.como_orbital && (n.seccion === 'triple' || !/triple protecci/i.test(f.como_orbital)) ? f.como_orbital : null
     filas.push({
       ...n,
       formato: f?.formato || base.formato,
       por_que: f?.por_que || base.por_que,
-      como_orbital: f?.como_orbital || base.como_orbital,
-      aviso: f ? (f.aviso ?? null) : base.aviso,
+      como_orbital: comoIA || base.como_orbital,
+      aviso: n.seccion === 'color' ? (f?.aviso ?? base.aviso) : f ? (f.aviso ?? null) : base.aviso,
     })
   }
 
