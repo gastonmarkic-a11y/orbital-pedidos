@@ -1,27 +1,36 @@
 // Edge Function: colab-inspiracion-sync
-// Pestaña "Inspiración" del panel de colaboradores: todos los días busca publicaciones de
-// TikTok e Instagram para que los influencers las usen SOLO como referencia de formato.
-// Tres secciones:
+// Pestaña "Inspiración" del panel de colaboradores: publicaciones de TikTok e Instagram que los
+// influencers usan SOLO como referencia de formato. Secciones:
 //   viral  → formatos que están funcionando
-//   triple → Triple Protección de Orbital (Infrarrojo + UV400 + Blue Cut), con el link a la landing
-//   color  → moda con cristal ocre / naranja / rojo (de día y de noche con pantallas)
-// Fuente: Apify con el plan gratis (USD 5/mes). Volumen chico y rotativo, ~USD 2-3/mes:
-//   TikTok: 1 búsqueda por sección por día, 3 videos c/u, última semana
-//   Instagram: 1 hashtag por día, 4 reels
-//   TikTok Creative Center (top videos): día por medio, 4 videos
+//   triple → Triple Protección (Infrarrojo + UV400 + Blue Cut), con el link a la landing
+//   color  → moda con cristal ocre / naranja / rojo
+// Cada publicación guarda sus datos crudos (vistas, me gusta, comentarios, compartidos, guardados,
+// duración, seguidores del autor, audio, hashtags) y una ficha: de qué se trata, por qué es viral
+// (apoyado en esos datos) y cómo hacerlo con Orbital. Para "de qué se trata" se leen los subtítulos
+// de TikTok cuando existen (gratis; la transcripción paga NO se usa).
+// Modos (body.modo):
+//   (vacío)     búsqueda diaria con Apify plan gratis, ~USD 0,06 por corrida:
+//               TikTok 1 búsqueda por sección (3 videos, última semana) · Instagram 1 hashtag (4 reels)
+//               · TikTok Creative Center (top videos) día por medio
+//   'completar' trae los datos de las publicaciones que todavía no los tienen (curadas y viejas)
 // Solo se guarda el LINK y el texto: nada se descarga ni se vuelve a subir.
-// Ficha de cada publicación (formato / por qué funciona / cómo hacerlo con Orbital) con Groq
-// si hay GROQ_API_KEY; si no, textos fijos por sección. La IA también descarta lo no apto.
-// Auth (verify_jwt=false): x-cron-key == app_config.cron_key, o body.clave de Orbital (botón "Buscar ahora").
+// Ficha con Groq si hay GROQ_API_KEY (de a 5 publicaciones); si no, textos fijos.
+// Auth (verify_jwt=false): x-cron-key == app_config.cron_key, o body.clave de Orbital.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type Seccion = 'viral' | 'triple' | 'color'
-type Nuevo = {
-  seccion: Seccion; fuente: 'tiktok' | 'instagram'; url: string; autor: string | null; texto: string | null
-  vistas: number | null; likes: number | null; publicado_at: string | null; busqueda: string
+type Fuente = 'tiktok' | 'instagram'
+// deno-lint-ignore no-explicit-any
+type Crudo = any
+type Datos = {
+  url: string; autor: string | null; texto: string | null
+  vistas: number | null; likes: number | null; comentarios: number | null; compartidos: number | null; guardados: number | null
+  duracion_seg: number | null; seguidores: number | null; audio: string | null; hashtags: string[] | null
+  publicado_at: string | null
 }
-type Ficha = { formato: string; por_que: string; como_orbital: string; aviso: string | null }
+type Nuevo = Datos & { seccion: Seccion; fuente: Fuente; busqueda: string; subtitulos?: string | null; crudo?: Crudo }
+type FichaIA = { apto?: boolean; formato?: string; de_que_trata?: string; por_que?: string; como_orbital?: string; aviso?: string | null }
 
 const LANDING_TRIPLE = 'https://ver.orbitaleyewear.com.ar/tripleproteccion'
 
@@ -34,6 +43,14 @@ const HASHTAGS_IG: { h: string; s: Seccion }[] = [
   { h: 'sunglasses', s: 'viral' }, { h: 'orangelenses', s: 'color' }, { h: 'bluelightglasses', s: 'triple' },
   { h: 'lentesdesol', s: 'viral' }, { h: 'redlenses', s: 'color' }, { h: 'eyewear', s: 'viral' },
 ]
+const TIKTOK_EXTRA = {
+  shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadAvatars: false,
+  shouldDownloadMusicCovers: false, shouldDownloadSlideshowImages: false,
+  downloadSubtitlesOptions: 'DOWNLOAD_SUBTITLES',
+}
+// Piso para que "viral" sea viral de verdad
+const MIN_VISTAS_TIKTOK = 3000
+const MIN_LIKES_IG = 100
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -51,17 +68,13 @@ const num = (v: unknown) => {
   const n = Number(v)
   return Number.isFinite(n) && n >= 0 ? n : null
 }
-// Piso para que "viral" sea viral de verdad
-const MIN_VISTAS_TIKTOK = 3000
-const MIN_LIKES_IG = 100
 function fecha(v: unknown) {
   if (v == null || v === '') return null
   const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v))
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
-// deno-lint-ignore no-explicit-any
-async function apify(token: string, actor: string, input: unknown, maxItems: number): Promise<any[]> {
+async function apify(token: string, actor: string, input: unknown, maxItems: number): Promise<Crudo[]> {
   const r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?timeout=120&maxItems=${maxItems}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -73,10 +86,90 @@ async function apify(token: string, actor: string, input: unknown, maxItems: num
   return Array.isArray(d) ? d : []
 }
 
-function fichaFija(s: Seccion, modelosColor: string[]): Ficha {
+const idVideo = (u: string) => u.split('/video/')[1]?.split('?')[0].split('/')[0] ?? null
+function codigoIg(u: string) {
+  const partes = u.split('?')[0].split('/').filter(Boolean)
+  const k = partes.findIndex((p) => p === 'p' || p === 'reel' || p === 'reels')
+  return k >= 0 ? partes[k + 1] ?? null : null
+}
+
+function deTikTok(x: Crudo): Datos {
+  const m = x.musicMeta
+  return {
+    url: String(x.webVideoUrl).split('?')[0],
+    autor: x.authorMeta?.name ?? null,
+    texto: x.text ?? null,
+    vistas: num(x.playCount), likes: num(x.diggCount), comentarios: num(x.commentCount),
+    compartidos: num(x.shareCount), guardados: num(x.collectCount),
+    duracion_seg: num(x.videoMeta?.duration), seguidores: num(x.authorMeta?.fans),
+    audio: m ? (m.musicOriginal ? 'Audio original' : [m.musicName, m.musicAuthor].filter(Boolean).join(' · ') || null) : null,
+    hashtags: (x.hashtags ?? []).map((h: Crudo) => h?.name).filter(Boolean).slice(0, 12),
+    publicado_at: fecha(x.createTimeISO ?? x.createTime),
+  }
+}
+
+function deInstagram(x: Crudo): Datos {
+  const mi = x.musicInfo
+  return {
+    url: String(x.url).split('?')[0],
+    autor: x.ownerUsername ?? null,
+    texto: x.caption ?? null,
+    vistas: num(x.videoPlayCount ?? x.igPlayCount), likes: num(x.likesCount), comentarios: num(x.commentsCount),
+    compartidos: null, guardados: null,
+    duracion_seg: num(x.videoDuration), seguidores: null,
+    audio: mi ? (mi.uses_original_audio ? 'Audio original' : [mi.song_name, mi.artist_name].filter(Boolean).join(' · ') || null) : null,
+    hashtags: Array.isArray(x.hashtags) ? x.hashtags.slice(0, 12) : null,
+    publicado_at: fecha(x.timestamp),
+  }
+}
+
+function deTendencia(x: Crudo): Datos {
+  const met = (clave: string) => num((x['Metrics'] ?? []).find((m: Crudo) => String(m?.metric ?? '').toLowerCase().includes(clave))?.value)
+  return {
+    url: String(x['Video TikTok URL']).split('?')[0],
+    autor: x['Author Handle'] ?? null,
+    texto: x['Title'] ?? null,
+    vistas: num(x['Views'] ?? x['Video Views']), likes: met('like'), comentarios: met('comment'), compartidos: met('share'), guardados: null,
+    duracion_seg: null, seguidores: num(x['Followers']), audio: null, hashtags: null,
+    publicado_at: fecha(x['Create Time']),
+  }
+}
+
+async function subtitulos(x: Crudo) {
+  const links: Crudo[] = x?.videoMeta?.subtitleLinks ?? []
+  const idioma = (s: Crudo) => String(s?.language ?? '').toLowerCase()
+  const l = links.find((s) => idioma(s).startsWith('es')) ?? links.find((s) => idioma(s).startsWith('en')) ?? links[0]
+  const href = l?.downloadLink ?? l?.tiktokLink
+  if (!href) return null
+  try {
+    const r = await fetch(href, { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) return null
+    const lineas = (await r.text()).split('\n').map((ln) => ln.trim())
+    const texto = lineas.filter((ln) => ln && !ln.startsWith('WEBVTT') && !ln.includes('-->') && !/^[0-9]+$/.test(ln)).join(' ')
+    return texto.replace(/<[^>]+>/g, '').replace(/ {2,}/g, ' ').slice(0, 800) || null
+  } catch {
+    return null
+  }
+}
+
+// Señales que ayudan a explicar por qué se hizo viral
+function senales(d: Datos) {
+  const sobreVistas = (v: number | null) => (v != null && d.vistas ? Math.round((v / d.vistas) * 1000) / 10 : null)
+  const total = [d.likes, d.comentarios, d.compartidos, d.guardados].reduce<number>((s, v) => s + (v ?? 0), 0)
+  return {
+    interaccion_pct: d.vistas ? Math.round((total / d.vistas) * 1000) / 10 : null,
+    guardados_pct: sobreVistas(d.guardados),
+    compartidos_pct: sobreVistas(d.compartidos),
+    comentarios_pct: sobreVistas(d.comentarios),
+    vistas_por_seguidor: d.vistas && d.seguidores ? Math.round((d.vistas / d.seguidores) * 10) / 10 : null,
+  }
+}
+
+function fichaFija(s: Seccion, modelosColor: string[], texto: string | null) {
+  const de_que_trata = texto ? `Según el texto de la publicación: ${texto.slice(0, 160)}` : null
   if (s === 'triple') {
     return {
-      formato: 'Protección en cámara',
+      formato: 'Protección en cámara', de_que_trata,
       por_que: 'Muestra en segundos para qué sirve el cristal, algo que no se ve en una foto.',
       como_orbital: `Contá las tres protecciones de los cristales de Orbital (Infrarrojo, UV400 y Blue Cut) y sumá el link ${LANDING_TRIPLE}`,
       aviso: null,
@@ -84,14 +177,14 @@ function fichaFija(s: Seccion, modelosColor: string[]): Ficha {
   }
   if (s === 'color') {
     return {
-      formato: 'Look con lente de color',
+      formato: 'Look con lente de color', de_que_trata,
       por_que: 'El cristal de color es el protagonista del look.',
       como_orbital: `Armá el mismo look con un Orbital de lente ocre, naranja o rojo${modelosColor.length ? ` (${modelosColor.slice(0, 3).join(', ')})` : ''}.`,
       aviso: 'No prometas beneficios para dormir ni para la salud, y no muestres anteojos de sol para manejar de noche.',
     }
   }
   return {
-    formato: 'Referencia viral',
+    formato: 'Referencia viral', de_que_trata,
     por_que: 'Tuvo mucho alcance: mirá el gancho de los primeros segundos y el ritmo de la edición.',
     como_orbital: 'Repetí la estructura con un anteojo de Orbital y cerrá con tu link.',
     aviso: null,
@@ -99,55 +192,130 @@ function fichaFija(s: Seccion, modelosColor: string[]): Ficha {
 }
 
 const SISTEMA = `Sos el director creativo de Orbital Eyewear, marca argentina de anteojos.
-Recibís publicaciones de TikTok e Instagram que los influencers de Orbital van a usar SOLO como referencia de formato (no se copian).
+Recibís publicaciones de TikTok e Instagram con sus datos reales. Los influencers de Orbital las usan SOLO como referencia de formato (no se copian).
 Para cada publicación devolvé:
 - apto: false si es sexual, violenta, política, religiosa, discriminatoria, si no sirve como idea para mostrar anteojos, o si no se entiende de qué trata.
 - formato: 2 a 4 palabras EN ESPAÑOL, nunca en inglés (ej.: "Prueba en cámara", "POV en primera persona", "Antes y después", "Unboxing").
-- por_que: 1 oración, por qué funciona.
+- de_que_trata: 1 o 2 oraciones en español: qué se ve o qué pasa en el video. Basate SOLO en texto, subtitulos, hashtags y audio; no inventes escenas. Si la información no alcanza, empezá con "Según el texto de la publicación,".
+- por_que: la causa concreta de por qué es viral, en 1 o 2 oraciones, apoyada en los datos (interaccion_pct, guardados_pct, compartidos_pct, comentarios_pct, vistas_por_seguidor, duracion_seg, audio). Pistas: muchos guardados = contenido útil que se guarda para después; muchos compartidos = identificación o humor; muchos comentarios = debate o pregunta; vistas muy por encima de los seguidores = el algoritmo lo empujó por el gancho; video corto = se mira entero y se repite; audio en tendencia = se sumó a una tendencia. Usá solo números que figuran en los datos, redondeados.
 - como_orbital: 1 o 2 oraciones en español rioplatense (voseo), cómo hacerlo con un anteojo de Orbital.
 - aviso: 1 oración solo si hace falta una advertencia; si no, null.
 Datos de Orbital: la Triple Protección de sus cristales = filtro Infrarrojo (bloquea la radiación que genera calor y fatiga visual bajo sol fuerte) + UV400 (100% de rayos UVA y UVB) + Blue Cut (filtra la luz azul de pantallas y LEDs). Se explica en ${LANDING_TRIPLE}.
 Mencioná la Triple Protección y ese link SOLO en la sección "triple". En las secciones "viral" y "color" NO la menciones.
 En la sección "color" sugerí modelos de la lista modelos_lente_color, sin inventar colores.
 Reglas: nunca prometas beneficios para dormir ni para la salud (melatonina, dormir mejor, curar); nunca sugieras manejar de noche con anteojos de sol; no afirmes que un modelo puntual o todos los anteojos de Orbital tienen Triple Protección: hablá de "los cristales con Triple Protección de Orbital".
-Respondé solo JSON: {"fichas":[{"i":0,"apto":true,"formato":"","por_que":"","como_orbital":"","aviso":null}]}`
+Respondé solo JSON: {"fichas":[{"i":0,"apto":true,"formato":"","de_que_trata":"","por_que":"","como_orbital":"","aviso":null}]}`
 
-async function fichasIA(items: Nuevo[], modelosColor: string[]) {
+type ParaIA = { seccion: Seccion; fuente: Fuente; d: Datos; subtitulos?: string | null }
+
+async function fichasIA(items: ParaIA[], modelosColor: string[]) {
   const key = Deno.env.get('GROQ_API_KEY')
   if (!key || !items.length) return null
-  try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SISTEMA },
-          {
-            role: 'user', content: JSON.stringify({
-              modelos_lente_color: modelosColor,
-              publicaciones: items.map((x, i) => ({ i, seccion: x.seccion, red: x.fuente, autor: x.autor, vistas: x.vistas, texto: (x.texto ?? '').slice(0, 500) })),
-            }),
-          },
-        ],
-      }),
-    })
-    if (!r.ok) return null
-    const d = await r.json()
-    const out = JSON.parse(d.choices?.[0]?.message?.content ?? '{}')
-    const m = new Map<number, { apto: boolean } & Partial<Ficha>>()
-    for (const f of out.fichas ?? []) if (typeof f?.i === 'number') m.set(f.i, f)
-    return m
-  } catch {
-    return null
+  const out = new Map<number, FichaIA>()
+  let algunaOk = false
+  // De a 5 para no pasar el límite de tokens por minuto de la capa gratis de Groq
+  for (let desde = 0; desde < items.length; desde += 5) {
+    const tanda = items.slice(desde, desde + 5)
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile',
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: SISTEMA },
+            {
+              role: 'user', content: JSON.stringify({
+                modelos_lente_color: modelosColor,
+                publicaciones: tanda.map((x, k) => ({
+                  i: desde + k, seccion: x.seccion, red: x.fuente, autor: x.d.autor,
+                  texto: (x.d.texto ?? '').slice(0, 500), subtitulos: x.subtitulos ?? null,
+                  hashtags: x.d.hashtags, audio: x.d.audio, duracion_seg: x.d.duracion_seg,
+                  vistas: x.d.vistas, me_gusta: x.d.likes, comentarios: x.d.comentarios,
+                  compartidos: x.d.compartidos, guardados: x.d.guardados, seguidores_autor: x.d.seguidores,
+                  ...senales(x.d),
+                })),
+              }),
+            },
+          ],
+        }),
+      })
+      if (!r.ok) continue
+      const d = await r.json()
+      const res = JSON.parse(d.choices?.[0]?.message?.content ?? '{}')
+      for (const f of res.fichas ?? []) if (typeof f?.i === 'number') out.set(f.i, f)
+      algunaOk = true
+    } catch {
+      // sigue con la próxima tanda
+    }
   }
+  return algunaOk ? out : null
+}
+
+// La IA a veces pega la Triple Protección en cualquier sección: fuera de "triple" se descarta.
+const sinTriple = (s: Seccion, t?: string | null) => (t && (s === 'triple' || !/triple protecci/i.test(t)) ? t : null)
+
+// Trae los datos de las publicaciones que todavía no los tienen (curadas y cargadas antes).
+async function completar(db: SupabaseClient, token: string, modelosColor: string[]) {
+  const { data } = await db.from('colab_inspiracion').select('id, url, fuente, seccion, fijo')
+    .is('datos_at', null).eq('activo', true).limit(30)
+  const filas = (data ?? []) as { id: number; url: string; fuente: Fuente; seccion: Seccion; fijo: boolean }[]
+  if (!filas.length) return { ok: true, modo: 'completar', filas: 0, completadas: 0 }
+
+  const tt = filas.filter((f) => f.fuente === 'tiktok')
+  const ig = filas.filter((f) => f.fuente === 'instagram' && codigoIg(f.url))
+  const [rt, ri] = await Promise.allSettled([
+    tt.length
+      ? apify(token, 'clockworks~tiktok-scraper', { postURLs: tt.map((f) => f.url), resultsPerPage: 1, ...TIKTOK_EXTRA }, tt.length)
+      : Promise.resolve([]),
+    ig.length
+      ? apify(token, 'apify~instagram-scraper', { directUrls: ig.map((f) => `https://www.instagram.com/p/${codigoIg(f.url)}/`), resultsType: 'posts', resultsLimit: 1 }, ig.length)
+      : Promise.resolve([]),
+  ])
+
+  const errores: string[] = []
+  const hallados: { fila: typeof filas[number]; d: Datos; subtitulos: string | null }[] = []
+  if (rt.status === 'fulfilled') {
+    for (const x of rt.value) {
+      const id = idVideo(String(x?.webVideoUrl ?? x?.submittedVideoUrl ?? '')) ?? (x?.id ? String(x.id) : null)
+      const fila = tt.find((f) => idVideo(f.url) === id)
+      if (!fila || hallados.some((h) => h.fila.id === fila.id)) continue
+      hallados.push({ fila, d: { ...deTikTok(x), url: fila.url }, subtitulos: await subtitulos(x) })
+    }
+  } else errores.push(String(rt.reason))
+  if (ri.status === 'fulfilled') {
+    for (const x of ri.value) {
+      const fila = ig.find((f) => codigoIg(f.url) === x?.shortCode)
+      if (!fila || hallados.some((h) => h.fila.id === fila.id)) continue
+      hallados.push({ fila, d: { ...deInstagram(x), url: fila.url }, subtitulos: null })
+    }
+  } else errores.push(String(ri.reason))
+
+  const ia = await fichasIA(hallados.map((h) => ({ seccion: h.fila.seccion, fuente: h.fila.fuente, d: h.d, subtitulos: h.subtitulos })), modelosColor)
+  const ahora = new Date().toISOString()
+  for (const [i, h] of hallados.entries()) {
+    const f = ia?.get(i)
+    const { url: _url, autor, texto, ...numeros } = h.d
+    const cambios: Record<string, unknown> = { ...numeros, datos_at: ahora }
+    // En las curadas se mantiene la descripción en español que ya tienen
+    if (!h.fila.fijo) { cambios.autor = autor; cambios.texto = texto }
+    if (f?.de_que_trata) cambios.de_que_trata = f.de_que_trata
+    if (f?.por_que) cambios.por_que = f.por_que
+    await db.from('colab_inspiracion').update(cambios).eq('id', h.fila.id)
+  }
+  // Las que no aparecieron (borradas o privadas) no se reintentan solas.
+  const sinDatos = filas.filter((f) => !hallados.some((h) => h.fila.id === f.id)).map((f) => f.id)
+  if (sinDatos.length && !errores.length) await db.from('colab_inspiracion').update({ datos_at: ahora }).in('id', sinDatos)
+
+  return { ok: true, modo: 'completar', filas: filas.length, completadas: hallados.length, sin_datos: sinDatos.length, ia: ia ? 'groq' : 'sin_ia', errores }
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const body = await req.json().catch(() => ({})) as { clave?: string; modo?: string }
 
   let ok = false
   const cronKey = req.headers.get('x-cron-key')
@@ -155,17 +323,21 @@ Deno.serve(async (req) => {
     const { data: cfg } = await db.from('app_config').select('valor').eq('clave', 'cron_key').maybeSingle()
     ok = !!cfg && cfg.valor === cronKey
   }
-  if (!ok) {
-    const body = await req.json().catch(() => ({})) as { clave?: string }
-    if (body.clave) {
-      const { data: o } = await db.from('colab_orbital').select('id').eq('clave', body.clave).eq('activo', true).maybeSingle()
-      ok = !!o
-    }
+  if (!ok && body.clave) {
+    const { data: o } = await db.from('colab_orbital').select('id').eq('clave', body.clave).eq('activo', true).maybeSingle()
+    ok = !!o
   }
   if (!ok) return json({ error: 'no_autorizado' }, 401)
 
   const token = Deno.env.get('APIFY_TOKEN')
   if (!token) return json({ error: 'falta_token', detalle: 'Cargar APIFY_TOKEN en los secrets de Edge Functions' }, 400)
+
+  const { data: prods } = await db.from('colab_producto').select('modelo, color').eq('disponible', true)
+  const modelosColor = [...new Set((prods ?? [])
+    .filter((p: { color: string | null }) => /(ocre|naranja|rojo)/i.test((p.color ?? '').split('/')[1] ?? ''))
+    .map((p: { modelo: string }) => p.modelo))].sort()
+
+  if (body.modo === 'completar') return json(await completar(db, token, modelosColor))
 
   // Rotación diaria: cada día cambia la búsqueda de cada sección y el hashtag de Instagram.
   const dia = Math.floor(Date.now() / 86_400_000)
@@ -179,9 +351,7 @@ Deno.serve(async (req) => {
   const conTendencias = dia % 2 === 0
 
   const tiktokDe = (q: string) => apify(token, 'clockworks~tiktok-scraper', {
-    searchQueries: [q], searchSection: '/video', resultsPerPage: 3, videoSearchDateFilter: 'PAST_WEEK',
-    shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadAvatars: false,
-    shouldDownloadMusicCovers: false, shouldDownloadSlideshowImages: false,
+    searchQueries: [q], searchSection: '/video', resultsPerPage: 3, videoSearchDateFilter: 'PAST_WEEK', ...TIKTOK_EXTRA,
   }, 3)
 
   const secciones = Object.keys(busq) as Seccion[]
@@ -203,12 +373,7 @@ Deno.serve(async (req) => {
       .filter((x) => x?.webVideoUrl && !x.isAd && (x.playCount ?? 0) >= MIN_VISTAS_TIKTOK)
       .sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0))
       .slice(0, 2)
-      .forEach((x) => nuevos.push({
-        seccion: s, fuente: 'tiktok', url: String(x.webVideoUrl).split('?')[0],
-        autor: x.authorMeta?.name ?? null, texto: x.text ?? null,
-        vistas: num(x.playCount), likes: num(x.diggCount), publicado_at: fecha(x.createTimeISO ?? x.createTime),
-        busqueda: `TikTok: ${busq[s]}`,
-      }))
+      .forEach((x) => nuevos.push({ ...deTikTok(x), seccion: s, fuente: 'tiktok', busqueda: `TikTok: ${busq[s]}`, crudo: x }))
   })
 
   const rIg = resultados[secciones.length]
@@ -217,12 +382,7 @@ Deno.serve(async (req) => {
       .filter((x) => x?.url && !x.error && ((x.likesCount ?? 0) >= MIN_LIKES_IG || (x.videoPlayCount ?? x.igPlayCount ?? 0) >= MIN_VISTAS_TIKTOK))
       .sort((a, b) => Math.max(b.likesCount ?? 0, 0) - Math.max(a.likesCount ?? 0, 0))
       .slice(0, 2)
-      .forEach((x) => nuevos.push({
-        seccion: ig.s, fuente: 'instagram', url: String(x.url).split('?')[0],
-        autor: x.ownerUsername ?? null, texto: x.caption ?? null,
-        vistas: num(x.videoPlayCount ?? x.igPlayCount), likes: num(x.likesCount), publicado_at: fecha(x.timestamp),
-        busqueda: `Instagram: #${ig.h}`,
-      }))
+      .forEach((x) => nuevos.push({ ...deInstagram(x), seccion: ig.s, fuente: 'instagram', busqueda: `Instagram: #${ig.h}` }))
   } else errores.push(String(rIg.reason))
 
   const rTop = resultados[secciones.length + 1]
@@ -231,12 +391,7 @@ Deno.serve(async (req) => {
       .filter((x) => x?.['Video TikTok URL'])
       .sort((a, b) => (b['Views'] ?? 0) - (a['Views'] ?? 0))
       .slice(0, 2)
-      .forEach((x) => nuevos.push({
-        seccion: 'viral', fuente: 'tiktok', url: String(x['Video TikTok URL']).split('?')[0],
-        autor: x['Author Handle'] ?? null, texto: x['Title'] ?? null,
-        vistas: num(x['Views']), likes: null, publicado_at: fecha(x['Create Time']),
-        busqueda: 'Tendencias TikTok (EE.UU.)',
-      }))
+      .forEach((x) => nuevos.push({ ...deTendencia(x), seccion: 'viral', fuente: 'tiktok', busqueda: 'Tendencias TikTok (EE.UU.)' }))
   } else errores.push(String(rTop.reason))
 
   // Sin repetidos ni lo que ya salió otro día
@@ -247,26 +402,25 @@ Deno.serve(async (req) => {
   const yaSet = new Set((ya ?? []).map((r: { url: string }) => r.url))
   const frescos = unicos.filter((n) => !yaSet.has(n.url))
 
-  const { data: prods } = await db.from('colab_producto').select('modelo, color').eq('disponible', true)
-  const modelosColor = [...new Set((prods ?? [])
-    .filter((p: { color: string | null }) => /(ocre|naranja|rojo)/i.test((p.color ?? '').split('/')[1] ?? ''))
-    .map((p: { modelo: string }) => p.modelo))].sort()
+  await Promise.all(frescos.map(async (n) => { if (n.crudo) n.subtitulos = await subtitulos(n.crudo) }))
 
-  const ia = await fichasIA(frescos, modelosColor)
+  const ia = await fichasIA(frescos.map((n) => ({ seccion: n.seccion, fuente: n.fuente, d: n, subtitulos: n.subtitulos })), modelosColor)
+  const ahora = new Date().toISOString()
   let descartados = 0
   const filas = []
   for (const [i, n] of frescos.entries()) {
     const f = ia?.get(i)
     if (f && f.apto === false) { descartados++; continue }
-    const base = fichaFija(n.seccion, modelosColor)
-    // Control final: fuera de "triple" no se habla de Triple Protección (no todos los modelos la llevan).
-    const comoIA = f?.como_orbital && (n.seccion === 'triple' || !/triple protecci/i.test(f.como_orbital)) ? f.como_orbital : null
+    const base = fichaFija(n.seccion, modelosColor, n.texto)
+    const { crudo: _crudo, subtitulos: _sub, ...fila } = n
     filas.push({
-      ...n,
+      ...fila,
       formato: f?.formato || base.formato,
+      de_que_trata: f?.de_que_trata || base.de_que_trata,
       por_que: f?.por_que || base.por_que,
-      como_orbital: comoIA || base.como_orbital,
+      como_orbital: sinTriple(n.seccion, f?.como_orbital) || base.como_orbital,
       aviso: n.seccion === 'color' ? (f?.aviso ?? base.aviso) : f ? (f.aviso ?? null) : base.aviso,
+      datos_at: ahora,
     })
   }
 
