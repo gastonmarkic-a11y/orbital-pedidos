@@ -21,11 +21,11 @@ import './colab-oscuro.css'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
 
-function Marca() {
+function Marca({ oscuro }: { oscuro?: boolean }) {
   return (
     <div className="flex items-center gap-2">
       <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" style={{ height: 18 }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-      <span className="text-[10px] font-bold tracking-[0.3em] uppercase" style={{ color: ACENTO }}>Colaboradores</span>
+      <span className="text-[10px] font-bold tracking-[0.3em] uppercase" style={{ color: oscuro ? '#FFFFFF' : ACENTO }}>Colaboradores</span>
     </div>
   )
 }
@@ -110,7 +110,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
     <div className={`min-h-screen ${oscuro ? 'colab-oscuro' : 'bg-[#FAFAFA]'}`}>
       <header className="bg-white border-b border-black/5 sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Marca />
+          <Marca oscuro={oscuro} />
           <div className="ml-auto text-right leading-tight">
             <div className="text-[12px] font-bold">{ent.nombre}</div>
             <div className="text-[10px] text-neutral-500">{ROL_TXT[ent.rol]}{ent.rol === 'admin' ? ` · ${ent.pct}%` : ent.rol === 'influencer' ? ` · ${ent.pct}% · ${ent.admin}` : ''}</div>
@@ -123,7 +123,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
           {tabs.map(([id, t]) => (
             <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
               className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
-              style={tab === id ? { borderColor: ACENTO, color: ACENTO } : undefined}>{t}</button>
+              style={tab === id ? { borderColor: ACENTO, color: oscuro ? '#FFFFFF' : ACENTO } : undefined}>{t}</button>
           ))}
         </div>
       </header>
