@@ -58,6 +58,7 @@ import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import CentralConsigna from './modules/consigna/CentralConsigna'
+import Consignas from './modules/consigna/Consignas'
 import CatalogoZN from './modules/catalogo/CatalogoZN'
 import Colab from './modules/colab/Colab'
 import ColabRedireccion from './modules/colab/ColabRedireccion'
@@ -101,6 +102,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion/pedidos': Factory,
   '/ventas-historico': TrendingUp,
   '/finanzas': Landmark,
+  '/consignas': Package,
 }
 
 function iconoDe(to: string, label: string) {
@@ -200,6 +202,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
+        { to: '/consignas', label: 'Consignas' },
         { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
       ],
@@ -230,11 +233,11 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
-  if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' })
+  if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
   if (rol === 'admin') {
-    secundarios.push({ to: '/pedidos/stock', label: 'Stock' })
+    secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' })
     menu.push(
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
@@ -545,6 +548,7 @@ function Layout() {
           {rol !== 'revendedor' && <Route path="/panel-resultados" element={<PanelResultados />} />}
           {rol === 'admin' && <Route path="/accesos" element={<Usuarios />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
+          {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/consignas" element={<Consignas />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}

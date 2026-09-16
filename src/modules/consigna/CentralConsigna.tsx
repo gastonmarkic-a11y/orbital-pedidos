@@ -31,7 +31,7 @@ type Mov = {
 }
 type Devolucion = {
   id: number; sucursal_id: number; codigo: string; modelo: string; descripcion: string | null
-  cantidad: number; enviada: number; conservada: number; recibida: number; vendio: number | null; motivo: string; ultimo_por: string | null
+  cantidad: number; enviada: number; conservada: number; vendida: number; recibida: number; vendio: number | null; motivo: string; ultimo_por: string | null
 }
 type ItemPedido = { codigo: string; modelo: string; descripcion: string; cantidad: number }
 type Pedido = {
@@ -235,7 +235,7 @@ function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal
   const devs = data.devoluciones.filter((d) => d.sucursal_id === suc.id)
   const envio = data.stock.filter((l) => l.sucursal_id === suc.id && l.en_camino > 0)
     .sort((a, b) => (a.modelo ?? '').localeCompare(b.modelo ?? ''))
-  const pend = (d: Devolucion) => d.cantidad - d.enviada - d.conservada
+  const pend = (d: Devolucion) => d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0)
   const totPend = devs.reduce((s, d) => s + pend(d), 0)
   const totDev = devs.reduce((s, d) => s + d.enviada, 0)
   const totQueda = devs.reduce((s, d) => s + d.conservada, 0)
@@ -398,6 +398,7 @@ function FilaDevolucion({ d, pendiente, editable, operar }: { d: Devolucion; pen
             {d.enviada > 0 && <>Devolvió {d.enviada}</>}
             {d.enviada > 0 && d.conservada > 0 && ' · '}
             {d.conservada > 0 && <>Se queda {d.conservada}</>}
+            {d.vendida > 0 && <>{(d.enviada > 0 || d.conservada > 0) && ' · '}Vendió {d.vendida}</>}
             {pendiente > 0 && 'Pendiente'}
           </span>
         )}
@@ -444,6 +445,7 @@ function StockGeneral({ data, miSuc, operar }: { data: Central; miSuc: number | 
     devolucion: (m) => `${nombreSuc(m.sucursal_id)} devolvió a Orbital`,
     conserva: (m) => `${nombreSuc(m.sucursal_id)} se lo queda`,
     recepcion: (m) => `${nombreSuc(m.sucursal_id)} recibió envío`,
+    venta: (m) => `${nombreSuc(m.sucursal_id)} vendió (liquidación)`,
   }
 
   return (
