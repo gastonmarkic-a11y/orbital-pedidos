@@ -57,6 +57,7 @@ import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
+import CentralConsigna from './modules/consigna/CentralConsigna'
 import CatalogoZN from './modules/catalogo/CatalogoZN'
 import Colab from './modules/colab/Colab'
 import ColabRedireccion from './modules/colab/ColabRedireccion'
@@ -707,6 +708,14 @@ export default function App() {
     return (
       <ToastProvider>
         <CatalogoZN />
+      </ToastProvider>
+    )
+  }
+  // Central de consigna por sucursales (cliente madre): stock por sucursal, movimientos y devoluciones. Acceso por token.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/consigna')) {
+    return (
+      <ToastProvider>
+        <CentralConsigna />
       </ToastProvider>
     )
   }
