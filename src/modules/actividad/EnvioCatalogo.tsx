@@ -32,7 +32,7 @@ export default function EnvioCatalogo() {
   async function generarCliente() {
     if (!codCliente.trim()) return
     setGen(true); setGenLink(null)
-    const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: codCliente.trim() })
+    const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: codCliente.trim(), p_vendedor: codigoEfectivo })
     setGen(false)
     const r = data as any
     if (error || !r?.ok) { toast(r?.error || 'No se pudo generar el link', 'error'); return }

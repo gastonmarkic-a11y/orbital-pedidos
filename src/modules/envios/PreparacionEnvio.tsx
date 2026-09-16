@@ -585,7 +585,7 @@ export default function PreparacionEnvio({
   // se genera una sola vez y sirve para los dos.
   async function asegurarCodigo(): Promise<string | null> {
     if (tokenCodigo) return tokenCodigo
-    const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod })
+    const { data, error } = await supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod, p_vendedor: codigoEfectivo })
     const r = data as { ok?: boolean; codigo?: string; error?: string } | null
     if (error || !r?.ok || !r.codigo) {
       toast(r?.error || 'No se pudo generar el link con token', 'error')
