@@ -241,13 +241,13 @@ export default function PreparacionEnvio({
 
       // Preselección (equivale al viejo abrirPreparacion)
       const sug = propuestaSugeridaDe(cliente, listaProps)
-      const delTema = sug ? listaPiezas.filter((p) => p.tema === temaDePropuesta(sug.nombre) && p.url_publica) : []
-      const pre = delTema.slice(0, 1)
+      // Ya no se mandan PDFs sueltos: solo catálogo con token y paquetes.
+      const pre: PiezaMarketing[] = []
       const tel = telWhatsApp(cliente.whatsapp || cliente.telefono)
       setPrepProp(sug?.id ?? 0)
-      setPrepPiezas(new Set(pre.map((p) => p.id)))
+      setPrepPiezas(new Set())
       setPrepCanal(tel ? 'wa_me' : cliente.email ? 'mailto' : 'recordatorio')
-      setPrepMensaje(sug ? armarMensajeCon(cliente, sug, pre, listaPiezas, yo?.nombre ?? vendedor?.nombre ?? '') : '')
+      setPrepMensaje(sug ? conDescarga(armarMensajeCon(cliente, sug, pre, listaPiezas, yo?.nombre ?? vendedor?.nombre ?? '')) : '')
       setCargando(false)
     }
     cargar()
@@ -310,6 +310,11 @@ export default function PreparacionEnvio({
     return `${msg}\n\n🛒 Y armá tu pedido directo, con tus precios y sin clave. Adentro vas a encontrar nuestra línea exclusiva de cristales Triple Protección (Infrarrojo + UV400 + Blue Cut), única en Argentina:\n${linkT}`
   }
 
+  // Cierre fijo de TODOS los mensajes: invitar a bajar el catálogo como app.
+  function conDescarga(msg: string) {
+    return `${msg}\n\n📲 Podés bajar el catálogo de Orbital a tu compu o celular para tener una mejor experiencia, conocer las novedades y ver siempre en línea el stock disponible para tu negocio.`
+  }
+
   // Los paquetes van con el token del cliente, si no la visita queda anónima
   // y el sistema no se entera de que ESA óptica abrió la propuesta.
   function conPaquetes(msg: string, elegidos: Set<PaqueteSlug>, codigo: string | null) {
@@ -323,10 +328,12 @@ export default function PreparacionEnvio({
   }
 
   const armarMensaje = (c: Cliente, prop: Propuesta, sel: PiezaMarketing[]) =>
-    conPaquetes(
-      conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null),
-      paquetes,
-      tokenCodigo,
+    conDescarga(
+      conPaquetes(
+        conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null),
+        paquetes,
+        tokenCodigo,
+      ),
     )
 
   function proximoHabil(dias: number): string {
@@ -359,11 +366,9 @@ export default function PreparacionEnvio({
   function cambiarPropuesta(id: number) {
     const prop = propuestas.find((p) => p.id === id)
     if (!prop) return
-    const delTema = piezas.filter((p) => p.tema === temaDePropuesta(prop.nombre) && p.url_publica)
-    const pre = delTema.slice(0, 1)
     setPrepProp(id)
-    setPrepPiezas(new Set(pre.map((p) => p.id)))
-    setPrepMensaje(armarMensaje(cliente, prop, pre))
+    setPrepPiezas(new Set())
+    setPrepMensaje(armarMensaje(cliente, prop, []))
   }
 
   function abrirCanal() {
@@ -574,46 +579,7 @@ export default function PreparacionEnvio({
   }
 
   const propSel = propuestas.find((p) => p.id === prepProp)
-  const piezasDelTema = propSel
-    ? piezas.filter((p) => p.tema === temaDePropuesta(propSel.nombre))
-    : []
   const esAgenda = prepCanal === 'recordatorio' || prepCanal === 'reunion'
-
-  // Todo el material disponible, agrupado por carpeta (categoría), para poder mandar
-  // catálogo + lista de precios + info general y no solo lo del tema de la propuesta.
-  const CARPETAS: { key: string; label: string }[] = [
-    { key: 'propuesta', label: '📄 Propuestas' },
-    { key: 'catalogo', label: '📚 Catálogos' },
-    { key: 'precios', label: '💲 Listas de precios' },
-    { key: 'copy', label: '✍️ Textos' },
-    { key: 'imagen', label: '🖼 Imágenes' },
-    { key: 'video', label: '🎬 Videos' },
-    { key: 'guion', label: '🎙 Guiones' },
-  ]
-  const piezasEnviables = piezas.filter((p) => p.url_publica || p.url_corta)
-  const carpetasConMaterial = CARPETAS.map((c) => ({
-    ...c,
-    items: piezasEnviables.filter((p) => p.categoria === c.key),
-  })).filter((c) => c.items.length > 0)
-
-  function togglePieza(id: number) {
-    const next = new Set(prepPiezas)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setPrepPiezas(next)
-    if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
-  }
-
-  function toggleCarpeta(ids: number[]) {
-    const next = new Set(prepPiezas)
-    const todosPuestos = ids.every((id) => next.has(id))
-    for (const id of ids) {
-      if (todosPuestos) next.delete(id)
-      else next.add(id)
-    }
-    setPrepPiezas(next)
-    if (propSel) setPrepMensaje(armarMensaje(cliente, propSel, piezas.filter((x) => next.has(x.id))))
-  }
 
   // El token del cliente lo comparten el catálogo para pedir y los paquetes:
   // se genera una sola vez y sirve para los dos.
@@ -638,7 +604,7 @@ export default function PreparacionEnvio({
     const base = armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || '')
     const cat = opts.conCat ?? tokenCat
     const link = opts.linkCat !== undefined ? opts.linkCat : tokenLink
-    setPrepMensaje(conPaquetes(conToken(base, cat ? link : null), opts.packs ?? paquetes, opts.codigo ?? tokenCodigo))
+    setPrepMensaje(conDescarga(conPaquetes(conToken(base, cat ? link : null), opts.packs ?? paquetes, opts.codigo ?? tokenCodigo)))
   }
 
   // Catálogo B2B para pedir (con token del cliente): genera el link y lo suma al mensaje.
@@ -742,46 +708,6 @@ export default function PreparacionEnvio({
               </label>
             )}
 
-            {!esAgenda && carpetasConMaterial.length > 0 && (
-              <div>
-                <p className="text-xs text-muted mb-1">
-                  Material a incluir (viaja como link público, no vence) —{' '}
-                  <b className="text-ink">{prepPiezas.size} seleccionado{prepPiezas.size === 1 ? '' : 's'}</b>
-                </p>
-                <div className="border border-black/10 rounded-lg divide-y divide-black/5 max-h-52 overflow-y-auto">
-                  {carpetasConMaterial.map((carpeta) => {
-                    const ids = carpeta.items.map((p) => p.id)
-                    const todos = ids.every((id) => prepPiezas.has(id))
-                    const delTema = carpeta.items.some((p) => piezasDelTema.some((t) => t.id === p.id))
-                    return (
-                      <div key={carpeta.key} className="p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold text-ink">
-                            {carpeta.label}
-                            {delTema && <span className="ml-1 text-[9px] text-brandDark">· del tema</span>}
-                          </span>
-                          <button
-                            onClick={() => toggleCarpeta(ids)}
-                            className="text-[10px] font-medium text-brandDark whitespace-nowrap"
-                          >
-                            {todos ? 'quitar todo' : 'agregar toda la carpeta'}
-                          </button>
-                        </div>
-                        <div className="mt-1 space-y-0.5">
-                          {carpeta.items.map((p) => (
-                            <label key={p.id} className="flex items-center gap-2 text-xs text-ink">
-                              <input type="checkbox" checked={prepPiezas.has(p.id)} onChange={() => togglePieza(p.id)} />
-                              <span className="truncate">{p.titulo}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
             {!esAgenda && (
               <button
                 type="button"
@@ -799,7 +725,7 @@ export default function PreparacionEnvio({
                   <p className="text-[10px] text-faint leading-snug mt-0.5">
                     {tokenBusy
                       ? 'Generando link…'
-                      : 'Distinto de los catálogos visuales (PDF): el cliente entra sin clave, con sus precios, y arma el pedido. Se registra como actividad “Envío catálogo”.'}
+                      : 'El cliente entra sin clave, con sus precios, y arma el pedido. Se registra como actividad “Envío catálogo”.'}
                   </p>
                 </div>
               </button>
