@@ -290,12 +290,12 @@ function PromotoresDe({ clave, adminId }: { clave: string; adminId: number }) {
       <table className="w-full text-[11px]">
         <thead><tr className="text-left text-[9px] uppercase tracking-wide text-neutral-400">
           <th className="py-1 pr-2">Promotor</th><th className="pr-2">Redes</th><th className="pr-2 text-right">Toques</th>
-          <th className="pr-2 text-right">Ped.</th><th className="pr-2 text-right">Neto</th><th className="text-right">Su 15%</th>
+          <th className="pr-2 text-right">Ped.</th><th className="pr-2 text-right">Neto</th><th className="text-right">Comisión</th>
         </tr></thead>
         <tbody>
           {filas.map((i) => (
             <tr key={i.id} className={`border-t border-black/5 ${i.activo ? '' : 'opacity-50'}`}>
-              <td className="py-1.5 pr-2 font-semibold">{i.nombre}</td>
+              <td className="py-1.5 pr-2"><div className="font-semibold">{i.nombre} <span className="font-normal text-neutral-400">{i.pct}%</span></div>{i.cbu_alias && <div className="text-[10px] text-neutral-500">CBU/alias: {i.cbu_alias}</div>}</td>
               <td className="pr-2">{(i.redes ?? []).map((r) => `${labelRed(r.red)} ${r.usuario}`).join(' · ') || '—'}</td>
               <td className="pr-2 text-right tabular-nums">{nAr(i.clicks)}</td>
               <td className="pr-2 text-right tabular-nums">{i.pedidos}</td>
@@ -400,6 +400,9 @@ function Promotores({ clave }: { clave: string }) {
                     <button onClick={() => toggle(i)} className="p-1.5 rounded-md border border-black/10" title={i.activo ? 'Desactivar' : 'Activar'}><Power size={13} /></button>
                   </div>
                 </div>
+                <div className="text-[10px] mt-1">{i.cbu_alias
+                  ? <span className="text-neutral-600">CBU/alias: <b className="font-mono">{i.cbu_alias}</b></span>
+                  : <span className="text-amber-600 font-semibold">Falta CBU o alias para liquidarle</span>}</div>
                 {(i.redes ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {i.redes.map((r, k) => (
@@ -428,7 +431,7 @@ function Promotores({ clave }: { clave: string }) {
 }
 
 function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicial: Partial<Influencer>; onClose: () => void; onOk: () => void }) {
-  const [f, setF] = useState({ nombre: inicial.nombre ?? '', email: inicial.email ?? '', telefono: inicial.telefono ?? '', nota: inicial.nota ?? '' })
+  const [f, setF] = useState({ nombre: inicial.nombre ?? '', email: inicial.email ?? '', telefono: inicial.telefono ?? '', nota: inicial.nota ?? '', cbu_alias: inicial.cbu_alias ?? '', pct: inicial.pct ?? 15 })
   const [redes, setRedes] = useState<Red[]>(inicial.redes?.length ? inicial.redes : [{ red: 'instagram', usuario: '' }])
   const [guardando, setGuardando] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -443,7 +446,7 @@ function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicia
     }))
     const { data, error } = await supabase.rpc('colab_admin_guardar', { p_clave: clave, p: { ...f, redes: limpias, id: inicial.id ?? null } })
     setGuardando(false)
-    if (error) { setErr(error.message.includes('falta_nombre') ? 'Falta el nombre.' : 'No se pudo guardar.'); return }
+    if (error) { setErr(error.message.includes('falta_nombre') ? 'Falta el nombre.' : error.message.includes('pct_invalido') ? 'La comisión tiene que ser 5, 10 o 15%.' : 'No se pudo guardar.'); return }
     onOk()
     if (inicial.id) onClose()
     else setCreado(data as { clave: string })
@@ -464,6 +467,20 @@ function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicia
           <input className={`${input} sm:col-span-2`} placeholder="Nombre *" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} />
           <input className={input} placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
           <input className={input} placeholder="Teléfono (WhatsApp)" value={f.telefono} onChange={(e) => setF({ ...f, telefono: e.target.value })} />
+
+          <div className="sm:col-span-2 text-[11px] font-bold uppercase tracking-wide text-neutral-500 mt-1">Liquidación</div>
+          <input className={input} placeholder="CBU o alias para pagarle" value={f.cbu_alias} onChange={(e) => setF({ ...f, cbu_alias: e.target.value })} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-neutral-500 shrink-0">Comisión</span>
+            {[5, 10, 15].map((n) => (
+              <button key={n} type="button" onClick={() => setF({ ...f, pct: n })}
+                className={`flex-1 rounded-lg border px-2 py-1.5 text-[12px] font-semibold ${Number(f.pct) === n ? 'text-white border-transparent' : 'border-black/10 bg-white'}`}
+                style={Number(f.pct) === n ? { background: ACENTO } : undefined}>{n}%</button>
+            ))}
+          </div>
+          {inicial.id && Number(f.pct) !== Number(inicial.pct) && (
+            <p className="sm:col-span-2 text-[10px] text-amber-600">El nuevo % se aplica a las ventas que se sincronicen desde ahora.</p>
+          )}
 
           <div className="sm:col-span-2 text-[11px] font-bold uppercase tracking-wide text-neutral-500 mt-1">Redes sociales</div>
           {redes.map((r, k) => (

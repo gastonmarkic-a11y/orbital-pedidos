@@ -23,7 +23,7 @@ export type Numeros = { links: number; clicks: number; pedidos: number; neto: nu
 export type Influencer = Numeros & {
   id: number; nombre: string; ref: string; clave: string
   email: string | null; telefono: string | null; redes: Red[]; nota: string | null
-  activo: boolean; pct: number; pct_descuento: number; created_at: string
+  activo: boolean; pct: number; pct_descuento: number; cbu_alias: string | null; created_at: string
   admin_id: number; admin: string
 }
 
