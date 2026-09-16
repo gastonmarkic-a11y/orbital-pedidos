@@ -18,6 +18,17 @@
           window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orbitalInstall = e })
         } catch (e) { /* sin almacenamiento: queda el manifest general */ }
       })();
+      // Consigna (/consigna): manifest propio con el token de la central o de la sucursal.
+      (function () {
+        try {
+          if (location.pathname.indexOf('/consigna') !== 0) return
+          var k = new URLSearchParams(location.search).get('k') || localStorage.getItem('orbital_consigna_clave') || ''
+          var q = new URLSearchParams()
+          if (k) q.set('k', k.trim())
+          document.querySelector('link[rel="manifest"]').setAttribute('href', '/api/consigna-manifest?' + q.toString())
+          window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orbitalInstall = e })
+        } catch (e) { /* sin almacenamiento: queda el manifest general */ }
+      })();
       // Catálogo (/catalogo): manifest propio con el token, así el ícono instalado abre
       // el catálogo de esa óptica. Corre antes de que el navegador lea el manifest.
       (function () {
