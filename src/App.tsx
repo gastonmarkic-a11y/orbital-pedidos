@@ -716,7 +716,7 @@ export default function App() {
     )
   }
   // Central de consigna por sucursales (cliente madre): stock por sucursal, movimientos y devoluciones. Acceso por token.
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/consigna')) {
+  if (typeof window !== 'undefined' && /^\/consigna\/?$/.test(window.location.pathname)) {
     return (
       <ToastProvider>
         <CentralConsigna />

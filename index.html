@@ -21,7 +21,7 @@
       // Consigna (/consigna): manifest propio con el token de la central o de la sucursal.
       (function () {
         try {
-          if (location.pathname.indexOf('/consigna') !== 0) return
+          if (!/^\/consigna\/?$/.test(location.pathname)) return
           var k = new URLSearchParams(location.search).get('k') || localStorage.getItem('orbital_consigna_clave') || ''
           var q = new URLSearchParams()
           if (k) q.set('k', k.trim())
