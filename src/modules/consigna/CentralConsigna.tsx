@@ -131,7 +131,7 @@ export default function CentralConsigna() {
   const tabs: [Vista, string, string][] = [
     ['tablero', 'Tablero de sucursal', suc?.nombre ?? ''],
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
-    ['pedir', 'Pedir a Orbital', 'sin precios'],
+    ['pedir', 'Catálogo Orbital', 'pedir sin precios'],
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar} esperando` : ''],
     ['postventa', 'Postventa y repuestos', ''],
   ]
@@ -216,8 +216,9 @@ export default function CentralConsigna() {
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
         {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
-        {vista === 'pedir' && suc && (
-          <PedirOrbital clave={clave} suc={suc} editable={puedeOperar(suc.id)} operar={operar} onEnviado={() => setVista('pedidos')} />
+        {vista === 'pedir' && (miSuc != null ? sucs.find((s) => s.id === miSuc) : suc) && (
+          // Con link de sucursal el catálogo siempre pide para SU sucursal; la central pide para la tarjeta elegida.
+          <PedirOrbital clave={clave} suc={(miSuc != null ? sucs.find((s) => s.id === miSuc) : suc)!} editable operar={operar} onEnviado={() => setVista('pedidos')} />
         )}
         {vista === 'pedidos' && <Pedidos data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'postventa' && suc && (
