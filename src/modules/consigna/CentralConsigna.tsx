@@ -15,6 +15,7 @@ import { ArrowRight, Search, X, Store, History, PackageCheck, Undo2, Truck, Minu
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import InstalarApp from '../../components/InstalarApp'
+import { colorSwatch } from '../catalogo/colorLegible'
 import Postventa from './Postventa'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
@@ -52,7 +53,6 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type ItemCatalogo = { codigo: string; modelo: string; descripcion: string | null; disponible: number; mas: boolean; tipo: string | null }
 type Vista = 'tablero' | 'stock' | 'pedir' | 'pedidos' | 'postventa'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
@@ -627,94 +627,143 @@ function MoverStock({ productos, sucursales, inicial, miSuc, onCerrar, onMover }
   )
 }
 
-// ── Pedir a Orbital: depósito Orbital sin precios ────────────────────────────
+// ── Catálogo Orbital: como el catálogo de las ópticas, con fotos, sin precios ni cantidades ──
+type ColorCat = { codigo: string; descripcion: string | null; tipo: string | null; tratamiento: string | null; imagen: string | null }
+type ModeloCat = { modelo: string; caliente: boolean; tipos: string[]; imagen: string | null; colores: ColorCat[] }
+
+function FotoAnteojo({ src, alt, color }: { src: string | null; alt: string; color?: string | null }) {
+  const [rota, setRota] = useState(false)
+  if (src && !rota) return <img src={src} alt={alt} loading="lazy" onError={() => setRota(true)} className="w-full h-full object-contain" />
+  return (
+    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#F0EEE8] to-[#E4E1D8]">
+      <svg width="64" height="30" viewBox="0 0 64 30" fill="none" stroke={color ? colorSwatch(color) : '#B5AF9F'} strokeWidth="3">
+        <circle cx="15" cy="16" r="11" /><circle cx="49" cy="16" r="11" /><path d="M26 14h12M4 12l4-3M60 12l-4-3" />
+      </svg>
+    </div>
+  )
+}
+
 function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
   clave: string; suc: Sucursal; editable: boolean; operar: Operar; onEnviado: () => void
 }) {
-  const [items, setItems] = useState<ItemCatalogo[] | null>(null)
+  const [modelos, setModelos] = useState<ModeloCat[] | null>(null)
   const [busca, setBusca] = useState('')
+  const [tipo, setTipo] = useState<'' | 'sol' | 'receta'>('')
+  const [abierto, setAbierto] = useState<ModeloCat | null>(null)
   const [carrito, setCarrito] = useState<Record<string, number>>({})
   const [nota, setNota] = useState('')
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
-    supabase.rpc('consigna_catalogo', { p_k: clave }).then(({ data }) => setItems((data as ItemCatalogo[]) ?? []))
+    supabase.rpc('consigna_catalogo', { p_k: clave }).then(({ data }) => setModelos((data as ModeloCat[]) ?? []))
   }, [clave])
   useEffect(() => setCarrito({}), [suc.id])
 
-  const grupos = useMemo(() => {
+  const visibles = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    const m = new Map<string, ItemCatalogo[]>()
-    for (const it of items ?? []) {
-      if (q && !`${it.modelo} ${it.descripcion ?? ''}`.toLowerCase().includes(q)) continue
-      m.set(it.modelo, [...(m.get(it.modelo) ?? []), it])
-    }
-    return [...m.entries()]
-  }, [items, busca])
+    return (modelos ?? [])
+      .map((m) => (tipo ? { ...m, colores: m.colores.filter((c) => c.tipo === tipo) } : m))
+      .filter((m) => m.colores.length > 0)
+      .filter((m) => !q || `${m.modelo} ${m.colores.map((c) => c.descripcion).join(' ')}`.toLowerCase().includes(q))
+  }, [modelos, busca, tipo])
 
-  const lineas = (items ?? []).filter((it) => (carrito[it.codigo] ?? 0) > 0)
-  const totalU = lineas.reduce((s, it) => s + carrito[it.codigo], 0)
-  const cambiar = (it: ItemCatalogo, delta: number) => {
-    const n = Math.max(0, Math.min(it.disponible, (carrito[it.codigo] ?? 0) + delta))
-    setCarrito({ ...carrito, [it.codigo]: n })
-  }
+  const todos = useMemo(() => new Map((modelos ?? []).flatMap((m) => m.colores.map((c) => [c.codigo, { ...c, modelo: m.modelo }] as const))), [modelos])
+  const lineas = Object.entries(carrito).filter(([, q]) => q > 0)
+  const totalU = lineas.reduce((s, [, q]) => s + q, 0)
+  const enModelo = (m: ModeloCat) => m.colores.reduce((s, c) => s + (carrito[c.codigo] ?? 0), 0)
+  const cambiar = (codigo: string, delta: number) => setCarrito((c) => ({ ...c, [codigo]: Math.max(0, Math.min(99, (c[codigo] ?? 0) + delta)) }))
 
   const enviar = async () => {
     setEnviando(true)
     const ok = await operar('consigna_pedido_crear', {
       p_sucursal: suc.id,
-      p_items: lineas.map((it) => ({ codigo: it.codigo, cantidad: carrito[it.codigo] })),
+      p_items: lineas.map(([codigo, cantidad]) => ({ codigo, cantidad })),
       p_nota: nota.trim() || null,
     }, `Pedido de ${suc.nombre} enviado a la central para autorizar`)
     setEnviando(false)
     if (ok) { setCarrito({}); setNota(''); onEnviado() }
   }
 
-  if (!items) return <p className="text-sm text-muted">Cargando el depósito de Orbital…</p>
+  if (!modelos) return <p className="text-sm text-muted">Cargando el catálogo de Orbital…</p>
 
   return (
-    <div className="flex flex-col gap-4 pb-20">
-      <div className="bg-white border border-black/10 rounded-lg px-4 py-3 text-sm text-muted">
-        Stock disponible hoy en el depósito de Orbital, <b className="text-ink">solo informativo</b>. Pedido para <b className="text-ink">{suc.nombre}</b>:
-        lo autoriza la central y después Orbital lo envía, aparte de la reposición automática.
-        {!editable && <span className="block text-red-600 mt-1">Con este link no podés pedir para {suc.nombre}.</span>}
+    <div className="flex flex-col gap-4 pb-24">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative flex-1 min-w-[200px] max-w-md">
+          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+          <input id="catalogo-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo o color"
+            className="w-full bg-white border border-black/10 rounded-lg pl-8 pr-3 py-2 text-sm" />
+        </label>
+        <div className="flex gap-1 bg-black/5 rounded-lg p-1">
+          {([['', 'Todos'], ['sol', 'Sol'], ['receta', 'Receta']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setTipo(k)} className={`text-sm rounded-md px-3 py-1 ${tipo === k ? 'bg-white shadow-sm font-semibold' : 'text-muted'}`}>{l}</button>
+          ))}
+        </div>
+        <span className="text-xs text-muted ml-auto">Pedido para <b className="text-ink">{suc.nombre}</b> · lo autoriza la central</span>
       </div>
-      <label className="relative max-w-md">
-        <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
-        <input id="catalogo-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo o color"
-          className="w-full bg-white border border-black/10 rounded-lg pl-8 pr-3 py-2 text-sm" />
-      </label>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {grupos.map(([modelo, its]) => (
-          <section key={modelo} className="bg-white border border-black/10 rounded-lg">
-            <h3 className="text-sm font-semibold tracking-wide px-3 py-2 border-b border-black/10">{modelo}</h3>
-            <ul className="divide-y divide-black/5">
-              {its.map((it) => {
-                const q = carrito[it.codigo] ?? 0
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {visibles.map((m) => {
+          const q = enModelo(m)
+          return (
+            <button key={m.modelo} onClick={() => setAbierto(m)}
+              className="text-left bg-white border border-black/10 rounded-xl overflow-hidden hover:border-gold transition-colors relative">
+              <div className="aspect-[4/3] bg-white p-2"><FotoAnteojo src={m.imagen} alt={m.modelo} /></div>
+              <div className="px-3 py-2 border-t border-black/5">
+                <div className="text-sm font-semibold tracking-wide truncate">{m.modelo}</div>
+                <div className="text-[11px] text-muted">{m.colores.length} {m.colores.length === 1 ? 'color' : 'colores'}{m.caliente ? ' · 🔥 más pedido' : ''}</div>
+              </div>
+              {q > 0 && <span className="absolute top-2 right-2 bg-ink text-white text-[11px] font-semibold rounded-full min-w-6 h-6 px-1.5 flex items-center justify-center">{q}</span>}
+            </button>
+          )
+        })}
+      </div>
+      {visibles.length === 0 && <p className="text-sm text-muted">No hay modelos con ese filtro.</p>}
+
+      {abierto && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setAbierto(null)}>
+          <div className="bg-[#FBFAF7] w-full sm:max-w-3xl rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 bg-[#FBFAF7] border-b border-black/10 px-5 py-3 flex items-center justify-between">
+              <h3 className="font-semibold tracking-wide">{abierto.modelo}</h3>
+              <button onClick={() => setAbierto(null)} aria-label="Cerrar" className="text-muted"><X size={20} /></button>
+            </div>
+            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {(tipo ? abierto.colores.filter((c) => c.tipo === tipo) : abierto.colores).map((c) => {
+                const q = carrito[c.codigo] ?? 0
                 return (
-                  <li key={it.codigo} className="px-3 py-1.5 flex items-center gap-2 text-sm">
-                    <span className="flex-1 min-w-0 text-xs truncate" title={it.descripcion ?? ''}>{it.descripcion}</span>
-                    <span className="text-[11px] text-muted tabular-nums w-10 text-right">{it.disponible}{it.mas ? '+' : ''}</span>
-                    {editable && (
-                      <span className="flex items-center gap-1">
-                        <button onClick={() => cambiar(it, -1)} disabled={q === 0} aria-label="Menos" className="border border-black/15 rounded p-0.5 disabled:opacity-30"><Minus size={12} /></button>
-                        <span className={`w-5 text-center tabular-nums ${q ? 'font-semibold' : 'text-black/25'}`}>{q}</span>
-                        <button onClick={() => cambiar(it, 1)} disabled={q >= it.disponible} aria-label="Más" className="border border-black/15 rounded p-0.5 disabled:opacity-30"><Plus size={12} /></button>
-                      </span>
-                    )}
-                  </li>
+                  <div key={c.codigo} className={`bg-white border rounded-xl overflow-hidden ${q ? 'border-ink' : 'border-black/10'}`}>
+                    <div className="aspect-[4/3] p-2"><FotoAnteojo src={c.imagen} alt={`${abierto.modelo} ${c.descripcion ?? ''}`} color={c.descripcion} /></div>
+                    <div className="px-3 pt-2 pb-3 border-t border-black/5 flex flex-col gap-2">
+                      <div>
+                        <div className="text-xs font-medium leading-snug">{c.descripcion}</div>
+                        <div className="text-[10px] text-faint uppercase tracking-wide">{[c.tipo, c.tratamiento].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      {editable && (
+                        <div className="flex items-center justify-between">
+                          <button onClick={() => cambiar(c.codigo, -1)} disabled={q === 0} aria-label="Menos" className="border border-black/15 rounded-md p-1 disabled:opacity-30"><Minus size={14} /></button>
+                          <span className={`tabular-nums text-sm ${q ? 'font-semibold' : 'text-black/25'}`}>{q}</span>
+                          <button onClick={() => cambiar(c.codigo, 1)} aria-label="Más" className="border border-black/15 rounded-md p-1"><Plus size={14} /></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )
               })}
-            </ul>
-          </section>
-        ))}
-      </div>
+            </div>
+            <div className="sticky bottom-0 bg-[#FBFAF7] border-t border-black/10 px-5 py-3 flex justify-end">
+              <button onClick={() => setAbierto(null)} className="bg-ink text-white text-sm font-medium rounded-lg px-4 py-2">Listo</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {totalU > 0 && (
+      {totalU > 0 && !abierto && (
         <div className="fixed bottom-0 inset-x-0 bg-ink text-white px-4 pt-3 z-40" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <div className="max-w-[1400px] mx-auto flex flex-wrap items-center gap-3">
             <span className="text-sm">{suc.nombre} · <b className="tabular-nums">{totalU} u</b> en {lineas.length} productos</span>
+            <span className="text-xs text-white/60 hidden md:inline truncate max-w-md">
+              {lineas.slice(0, 3).map(([k, q]) => `${q} ${todos.get(k)?.modelo ?? ''}`).join(' · ')}{lineas.length > 3 ? '…' : ''}
+            </span>
             <input id="pedido-nota" value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Para qué lo necesitás (opcional)"
               className="bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm placeholder:text-white/50 flex-1 min-w-[180px]" />
             <button onClick={() => setCarrito({})} className="text-sm text-white/70">Vaciar</button>
