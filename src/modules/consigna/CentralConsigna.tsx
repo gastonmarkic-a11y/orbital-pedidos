@@ -131,13 +131,13 @@ export default function CentralConsigna() {
   const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
   const tabs: [Vista, string, string][] = [
-    ['tablero', 'Tablero de sucursal', suc?.nombre ?? ''],
-    ['devolucion', 'Devolución a Orbital', devPend ? `${fmt(devPend)} u pendientes` : ''],
+    ['tablero', 'Sucursal', suc?.nombre ?? ''],
+    ['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''],
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
-    ['pedir', 'Catálogo Orbital', 'stock online'],
-    ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar} esperando` : ''],
-    ['postventa', 'Postventa y repuestos', ''],
-    ['consultas', 'Consultas de clientes', 'derivadas por IRIS'],
+    ['pedir', 'Stock online', ''],
+    ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
+    ['postventa', 'Postventa', ''],
+    ['consultas', 'Consultas IRIS', ''],
   ]
 
   return (
@@ -216,14 +216,17 @@ export default function CentralConsigna() {
           })}
         </section>
 
-        <nav className="flex flex-wrap gap-1 border-b border-black/10">
+        <nav className="flex flex-wrap gap-1.5">
           {tabs.map(([k, label, extra]) => (
             <button
               key={k}
               onClick={() => setVista(k)}
-              className={`px-3 py-2 text-sm -mb-px border-b-2 whitespace-nowrap ${vista === k ? 'border-gold text-ink font-semibold' : 'border-transparent text-muted'}`}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md border whitespace-nowrap transition-colors ${vista === k
+                ? 'bg-ink text-white border-ink'
+                : 'bg-white text-ink border-black/20 hover:border-gold'}`}
             >
-              {label}{extra && <span className="text-xs text-faint font-normal"> · {extra}</span>}
+              {label}
+              {extra && <span className={`ml-1.5 font-medium ${vista === k ? 'text-gold' : 'text-amber-700'}`}>{extra}</span>}
             </button>
           ))}
         </nav>
