@@ -165,14 +165,14 @@ export default function CentralConsigna() {
                   bajada={esCentral ? 'Queda con el ícono de Orbital y entra directo a la central, sin clave.' : 'Queda con el ícono de Orbital en la compu o el teléfono del local y entra directo a tu sucursal.'} />
               </span>
               {/* Ayuda arriba, al lado de Instalar: es lo primero que busca alguien que entra por primera vez. */}
-              <button
-                onClick={() => setVista('ayuda')}
-                className={`text-xs font-semibold rounded-lg px-3 py-1.5 border inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${vista === 'ayuda'
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600'}`}
+              <a
+                href={`/consigna/ayuda?k=${clave}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold rounded-lg px-3 py-1.5 border inline-flex items-center gap-1.5 whitespace-nowrap bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600"
               >
                 <HelpCircle size={14} /> Ayuda · uso y alcance
-              </button>
+              </a>
             </div>
             <h1 className="text-xl font-semibold mt-2 leading-tight">{data.madre?.nombre ?? 'Cliente'}</h1>
             <p className="text-xs text-muted">

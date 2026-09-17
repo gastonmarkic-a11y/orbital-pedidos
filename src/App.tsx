@@ -58,6 +58,7 @@ import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import CentralConsigna from './modules/consigna/CentralConsigna'
+import AyudaConsigna from './modules/consigna/AyudaConsigna'
 import Consignas from './modules/consigna/Consignas'
 import CatalogoZN from './modules/catalogo/CatalogoZN'
 import Colab from './modules/colab/Colab'
@@ -712,6 +713,14 @@ export default function App() {
     return (
       <ToastProvider>
         <CatalogoZN />
+      </ToastProvider>
+    )
+  }
+  // Ayuda de consigna en su propia ventana (se abre desde el panel).
+  if (typeof window !== 'undefined' && /^\/consigna\/ayuda\/?$/.test(window.location.pathname)) {
+    return (
+      <ToastProvider>
+        <AyudaConsigna />
       </ToastProvider>
     )
   }
