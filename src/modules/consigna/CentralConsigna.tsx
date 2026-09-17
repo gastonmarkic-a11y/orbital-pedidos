@@ -133,10 +133,10 @@ export default function CentralConsigna() {
   const porAutorizar = data.pedidos.filter((p) => p.estado === 'solicitado').length
   const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
-  // Devolución, por ahora, solo la central: las sucursales la van a ver cuando el circuito esté rodado.
+  // Devolución, por ahora, solo la central y solo en el Total: es el detalle general, no el de una sucursal.
   const tabs: [Vista, string, string][] = [
     ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
-    ...(esCentral ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
+    ...(esCentral && !suc ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
     ['pedir', 'Stock online', ''],
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
@@ -243,7 +243,7 @@ export default function CentralConsigna() {
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
         {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
-        {vista === 'devolucion' && esCentral && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
+        {vista === 'devolucion' && esCentral && !suc && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
         {vista === 'pedir' && (
           // Con link de sucursal el catálogo siempre pide para SU sucursal; la central ve el catálogo

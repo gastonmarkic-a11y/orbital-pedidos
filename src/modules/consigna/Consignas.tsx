@@ -138,7 +138,7 @@ function Detalle({ madre, vista, onCambio }: { madre: Madre; vista: Vista; onCam
   if (vista === 'repos') return <Reposiciones madre={madre} nombreSuc={nombreSuc} onCambio={onCambio} />
   if (vista === 'devoluciones') return <Devoluciones madre={madre} nombreSuc={nombreSuc} />
   if (vista === 'postventa') return <PostventaSuite madre={madre} nombreSuc={nombreSuc} onCambio={onCambio} />
-  return <Links madre={madre} nombreSuc={nombreSuc} />
+  return <Links madre={madre} sucs={sucs} nombreSuc={nombreSuc} />
 }
 
 // ── Liquidación por Excel ────────────────────────────────────────────────────
@@ -540,23 +540,56 @@ function PostventaSuite({ madre, nombreSuc, onCambio }: { madre: Madre; nombreSu
 }
 
 // ── Links de acceso ──────────────────────────────────────────────────────────
-function Links({ madre, nombreSuc }: { madre: Madre; nombreSuc: (id: number | null) => string }) {
+// Los tokens se generan SOLO acá, en el panel: la central y las sucursales nunca los generan.
+function Links({ madre, sucs, nombreSuc }: { madre: Madre; sucs: Suc[]; nombreSuc: (id: number | null) => string }) {
   const toast = useToast()
   const [accesos, setAccesos] = useState<Acceso[]>([])
-  useEffect(() => {
+  const [generando, setGenerando] = useState<number | 'central' | null>(null)
+  const cargar = () =>
     supabase.from('consigna_acceso').select('codigo, sucursal_id, nombre').eq('cod_madre', madre.cod).eq('activo', true)
       .then(({ data }) => setAccesos(((data ?? []) as Acceso[]).sort((a, b) => (a.sucursal_id ?? 0) - (b.sucursal_id ?? 0))))
-  }, [madre.cod])
+  useEffect(() => { cargar() }, [madre.cod])
+
+  const generar = async (sucursal_id: number | null, nombre: string) => {
+    setGenerando(sucursal_id ?? 'central')
+    const { error } = await supabase.from('consigna_acceso').insert({ cod_madre: madre.cod, sucursal_id, nombre })
+    setGenerando(null)
+    if (error) { toast('No se pudo generar el link', 'error'); return }
+    await cargar()
+    toast(`Link de ${nombre} generado`, 'success')
+  }
+
+  // Una fila por acceso posible: la central y cada sucursal, tenga token o no.
+  const filas: { key: string; sucursal_id: number | null; nombre: string; acceso: Acceso | undefined }[] = [
+    { key: 'central', sucursal_id: null, nombre: 'Central (autoriza pedidos)', acceso: accesos.find((a) => a.sucursal_id == null) },
+    ...sucs.map((s) => ({ key: `s${s.id}`, sucursal_id: s.id, nombre: s.nombre, acceso: accesos.find((a) => a.sucursal_id === s.id) })),
+  ]
+
   return (
     <section className="bg-white border border-black/10 rounded-xl divide-y divide-black/5">
-      {accesos.map((a) => {
-        const url = `${URL_BASE}/consigna?k=${a.codigo}`
+      {filas.map((f) => {
+        const url = f.acceso ? `${URL_BASE}/consigna?k=${f.acceso.codigo}` : ''
         return (
-          <div key={a.codigo} className="px-4 py-2.5 flex flex-wrap items-center gap-3 text-sm">
-            <span className={`w-44 shrink-0 ${a.sucursal_id ? '' : 'font-semibold'}`}>{a.sucursal_id ? nombreSuc(a.sucursal_id) : 'Central (autoriza pedidos)'}</span>
-            <code className="flex-1 min-w-0 truncate text-xs text-muted">{url}</code>
-            <button onClick={() => { navigator.clipboard.writeText(url); toast('Link copiado', 'success') }} className="text-xs border border-black/15 rounded-md px-2 py-1 flex items-center gap-1"><Copy size={12} /> Copiar</button>
-            <a href={url} target="_blank" rel="noreferrer" className="text-xs border border-black/15 rounded-md px-2 py-1 flex items-center gap-1"><ExternalLink size={12} /> Abrir</a>
+          <div key={f.key} className="px-4 py-2.5 flex flex-wrap items-center gap-3 text-sm">
+            <span className={`w-44 shrink-0 ${f.sucursal_id ? '' : 'font-semibold'}`}>{f.sucursal_id ? nombreSuc(f.sucursal_id) : f.nombre}</span>
+            {f.acceso ? (
+              <>
+                <code className="flex-1 min-w-0 truncate text-xs text-muted">{url}</code>
+                <button onClick={() => { navigator.clipboard.writeText(url); toast('Link copiado', 'success') }} className="text-xs border border-black/15 rounded-md px-2 py-1 flex items-center gap-1"><Copy size={12} /> Copiar</button>
+                <a href={url} target="_blank" rel="noreferrer" className="text-xs border border-black/15 rounded-md px-2 py-1 flex items-center gap-1"><ExternalLink size={12} /> Abrir</a>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 min-w-0 text-xs text-muted">Sin link todavía</span>
+                <button
+                  onClick={() => generar(f.sucursal_id, f.sucursal_id ? `Sucursal ${f.nombre}` : `Central ${madre.nombre}`)}
+                  disabled={generando !== null}
+                  className="text-xs bg-ink text-white rounded-md px-2.5 py-1 disabled:opacity-50"
+                >
+                  {generando === (f.sucursal_id ?? 'central') ? 'Generando…' : 'Generar link'}
+                </button>
+              </>
+            )}
           </div>
         )
       })}
