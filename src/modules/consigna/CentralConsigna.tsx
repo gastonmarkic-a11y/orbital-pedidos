@@ -17,6 +17,7 @@ import { useToast } from '../../lib/toast'
 import InstalarApp from '../../components/InstalarApp'
 import { colorSwatch } from '../catalogo/colorLegible'
 import Postventa from './Postventa'
+import Consultas from './Consultas'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
 const QUIEN_KEY = 'orbital_consigna_quien'
@@ -53,7 +54,7 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type Vista = 'tablero' | 'stock' | 'pedir' | 'pedidos' | 'postventa'
+type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
@@ -127,13 +128,16 @@ export default function CentralConsigna() {
     data.stock.filter((l) => l.sucursal_id === id).reduce((s, l) => s + l[k], 0)
   const tot = (k: 'cantidad' | 'devolver' | 'en_camino') => data.stock.reduce((s, l) => s + l[k], 0)
   const porAutorizar = data.pedidos.filter((p) => p.estado === 'solicitado').length
+  const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
   const tabs: [Vista, string, string][] = [
     ['tablero', 'Tablero de sucursal', suc?.nombre ?? ''],
+    ['devolucion', 'Devolución a Orbital', devPend ? `${fmt(devPend)} u pendientes` : ''],
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
-    ['pedir', 'Catálogo Orbital', 'pedir sin precios'],
+    ['pedir', 'Catálogo Orbital', 'stock online'],
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar} esperando` : ''],
     ['postventa', 'Postventa y repuestos', ''],
+    ['consultas', 'Consultas de clientes', 'derivadas por IRIS'],
   ]
 
   return (
@@ -175,7 +179,19 @@ export default function CentralConsigna() {
 
       <main className="max-w-[1400px] mx-auto px-4 py-4 flex flex-col gap-4">
         {/* Sucursales: elegir cuál mirar */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+        <section className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-9 gap-2">
+          <button
+            onClick={() => setVista('stock')}
+            title="Ver el stock de todas las sucursales"
+            className="text-left rounded-lg border border-gold/60 bg-[#FBF7EC] px-3 py-2 hover:border-gold"
+          >
+            <div className="text-[11px] text-muted font-semibold uppercase tracking-wide">Total · {sucs.length} suc.</div>
+            <div className="text-lg font-semibold tabular-nums leading-tight">{fmt(tot('cantidad'))} u</div>
+            <div className="text-[11px] tabular-nums flex gap-2 mt-0.5">
+              {tot('devolver') > 0 && <span className="text-amber-700">↩ {fmt(tot('devolver'))}</span>}
+              {tot('en_camino') > 0 && <span className="text-emerald-700">+ {fmt(tot('en_camino'))}</span>}
+            </div>
+          </button>
           {sucs.map((s) => {
             const activa = selSuc === s.id
             const dev = sumaSuc(s.id, 'devolver')
@@ -215,6 +231,8 @@ export default function CentralConsigna() {
         {vista === 'tablero' && suc && (
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
+        {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
+        {vista === 'devolucion' &&<DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
         {vista === 'pedir' && (miSuc != null ? sucs.find((s) => s.id === miSuc) : suc) && (
           // Con link de sucursal el catálogo siempre pide para SU sucursal; la central pide para la tarjeta elegida.
@@ -233,67 +251,15 @@ type Operar = (fn: string, args: Record<string, unknown>, ok: string) => Promise
 
 // ── Tablero de una sucursal: qué tiene que devolver y qué le llega nuevo ────
 function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal; editable: boolean; operar: Operar }) {
-  const devs = data.devoluciones.filter((d) => d.sucursal_id === suc.id)
   const envio = data.stock.filter((l) => l.sucursal_id === suc.id && l.en_camino > 0)
     .sort((a, b) => (a.modelo ?? '').localeCompare(b.modelo ?? ''))
-  const pend = (d: Devolucion) => d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0)
-  const totPend = devs.reduce((s, d) => s + pend(d), 0)
-  const totDev = devs.reduce((s, d) => s + d.enviada, 0)
-  const totQueda = devs.reduce((s, d) => s + d.conservada, 0)
   const totCamino = envio.reduce((s, l) => s + l.en_camino, 0)
   const pedidos = data.pedidos.filter((p) => p.sucursal_id === suc.id)
-  const [ocupado, setOcupado] = useState(false)
 
-  const devolverTodo = async () => {
-    if (!window.confirm(`¿Confirmás que ${suc.nombre} devuelve las ${totPend} u pendientes?`)) return
-    setOcupado(true)
-    for (const d of devs.filter((x) => pend(x) > 0)) {
-      const ok = await operar('consigna_devolucion_accion', { p_id: d.id, p_devuelve: pend(d), p_conserva: 0 }, `Devolución de ${suc.nombre} registrada`)
-      if (!ok) break
-    }
-    setOcupado(false)
-  }
-
+  // La devolución ya no va por sucursal: se gestiona en la pestaña "Devolución a Orbital" de la central.
   return (
-    <div className="grid lg:grid-cols-[1.4fr_1fr] gap-4 items-start">
-      <section className="bg-white border border-black/10 rounded-lg">
-        <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-x-5 gap-y-2">
-          <h2 className="font-semibold flex items-center gap-2 mr-auto"><Undo2 size={16} className="text-amber-700" /> Tiene que devolver</h2>
-          <span className="text-xs text-muted tabular-nums">Pendiente <b className="text-amber-700">{totPend}</b> · devolvió <b>{totDev}</b> · se queda <b>{totQueda}</b></span>
-          {editable && totPend > 0 && (
-            <button onClick={devolverTodo} disabled={ocupado} className="text-xs bg-amber-100 text-amber-900 font-medium rounded-lg px-3 py-1.5 disabled:opacity-50">
-              Devolver todo lo pendiente
-            </button>
-          )}
-        </div>
-        <p className="text-xs text-muted px-4 pt-3">
-          Siguen en el stock del local hasta que se devuelven. Se puede devolver todo o una parte; lo que no se devuelve se marca como "se queda" y pasa a stock normal.
-        </p>
-        {devs.length === 0 ? (
-          <p className="text-sm text-muted px-4 py-6">Orbital no le pidió devoluciones a esta sucursal.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse mt-2">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-muted">
-                  <th className="text-left font-medium px-4 py-2 border-b border-black/10">Modelo · color</th>
-                  <th className="text-left font-medium px-2 py-2 border-b border-black/10">Por qué</th>
-                  <th className="text-right font-medium px-2 py-2 border-b border-black/10">Pedido</th>
-                  <th className="text-right font-medium px-2 py-2 border-b border-black/10">Pendiente</th>
-                  <th className="text-left font-medium px-4 py-2 border-b border-black/10">{editable ? 'Registrar' : 'Estado'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {devs.map((d) => (
-                  <FilaDevolucion key={d.id} d={d} pendiente={pend(d)} editable={editable} operar={operar} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <div className="flex flex-col gap-4">
+    <div className="grid lg:grid-cols-2 gap-4 items-start">
+      <>
         <section className="bg-white border border-black/10 rounded-lg">
           <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-3">
             <h2 className="font-semibold flex items-center gap-2 mr-auto"><Truck size={16} className="text-emerald-700" /> Envío nuevo en camino</h2>
@@ -350,12 +316,92 @@ function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal
             </ul>
           )}
         </section>
-      </div>
+      </>
     </div>
   )
 }
 
-function FilaDevolucion({ d, pendiente, editable, operar }: { d: Devolucion; pendiente: number; editable: boolean; operar: Operar }) {
+// ── Devolución a Orbital: centralizada en la central, consolidada por producto ─
+// En esta etapa la registra SOLO la central (el link de sucursal la ve, no opera). La RPC reparte
+// la cantidad entre las sucursales que tienen pendiente ese código.
+type GrupoDev = {
+  codigo: string; modelo: string; descripcion: string; motivos: string[]
+  cantidad: number; pendiente: number; enviada: number; conservada: number; vendida: number
+  porSuc: Record<number, number>
+}
+
+function DevolucionCentral({ data, esCentral, operar }: { data: Central; esCentral: boolean; operar: Operar }) {
+  const [ocupado, setOcupado] = useState(false)
+  const nombreSuc = (id: number) => data.sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`
+  const grupos = useMemo<GrupoDev[]>(() => {
+    const m = new Map<string, GrupoDev>()
+    for (const d of data.devoluciones) {
+      let g = m.get(d.codigo)
+      if (!g) {
+        g = { codigo: d.codigo, modelo: d.modelo, descripcion: d.descripcion ?? '', motivos: [], cantidad: 0, pendiente: 0, enviada: 0, conservada: 0, vendida: 0, porSuc: {} }
+        m.set(d.codigo, g)
+      }
+      const pend = d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0)
+      g.cantidad += d.cantidad; g.pendiente += pend; g.enviada += d.enviada; g.conservada += d.conservada; g.vendida += d.vendida ?? 0
+      if (pend > 0) g.porSuc[d.sucursal_id] = (g.porSuc[d.sucursal_id] ?? 0) + pend
+      if (d.motivo && !g.motivos.includes(d.motivo)) g.motivos.push(d.motivo)
+    }
+    return [...m.values()].sort((a, b) => b.pendiente - a.pendiente || a.modelo.localeCompare(b.modelo))
+  }, [data.devoluciones])
+  const tot = grupos.reduce((s, g) => ({ pend: s.pend + g.pendiente, dev: s.dev + g.enviada, queda: s.queda + g.conservada }), { pend: 0, dev: 0, queda: 0 })
+
+  const devolverTodo = async () => {
+    if (!window.confirm(`¿Confirmás que se devuelven a Orbital las ${tot.pend} u pendientes de todas las sucursales?`)) return
+    setOcupado(true)
+    await operar('consigna_devolucion_central', { p_codigo: null, p_devuelve: null, p_conserva: null }, 'Devolución registrada')
+    setOcupado(false)
+  }
+
+  return (
+    <section className="bg-white border border-black/10 rounded-lg">
+      <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <h2 className="font-semibold flex items-center gap-2 mr-auto"><Undo2 size={16} className="text-amber-700" /> Devolución a Orbital · todas las sucursales</h2>
+        <span className="text-xs text-muted tabular-nums">Pendiente <b className="text-amber-700">{tot.pend}</b> · devuelto <b>{tot.dev}</b> · se queda <b>{tot.queda}</b></span>
+        {esCentral && tot.pend > 0 && (
+          <button onClick={devolverTodo} disabled={ocupado} className="text-xs bg-amber-100 text-amber-900 font-medium rounded-lg px-3 py-1.5 disabled:opacity-50">
+            Devolver todo lo pendiente
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-muted px-4 pt-3">
+        {esCentral
+          ? 'La central junta lo de las sucursales y lo devuelve a Orbital. Se registra por producto (todo o una parte); lo que no se devuelve se marca "se queda" y pasa a stock normal.'
+          : 'La devolución la gestiona la central. Acá ves qué tiene que juntar cada sucursal.'}
+      </p>
+      {grupos.length === 0 ? (
+        <p className="text-sm text-muted px-4 py-6">Orbital no pidió devoluciones.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse mt-2">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wide text-muted">
+                <th className="text-left font-medium px-4 py-2 border-b border-black/10">Modelo · color</th>
+                <th className="text-left font-medium px-2 py-2 border-b border-black/10">Por qué</th>
+                <th className="text-left font-medium px-2 py-2 border-b border-black/10">Dónde está</th>
+                <th className="text-right font-medium px-2 py-2 border-b border-black/10">Pedido</th>
+                <th className="text-right font-medium px-2 py-2 border-b border-black/10">Pendiente</th>
+                <th className="text-left font-medium px-4 py-2 border-b border-black/10">{esCentral ? 'Registrar' : 'Estado'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grupos.map((g) => (
+                <FilaDevolucion key={g.codigo} g={g} nombreSuc={nombreSuc} editable={esCentral} operar={operar} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function FilaDevolucion({ g, nombreSuc, editable, operar }: { g: GrupoDev; nombreSuc: (id: number) => string; editable: boolean; operar: Operar }) {
+  const pendiente = g.pendiente
   const [cant, setCant] = useState(pendiente)
   const [ocupado, setOcupado] = useState(false)
   useEffect(() => setCant(pendiente), [pendiente])
@@ -363,24 +409,29 @@ function FilaDevolucion({ d, pendiente, editable, operar }: { d: Devolucion; pen
 
   const accion = async (devuelve: number, conserva: number, ok: string) => {
     setOcupado(true)
-    await operar('consigna_devolucion_accion', { p_id: d.id, p_devuelve: devuelve, p_conserva: conserva }, ok)
+    await operar('consigna_devolucion_central', { p_codigo: g.codigo, p_devuelve: devuelve, p_conserva: conserva }, ok)
     setOcupado(false)
   }
 
   return (
     <tr className="align-top">
       <td className="px-4 py-2 border-b border-black/5">
-        <div className="text-[11px] font-semibold tracking-wide">{d.modelo}</div>
-        <div className="text-xs text-muted">{d.descripcion}</div>
+        <div className="text-[11px] font-semibold tracking-wide">{g.modelo}</div>
+        <div className="text-xs text-muted">{g.descripcion}</div>
       </td>
-      <td className="px-2 py-2 border-b border-black/5 text-xs min-w-[180px]">{d.motivo}</td>
-      <td className="px-2 py-2 border-b border-black/5 text-right tabular-nums">{d.cantidad}</td>
+      <td className="px-2 py-2 border-b border-black/5 text-xs min-w-[180px]">{g.motivos.join(' · ')}</td>
+      <td className="px-2 py-2 border-b border-black/5 text-[11px] text-muted min-w-[160px]">
+        {Object.entries(g.porSuc).map(([id, n]) => (
+          <span key={id} className="inline-block mr-2 whitespace-nowrap">{nombreSuc(Number(id))} <b className="text-amber-700 tabular-nums">{n}</b></span>
+        ))}
+      </td>
+      <td className="px-2 py-2 border-b border-black/5 text-right tabular-nums">{g.cantidad}</td>
       <td className={`px-2 py-2 border-b border-black/5 text-right tabular-nums font-semibold ${pendiente > 0 ? 'text-amber-700' : 'text-black/25'}`}>{pendiente}</td>
       <td className="px-4 py-2 border-b border-black/5 whitespace-nowrap">
         {pendiente > 0 && editable ? (
           <div className="flex items-center gap-1.5">
             <input
-              id={`dev-cant-${d.id}`}
+              id={`dev-cant-${g.codigo}`}
               type="number"
               min={1}
               max={pendiente}
@@ -389,22 +440,19 @@ function FilaDevolucion({ d, pendiente, editable, operar }: { d: Devolucion; pen
               aria-label="Cantidad"
               className="w-14 border border-black/15 rounded-md px-2 py-1 text-sm tabular-nums"
             />
-            <button disabled={!valida || ocupado} onClick={() => accion(cant, 0, `Devueltas ${cant} u de ${d.modelo}`)}
+            <button disabled={!valida || ocupado} onClick={() => accion(cant, 0, `Devueltas ${cant} u de ${g.modelo}`)}
               className="text-xs bg-ink text-white rounded-md px-2.5 py-1.5 disabled:opacity-40">Devolver</button>
-            <button disabled={!valida || ocupado} onClick={() => accion(0, cant, `${cant} u de ${d.modelo} se quedan`)}
+            <button disabled={!valida || ocupado} onClick={() => accion(0, cant, `${cant} u de ${g.modelo} se quedan`)}
               className="text-xs border border-black/15 rounded-md px-2.5 py-1.5 disabled:opacity-40">Se queda</button>
           </div>
         ) : (
           <span className="text-xs text-muted">
-            {d.enviada > 0 && <>Devolvió {d.enviada}</>}
-            {d.enviada > 0 && d.conservada > 0 && ' · '}
-            {d.conservada > 0 && <>Se queda {d.conservada}</>}
-            {d.vendida > 0 && <>{(d.enviada > 0 || d.conservada > 0) && ' · '}Vendió {d.vendida}</>}
-            {pendiente > 0 && 'Pendiente'}
+            {[g.enviada > 0 && `Devolvió ${g.enviada}`, g.conservada > 0 && `Se queda ${g.conservada}`, g.vendida > 0 && `Vendió ${g.vendida}`, pendiente > 0 && 'Pendiente']
+              .filter(Boolean).join(' · ')}
           </span>
         )}
-        {(d.enviada > 0 || d.conservada > 0) && pendiente > 0 && (
-          <div className="text-[11px] text-faint mt-0.5">Devolvió {d.enviada} · se queda {d.conservada}</div>
+        {editable && (g.enviada > 0 || g.conservada > 0) && pendiente > 0 && (
+          <div className="text-[11px] text-faint mt-0.5">Devolvió {g.enviada} · se queda {g.conservada}</div>
         )}
       </td>
     </tr>
