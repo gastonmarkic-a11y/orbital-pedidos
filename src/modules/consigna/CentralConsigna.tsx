@@ -100,7 +100,9 @@ export default function CentralConsigna() {
       setError(null)
       const d = data as Central
       setData(d)
-      setSelSuc((s) => s ?? d.acceso.sucursal_id ?? d.sucursales[0]?.id ?? null)
+      // Central arranca en el Total (todas); link de sucursal, en su sucursal.
+      setSelSuc((s) => s ?? d.acceso.sucursal_id ?? null)
+      if (d.acceso.sucursal_id == null) setVista((v) => (v === 'tablero' ? 'stock' : v))
     })
   }, [clave])
 
@@ -117,7 +119,7 @@ export default function CentralConsigna() {
   }
 
   if (!clave || (error && !data)) return <Ingreso error={error} onEntrar={(k) => { setError(null); setClave(k) }} />
-  if (!data || selSuc == null) return <div className="min-h-screen grid place-items-center bg-[#F6F4EF] text-muted text-sm">{cargando ? 'Cargando…' : ''}</div>
+  if (!data) return <div className="min-h-screen grid place-items-center bg-[#F6F4EF] text-muted text-sm">{cargando ? 'Cargando…' : ''}</div>
 
   const sucs = data.sucursales
   const miSuc = data.acceso.sucursal_id
@@ -131,7 +133,7 @@ export default function CentralConsigna() {
   const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
   const tabs: [Vista, string, string][] = [
-    ['tablero', 'Sucursal', suc?.nombre ?? ''],
+    ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
     ['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''],
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
     ['pedir', 'Stock online', ''],
@@ -181,15 +183,15 @@ export default function CentralConsigna() {
         {/* Sucursales: elegir cuál mirar */}
         <section className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-9 gap-2">
           <button
-            onClick={() => setVista('stock')}
-            title="Ver el stock de todas las sucursales"
-            className="text-left rounded-lg border border-gold/60 bg-[#FBF7EC] px-3 py-2 hover:border-gold"
+            onClick={() => { setSelSuc(null); setVista((v) => (v === 'tablero' ? 'stock' : v)) }}
+            title="Todas las sucursales"
+            className={`text-left rounded-lg border px-3 py-2 transition-colors ${selSuc == null ? 'bg-ink text-white border-ink' : 'bg-[#FBF7EC] border-gold/60 hover:border-gold'}`}
           >
-            <div className="text-[11px] text-muted font-semibold uppercase tracking-wide">Total · {sucs.length} suc.</div>
+            <div className={`text-[11px] font-semibold uppercase tracking-wide ${selSuc == null ? 'text-white/70' : 'text-muted'}`}>Total · {sucs.length} suc.</div>
             <div className="text-lg font-semibold tabular-nums leading-tight">{fmt(tot('cantidad'))} u</div>
             <div className="text-[11px] tabular-nums flex gap-2 mt-0.5">
-              {tot('devolver') > 0 && <span className="text-amber-700">↩ {fmt(tot('devolver'))}</span>}
-              {tot('en_camino') > 0 && <span className="text-emerald-700">+ {fmt(tot('en_camino'))}</span>}
+              {tot('devolver') > 0 && <span className={selSuc == null ? 'text-amber-300' : 'text-amber-700'}>↩ {fmt(tot('devolver'))}</span>}
+              {tot('en_camino') > 0 && <span className={selSuc == null ? 'text-emerald-300' : 'text-emerald-700'}>+ {fmt(tot('en_camino'))}</span>}
             </div>
           </button>
           {sucs.map((s) => {
@@ -199,7 +201,7 @@ export default function CentralConsigna() {
             return (
               <button
                 key={s.id}
-                onClick={() => setSelSuc(s.id)}
+                onClick={() => { setSelSuc(s.id); setVista('tablero') }}
                 title={[s.direccion, s.localidad].filter(Boolean).join(', ')}
                 className={`text-left rounded-lg border px-3 py-2 transition-colors ${activa ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 hover:border-gold'}`}
               >
@@ -242,6 +244,9 @@ export default function CentralConsigna() {
           <PedirOrbital clave={clave} suc={(miSuc != null ? sucs.find((s) => s.id === miSuc) : suc)!} editable operar={operar} onEnviado={() => setVista('pedidos')} />
         )}
         {vista === 'pedidos' && <Pedidos data={data} esCentral={esCentral} operar={operar} />}
+        {(vista === 'postventa' || (vista === 'pedir' && miSuc == null)) && !suc && (
+          <p className="bg-white border border-black/10 rounded-lg text-sm text-muted px-4 py-6">Elegí una sucursal arriba para {vista === 'pedir' ? 'pedirle a Orbital' : 'ver su postventa'}.</p>
+        )}
         {vista === 'postventa' && suc && (
           <Postventa clave={clave} data={data} suc={suc} editable={puedeOperar(suc.id)} quien={quien} />
         )}
