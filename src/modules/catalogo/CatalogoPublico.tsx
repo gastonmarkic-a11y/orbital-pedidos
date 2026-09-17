@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
@@ -127,6 +127,13 @@ function deviceId(): string {
   } catch { return '' }
 }
 interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null; vendedor_tel?: string | null }
+// Catálogo de disponibilidad: el token de los vendedores de un distribuidor no ve
+// precios (ellos venden con su propia lista). El servidor ya los manda en 0; acá
+// solo se evita mostrar el número y todo lo que hable de plata.
+const SinPreciosCtx = createContext(false)
+const useSinPrecios = () => useContext(SinPreciosCtx)
+// "010002 - Optisur S.R.L · vendedores (sin precios)" → "Optisur S.R.L"
+const empresaDe = (label?: string | null) => ((label || '').split(' - ')[1] || label || '').split('·')[0].trim()
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
 const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
@@ -428,6 +435,7 @@ function ProtBadge({ triple }: { triple: boolean }) {
 
 // Tarjeta de modelo reutilizable (grilla y secciones)
 function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () => void; onQuick: () => void; grupo?: string }) {
+  const sinPrecios = useSinPrecios()
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
@@ -438,7 +446,9 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
       <button onClick={onOpen} className="text-left w-full block px-3 pt-3 pb-2 flex-1">
         <p className="text-sm font-semibold truncate">{m.modelo}</p>
         <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
-        <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>
+        {sinPrecios
+          ? <p className="text-[11px] font-semibold mt-1 text-emerald-600">Disponible</p>
+          : <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>}
       </button>
       <button onClick={onQuick} className="mx-3 mb-3 rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
         <Plus size={14} /> Agregar
@@ -508,6 +518,19 @@ const FAQ: { q: string; a: string }[] = [
     a: 'Es nuestra plataforma de cristales: UV400 + Blue Cut + Infrarrojo en un solo lente. Es única en el mercado argentino y es el principal argumento de venta en el mostrador.' },
   { q: '¿Cuándo me llega el pedido?',
     a: 'Una vez que tu vendedor confirma el pedido, se prepara y se despacha por el transporte que tengas acordado. Él te pasa el número de seguimiento cuando sale.' },
+]
+
+// Catálogo de disponibilidad (vendedores de un distribuidor): acá no se habla de
+// precios ni de listas — los precios los pone el distribuidor, no Orbital.
+const FAQ_SIN_PRECIOS: { q: string; a: string }[] = [
+  { q: '¿Por qué no veo precios?',
+    a: 'Este catálogo muestra solo disponibilidad. Los precios te los pasa tu empresa: son los de su lista, no los de Orbital.' },
+  { q: '¿Lo que veo tiene stock?',
+    a: 'Sí. Solo aparecen los colores con stock disponible en este momento. Los que dicen "proyectado" todavía no llegaron, pero ya están en producción.' },
+  { q: '¿Cómo armo un pedido?',
+    a: 'Entrá al modelo, elegí el color y la cantidad, y se suma al pedido. Cuando termines, tocá "Pedido" arriba a la derecha y confirmá: queda registrado a nombre de tu empresa para que ellos lo revisen y lo cierren.' },
+  { q: '¿Qué es la Triple Protección?',
+    a: 'Es nuestra plataforma de cristales: UV400 + Blue Cut + Infrarrojo en un solo lente. Es única en el mercado argentino y es el principal argumento de venta en el mostrador.' },
 ]
 
 // Chat en vivo con IRIS, adentro del catálogo. La diferencia con el widget de la
@@ -640,6 +663,9 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
   const [abierta, setAbierta] = useState<number | null>(null)
   const [entrantes, setEntrantes] = useState<string[]>([])
   const [sinLeer, setSinLeer] = useState(0)
+  // Catálogo de disponibilidad: sin chat (IRIS cotiza) y sin las preguntas de precio.
+  const sinPrecios = useSinPrecios()
+  const faq = sinPrecios ? FAQ_SIN_PRECIOS : FAQ
 
   // Si alguien del equipo le escribe (desde Orbital Suite o contestando el aviso en
   // Telegram), el mensaje aparece acá mientras el cliente sigue mirando el catálogo:
@@ -648,7 +674,7 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
   const desde = useRef<string>(new Date().toISOString())
   useEffect(() => {
     const tick = async () => {
-      if (!acceso?.codigo) return
+      if (!acceso?.codigo || sinPrecios) return
       const { data } = await supabase.rpc('catalogo_chat_escuchar', { p_acceso: acceso.codigo, p_desde: desde.current })
       const nuevos = (data ?? []) as { contenido: string; created_at: string }[]
       if (!nuevos.length) return
@@ -667,6 +693,7 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
   // Al minuto de estar mirando, el asistente saluda una vez y ofrece esos tres temas.
   // Una sola vez por día y por cliente: si ya escribió, no aparece.
   useEffect(() => {
+    if (sinPrecios) return
     const hoy = new Date().toISOString().slice(0, 10)
     if (localStorage.getItem(SALUDO_KEY) === hoy) return
     const t = setTimeout(() => {
@@ -684,7 +711,7 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
     }, 60000)
     return () => clearTimeout(t)
   }, [acceso])
-  const optica = (acceso?.label?.split(' - ')[1] || acceso?.label || '').trim()
+  const optica = empresaDe(acceso?.label)
   const vendedor = acceso?.vendedor || null
   const tel = (acceso?.vendedor_tel || '').replace(/\D/g, '') || TEL_IRIS
   const propio = !!acceso?.vendedor_tel
@@ -712,14 +739,14 @@ function AyudaCatalogo({ acceso, offset }: { acceso: Acceso | null; offset?: str
               <button onClick={() => setOpen(false)} className="p-1"><X size={20} /></button>
             </div>
 
-            <ChatIris acceso={acceso} entrantes={entrantes} />
+            {!sinPrecios && <ChatIris acceso={acceso} entrantes={entrantes} />}
 
             <div className="px-4 pt-4 pb-1">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Dudas frecuentes</p>
             </div>
 
             <div className="px-4 py-2 divide-y divide-black/5">
-              {FAQ.map((f, i) => (
+              {faq.map((f, i) => (
                 <div key={i} className="py-1">
                   <button onClick={() => setAbierta(abierta === i ? null : i)}
                     className="w-full flex items-start justify-between gap-3 text-left py-2.5">
@@ -854,6 +881,8 @@ export default function CatalogoPublico() {
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
+  // Token de vendedores de un distribuidor: ven disponibilidad, no precios.
+  const sinPrecios = acceso?.tipo === 'dist_vend'
 
   // ¿este token trae bono? Se consulta una vez, al validar el acceso.
   useEffect(() => {
@@ -980,11 +1009,18 @@ export default function CatalogoPublico() {
     `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
   return (
+    <SinPreciosCtx.Provider value={sinPrecios}>
     <div className="min-h-screen bg-white text-[#0a0a0a] font-mono">
       {/* Banner chico estilo tienda */}
       <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
-        Orbital® · Catálogo mayorista — pedido online sobre stock real
+        {sinPrecios ? 'Orbital® · Disponibilidad en vivo sobre stock real' : 'Orbital® · Catálogo mayorista — pedido online sobre stock real'}
       </div>
+      {/* Vendedores del distribuidor: el catálogo es de disponibilidad, sin precios */}
+      {sinPrecios && (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-[11px] text-center py-1.5 px-3 font-semibold">
+          👓 Disponibilidad en vivo · los precios te los pasa {empresaDe(acceso?.label) || 'tu empresa'}
+        </div>
+      )}
       {/* Marca de agua: catálogo personalizado del cliente (link con token) */}
       {acceso?.tipo === 'optica' && acceso.label && (
         <div className="bg-[#0004FF]/[0.06] border-b border-[#0004FF]/15 text-[#0004FF] text-[11px] text-center py-1.5 px-3 font-semibold">
@@ -1104,10 +1140,11 @@ export default function CatalogoPublico() {
       {cartCount > 0 && !carritoOpen && !sel && (
         <button onClick={() => setCarritoOpen(true)} className={`md:hidden fixed ${barraFija ? 'bottom-28' : 'bottom-4'} inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20`}>
           <span className="text-sm font-medium">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</span>
-          <span className="text-sm font-bold">{kAr(cartTotal)} · Ver pedido →</span>
+          <span className="text-sm font-bold">{sinPrecios ? 'Ver pedido →' : `${kAr(cartTotal)} · Ver pedido →`}</span>
         </button>
       )}
     </div>
+    </SinPreciosCtx.Provider>
   )
 }
 
@@ -1118,6 +1155,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
 }) {
   const [vars, setVars] = useState<Variante[]>([])
   const [loading, setLoading] = useState(true)
+  const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
@@ -1150,7 +1188,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                     </div>
                     <div className="p-2">
                       <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
-                      <div className="flex items-center gap-1 flex-wrap"><p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
+                      <div className="flex items-center gap-1 flex-wrap">{sinPrecios ? <p className="text-[10px] font-semibold text-emerald-600 mt-0.5">Disponible</p> : <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>}{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
                       {q === 0 ? (
                         <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
@@ -1185,6 +1223,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
   const [medidas, setMedidas] = useState<Medidas | null>(null)
+  const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
@@ -1248,11 +1287,18 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                   <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#EEEEF0] text-neutral-600">{cap(t)}</span>
                 ))}
               </div>
-              <div className="flex items-baseline gap-2 mt-3">
-                <span className="text-2xl font-bold text-[#0004FF]">{kAr(v.precio)}</span>
-                {v.tiene_preventa && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
-                <span className="text-[11px] text-neutral-400">+ IVA</span>
-              </div>
+              {sinPrecios ? (
+                <div className="flex items-baseline gap-2 mt-3">
+                  <span className="text-base font-bold text-emerald-600">{v.proyectado ? 'Proyectado' : 'Disponible'}</span>
+                  <span className="text-[11px] text-neutral-400">{v.proyectado ? 'en producción' : 'stock en depósito'}</span>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-2 mt-3">
+                  <span className="text-2xl font-bold text-[#0004FF]">{kAr(v.precio)}</span>
+                  {v.tiene_preventa && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
+                  <span className="text-[11px] text-neutral-400">+ IVA</span>
+                </div>
+              )}
             </div>
 
             {/* Medidas del modelo (ficha técnica) */}
@@ -1319,6 +1365,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
+  const sinPrecios = useSinPrecios()
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
@@ -1420,7 +1467,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
                     <p className="text-sm font-medium truncate">{c.modelo}</p>
                     <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>
                     <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>
+                      {!sinPrecios && <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>}
                       {packCalc && (
                         <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${c.oportunidad ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0004FF]/10 text-[#0004FF]'}`}>
                           {c.oportunidad ? 'Oportunidad' : 'Línea'}
@@ -1438,7 +1485,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
               ))}
             </div>
             <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
-              <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
+              {sinPrecios
+                ? <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">Total del pedido</span><span className="font-bold text-lg">{unidades} unidades</span></div>
+                : <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>}
               {packCalc && <PackResumen calc={packCalc} />}
               {digital && (
                 <ResumenCompraDigital bono={digital.bono} calc={digital.calc} subtotal={total} unidades={unidades}
@@ -1452,8 +1501,8 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
           <div className="p-4 space-y-3">
             {identFijo ? (
               <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5">
-                <p className="text-[11px] font-medium text-[#0004FF]">{esRev ? 'Tu cuenta revendedor' : 'Pedido para tu óptica'}</p>
-                <p className="text-sm font-semibold">{acceso?.label || identFijo}</p>
+                <p className="text-[11px] font-medium text-[#0004FF]">{esRev ? 'Tu cuenta revendedor' : sinPrecios ? 'Pedido a nombre de' : 'Pedido para tu óptica'}</p>
+                <p className="text-sm font-semibold">{sinPrecios ? empresaDe(acceso?.label) || identFijo : acceso?.label || identFijo}</p>
               </div>
             ) : (
               <div>
@@ -1504,7 +1553,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
                 {contado && <div className="flex justify-between font-bold text-emerald-700"><span>Pagando contado</span><span>{kAr(digital.calc.pagaEfectivo)} + IVA</span></div>}
               </div>
             ) : (
-              <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{unidades} unidades</span><span className="font-bold text-lg">{kAr(total)}</span></div>
+              <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{sinPrecios ? 'Total del pedido' : `${unidades} unidades`}</span><span className="font-bold text-lg">{sinPrecios ? `${unidades} unidades` : kAr(total)}</span></div>
             )}
             <div className="flex gap-2">
               <button onClick={() => setFase('carrito')} className="rounded-xl border border-black/10 py-3 px-5 text-sm font-medium">Volver</button>
