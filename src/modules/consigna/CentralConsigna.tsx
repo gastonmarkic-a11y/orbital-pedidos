@@ -18,6 +18,8 @@ import InstalarApp from '../../components/InstalarApp'
 import { colorSwatch } from '../catalogo/colorLegible'
 import Postventa from './Postventa'
 import Consultas from './Consultas'
+import LinksSucursales from './LinksSucursales'
+import EnviosRepos from './EnviosRepos'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
 const QUIEN_KEY = 'orbital_consigna_quien'
@@ -54,7 +56,7 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas'
+type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
@@ -140,10 +142,13 @@ export default function CentralConsigna() {
     ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
     ...(esCentral && !suc ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
+    ['camino', 'En camino', tot('en_camino') ? `${fmt(tot('en_camino'))} u` : ''],
+    ['repo', 'Reposición por venta', ''],
     ['pedir', 'Stock online', ''],
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
     ['postventa', 'Postventa', ''],
     ['consultas', 'Consultas IRIS', ''],
+    ...(esCentral ? [['links', 'Links de sucursal', ''] as [Vista, string, string]] : []),
   ]
 
   return (
@@ -245,6 +250,8 @@ export default function CentralConsigna() {
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
         {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
+        {(vista === 'camino' || vista === 'repo') && <EnviosRepos clave={clave} data={data} modo={vista === 'camino' ? 'camino' : 'repo'} />}
+        {vista === 'links' && esCentral && <LinksSucursales clave={clave} cliente={data.madre?.nombre ?? 'Orbital'} />}
         {vista === 'devolucion' && esCentral && !suc && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
         {vista === 'pedir' && (
