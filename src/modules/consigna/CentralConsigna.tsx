@@ -103,6 +103,8 @@ export default function CentralConsigna() {
       // Central arranca en el Total (todas); link de sucursal, en su sucursal.
       setSelSuc((s) => s ?? d.acceso.sucursal_id ?? null)
       if (d.acceso.sucursal_id == null) setVista((v) => (v === 'tablero' ? 'stock' : v))
+      // Nombre precargado con el del link (se puede cambiar) para no bloquear la primera operación.
+      setQuien((q) => q || (d.acceso.nombre ?? ''))
     })
   }, [clave])
 
@@ -260,7 +262,19 @@ export default function CentralConsigna() {
         )}
         {vista === 'pedidos' && <Pedidos data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'postventa' && !suc && (
-          <p className="bg-white border border-black/10 rounded-lg text-sm text-muted px-4 py-6">Elegí una sucursal arriba para ver su postventa.</p>
+          <div className="bg-white border border-black/10 rounded-lg px-4 py-5 flex flex-wrap items-center gap-3">
+            <span className="text-sm text-muted">¿De qué sucursal es la postventa?</span>
+            <select
+              id="consigna-suc-postventa"
+              aria-label="Sucursal"
+              defaultValue=""
+              onChange={(e) => setSelSuc(Number(e.target.value))}
+              className="text-sm border border-black/15 rounded-lg px-2.5 py-1.5"
+            >
+              <option value="" disabled>Elegí una sucursal</option>
+              {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </div>
         )}
         {vista === 'postventa' && suc && (
           <Postventa clave={clave} data={data} suc={suc} editable={puedeOperar(suc.id)} quien={quien} />
