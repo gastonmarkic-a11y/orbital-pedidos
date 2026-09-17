@@ -11,7 +11,7 @@
 // Pedido particular: la sucursal pide sobre el depósito Orbital (sin precios) → la central autoriza
 // → pasa a Orbital como precarga (catalogo_precarga), fuera de la reposición automática.
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Search, X, Store, History, PackageCheck, Undo2, Truck, Minus, Plus, Check, Send } from 'lucide-react'
+import { ArrowRight, Search, X, Store, History, PackageCheck, Undo2, Truck, Minus, Plus, Check, Send, HelpCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import InstalarApp from '../../components/InstalarApp'
@@ -149,7 +149,6 @@ export default function CentralConsigna() {
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
     ['postventa', 'Postventa', ''],
     ['consultas', 'Consultas IRIS', ''],
-    ['ayuda', 'Cómo funciona', ''],
     ...(esCentral ? [['links', 'Links de sucursal', ''] as [Vista, string, string]] : []),
   ]
 
@@ -165,6 +164,15 @@ export default function CentralConsigna() {
                 <InstalarApp nombre="Orbital Consigna" que={esCentral ? 'la central' : 'tu sucursal'} urlParaInstalar={`/consigna?k=${clave}`}
                   bajada={esCentral ? 'Queda con el ícono de Orbital y entra directo a la central, sin clave.' : 'Queda con el ícono de Orbital en la compu o el teléfono del local y entra directo a tu sucursal.'} />
               </span>
+              {/* Ayuda arriba, al lado de Instalar: es lo primero que busca alguien que entra por primera vez. */}
+              <button
+                onClick={() => setVista('ayuda')}
+                className={`text-xs font-semibold rounded-lg px-3 py-1.5 border inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${vista === 'ayuda'
+                  ? 'bg-emerald-700 text-white border-emerald-700'
+                  : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600'}`}
+              >
+                <HelpCircle size={14} /> Ayuda · uso y alcance
+              </button>
             </div>
             <h1 className="text-xl font-semibold mt-2 leading-tight">{data.madre?.nombre ?? 'Cliente'}</h1>
             <p className="text-xs text-muted">
@@ -231,17 +239,20 @@ export default function CentralConsigna() {
 
         <nav className="flex flex-wrap gap-1.5">
           {tabs.map(([k, label, extra]) => {
-            // La devolución va en ámbar: es otra cosa, no se mezcla con mirar stock o pedir.
+            // La devolución va en ámbar y la ayuda en verde: son otra cosa, no se mezclan con mirar stock o pedir.
             const dev = k === 'devolucion'
+            const ayuda = k === 'ayuda'
             return (
               <button
                 key={k}
                 onClick={() => setVista(k)}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-md border whitespace-nowrap transition-colors ${vista === k
-                  ? dev ? 'bg-amber-700 text-white border-amber-700' : 'bg-ink text-white border-ink'
-                  : dev ? 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600' : 'bg-white text-ink border-black/20 hover:border-gold'}`}
+                  ? dev ? 'bg-amber-700 text-white border-amber-700'
+                    : ayuda ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-ink text-white border-ink'
+                  : dev ? 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600'
+                    : ayuda ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600' : 'bg-white text-ink border-black/20 hover:border-gold'}`}
               >
-                {label}
+                {ayuda && '❔ '}{label}
                 {extra && <span className={`ml-1.5 font-medium ${vista === k ? (dev ? 'text-amber-100' : 'text-gold') : 'text-amber-700'}`}>{extra}</span>}
               </button>
             )
