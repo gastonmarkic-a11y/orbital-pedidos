@@ -13,6 +13,51 @@ export interface BonoEstado {
   escalera_piezas: Escalon[]
   financiero_pct: number
   clasif_piezas: string | null
+  // Modo porcentaje (campaña Diferenciarte v2): pct sobre la compra sin IVA, desde `minimo`, con `tope`.
+  modo?: 'escalera' | 'pct'
+  pct?: number | null
+  minimo?: number | null
+  tope?: number | null
+  contado_pct?: number | null
+  contacto_nombre?: string | null
+  contacto_wsp?: string | null
+  campana?: string | null
+}
+
+export const esBonoPct = (b: BonoEstado | null | undefined): boolean => b?.modo === 'pct'
+
+/** Importe de las piezas sin cargo del pack: se descuentan las oportunidades más baratas del carrito. */
+export function importeSinCargo(items: { precio: number; cantidad: number; oportunidad?: boolean }[], sinCargo: number): number {
+  const unidades = items.filter((i) => i.oportunidad).flatMap((i) => Array(i.cantidad).fill(i.precio) as number[]).sort((a, b) => a - b)
+  return unidades.slice(0, Math.max(0, sinCargo)).reduce((a, p) => a + p, 0)
+}
+
+const fmt = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+
+function calcularBonoPct(total: number, bono: BonoEstado, unidadesCarrito: number, sinCargoImporte: number, vencido: boolean): BonoCalc {
+  const pct = bono.pct ?? 0
+  const min = bono.minimo ?? 0
+  const tope = bono.tope ?? Number.POSITIVE_INFINITY
+  const base = Math.max(0, total - sinCargoImporte)
+  const bonoDe = (b: number) => (b > min ? Math.min(Math.round((b * pct) / 100), tope) : 0)
+  const bonificacion = bonoDe(base)
+  const neto = base - bonificacion
+  const cpct = bono.contado_pct ?? bono.financiero_pct ?? 0
+  const financiero = Math.round((neto * cpct) / 100)
+  const precioPar = unidadesCarrito > 0 ? Math.round(total / unidadesCarrito) : PRECIO_PAR_REF
+
+  let proximo: Proximo | null = null
+  if (base <= min) {
+    const falta = min + 1 - base
+    proximo = { desde: min + 1, falta, pares: Math.max(1, Math.ceil(falta / Math.max(1, precioPar))),
+      premio: `un bono del ${pct}% (desde ${fmt(bonoDe(min + 1))})`, progreso: min > 0 ? base / min : 0 }
+  } else if (bonificacion < tope) {
+    const pares = 2
+    const falta = pares * precioPar
+    proximo = { desde: base + falta, falta, pares, premio: `${fmt(bonoDe(base + falta) - bonificacion)} más de bono`,
+      progreso: Number.isFinite(tope) ? bonificacion / tope : 1 }
+  }
+  return { bonificacion, piezas: 0, neto, financiero, pagaEfectivo: neto - financiero, seLleva: total, proximo, vencido }
 }
 
 export interface Proximo {
@@ -63,9 +108,11 @@ export function calcularBono(
   total: number,
   bono: BonoEstado | null,
   unidadesCarrito = 0,
+  sinCargoImporte = 0,
 ): BonoCalc | null {
   if (!bono) return null
   const vencido = new Date(bono.vence_at).getTime() <= Date.now()
+  if (bono.modo === 'pct') return calcularBonoPct(total, bono, unidadesCarrito, sinCargoImporte, vencido)
 
   const plata = alcanzado(bono.escalera_plata, total)
   const piezasEsc = alcanzado(bono.escalera_piezas, total)

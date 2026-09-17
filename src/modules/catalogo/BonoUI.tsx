@@ -83,6 +83,102 @@ export function BonoBarra({ calc, onVerPares }: { calc: BonoCalc; onVerPares?: (
   )
 }
 
+/** Línea compacta del bono en % para ir arriba de la barra del pack. */
+export function BonoLinea({ calc }: { calc: BonoCalc }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap mb-1.5 text-[11.5px] leading-snug">
+      {calc.bonificacion > 0 && (
+        <span className="font-bold bg-[#0004FF] text-white rounded-full px-2.5 py-0.5">Bono {kAr(calc.bonificacion)}</span>
+      )}
+      {calc.proximo && (
+        <span>
+          Sumá <b>{calc.proximo.pares} {calc.proximo.pares === 1 ? 'par' : 'pares'}</b> y te llevás{' '}
+          <b className="text-[#0004FF]">{calc.proximo.premio}</b>
+        </span>
+      )}
+    </div>
+  )
+}
+
+const waLink = (tel: string) => `https://wa.me/${tel.replace(/\D/g, '')}`
+const telLegible = (tel: string) => {
+  const d = tel.replace(/\D/g, '').replace(/^549?/, '')
+  return d.length === 10 ? `${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}` : tel
+}
+
+/** Resumen de compra digital (bono en %): detalle, bonificaciones, total, forma de pago y vendedor. */
+export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoUnidades, sinCargoImporte, contado, onContado }: {
+  bono: BonoEstado; calc: BonoCalc; subtotal: number; unidades: number
+  sinCargoUnidades: number; sinCargoImporte: number
+  contado: boolean | null; onContado: (v: boolean) => void
+}) {
+  const cpct = bono.contado_pct ?? bono.financiero_pct ?? 0
+  const faltan120 = Math.max(0, 25 - unidades)
+  return (
+    <div className="rounded-xl border border-[#0004FF]/25 bg-[#0004FF]/[0.04] p-3 mb-3 space-y-1.5">
+      <p className="text-[10px] tracking-[0.18em] uppercase text-[#0004FF] font-bold">Tu compra digital</p>
+
+      <div className="flex justify-between text-sm">
+        <span className="text-neutral-600">Subtotal · {unidades} unidades</span>
+        <span className="font-semibold">{kAr(subtotal)}</span>
+      </div>
+      {sinCargoUnidades > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-neutral-600">Piezas sin cargo ({sinCargoUnidades})</span>
+          <span className="font-semibold text-emerald-700">− {kAr(sinCargoImporte)}</span>
+        </div>
+      )}
+      <div className="flex justify-between text-sm">
+        <span className="text-neutral-600">Bono compra por catálogo ({bono.pct}%)</span>
+        <span className="font-semibold text-[#0004FF]">{calc.bonificacion > 0 ? `− ${kAr(calc.bonificacion)}` : '—'}</span>
+      </div>
+      <div className="flex justify-between pt-1.5 border-t border-[#0004FF]/15">
+        <span className="text-sm font-semibold">Total</span>
+        <span className="font-bold text-lg">{kAr(calc.neto)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span>
+      </div>
+
+      {calc.proximo && (
+        <p className="text-[11.5px] text-[#0004FF] font-semibold leading-snug">
+          Si agregás {calc.proximo.pares} {calc.proximo.pares === 1 ? 'par' : 'pares'} más ({kAr(calc.proximo.falta)}), te llevás {calc.proximo.premio}.
+        </p>
+      )}
+      {!calc.proximo && calc.bonificacion > 0 && (
+        <p className="text-[11.5px] text-emerald-700 font-semibold">Llegaste al bono máximo de {kAr(bono.tope ?? calc.bonificacion)}. 🎉</p>
+      )}
+
+      <div className="pt-2 mt-1 border-t border-[#0004FF]/15 space-y-1.5">
+        <p className="text-[12px] text-neutral-700 leading-snug">
+          <b>Forma de pago:</b> 30, 60 y 90 días.{' '}
+          {unidades > 24
+            ? <span className="text-emerald-700 font-semibold">Con más de 24 unidades tenés hasta 120 días.</span>
+            : <span>Con más de 24 unidades llegás hasta 120 días (te faltan {faltan120}).</span>}
+        </p>
+        {cpct > 0 && (
+          <>
+            <p className="text-[12px] font-semibold">¿Vas a pagar por transferencia o contado? Tenés {cpct}% extra.</p>
+            <div className="flex gap-2">
+              <button onClick={() => onContado(true)} className={`flex-1 rounded-lg py-2 text-[12px] font-bold border ${contado === true ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-black/10'}`}>Sí, contado / transferencia</button>
+              <button onClick={() => onContado(false)} className={`flex-1 rounded-lg py-2 text-[12px] font-bold border ${contado === false ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]' : 'bg-white border-black/10'}`}>No, a plazo</button>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-neutral-600">Pagando contado ({cpct}% extra)</span>
+              <span className={`font-bold ${contado ? 'text-emerald-700 text-lg' : ''}`}>{kAr(calc.pagaEfectivo)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {bono.contacto_nombre && bono.contacto_wsp && (
+        <p className="text-[11.5px] text-neutral-600 leading-snug pt-2 border-t border-[#0004FF]/15">
+          Tu vendedor es <b>{bono.contacto_nombre}</b> · WhatsApp{' '}
+          <a href={waLink(bono.contacto_wsp)} target="_blank" rel="noreferrer" className="text-[#0004FF] font-semibold underline">{telLegible(bono.contacto_wsp)}</a>.
+          Vas a poder estar en contacto con él en todo lo relacionado a tu pedido.
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** Cartel de celebración al cruzar un escalón. Se va solo. */
 export function BonoCelebra({ texto, onClose }: { texto: string; onClose: () => void }) {
   useEffect(() => {

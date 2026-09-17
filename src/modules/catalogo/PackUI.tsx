@@ -1,6 +1,7 @@
 // ── Carteles del Pack de Bienvenida dentro del catálogo ──
 // Solo se renderizan en modo pack (?pack=bienvenida). Sin ese modo el catálogo
 // queda exactamente como estaba.
+import type { ReactNode } from 'react'
 import { Gift, ChevronRight, Check } from 'lucide-react'
 import type { PackCalc } from './pack'
 import { PACK_MIN_LINEA } from './pack'
@@ -83,12 +84,13 @@ export function PackPasos({ calc, onVerOportunidades }: { calc: PackCalc; onVerO
 }
 
 /** Barra fija abajo: el contador vivo de línea → sin cargo. */
-export function PackBarra({ calc, onVerOportunidades }: { calc: PackCalc; onVerOportunidades: () => void }) {
+export function PackBarra({ calc, onVerOportunidades, extra }: { calc: PackCalc; onVerOportunidades: () => void; extra?: ReactNode }) {
   const arrancando = calc.linea === 0
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-30 bg-white border-t-2 border-[#0004FF] shadow-[0_-6px_20px_rgba(0,0,0,0.10)]">
       <div className="max-w-6xl mx-auto px-4 py-2.5">
+        {extra}
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <span className="text-[11px] font-bold bg-[#0004FF] text-white rounded-full px-2.5 py-1">
             {calc.linea} de línea

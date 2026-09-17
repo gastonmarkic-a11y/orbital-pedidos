@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
-import { calcularBono, type BonoEstado } from './bono'
-import { BonoBanner, BonoBarra, BonoCelebra, BonoResumen } from './BonoUI'
+import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bono'
+import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import InstalarApp from '../../components/InstalarApp'
@@ -925,8 +925,6 @@ export default function CatalogoPublico() {
     return () => window.clearTimeout(t)
   }, [cart, cartCount, cartTotal, claveOk, clave])
 
-  const bonoCalc = useMemo(() => calcularBono(cartTotal, bono, cartCount), [cartTotal, bono, cartCount])
-
   // Pack de bienvenida: lo activa el link de la landing (?pack=bienvenida) y queda
   // pegado al navegador para que sobreviva la navegación del catálogo.
   const packCalc = useMemo(() => {
@@ -935,6 +933,12 @@ export default function CatalogoPublico() {
     const oport = items.filter((i) => i.oportunidad).reduce((a, c) => a + c.cantidad, 0)
     return calcularPack(cartCount - oport, oport)
   }, [modoPack, cart, cartCount])
+
+  // Bono en % (Diferenciarte v2) convive con el pack: se calcula sobre lo que se factura.
+  const bonoPct = esBonoPct(bono)
+  const bonoCalc = useMemo(
+    () => calcularBono(cartTotal, bono, cartCount, packCalc && bonoPct ? importeSinCargo(Object.values(cart), packCalc.eligio) : 0),
+    [cartTotal, bono, cartCount, packCalc, bonoPct, cart])
 
   // Al cruzar un escalón, cartel de celebración (una sola vez por escalón).
   useEffect(() => {
@@ -990,7 +994,7 @@ export default function CatalogoPublico() {
       {/* Pack de bienvenida: llega desde la landing */}
       {packCalc && <PackBanner />}
       {/* Bono de campaña: solo si el token lo trae */}
-      {bono && !packCalc && <BonoBanner bono={bono} />}
+      {bono && (!packCalc || bonoPct) && <BonoBanner bono={bono} />}
       {/* Header */}
       <header className="bg-white border-b border-black/10 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -1082,9 +1086,10 @@ export default function CatalogoPublico() {
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Bono: cartel de escalón desbloqueado + barra de progreso fija */}
-      {celebra && !packCalc && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
+      {celebra && (!packCalc || bonoPct) && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
       {packCalc && !carritoOpen && !sel && !quick && (
-        <PackBarra calc={packCalc} onVerOportunidades={() => verGrupo('oportunidades')} />
+        <PackBarra calc={packCalc} onVerOportunidades={() => verGrupo('oportunidades')}
+          extra={bonoPct && bonoCalc && !bonoCalc.vencido ? <BonoLinea calc={bonoCalc} /> : undefined} />
       )}
       {!packCalc && bonoCalc && !bonoCalc.vencido && !carritoOpen && !sel && !quick && (
         <BonoBarra calc={bonoCalc} onVerPares={() => verGrupo('oportunidades')} />
@@ -1302,9 +1307,15 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
   const items = Object.values(cart)
   const total = items.reduce((a, c) => a + c.cantidad * c.precio, 0)
   const unidades = items.reduce((a, c) => a + c.cantidad, 0)
-  const bonoCalc = calcularBono(total, bono ?? null, unidades)
   const oportUnidades = items.filter((i) => i.oportunidad).reduce((a, c) => a + c.cantidad, 0)
   const packCalc = modoPack ? calcularPack(unidades - oportUnidades, oportUnidades) : null
+  const bonoPct = esBonoPct(bono)
+  const sinCargoUnidades = packCalc && bonoPct ? packCalc.eligio : 0
+  const sinCargoImp = sinCargoUnidades > 0 ? importeSinCargo(items, sinCargoUnidades) : 0
+  const bonoCalc = calcularBono(total, bono ?? null, unidades, sinCargoImp)
+  const digital = bonoPct && bonoCalc && !bonoCalc.vencido ? { bono: bono!, calc: bonoCalc } : null
+  const [contado, setContado] = useState<boolean | null>(null)
+  const [enviado, setEnviado] = useState<{ neto: number; bono: number; contado: boolean; totalContado: number } | null>(null)
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
@@ -1333,10 +1344,23 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
         // Pack de bienvenida: el vendedor ve en el pedido qué corresponde sin cargo.
         ? [packObs(packCalc), obs.trim()].filter(Boolean).join(' · ')
         : obs.trim()
+    // Compra digital con bono en %: condiciones estructuradas (el servidor revalida el bono).
+    const condiciones = digital ? {
+      sin_cargo_unidades: sinCargoUnidades, sin_cargo_importe: sinCargoImp, contado: contado === true,
+      plazo: unidades > 24 ? '30/60/90/120' : '30/60/90', unidades,
+    } : null
+    const obsDigital = digital
+      ? [`💻 COMPRA DIGITAL (${digital.bono.campana ?? 'bono'}) — bono ${kAr(digital.calc.bonificacion)}` +
+         (sinCargoUnidades ? ` · ${sinCargoUnidades} sin cargo (${kAr(sinCargoImp)})` : '') +
+         ` · neto ${kAr(digital.calc.neto)} + IVA · plazo ${condiciones!.plazo}` +
+         (contado ? ` · PAGA CONTADO/TRANSFERENCIA ${digital.bono.contado_pct ?? 0}% extra → ${kAr(digital.calc.pagaEfectivo)} + IVA` : ''),
+         obsFinal].filter(Boolean).join(' · ')
+      : obsFinal
     const { data, error } = await supabase.rpc('catalogo_checkout', {
       p_clave: clave, p_identificador: ident.trim(), p_contacto: contacto.trim(),
-      p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obsFinal, p_razon: razon.trim() || null,
+      p_wsp: wsp.trim(), p_mail: mail.trim(), p_items: payload, p_obs: obsDigital, p_razon: razon.trim() || null,
       p_acceso: acceso?.codigo || clave,
+      ...(condiciones ? { p_condiciones: condiciones } : {}),
     })
     setEnviando(false)
     if (error) { setErr('No se pudo enviar. Revisá la conexión.'); return }
@@ -1347,6 +1371,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
       return
     }
     setResult({ cliente: r.cliente!, identificado: !!r.identificado })
+    if (digital) setEnviado({ neto: digital.calc.neto, bono: digital.calc.bonificacion, contado: contado === true, totalContado: digital.calc.pagaEfectivo })
     setFase('ok'); onDone()
   }
 
@@ -1364,9 +1389,21 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
             <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><Check size={28} /></div>
             <p className="text-sm font-semibold">¡Recibimos tu pedido!</p>
             <p className="text-sm text-neutral-500 mt-1">{result.cliente}</p>
-            <p className="text-xs text-neutral-400 mt-3">
-              {result.identificado ? 'Tu vendedor asignado lo va a revisar y confirmar a la brevedad.' : 'Un asesor comercial se va a contactar para confirmar los datos.'}
-            </p>
+            {enviado && bono ? (
+              <div className="text-left rounded-xl border border-[#0004FF]/20 bg-[#0004FF]/[0.04] p-3 mt-4 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-neutral-600">Bono compra por catálogo</span><span className="font-semibold text-[#0004FF]">− {kAr(enviado.bono)}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-600">Total</span><span className="font-bold">{kAr(enviado.neto)} + IVA</span></div>
+                {enviado.contado && <div className="flex justify-between"><span className="text-neutral-600">Pagando contado</span><span className="font-bold text-emerald-700">{kAr(enviado.totalContado)} + IVA</span></div>}
+                <p className="text-[12px] text-neutral-600 pt-2">
+                  Te mandamos el detalle por WhatsApp. Tu vendedor es <b>{bono.contacto_nombre}</b>
+                  {bono.contacto_wsp && <> · <a className="text-[#0004FF] underline" href={`https://wa.me/${bono.contacto_wsp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">escribile por WhatsApp</a></>}.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 mt-3">
+                {result.identificado ? 'Tu vendedor asignado lo va a revisar y confirmar a la brevedad.' : 'Un asesor comercial se va a contactar para confirmar los datos.'}
+              </p>
+            )}
             <button onClick={onClose} className="mt-5 bg-[#0004FF] text-white rounded-xl py-2.5 px-6 text-sm font-medium">Seguir viendo</button>
           </div>
         ) : items.length === 0 ? (
@@ -1403,7 +1440,11 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
             <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
               <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
               {packCalc && <PackResumen calc={packCalc} />}
-              {!packCalc && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
+              {digital && (
+                <ResumenCompraDigital bono={digital.bono} calc={digital.calc} subtotal={total} unidades={unidades}
+                  sinCargoUnidades={sinCargoUnidades} sinCargoImporte={sinCargoImp} contado={contado} onContado={setContado} />
+              )}
+              {!packCalc && !bonoPct && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
               <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
             </div>
           </>
@@ -1454,7 +1495,17 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
               <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             {err && <p className="text-sm text-red-600">{err}</p>}
-            <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{unidades} unidades</span><span className="font-bold text-lg">{kAr(total)}</span></div>
+            {digital ? (
+              <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/15 px-3 py-2 text-sm space-y-0.5">
+                <div className="flex justify-between"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span>{kAr(total)}</span></div>
+                {sinCargoUnidades > 0 && <div className="flex justify-between"><span className="text-neutral-500">Sin cargo ({sinCargoUnidades})</span><span className="text-emerald-700">− {kAr(sinCargoImp)}</span></div>}
+                <div className="flex justify-between"><span className="text-neutral-500">Bono {digital.bono.pct}%</span><span className="text-[#0004FF]">− {kAr(digital.calc.bonificacion)}</span></div>
+                <div className="flex justify-between font-bold"><span>Total</span><span>{kAr(digital.calc.neto)} + IVA</span></div>
+                {contado && <div className="flex justify-between font-bold text-emerald-700"><span>Pagando contado</span><span>{kAr(digital.calc.pagaEfectivo)} + IVA</span></div>}
+              </div>
+            ) : (
+              <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{unidades} unidades</span><span className="font-bold text-lg">{kAr(total)}</span></div>
+            )}
             <div className="flex gap-2">
               <button onClick={() => setFase('carrito')} className="rounded-xl border border-black/10 py-3 px-5 text-sm font-medium">Volver</button>
               <button onClick={enviar} disabled={enviando || !ident.trim() || (pedirRazon && !razon.trim())} className="flex-1 bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium disabled:opacity-50">
