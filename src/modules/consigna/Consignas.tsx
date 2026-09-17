@@ -593,6 +593,54 @@ function Links({ madre, sucs, nombreSuc }: { madre: Madre; sucs: Suc[]; nombreSu
           </div>
         )
       })}
+      <TerminalesPendientes madre={madre} />
     </section>
+  )
+}
+
+// Terminales que chocaron con el tope (central 8, sucursal 4). Se activan de acá; el cliente no
+// necesita usuario ni contraseña: recarga y entra.
+type DevPend = { codigo: string; device_id: string; user_agent: string | null; sucursal: string; desde: string }
+
+function TerminalesPendientes({ madre }: { madre: Madre }) {
+  const toast = useToast()
+  const [items, setItems] = useState<DevPend[]>([])
+  const cargar = () => supabase.rpc('consigna_dispositivos_pendientes', { p_madre: madre.cod })
+    .then(({ data }) => setItems((data ?? []) as DevPend[]))
+  useEffect(() => { cargar() }, [madre.cod])
+
+  const activar = async (d: DevPend) => {
+    const { error } = await supabase.rpc('consigna_dispositivo_activar', { p_codigo: d.codigo, p_device: d.device_id })
+    if (error) { toast('No se pudo activar', 'error'); return }
+    await cargar()
+    toast('Terminal activada', 'success')
+  }
+
+  const equipo = (ua: string | null) => {
+    const u = (ua ?? '').toLowerCase()
+    if (u.includes('iphone')) return 'iPhone'
+    if (u.includes('ipad')) return 'iPad'
+    if (u.includes('android')) return 'Android'
+    if (u.includes('windows')) return 'PC'
+    if (u.includes('mac os')) return 'Mac'
+    return 'Terminal'
+  }
+
+  if (!items.length) return null
+  return (
+    <div className="px-4 py-3 bg-amber-50">
+      <div className="text-xs font-semibold text-amber-900 mb-1.5">Terminales esperando activación</div>
+      <ul className="flex flex-col gap-1.5">
+        {items.map((d) => (
+          <li key={d.codigo + d.device_id} className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="w-44 shrink-0">{d.sucursal}</span>
+            <span className="flex-1 min-w-0 text-xs text-muted truncate">
+              {equipo(d.user_agent)} · desde {new Date(d.desde).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <button onClick={() => activar(d)} className="text-xs bg-amber-700 text-white rounded-md px-2.5 py-1">Activar</button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

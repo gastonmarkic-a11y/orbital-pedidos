@@ -23,6 +23,7 @@ import EnviosRepos from './EnviosRepos'
 import Instructivo from './Instructivo'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
+const DEV_KEY = 'orbital_consigna_dev'
 const QUIEN_KEY = 'orbital_consigna_quien'
 
 export type Sucursal = { id: number; nombre: string; direccion: string | null; localidad: string | null }
@@ -62,6 +63,14 @@ type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postven
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
 const fmt = (n: number) => n.toLocaleString('es-AR')
+// Id de esta terminal (por navegador). Si no hay storage, va sin id y el candado no aplica.
+function deviceId(): string | null {
+  const guardado = leer(DEV_KEY)
+  if (guardado) return guardado
+  const nuevo = (crypto.randomUUID?.() ?? String(Math.random()).slice(2)).replace(/-/g, '').slice(0, 24)
+  guardar(DEV_KEY, nuevo)
+  return leer(DEV_KEY)
+}
 const fecha = (s: string) => new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 const ERRORES: Record<string, string> = {
@@ -88,6 +97,15 @@ export default function CentralConsigna() {
   const [vista, setVista] = useState<Vista>('tablero')
   const [selSuc, setSelSuc] = useState<number | null>(null)
   const [quien, setQuien] = useState(() => leer(QUIEN_KEY) ?? '')
+  const [dispo, setDispo] = useState<{ ok: boolean; habilitados?: number; tope?: number } | null>(null)
+
+  // Candado de terminales: la central admite 8 y cada sucursal 4. Si se pasa, no se pide usuario ni
+  // contraseña: queda pendiente, avisamos por Telegram y se activa desde la Suite.
+  useEffect(() => {
+    if (!clave) return
+    supabase.rpc('consigna_dispositivo_ok', { p_k: clave, p_device: deviceId(), p_ua: navigator.userAgent })
+      .then(({ data, error }) => { if (!error) setDispo(data as { ok: boolean; habilitados?: number; tope?: number }) })
+  }, [clave])
 
   useEffect(() => {
     if (!clave) return
@@ -125,6 +143,22 @@ export default function CentralConsigna() {
   }
 
   if (!clave || (error && !data)) return <Ingreso error={error} onEntrar={(k) => { setError(null); setClave(k) }} />
+  if (dispo && !dispo.ok) return (
+    <div className="min-h-screen grid place-items-center bg-[#F6F4EF] px-4">
+      <div className="bg-white border border-black/10 rounded-lg max-w-md w-full px-5 py-6 text-center">
+        <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital mx-auto" />
+        <h1 className="text-lg font-semibold mt-3">Esta terminal está por habilitarse</h1>
+        <p className="text-sm text-muted mt-2">
+          Ya avisamos a Orbital para activarla. No hace falta usuario ni contraseña: en cuanto la habilitemos,
+          recargá esta página y entrás.
+        </p>
+        <p className="text-xs text-faint mt-3">
+          Terminales habilitadas: {dispo.habilitados ?? '—'} de {dispo.tope ?? '—'}. Si alguna no se usa más, la damos de baja y liberamos el lugar.
+        </p>
+        <button onClick={() => window.location.reload()} className="mt-4 text-xs bg-ink text-white rounded-lg px-3 py-1.5">Volver a probar</button>
+      </div>
+    </div>
+  )
   if (!data) return <div className="min-h-screen grid place-items-center bg-[#F6F4EF] text-muted text-sm">{cargando ? 'Cargando…' : ''}</div>
 
   const sucs = data.sucursales
