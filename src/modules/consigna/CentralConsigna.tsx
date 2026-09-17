@@ -106,16 +106,17 @@ export default function CentralConsigna() {
     })
   }, [clave])
 
-  // Todas las acciones devuelven la central actualizada.
+  // Todas las acciones devuelven la central actualizada (null si falló).
   const operar = async (fn: string, args: Record<string, unknown>, ok: string) => {
     const nombre = quien.trim()
-    if (!nombre) { toast('Poné tu nombre arriba antes de operar', 'error'); return false }
+    if (!nombre) { toast('Poné tu nombre arriba antes de operar', 'error'); return null }
     guardar(QUIEN_KEY, nombre)
     const { data, error } = await supabase.rpc(fn, { p_k: clave, p_quien: nombre, ...args })
-    if (error) { toast(msgError(error), 'error'); return false }
-    setData(data as Central)
+    if (error) { toast(msgError(error), 'error'); return null }
+    const d = data as Central
+    setData(d)
     toast(ok, 'success')
-    return true
+    return d
   }
 
   if (!clave || (error && !data)) return <Ingreso error={error} onEntrar={(k) => { setError(null); setClave(k) }} />
@@ -132,9 +133,10 @@ export default function CentralConsigna() {
   const porAutorizar = data.pedidos.filter((p) => p.estado === 'solicitado').length
   const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
+  // Devolución, por ahora, solo la central: las sucursales la van a ver cuando el circuito esté rodado.
   const tabs: [Vista, string, string][] = [
     ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
-    ['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''],
+    ...(esCentral ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
     ['pedir', 'Stock online', ''],
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
@@ -219,33 +221,46 @@ export default function CentralConsigna() {
         </section>
 
         <nav className="flex flex-wrap gap-1.5">
-          {tabs.map(([k, label, extra]) => (
-            <button
-              key={k}
-              onClick={() => setVista(k)}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md border whitespace-nowrap transition-colors ${vista === k
-                ? 'bg-ink text-white border-ink'
-                : 'bg-white text-ink border-black/20 hover:border-gold'}`}
-            >
-              {label}
-              {extra && <span className={`ml-1.5 font-medium ${vista === k ? 'text-gold' : 'text-amber-700'}`}>{extra}</span>}
-            </button>
-          ))}
+          {tabs.map(([k, label, extra]) => {
+            // La devolución va en ámbar: es otra cosa, no se mezcla con mirar stock o pedir.
+            const dev = k === 'devolucion'
+            return (
+              <button
+                key={k}
+                onClick={() => setVista(k)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md border whitespace-nowrap transition-colors ${vista === k
+                  ? dev ? 'bg-amber-700 text-white border-amber-700' : 'bg-ink text-white border-ink'
+                  : dev ? 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600' : 'bg-white text-ink border-black/20 hover:border-gold'}`}
+              >
+                {label}
+                {extra && <span className={`ml-1.5 font-medium ${vista === k ? (dev ? 'text-amber-100' : 'text-gold') : 'text-amber-700'}`}>{extra}</span>}
+              </button>
+            )
+          })}
         </nav>
 
         {vista === 'tablero' && suc && (
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
         {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
-        {vista === 'devolucion' &&<DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
+        {vista === 'devolucion' && esCentral && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
         {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
-        {vista === 'pedir' && (miSuc != null ? sucs.find((s) => s.id === miSuc) : suc) && (
-          // Con link de sucursal el catálogo siempre pide para SU sucursal; la central pide para la tarjeta elegida.
-          <PedirOrbital clave={clave} suc={(miSuc != null ? sucs.find((s) => s.id === miSuc) : suc)!} editable operar={operar} onEnviado={() => setVista('pedidos')} />
+        {vista === 'pedir' && (
+          // Con link de sucursal el catálogo siempre pide para SU sucursal; la central ve el catálogo
+          // siempre y elige el destino (la tarjeta elegida o el selector) — su pedido no espera autorización.
+          <PedirOrbital
+            clave={clave}
+            suc={miSuc != null ? sucs.find((s) => s.id === miSuc) ?? null : suc ?? null}
+            sucursales={sucs}
+            esCentral={esCentral}
+            editable
+            operar={operar}
+            onEnviado={() => setVista('pedidos')}
+          />
         )}
         {vista === 'pedidos' && <Pedidos data={data} esCentral={esCentral} operar={operar} />}
-        {(vista === 'postventa' || (vista === 'pedir' && miSuc == null)) && !suc && (
-          <p className="bg-white border border-black/10 rounded-lg text-sm text-muted px-4 py-6">Elegí una sucursal arriba para {vista === 'pedir' ? 'pedirle a Orbital' : 'ver su postventa'}.</p>
+        {vista === 'postventa' && !suc && (
+          <p className="bg-white border border-black/10 rounded-lg text-sm text-muted px-4 py-6">Elegí una sucursal arriba para ver su postventa.</p>
         )}
         {vista === 'postventa' && suc && (
           <Postventa clave={clave} data={data} suc={suc} editable={puedeOperar(suc.id)} quien={quien} />
@@ -255,7 +270,7 @@ export default function CentralConsigna() {
   )
 }
 
-type Operar = (fn: string, args: Record<string, unknown>, ok: string) => Promise<boolean>
+type Operar = (fn: string, args: Record<string, unknown>, ok: string) => Promise<Central | null>
 
 // ── Tablero de una sucursal: qué tiene que devolver y qué le llega nuevo ────
 function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal; editable: boolean; operar: Operar }) {
@@ -366,8 +381,9 @@ function DevolucionCentral({ data, esCentral, operar }: { data: Central; esCentr
   }
 
   return (
-    <section className="bg-white border border-black/10 rounded-lg">
-      <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-x-5 gap-y-2">
+    /* En ámbar: la devolución es otra cosa que mirar stock o pedir. */
+    <section className="bg-amber-50/70 border border-amber-200 rounded-lg">
+      <div className="px-4 py-3 border-b border-amber-200 flex flex-wrap items-center gap-x-5 gap-y-2">
         <h2 className="font-semibold flex items-center gap-2 mr-auto"><Undo2 size={16} className="text-amber-700" /> Devolución a Orbital · todas las sucursales</h2>
         <span className="text-xs text-muted tabular-nums">Pendiente <b className="text-amber-700">{tot.pend}</b> · devuelto <b>{tot.dev}</b> · se queda <b>{tot.queda}</b></span>
         {esCentral && tot.pend > 0 && (
@@ -699,8 +715,9 @@ function FotoAnteojo({ src, alt, color }: { src: string | null; alt: string; col
   )
 }
 
-function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
-  clave: string; suc: Sucursal; editable: boolean; operar: Operar; onEnviado: () => void
+function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onEnviado }: {
+  clave: string; suc: Sucursal | null; sucursales: Sucursal[]; esCentral: boolean
+  editable: boolean; operar: Operar; onEnviado: () => void
 }) {
   const [modelos, setModelos] = useState<ModeloCat[] | null>(null)
   const [busca, setBusca] = useState('')
@@ -709,11 +726,14 @@ function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
   const [carrito, setCarrito] = useState<Record<string, number>>({})
   const [nota, setNota] = useState('')
   const [enviando, setEnviando] = useState(false)
+  // La central entra al catálogo sin sucursal elegida: el destino se elige acá.
+  const [destinoSel, setDestinoSel] = useState<number | null>(null)
+  const destino = sucursales.find((s) => s.id === (esCentral ? destinoSel ?? suc?.id ?? null : suc?.id)) ?? null
 
   useEffect(() => {
     supabase.rpc('consigna_catalogo', { p_k: clave }).then(({ data }) => setModelos((data as ModeloCat[]) ?? []))
   }, [clave])
-  useEffect(() => setCarrito({}), [suc.id])
+  useEffect(() => { setCarrito({}); setDestinoSel(null) }, [suc?.id])
 
   const visibles = useMemo(() => {
     const q = busca.trim().toLowerCase()
@@ -730,14 +750,21 @@ function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
   const cambiar = (codigo: string, delta: number) => setCarrito((c) => ({ ...c, [codigo]: Math.max(0, Math.min(99, (c[codigo] ?? 0) + delta)) }))
 
   const enviar = async () => {
+    if (!destino) return
     setEnviando(true)
-    const ok = await operar('consigna_pedido_crear', {
-      p_sucursal: suc.id,
+    const d = await operar('consigna_pedido_crear', {
+      p_sucursal: destino.id,
       p_items: lineas.map(([codigo, cantidad]) => ({ codigo, cantidad })),
       p_nota: nota.trim() || null,
-    }, `Pedido de ${suc.nombre} enviado a la central para autorizar`)
+    }, esCentral ? `Pedido para ${destino.nombre} enviado a Orbital` : `Pedido de ${destino.nombre} enviado a la central para autorizar`)
+    // La central es la que autoriza: su propio pedido sale derecho a Orbital.
+    if (d && esCentral) {
+      const nuevo = d.pedidos.filter((p) => p.estado === 'solicitado' && p.sucursal_id === destino.id)
+        .sort((a, b) => b.id - a.id)[0]
+      if (nuevo) await operar('consigna_pedido_resolver', { p_id: nuevo.id, p_autoriza: true, p_motivo: null }, 'Orbital ya tiene el pedido')
+    }
     setEnviando(false)
-    if (ok) { setCarrito({}); setNota(''); onEnviado() }
+    if (d) { setCarrito({}); setNota(''); onEnviado() }
   }
 
   if (!modelos) return <p className="text-sm text-muted">Cargando el catálogo de Orbital…</p>
@@ -755,7 +782,22 @@ function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
             <button key={k} onClick={() => setTipo(k)} className={`text-sm rounded-md px-3 py-1 ${tipo === k ? 'bg-white shadow-sm font-semibold' : 'text-muted'}`}>{l}</button>
           ))}
         </div>
-        <span className="text-xs text-muted ml-auto">Pedido para <b className="text-ink">{suc.nombre}</b> · lo autoriza la central</span>
+        {esCentral ? (
+          <label className="text-xs text-muted ml-auto flex items-center gap-2">
+            Pedido para
+            <select
+              id="pedido-destino"
+              value={destino?.id ?? ''}
+              onChange={(e) => setDestinoSel(e.target.value ? Number(e.target.value) : null)}
+              className="text-sm text-ink bg-white border border-black/15 rounded-lg px-2.5 py-1.5"
+            >
+              <option value="">Elegí la sucursal</option>
+              {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </label>
+        ) : (
+          <span className="text-xs text-muted ml-auto">Pedido para <b className="text-ink">{destino?.nombre}</b> · lo autoriza la central</span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
@@ -816,15 +858,16 @@ function PedirOrbital({ clave, suc, editable, operar, onEnviado }: {
       {totalU > 0 && !abierto && (
         <div className="fixed bottom-0 inset-x-0 bg-ink text-white px-4 pt-3 z-40" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <div className="max-w-[1400px] mx-auto flex flex-wrap items-center gap-3">
-            <span className="text-sm">{suc.nombre} · <b className="tabular-nums">{totalU} u</b> en {lineas.length} productos</span>
+            <span className="text-sm">{destino?.nombre ?? 'Sin sucursal'} · <b className="tabular-nums">{totalU} u</b> en {lineas.length} productos</span>
             <span className="text-xs text-white/60 hidden md:inline truncate max-w-md">
               {lineas.slice(0, 3).map(([k, q]) => `${q} ${todos.get(k)?.modelo ?? ''}`).join(' · ')}{lineas.length > 3 ? '…' : ''}
             </span>
             <input id="pedido-nota" value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Para qué lo necesitás (opcional)"
               className="bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm placeholder:text-white/50 flex-1 min-w-[180px]" />
             <button onClick={() => setCarrito({})} className="text-sm text-white/70">Vaciar</button>
-            <button onClick={enviar} disabled={enviando} className="bg-gold text-ink font-semibold text-sm rounded-lg px-4 py-1.5 flex items-center gap-2 disabled:opacity-50">
-              <Send size={14} /> Enviar a la central
+            <button onClick={enviar} disabled={enviando || !destino} title={destino ? '' : 'Elegí arriba para qué sucursal es'}
+              className="bg-gold text-ink font-semibold text-sm rounded-lg px-4 py-1.5 flex items-center gap-2 disabled:opacity-50">
+              <Send size={14} /> {esCentral ? 'Enviar a Orbital' : 'Enviar a la central'}
             </button>
           </div>
         </div>

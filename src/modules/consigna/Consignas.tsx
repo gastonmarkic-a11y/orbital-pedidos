@@ -27,7 +27,7 @@ type Acceso = { codigo: string; sucursal_id: number | null; nombre: string | nul
 const fmt = (n: number) => Number(n || 0).toLocaleString('es-AR')
 const pesos = (n: number) => '$' + Math.round(Number(n || 0)).toLocaleString('es-AR')
 const fecha = (s: string) => new Date(s).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-const URL_BASE = 'https://orbital-pedidos-zu5qorbital-suite.vercel.app'
+const URL_BASE = 'https://ver.orbitaleyewear.com.ar'
 
 type Vista = 'liquidacion' | 'repos' | 'devoluciones' | 'postventa' | 'links'
 
