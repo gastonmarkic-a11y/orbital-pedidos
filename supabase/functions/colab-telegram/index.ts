@@ -210,28 +210,25 @@ async function pantallaResumenInterno(chat: number) {
     await enviar(chat, "Me falta la clave de Orbital. Mandá <code>/panel or-…</code>");
     return;
   }
-  const links = await rpc<
-    { influencer: string; influencer_id: number; admin: string; modelo: string; clicks: number; pedidos: number; com: number; activo: boolean; influencer_activo: boolean }[]
-  >("colab_links_todos", { p_clave: clave });
-  if (!links?.length) {
-    await enviar(chat, "Todavía no hay ningún link publicado.");
+  const filas = await rpc<
+    { influencer_id: number; nombre: string; admin: string; conectado: boolean; links: number; clicks: number; pedidos: number; com: number }[]
+  >("colab_resumen_promotores", { p_clave: clave });
+  if (!filas?.length) {
+    await enviar(chat, "Todavía no hay promotores dados de alta.");
     return;
   }
-  const por = new Map<number, { nombre: string; admin: string; links: number; clicks: number; pedidos: number; com: number }>();
-  for (const l of links) {
-    if (!l.influencer_activo) continue;
-    const a = por.get(l.influencer_id) ??
-      { nombre: l.influencer, admin: l.admin, links: 0, clicks: 0, pedidos: 0, com: 0 };
-    a.links++; a.clicks += l.clicks; a.pedidos += l.pedidos; a.com += Number(l.com);
-    por.set(l.influencer_id, a);
-  }
-  const filas = [...por.values()].sort((a, b) => b.clicks - a.clicks);
   let t = "<b>Promotores — cómo vienen</b>\n\n";
   for (const f of filas) {
-    const conv = f.clicks ? ((f.pedidos / f.clicks) * 100).toFixed(1).replace(".", ",") : "0";
-    t += `<b>${f.nombre}</b> <i>(${f.admin})</i>\n`;
-    t += `${f.links} link${f.links === 1 ? "" : "s"} · ${f.clicks} visitas · ${f.pedidos} pedidos · ${conv}% · ${pesos(f.com)}\n\n`;
+    t += `<b>${f.nombre}</b> <i>(${f.admin})</i>${f.conectado ? " · 📱" : ""}\n`;
+    if (!f.links) {
+      t += `Todavía no publicó ningún link${f.conectado ? "" : " · no entró al bot"}\n`;
+    } else {
+      const conv = f.clicks ? ((f.pedidos / f.clicks) * 100).toFixed(1).replace(".", ",") : "0";
+      t += `${f.links} link${f.links === 1 ? "" : "s"} · ${f.clicks} visitas · ${f.pedidos} pedidos · ${conv}% · ${pesos(f.com)}\n`;
+    }
+    t += `<code>/decile ${f.influencer_id} </code>\n\n`;
   }
+  t += "📱 = conectado al bot. Para escribirle a uno, copiá su <code>/decile</code> y seguí escribiendo.";
   await enviar(chat, t);
 }
 
