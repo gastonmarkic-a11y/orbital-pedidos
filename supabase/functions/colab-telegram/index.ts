@@ -226,17 +226,39 @@ async function pantallaResumenInterno(chat: number) {
       const conv = f.clicks ? ((f.pedidos / f.clicks) * 100).toFixed(1).replace(".", ",") : "0";
       t += `${f.links} link${f.links === 1 ? "" : "s"} · ${f.clicks} visitas · ${f.pedidos} pedidos · ${conv}% · ${pesos(f.com)}\n`;
     }
-    t += `<code>/decile ${f.influencer_id} </code>\n\n`;
+    if (f.conectado) t += `<code>/decile ${f.nombre.split(" ")[0]} </code>\n`;
+    t += "\n";
   }
   t += "📱 = conectado al bot. Para escribirle a uno, copiá su <code>/decile</code> y seguí escribiendo.";
   await enviar(chat, t);
 }
 
-// Desde el grupo interno a un promotor puntual
-async function mandarAPromotor(chat: number, infId: number, texto: string) {
-  const [c] = await conectados(infId);
+// Desde el grupo interno a un promotor puntual. "quien" puede ser el nombre o el número.
+async function mandarAPromotor(chat: number, quien: string | number, texto: string) {
+  const cs = await conectados();
+  let c: Conectado | undefined;
+
+  if (typeof quien === "number" || /^\d+$/.test(String(quien))) {
+    c = cs.find((x) => x.influencer_id === Number(quien));
+  } else {
+    const t = sinTilde(String(quien));
+    const candidatos = cs.filter((x) =>
+      sinTilde(x.nombre).split(/\s+/).some((p) => p.startsWith(t)) || sinTilde(x.nombre).includes(t)
+    );
+    if (candidatos.length > 1) {
+      // Hay más de uno con ese nombre de pila: preguntar antes de mandar nada
+      await enviar(chat,
+        `¿A cuál de los ${candidatos.length}?\n\n` +
+        candidatos.map((x) => `<code>/decile ${sinTilde(x.nombre.split(" ").slice(-1)[0])} ${texto}</code>\n<i>${x.nombre} (${x.admin})</i>`).join("\n\n") +
+        "\n\nCopiá el que corresponda y mandalo.");
+      return;
+    }
+    c = candidatos[0];
+  }
+
   if (!c) {
-    await enviar(chat, "Ese promotor no está conectado al bot.");
+    const lista = cs.length ? cs.map((x) => x.nombre.split(" ")[0]).join(", ") : "ninguno todavía";
+    await enviar(chat, `No encontré a ese promotor entre los conectados.\nConectados: ${lista}`);
     return;
   }
   await enviar(c.chat_id, `📣 <b>Orbital</b>\n\n${texto}`);
@@ -328,7 +350,7 @@ async function manejarMensaje(msg: Record<string, any>) {
       let t = "<b>Promotores conectados</b>\n\n";
       for (const c of cs) {
         t += `<b>${c.nombre}</b> <i>(${c.admin})</i> · ${c.links} link${c.links === 1 ? "" : "s"}\n`;
-        t += `Para escribirle: <code>/decile ${c.influencer_id} tu mensaje</code>\n\n`;
+        t += `Para escribirle: <code>/decile ${c.nombre.split(" ")[0]} tu mensaje</code>\n\n`;
       }
       t += "También podés responder cualquier mensaje 👁 de un promotor y le llega directo.";
       await enviar(chat, t);
@@ -336,9 +358,9 @@ async function manejarMensaje(msg: Record<string, any>) {
     }
 
     // /decile <id> <texto> — a uno solo
-    const uno = texto.match(/^\/decile\s+(\d+)\s+([\s\S]+)$/i);
+    const uno = texto.match(/^\/decile\s+(\S+)\s+([\s\S]+)$/i);
     if (uno) {
-      await mandarAPromotor(chat, Number(uno[1]), uno[2].trim());
+      await mandarAPromotor(chat, uno[1], uno[2].trim());
       return;
     }
 
@@ -369,7 +391,7 @@ async function manejarMensaje(msg: Record<string, any>) {
         "/resumen — cómo vienen todos los promotores\n" +
         "/promotores — quiénes están conectados\n" +
         "/aviso &lt;texto&gt; — mandarle un mensaje a todos\n" +
-        "/decile &lt;id&gt; &lt;texto&gt; — mandarle un mensaje a uno\n\n" +
+        "/decile &lt;nombre&gt; &lt;texto&gt; — mandarle un mensaje a uno\n\n" +
         "Y respondiendo cualquier mensaje 👁 le contestás a ese promotor.");
     }
     return; // en grupo no contesta nada más
