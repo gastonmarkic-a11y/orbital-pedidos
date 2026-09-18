@@ -113,6 +113,11 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
           const idx = modelos.indexOf(m)
           const triple = m.colores.some(esTriple)
           const precio = m.precio_desde
+          // compare_at = precio de lista en la tienda; price = lo que se paga hoy.
+          const lista = c0?.compare_at && precio && c0.compare_at > precio ? c0.compare_at : null
+          const conCupon = precio && pct > 0 ? Math.round(precio * (1 - pct / 100)) : precio
+          // Con cupón se tacha el precio de la web; sin cupón, el de lista de la promo.
+          const tachado = pct > 0 ? (lista ?? precio) : lista
           const insignias = (
             <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
               {m.nuevo && <span className="rounded-full bg-black text-white text-[8px] font-bold px-1.5 py-0.5">NUEVO</span>}
@@ -134,8 +139,8 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
                   </div>
                   {precio && (
                     <div className="mt-0.5 flex items-baseline gap-2 tabular-nums">
-                      <b className="text-[14px] text-white">{kAr(precio * (1 - pct / 100))}</b>
-                      {pct > 0 && <span className="font-mono text-[10px] text-neutral-500 line-through">{kAr(precio)}</span>}
+                      <b className="text-[14px] text-white">{kAr(conCupon!)}</b>
+                      {tachado && <span className="font-mono text-[10px] text-neutral-500 line-through">{kAr(tachado)}</span>}
                     </div>
                   )}
                   <div className="font-mono text-[10px] tracking-wide mt-2 text-neutral-400 group-hover:text-white">[ VER MODELO ]</div>
@@ -156,8 +161,8 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
                 </div>
                 {precio && (
                   <div className="text-[11px] mt-0.5">
-                    {pct > 0 && <span className="text-neutral-400 line-through mr-1">{kAr(precio)}</span>}
-                    <b style={{ color: ACENTO }}>{kAr(precio * (1 - pct / 100))}</b>
+                    {tachado && <span className="text-neutral-400 line-through mr-1">{kAr(tachado)}</span>}
+                    <b style={{ color: ACENTO }}>{kAr(conCupon!)}</b>
                   </div>
                 )}
               </div>
