@@ -8,9 +8,20 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const TOKEN = Deno.env.get("COLAB_TELEGRAM_BOT_TOKEN") ?? "";
-const WEBHOOK_SECRET = Deno.env.get("COLAB_TELEGRAM_WEBHOOK_SECRET") ?? "";
-const CRON_KEY = Deno.env.get("CRON_KEY") ?? "";
+// Config: primero el secret del entorno, si no está, app_config
+const cacheCfg: Record<string, string> = {};
+async function cfg(clave: string, env?: string): Promise<string> {
+  const v = env ? Deno.env.get(env) ?? '' : '';
+  if (v) return v;
+  if (cacheCfg[clave] !== undefined) return cacheCfg[clave];
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/app_config?clave=eq.${clave}&select=valor`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+  });
+  const filas = res.ok ? ((await res.json()) as { valor: string }[]) : [];
+  cacheCfg[clave] = filas[0]?.valor ?? '';
+  return cacheCfg[clave];
+}
+const token = () => cfg('colab_telegram_bot_token', 'COLAB_TELEGRAM_BOT_TOKEN');
 
 const BASE = "https://ver.orbitaleyewear.com.ar";
 
@@ -33,7 +44,7 @@ async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}):
 type Boton = { text: string; callback_data: string };
 
 async function enviar(chat: number, texto: string, botones?: Boton[][]) {
-  const res = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${await token()}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -48,7 +59,7 @@ async function enviar(chat: number, texto: string, botones?: Boton[][]) {
 }
 
 async function responderCallback(id: string, texto?: string) {
-  await fetch(`https://api.telegram.org/bot${TOKEN}/answerCallbackQuery`, {
+  await fetch(`https://api.telegram.org/bot${await token()}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ callback_query_id: id, ...(texto ? { text: texto } : {}) }),
@@ -348,7 +359,8 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
 
   if (url.searchParams.get("tarea") === "avisos") {
-    if (CRON_KEY && req.headers.get("x-cron-key") !== CRON_KEY) {
+    const cronKey = await cfg("cron_key", "CRON_KEY");
+    if (cronKey && req.headers.get("x-cron-key") !== cronKey) {
       return new Response("unauthorized", { status: 401 });
     }
     const r = await correrAvisos();
@@ -357,7 +369,8 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") return new Response("ok");
 
-  if (WEBHOOK_SECRET && req.headers.get("x-telegram-bot-api-secret-token") !== WEBHOOK_SECRET) {
+  const secret = await cfg("colab_telegram_webhook_secret", "COLAB_TELEGRAM_WEBHOOK_SECRET");
+  if (secret && req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
     return new Response("unauthorized", { status: 401 });
   }
 
