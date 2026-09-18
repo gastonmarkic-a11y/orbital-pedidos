@@ -85,12 +85,18 @@ async function responderCallback(id: string, texto?: string) {
   });
 }
 
-// Grupo interno de Orbital: ve todo lo que hace cada promotor con el bot
-async function espejo(texto: string) {
+// Grupo interno de Orbital: ve todo lo que hace cada promotor con el bot.
+// La marca #p<id> al pie sirve para contestarle a ESE promotor respondiendo el mensaje.
+async function espejo(texto: string, infId?: number) {
   const g = await cfg("colab_telegram_grupo");
   if (!g) return;
-  await enviar(Number(g), "👁 " + texto);
+  await enviar(Number(g), "👁 " + texto + (infId ? `\n\n<code>#p${infId}</code>` : ""));
 }
+
+type Conectado = { influencer_id: number; nombre: string; admin: string; chat_id: number; links: number };
+
+const conectados = (id?: number) =>
+  rpc<Conectado[]>("colab_tg_conectados", { p_id: id ?? null });
 
 const pesos = (n: number) =>
   "$" + Math.round(Number(n) || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -229,6 +235,17 @@ async function pantallaResumenInterno(chat: number) {
   await enviar(chat, t);
 }
 
+// Desde el grupo interno a un promotor puntual
+async function mandarAPromotor(chat: number, infId: number, texto: string) {
+  const [c] = await conectados(infId);
+  if (!c) {
+    await enviar(chat, "Ese promotor no está conectado al bot.");
+    return;
+  }
+  await enviar(c.chat_id, `📣 <b>Orbital</b>\n\n${texto}`);
+  await enviar(chat, `Mandado a <b>${c.nombre}</b>.`);
+}
+
 async function crearLink(chat: number, q: Quien, handle: string, red: string, formato: string) {
   try {
     const r = await rpc<{ codigo: string }>("colab_crear_link", {
@@ -250,7 +267,7 @@ async function crearLink(chat: number, q: Quien, handle: string, red: string, fo
     await enviar(chat, t, [[{ text: "Ver cómo va", callback_data: "v|" + r.codigo }]]);
     await espejo(
       `<b>${q.nombre}</b> pidió un link${col ? ` de <b>${col.modelo}</b> ${col.color}` : ""} para ${red} ${formato}\n` +
-      `${BASE}/r/${r.codigo}`,
+      `${BASE}/r/${r.codigo}`, q.influencer_id,
     );
   } catch (e) {
     const msg = String(e);
@@ -303,6 +320,61 @@ async function manejarMensaje(msg: Record<string, any>) {
       await pantallaResumenInterno(chat);
       return;
     }
+
+    // Lista de promotores conectados, con su número para escribirles
+    if (texto.startsWith("/promotores")) {
+      const cs = await conectados();
+      if (!cs.length) {
+        await enviar(chat, "Todavía no se conectó ningún promotor al bot.");
+        return;
+      }
+      let t = "<b>Promotores conectados</b>\n\n";
+      for (const c of cs) {
+        t += `<b>${c.nombre}</b> <i>(${c.admin})</i> · ${c.links} link${c.links === 1 ? "" : "s"}\n`;
+        t += `Para escribirle: <code>/decile ${c.influencer_id} tu mensaje</code>\n\n`;
+      }
+      t += "También podés responder cualquier mensaje 👁 de un promotor y le llega directo.";
+      await enviar(chat, t);
+      return;
+    }
+
+    // /decile <id> <texto> — a uno solo
+    const uno = texto.match(/^\/decile\s+(\d+)\s+([\s\S]+)$/i);
+    if (uno) {
+      await mandarAPromotor(chat, Number(uno[1]), uno[2].trim());
+      return;
+    }
+
+    // /aviso <texto> — a todos los conectados
+    const todos = texto.match(/^\/aviso\s+([\s\S]+)$/i);
+    if (todos) {
+      const cs = await conectados();
+      if (!cs.length) {
+        await enviar(chat, "No hay promotores conectados al bot todavía.");
+        return;
+      }
+      for (const c of cs) await enviar(c.chat_id, `📣 <b>Orbital</b>\n\n${todos[1].trim()}`);
+      await enviar(chat, `Mandado a ${cs.length} promotor${cs.length === 1 ? "" : "es"}: ${cs.map((c) => c.nombre).join(", ")}`);
+      return;
+    }
+
+    // Responder el mensaje 👁 de un promotor = escribirle a ese promotor
+    const citado = String(msg.reply_to_message?.text ?? "");
+    const marca = citado.match(/#p(\d+)/);
+    if (marca && texto && !texto.startsWith("/")) {
+      await mandarAPromotor(chat, Number(marca[1]), texto);
+      return;
+    }
+
+    if (texto.startsWith("/")) {
+      await enviar(chat,
+        "<b>Panel interno</b>\n\n" +
+        "/resumen — cómo vienen todos los promotores\n" +
+        "/promotores — quiénes están conectados\n" +
+        "/aviso &lt;texto&gt; — mandarle un mensaje a todos\n" +
+        "/decile &lt;id&gt; &lt;texto&gt; — mandarle un mensaje a uno\n\n" +
+        "Y respondiendo cualquier mensaje 👁 le contestás a ese promotor.");
+    }
     return; // en grupo no contesta nada más
   }
 
@@ -313,7 +385,7 @@ async function manejarMensaje(msg: Record<string, any>) {
   // alta con un toque: comparte su teléfono y lo busco en los promotores
   const tel = msg.contact?.user_id === from ? String(msg.contact?.phone_number ?? "") : "";
   if (!q && tel) {
-    const r = await rpc<{ ok: boolean; error?: string; nombre?: string }>("colab_tg_vincular_tel", {
+    const r = await rpc<{ ok: boolean; error?: string; nombre?: string; influencer_id?: number }>("colab_tg_vincular_tel", {
       p_tg: from, p_chat: chat, p_tel: tel, p_nombre: nombreTg, p_username: msg.from?.username ?? null,
     });
     if (!r?.ok) {
@@ -326,14 +398,14 @@ async function manejarMensaje(msg: Record<string, any>) {
       return;
     }
     await enviar(chat, `¡Hola ${r.nombre}! Quedaste vinculado 🎉\n\n${AYUDA}`, undefined, { remove_keyboard: true });
-    await espejo(`<b>${r.nombre}</b> se vinculó al bot con su teléfono`);
+    await espejo(`<b>${r.nombre}</b> se vinculó al bot con su teléfono`, r.influencer_id);
     return;
   }
 
   // alta alternativa: manda su clave in-…
   const clave = texto.match(/\bin-[a-z0-9]{6,}\b/i)?.[0];
   if (!q && clave) {
-    const r = await rpc<{ ok: boolean; error?: string; nombre?: string }>("colab_tg_vincular", {
+    const r = await rpc<{ ok: boolean; error?: string; nombre?: string; influencer_id?: number }>("colab_tg_vincular", {
       p_tg: from, p_chat: chat, p_clave: clave,
       p_nombre: nombreTg,
       p_username: msg.from?.username ?? null,
@@ -345,7 +417,7 @@ async function manejarMensaje(msg: Record<string, any>) {
       return;
     }
     await enviar(chat, `¡Hola ${r.nombre}! Quedaste vinculado 🎉\n\n${AYUDA}`, undefined, { remove_keyboard: true });
-    await espejo(`<b>${r.nombre}</b> se vinculó al bot`);
+    await espejo(`<b>${r.nombre}</b> se vinculó al bot`, r.influencer_id);
     return;
   }
 
@@ -365,12 +437,12 @@ async function manejarMensaje(msg: Record<string, any>) {
   }
   if (t.includes("que promociono") || t.includes("recomend") || texto.startsWith("/recomendar")) {
     await pantallaRecomendar(chat, q);
-    await espejo(`<b>${q.nombre}</b> pidió recomendaciones`);
+    await espejo(`<b>${q.nombre}</b> pidió recomendaciones`, q.influencer_id);
     return;
   }
   if (t.includes("como va") || t.includes("como viene") || t.includes("numeros") || texto.startsWith("/comova")) {
     await pantallaComoVa(chat, q);
-    await espejo(`<b>${q.nombre}</b> miró cómo van sus links`);
+    await espejo(`<b>${q.nombre}</b> miró cómo van sus links`, q.influencer_id);
     return;
   }
 
@@ -379,11 +451,11 @@ async function manejarMensaje(msg: Record<string, any>) {
   const m = buscarModelo(cat, texto);
   if (m) {
     await pantallaModelo(chat, q, m);
-    await espejo(`<b>${q.nombre}</b> está mirando <b>${m.modelo}</b>`);
+    await espejo(`<b>${q.nombre}</b> está mirando <b>${m.modelo}</b>`, q.influencer_id);
     return;
   }
 
-  await espejo(`<b>${q.nombre}</b> escribió algo que el bot no entendió: «${texto}»`);
+  await espejo(`<b>${q.nombre}</b> escribió algo que el bot no entendió: «${texto}»`, q.influencer_id);
   await enviar(chat, "No te entendí 🤔\n\n" + AYUDA, [
     [{ text: "¿Qué promociono?", callback_data: "r|" }],
     [{ text: "¿Cómo van mis links?", callback_data: "k|" }],
