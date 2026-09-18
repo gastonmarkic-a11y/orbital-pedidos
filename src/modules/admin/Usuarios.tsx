@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
-import { RefreshCw, Search, Copy, KeyRound, Plus, Link2, Link2Off } from 'lucide-react'
+import { RefreshCw, Search, Copy, KeyRound, Plus, Link2, Link2Off, MessageCircle, Mail } from 'lucide-react'
+import { parseTelefonos, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import type { Rol } from '../../lib/types'
 
 // Administración de accesos — quién entra a la Suite y quién tiene link del catálogo.
 //
-// Las contraseñas no se manejan desde acá y no se pueden ver: Supabase las guarda
-// hasheadas. Lo que sí se puede es mandarle a la persona un link por mail para que
-// entre, que además es más seguro que dictarle una clave por teléfono.
+// Las contraseñas no se pueden VER: Supabase las guarda hasheadas y nadie las lee.
+// Lo que sí se puede es ponerle una nueva a cualquiera (botón Clave): se la pasás por
+// WhatsApp y entra con mail + contraseña, sin depender de que le llegue el mail.
+// El link por mail queda como respaldo para quien lo prefiera.
 
 interface Usuario {
   codigo: string
@@ -58,6 +60,19 @@ const linksDe = (token: string) => [
   { l: 'Plan Canje', u: `${BASE}/canje?c=${token}` },
 ]
 
+interface ColabAcceso {
+  tipo: 'orbital' | 'admin' | 'promotor'
+  id: number
+  nombre: string
+  clave: string
+  email: string | null
+  telefono: string | null
+  activo: boolean
+  jefe: string | null
+  links: number
+  ventas: number
+}
+
 interface ClienteLinks {
   cod: string
   razon: string | null
@@ -73,6 +88,30 @@ interface ClienteLinks {
   ultima_propuesta: string | null
   pedidos: number
 }
+
+// Clave fácil de dictar por teléfono: sin los caracteres que se confunden (0/O, 1/l/I).
+const ALFA = 'abcdefghijkmnpqrstuvwxyz23456789'
+const bloque = (n = 4): string =>
+  Array.from(crypto.getRandomValues(new Uint32Array(n)), (x) => ALFA[x % ALFA.length]).join('')
+const claveAlAzar = (): string => `${bloque()}-${bloque()}-${bloque()}`
+// Las de Colaboradores llevan el prefijo del nivel, como las que ya están cargadas.
+const claveColabAlAzar = (tipo: string): string =>
+  `${tipo === 'admin' ? 'ad' : tipo === 'promotor' ? 'in' : 'or'}-${bloque()}${bloque()}`
+
+/** Lo que se le manda a la persona cuando le ponés la contraseña. */
+const mensajeClave = (nombre: string, email: string, pass: string): string =>
+  `Hola ${nombre}! Desde ahora podés entrar a la Suite de dos formas: con el link que te llega por mail, o con tu usuario y contraseña.\n\n` +
+  `🔗 ${window.location.origin}\n` +
+  `👤 Usuario: ${email}\n` +
+  `🔑 Contraseña: ${pass}\n\n` +
+  `La contraseña la podés cambiar cuando quieras desde "Mi clave", arriba a la derecha.`
+
+/** Lo que se le manda a un admin o promotor de Colaboradores. */
+const mensajeColab = (nombre: string, clave: string): string =>
+  `Hola ${nombre}! Este es tu acceso al panel de Colaboradores de Orbital:\n\n` +
+  `🔗 ${BASE}/colab?k=${clave}\n` +
+  `🔑 Tu clave: ${clave}\n\n` +
+  `Con ese link entrás directo, y desde el panel podés instalarlo como app en el celular.`
 
 const haceCuanto = (iso: string | null): string => {
   if (!iso) return 'nunca'
@@ -91,7 +130,7 @@ const vacio: Omit<Usuario, 'entro' | 'prospecta' | 'cupo' | 'pendientes' | 'ulti
 export default function Usuarios() {
   const { rolEfectivo } = useAuth()
   const toast = useToast()
-  const [tab, setTab] = useState<'usuarios' | 'catalogo' | 'buscador'>('usuarios')
+  const [tab, setTab] = useState<'usuarios' | 'colab' | 'catalogo' | 'buscador'>('usuarios')
   const [buscaCliente, setBuscaCliente] = useState('')
   const [resultados, setResultados] = useState<ClienteLinks[]>([])
   const [buscando, setBuscando] = useState(false)
@@ -101,17 +140,27 @@ export default function Usuarios() {
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState<typeof vacio | null>(null)
   const [guardando, setGuardando] = useState(false)
+  const [clave, setClave] = useState<{ codigo: string; nombre: string; email: string; telefono: string | null } | null>(null)
+  const [claveTexto, setClaveTexto] = useState('')
+  const [guardandoClave, setGuardandoClave] = useState(false)
+  // Paso 2: la clave ya quedó puesta y falta avisarle a la persona.
+  const [claveLista, setClaveLista] = useState<{ nombre: string; email: string; pass: string; telefono: string | null } | null>(null)
+  const [colab, setColab] = useState<ColabAcceso[]>([])
+  const [claveColab, setClaveColab] = useState<ColabAcceso | null>(null)
+  const [claveColabTexto, setClaveColabTexto] = useState('')
 
   const esAdmin = rolEfectivo === 'admin'
 
   const cargar = useCallback(async () => {
     setLoading(true)
-    const [us, ac] = await Promise.all([
+    const [us, ac, co] = await Promise.all([
       supabase.rpc('admin_usuarios'),
       supabase.rpc('admin_accesos', { p_busca: null, p_limite: 500 }),
+      supabase.rpc('admin_colab_accesos'),
     ])
     setUsuarios(us.error ? [] : ((us.data as Usuario[]) ?? []))
     setAccesos(ac.error ? [] : ((ac.data as Acceso[]) ?? []))
+    setColab(co.error ? [] : ((co.data as ColabAcceso[]) ?? []))
     setLoading(false)
   }, [])
 
@@ -131,6 +180,45 @@ export default function Usuarios() {
     setEditando(null)
     void cargar()
   }, [editando, cargar, toast])
+
+  // Le pone la contraseña que vos elegís. Si todavía no tenía cuenta, la crea con el
+  // mail ya confirmado: entra aunque su casilla no reciba los mails de Supabase.
+  const ponerClave = useCallback(async () => {
+    if (!clave) return
+    const pass = claveTexto.trim()
+    if (pass.length < 8) { toast('La contraseña necesita al menos 8 caracteres', 'error'); return }
+    setGuardandoClave(true)
+    const { data, error } = await supabase.functions.invoke('admin-usuario-clave', {
+      body: { codigo: clave.codigo, password: pass },
+    })
+    setGuardandoClave(false)
+    let r = data as { ok?: boolean; error?: string; creado?: boolean } | null
+    // Con status 4xx el detalle viaja en el cuerpo, no en el mensaje del error.
+    if (error) {
+      try { r = await (error as { context?: Response }).context?.json() } catch { /* sin detalle */ }
+    }
+    if (!r?.ok) { toast(r?.error ?? error?.message ?? 'No se pudo poner la clave', 'error'); return }
+    toast(r.creado ? 'Cuenta creada con esa contraseña' : 'Contraseña cambiada', 'success')
+    setClaveLista({ nombre: clave.nombre, email: clave.email, pass, telefono: clave.telefono })
+    setClave(null)
+    setClaveTexto('')
+    void cargar()
+  }, [clave, claveTexto, toast, cargar])
+
+  // Clave de un admin o promotor de Colaboradores. Ahí la clave es el acceso entero
+  // (no hay mail ni contraseña aparte), así que se ve y se puede copiar.
+  const ponerClaveColab = useCallback(async () => {
+    if (!claveColab) return
+    const { data, error } = await supabase.rpc('admin_colab_clave', {
+      p_tipo: claveColab.tipo, p_id: claveColab.id, p_clave: claveColabTexto.trim(),
+    })
+    const r = data as { ok?: boolean; error?: string } | null
+    if (error || !r?.ok) { toast(r?.error ?? error?.message ?? 'No se pudo cambiar', 'error'); return }
+    toast('Clave cambiada', 'success')
+    setClaveColab(null)
+    setClaveColabTexto('')
+    void cargar()
+  }, [claveColab, claveColabTexto, toast, cargar])
 
   // Le manda a la persona un link a su casilla para entrar sin contraseña.
   const mandarLink = useCallback(async (u: Usuario) => {
@@ -212,8 +300,9 @@ export default function Usuarios() {
 
       <div className="flex items-center gap-2 mb-5">
         {([['usuarios', `Usuarios de la Suite · ${usuarios.filter((u) => u.activo).length}`],
+           ['colab', `Colaboradores · ${colab.filter((c) => c.activo && c.tipo !== 'orbital').length}`],
            ['catalogo', `Accesos al catálogo · ${conToken.length}`],
-           ['buscador', 'Buscar los links de una óptica']] as ['usuarios' | 'catalogo' | 'buscador', string][]).map(([k, l]) => (
+           ['buscador', 'Buscar los links de una óptica']] as ['usuarios' | 'colab' | 'catalogo' | 'buscador', string][]).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`rounded-full px-3 py-1 text-xs transition-colors ${
               tab === k ? 'bg-brand text-white' : 'border border-black/10 text-muted hover:bg-black/[0.03]'}`}>
@@ -230,9 +319,10 @@ export default function Usuarios() {
           <div className="rounded-lg border border-brandDark/25 bg-goldSoft/30 p-3 mb-4 text-[12px] text-ink">
             <p className="flex items-center gap-1.5 font-semibold mb-1"><KeyRound size={13} /> Sobre las contraseñas</p>
             <p className="text-muted">
-              No se pueden ver desde acá: Supabase las guarda encriptadas y nadie —ni vos ni yo— puede leerlas.
-              Con <strong>Mandar link</strong> la persona recibe un acceso por mail y entra sin contraseña.
-              Si igual querés ponerle una, se hace en Supabase → Authentication → Users.
+              Con <strong>Clave</strong> le ponés la contraseña que quieras y se copia sola para que se la
+              pases por WhatsApp: entra con su mail y esa clave, sin esperar ningún mail. Si todavía no tenía
+              cuenta, se le crea en el momento. Después cada uno puede cambiarla desde <strong>Mi clave</strong>,
+              arriba a la derecha. Verlas no se puede: Supabase las guarda encriptadas.
             </p>
           </div>
 
@@ -276,10 +366,16 @@ export default function Usuarios() {
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1.5">
                         {u.email && (
-                          <button onClick={() => void mandarLink(u)}
-                            className="rounded-md border border-black/10 px-2 py-1 text-[11px] text-muted hover:bg-black/[0.03] transition-colors">
-                            Mandar link
-                          </button>
+                          <>
+                            <button onClick={() => { setClave({ codigo: u.codigo, nombre: u.nombre || u.codigo, email: u.email!, telefono: u.telefono }); setClaveTexto(claveAlAzar()) }}
+                              className="inline-flex items-center gap-1 rounded-md border border-brandDark/30 bg-goldSoft/40 px-2 py-1 text-[11px] text-brandDark hover:bg-goldSoft/70 transition-colors">
+                              <KeyRound size={11} /> Clave
+                            </button>
+                            <button onClick={() => void mandarLink(u)}
+                              className="rounded-md border border-black/10 px-2 py-1 text-[11px] text-muted hover:bg-black/[0.03] transition-colors">
+                              Mandar link
+                            </button>
+                          </>
                         )}
                         <button onClick={() => setEditando({
                           codigo: u.codigo, nombre: u.nombre ?? '', email: u.email ?? '',
@@ -295,6 +391,77 @@ export default function Usuarios() {
               </tbody>
             </table>
           </div>
+        </>
+      )}
+
+      {/* ── Colaboradores (/colab) ───────────────────────────────────────── */}
+      {!loading && tab === 'colab' && (
+        <>
+          <div className="rounded-lg border border-brandDark/25 bg-goldSoft/30 p-3 mb-4 text-[12px] text-ink">
+            <p className="flex items-center gap-1.5 font-semibold mb-1"><KeyRound size={13} /> Cómo entran acá</p>
+            <p className="text-muted">
+              El panel de Colaboradores no usa mail ni contraseña: <strong>la clave es el acceso</strong>, y el
+              link <code>/colab?k=…</code> ya la lleva adentro. Por eso acá sí se ve: copiás el link, se lo mandás
+              y entra. Si se le filtró a alguien, le ponés una clave nueva y el link viejo deja de servir.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-black/10 bg-white overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-faint text-left border-b border-black/[0.07]">
+                  <th className="px-3 py-2 font-medium">Quién</th>
+                  <th className="px-3 py-2 font-medium">Nivel</th>
+                  <th className="px-3 py-2 font-medium">Clave</th>
+                  <th className="px-3 py-2 font-medium text-right">Links</th>
+                  <th className="px-3 py-2 font-medium text-right">Ventas</th>
+                  <th className="px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {colab.map((c) => (
+                  <tr key={`${c.tipo}-${c.id}`} className={`border-b border-black/[0.04] last:border-0 ${c.activo ? '' : 'opacity-45'}`}>
+                    <td className="px-3 py-2">
+                      <p className="font-medium">{c.nombre}</p>
+                      <p className="text-faint text-[11px]">
+                        {c.jefe ? `de ${c.jefe}` : c.email || '—'}{c.activo ? '' : ' · inactivo'}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2 text-muted">
+                      {c.tipo === 'orbital' ? 'Orbital' : c.tipo === 'admin' ? 'Administrador' : 'Promotor'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <code className="text-[11px]">{c.clave}</code>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{c.links || <span className="text-faint">—</span>}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{c.ventas || <span className="text-faint">—</span>}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => copiar(`${BASE}/colab?k=${c.clave}`, 'Link del panel copiado')}
+                          className="rounded-md border border-black/10 px-2 py-1 text-[11px] text-muted hover:bg-black/[0.03] transition-colors">
+                          Copiar link
+                        </button>
+                        {c.telefono && parseTelefonos(c.telefono, true)[0] && (
+                          <button onClick={() => abrirWhatsApp(parseTelefonos(c.telefono, true)[0].wa, mensajeColab(c.nombre, c.clave))}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-600/30 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-100 transition-colors">
+                            <MessageCircle size={11} /> WhatsApp
+                          </button>
+                        )}
+                        <button onClick={() => { setClaveColab(c); setClaveColabTexto(claveColabAlAzar(c.tipo)) }}
+                          className="inline-flex items-center gap-1 rounded-md border border-brandDark/30 bg-goldSoft/40 px-2 py-1 text-[11px] text-brandDark hover:bg-goldSoft/70 transition-colors">
+                          <KeyRound size={11} /> Clave
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-faint mt-3">
+            Las altas y bajas de promotores siguen estando en el panel de Colaboradores (/colab), que es donde
+            se cargan las comisiones y las colecciones. Acá solo se administran los accesos.
+          </p>
         </>
       )}
 
@@ -442,6 +609,114 @@ export default function Usuarios() {
         </>
       )}
 
+      {/* Ponerle contraseña a alguien */}
+      {clave && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setClave(null)}>
+          <div className="bg-white rounded-lg w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[15px] font-semibold tracking-tight">Contraseña de {clave.nombre}</p>
+            <p className="text-[12px] text-muted mt-1">
+              Entra con <b>{clave.email}</b> y esta clave. Al guardar se copia sola: pasásela por WhatsApp.
+            </p>
+            <div className="flex items-center gap-2 mt-4">
+              <input value={claveTexto} onChange={(e) => setClaveTexto(e.target.value)} autoFocus
+                className="flex-1 rounded-md border border-black/10 px-3 py-1.5 text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-brand/20" />
+              <button onClick={() => setClaveTexto(claveAlAzar())} title="Generar otra"
+                className="rounded-md border border-black/10 px-2.5 py-1.5 text-[11px] text-muted hover:bg-black/[0.03] transition-colors shrink-0">
+                Otra
+              </button>
+              <button onClick={() => copiar(claveTexto, 'Clave copiada')} title="Copiar"
+                className="rounded-md p-1.5 text-faint hover:bg-black/5 transition-colors shrink-0">
+                <Copy size={14} />
+              </button>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setClave(null)} className="px-3 py-1.5 text-sm text-muted">Cancelar</button>
+              <button onClick={() => void ponerClave()} disabled={guardandoClave}
+                className="rounded-md bg-brand text-white px-4 py-1.5 text-sm font-medium disabled:opacity-50">
+                {guardandoClave ? 'Guardando…' : 'Guardar clave'}
+              </button>
+            </div>
+            <p className="text-[11px] text-faint mt-3">
+              Es provisoria: {clave.nombre} puede cambiarla cuando entre, desde <b>Mi clave</b>.
+              Si la pierde, volvés acá y le ponés otra.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Paso 2: avisarle la contraseña */}
+      {claveLista && (() => {
+        const texto = mensajeClave(claveLista.nombre, claveLista.email, claveLista.pass)
+        const tel = parseTelefonos(claveLista.telefono, true)[0]
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setClaveLista(null)}>
+            <div className="bg-white rounded-lg w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+              <p className="text-[15px] font-semibold tracking-tight">Listo. Ahora avisale</p>
+              <p className="text-[12px] text-muted mt-1">
+                Ya puede entrar con su mail y esta contraseña. Mandale el mensaje:
+              </p>
+              <pre className="mt-3 rounded-md border border-black/10 bg-black/[0.02] p-3 text-[11px] whitespace-pre-wrap font-sans text-ink">
+                {texto}
+              </pre>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {tel && (
+                  <button onClick={() => abrirWhatsApp(tel.wa, texto)}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 py-1.5 text-xs font-medium">
+                    <MessageCircle size={13} /> WhatsApp
+                  </button>
+                )}
+                <button onClick={() => abrirMail(claveLista.email, 'Tu acceso a la Suite de Orbital', texto)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-black/10 px-3 py-1.5 text-xs text-muted hover:bg-black/[0.03] transition-colors">
+                  <Mail size={13} /> Mail
+                </button>
+                <button onClick={() => copiar(texto, 'Mensaje copiado')}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-black/10 px-3 py-1.5 text-xs text-muted hover:bg-black/[0.03] transition-colors">
+                  <Copy size={13} /> Copiar
+                </button>
+                <button onClick={() => setClaveLista(null)} className="ml-auto px-3 py-1.5 text-sm text-muted">
+                  Cerrar
+                </button>
+              </div>
+              {!tel && (
+                <p className="text-[11px] text-faint mt-3">
+                  No tiene WhatsApp cargado: agregáselo con <b>Editar</b> y la próxima vez sale de un toque.
+                </p>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Clave de un colaborador */}
+      {claveColab && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setClaveColab(null)}>
+          <div className="bg-white rounded-lg w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[15px] font-semibold tracking-tight">Clave de {claveColab.nombre}</p>
+            <p className="text-[12px] text-muted mt-1">
+              Al cambiarla, el link que tenía deja de funcionar y hay que mandarle el nuevo.
+            </p>
+            <div className="flex items-center gap-2 mt-4">
+              <input value={claveColabTexto} onChange={(e) => setClaveColabTexto(e.target.value)} autoFocus
+                className="flex-1 rounded-md border border-black/10 px-3 py-1.5 text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-brand/20" />
+              <button onClick={() => setClaveColabTexto(claveColabAlAzar(claveColab.tipo))} title="Generar otra"
+                className="rounded-md border border-black/10 px-2.5 py-1.5 text-[11px] text-muted hover:bg-black/[0.03] transition-colors shrink-0">
+                Otra
+              </button>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setClaveColab(null)} className="px-3 py-1.5 text-sm text-muted">Cancelar</button>
+              <button onClick={() => void ponerClaveColab()}
+                className="rounded-md bg-brand text-white px-4 py-1.5 text-sm font-medium">
+                Guardar clave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Alta y edición */}
       {editando && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4"
@@ -486,8 +761,8 @@ export default function Usuarios() {
               </button>
             </div>
             <p className="text-[11px] text-faint mt-3">
-              Al crear un usuario nuevo, mandale el link por mail desde la lista. Al entrar por primera vez,
-              su cuenta queda vinculada sola.
+              Después de guardarlo, tocá <b>Clave</b> en la lista para ponerle la contraseña con la que entra.
+              Su cuenta queda creada y vinculada en ese momento.
             </p>
           </div>
         </div>

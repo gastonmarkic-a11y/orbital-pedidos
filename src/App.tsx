@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/auth'
+import { supabase } from './lib/supabase'
 import { ToastProvider } from './lib/toast'
 import { Rol } from './lib/types'
 
@@ -408,6 +409,79 @@ function ThemeToggle() {
   )
 }
 
+// Cada uno se cambia su propia contraseña. La que le da el admin al darlo de alta es
+// provisoria; acá la reemplaza por una suya sin pasar por nadie.
+function MiClave() {
+  const [abierto, setAbierto] = useState(false)
+  const [p1, setP1] = useState('')
+  const [p2, setP2] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [listo, setListo] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+
+  function cerrar() {
+    setAbierto(false)
+    setP1(''); setP2(''); setMsg(null); setListo(false)
+  }
+
+  async function guardar(e: FormEvent) {
+    e.preventDefault()
+    setMsg(null)
+    if (p1.length < 8) { setMsg('La contraseña necesita al menos 8 caracteres.'); return }
+    if (p1 !== p2) { setMsg('Las dos contraseñas no coinciden.'); return }
+    setGuardando(true)
+    const { error } = await supabase.auth.updateUser({ password: p1 })
+    setGuardando(false)
+    if (error) { setMsg(error.message); return }
+    setListo(true)
+    setP1(''); setP2('')
+  }
+
+  return (
+    <>
+      <button onClick={() => setAbierto(true)} className="text-xs text-muted underline">
+        Mi clave
+      </button>
+      {abierto && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4" onClick={cerrar}>
+          <div className="bg-white rounded-lg w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[15px] font-semibold tracking-tight">Cambiar mi contraseña</p>
+            {listo ? (
+              <>
+                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
+                  Listo. La próxima vez entrá con esta contraseña nueva.
+                </p>
+                <div className="flex justify-end mt-4">
+                  <button onClick={cerrar} className="rounded-md bg-brand text-white px-4 py-1.5 text-sm font-medium">
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={guardar} className="mt-4 space-y-3">
+                <input type="password" autoFocus placeholder="Contraseña nueva" value={p1}
+                  onChange={(e) => setP1(e.target.value)}
+                  className="w-full rounded-md border border-black/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/20" />
+                <input type="password" placeholder="Repetila" value={p2}
+                  onChange={(e) => setP2(e.target.value)}
+                  className="w-full rounded-md border border-black/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/20" />
+                {msg && <p className="text-sm text-red-600">{msg}</p>}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" onClick={cerrar} className="px-3 py-1.5 text-sm text-muted">Cancelar</button>
+                  <button type="submit" disabled={guardando}
+                    className="rounded-md bg-brand text-white px-4 py-1.5 text-sm font-medium disabled:opacity-50">
+                    {guardando ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function Layout() {
   const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs, cuentas, setCuenta } = useAuth()
   const location = useLocation()
@@ -471,6 +545,7 @@ function Layout() {
             </select>
           )}
           <ThemeToggle />
+          <MiClave />
           <button onClick={signOut} className="text-xs text-muted underline">
             Salir
           </button>
