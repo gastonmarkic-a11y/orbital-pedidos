@@ -23,9 +23,10 @@ const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promo
 
 function Marca({ oscuro }: { oscuro?: boolean }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
       <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" style={{ height: 18 }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-      <span className="text-[10px] font-bold tracking-[0.3em] uppercase" style={{ color: oscuro ? '#FFFFFF' : ACENTO }}>Colaboradores</span>
+      {/* En el celular va solo el logo: con el nombre al lado no entran los dos. */}
+      <span className="hidden sm:inline text-[10px] font-bold tracking-[0.3em] uppercase" style={{ color: oscuro ? '#FFFFFF' : ACENTO }}>Colaboradores</span>
     </div>
   )
 }
@@ -63,6 +64,14 @@ export default function Colab() {
   const [clave, setClave] = useState<string | null>(null)
   const [ent, setEnt] = useState<Entrada | null | undefined>(undefined)
 
+  // Panel de Zaira (cobranding ZN): el ícono instalado se llama "ZAIRA". En Android lo da
+  // api/colab-manifest.js; iPhone toma el nombre de este meta al "Agregar a inicio".
+  useEffect(() => {
+    if (ent?.rol !== 'influencer' || ent.ref !== 'zn') return
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'ZAIRA')
+    document.title = 'ZAIRA'
+  }, [ent])
+
   useEffect(() => {
     const k = new URLSearchParams(window.location.search).get('k') || localStorage.getItem(CLAVE_KEY)
     if (!k) { setEnt(null); return }
@@ -83,10 +92,11 @@ export default function Colab() {
 }
 
 type Tab = 'admins' | 'promotores' | 'propuestas' | 'anteojos' | 'inspiracion' | 'links' | 'dashboard' | 'liquidacion'
+// Inspiración y Links son internos: el promotor ve solo sus anteojos y su dashboard.
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
-  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['inspiracion', 'Inspiración'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  admin: [['promotores', 'Promotores'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  influencer: [['anteojos', 'Anteojos'], ['inspiracion', 'Inspiración'], ['links', 'Mis links'], ['dashboard', 'Dashboard']],
+  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  admin: [['promotores', 'Promotores'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  influencer: [['anteojos', 'Anteojos'], ['dashboard', 'Dashboard']],
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {
@@ -97,8 +107,6 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
   const [admins, setAdmins] = useState<Admin[] | null>(null)
   // Promotor de colección: "Agregar anteojos" abre toda la tienda para proponer SKU.
   const [agregando, setAgregando] = useState(false)
-  // Desde Inspiración → Triple protección se abre Anteojos filtrado por esos anteojos.
-  const [filtroAnteojos, setFiltroAnteojos] = useState<'triple' | null>(null)
   // Anteojos en negro, como la tienda; Inspiración, Mis links y Dashboard en blanco (se leen mejor).
   const oscuro = ent.rol === 'influencer' && tab === 'anteojos'
 
@@ -111,9 +119,12 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
       <header className="bg-white border-b border-black/5 sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <Marca oscuro={oscuro} />
-          <div className="ml-auto text-right leading-tight">
-            <div className="text-[12px] font-bold">{ent.nombre}</div>
-            <div className="text-[10px] text-neutral-500">{ROL_TXT[ent.rol]}{ent.rol === 'admin' ? ` · ${ent.pct}%` : ent.rol === 'influencer' ? ` · ${ent.pct}% · ${ent.admin}` : ''}</div>
+          <div className="ml-auto min-w-0 text-right leading-tight">
+            <div className="text-[12px] font-bold truncate">{ent.nombre}</div>
+            <div className="text-[10px] text-neutral-500 truncate">
+              {ROL_TXT[ent.rol]}{ent.rol === 'admin' || ent.rol === 'influencer' ? ` · ${ent.pct}%` : ''}
+              {ent.rol === 'influencer' && ent.admin ? <span className="hidden sm:inline"> · {ent.admin}</span> : null}
+            </div>
           </div>
           <InstalarApp nombre="Orbital Colaboradores" que="tu panel" urlParaInstalar={`/colab?k=${clave}`}
             bajada="Queda con el ícono de Orbital y entra directo a tu panel, sin clave." />
@@ -123,7 +134,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
           // Panel del promotor: pestañas como botones blancos; la activa en azul
           <div className="max-w-5xl mx-auto px-4 pt-1 pb-3 flex gap-2 overflow-x-auto">
             {tabs.map(([id, t]) => (
-              <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
+              <button key={id} onClick={() => setTab(id)}
                 className="rounded-full px-4 py-1.5 text-[12px] font-semibold whitespace-nowrap"
                 style={tab === id ? { background: ACENTO, color: '#FFFFFF' } : { background: '#FFFFFF', color: '#0A0A0A' }}>{t}</button>
             ))}
@@ -131,7 +142,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         ) : (
           <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
             {tabs.map(([id, t]) => (
-              <button key={id} onClick={() => { setTab(id); if (id === 'anteojos') setFiltroAnteojos(null) }}
+              <button key={id} onClick={() => setTab(id)}
                 className={`px-3 py-2 text-[12px] font-semibold border-b-2 whitespace-nowrap ${tab === id ? '' : 'border-transparent text-neutral-500'}`}
                 style={tab === id ? { borderColor: ACENTO, color: ACENTO } : undefined}>{t}</button>
             ))}
@@ -140,7 +151,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-5">
-        {ent.rol === 'orbital' && (tab === 'dashboard' || tab === 'liquidacion') && admins && admins.length > 0 && (
+        {ent.rol === 'orbital' && (tab === 'dashboard' || tab === 'liquidacion' || tab === 'links') && admins && admins.length > 0 && (
           <select value={adminSel ?? ''} onChange={(e) => setAdminSel(e.target.value ? Number(e.target.value) : null)}
             className="mb-4 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px]">
             <option value="">Todos los administradores</option>
@@ -151,10 +162,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
         {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
-        {tab === 'inspiracion' && (
-          <ColabInspiracion clave={clave} rol={ent.rol}
-            onVerTriple={ent.rol === 'influencer' ? () => { setFiltroAnteojos('triple'); setTab('anteojos'); window.scrollTo({ top: 0 }) } : undefined} />
-        )}
+        {tab === 'inspiracion' && <ColabInspiracion clave={clave} rol={ent.rol} />}
         {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
         {tab === 'anteojos' && !(ent.coleccion && agregando) && (
           <>
@@ -166,11 +174,10 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
                 </button>
               </div>
             )}
-            <ColabAnteojos key={filtroAnteojos ?? 'todos'} clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)}
-              oscuro={oscuro} filtroInicial={filtroAnteojos} />
+            <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)} oscuro={oscuro} coleccion={ent.coleccion} />
           </>
         )}
-        {tab === 'links' && <MisLinks key={version} clave={clave} pct={ent.pct ?? 15} irAnteojos={() => setTab('anteojos')} />}
+        {tab === 'links' && <LinksTodos key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} />}
         {tab === 'dashboard' && (
           <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}
             pctInf={ent.rol === 'influencer' ? ent.pct : 15} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
@@ -513,6 +520,117 @@ function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicia
 }
 
 // ── INFLUENCER: mis links ────────────────────────────────────────────────────
+// ── ORBITAL / ADMIN: los links de todos los promotores ───────────────────────
+// Para adentro: cómo va cada promotor publicación por publicación. El promotor
+// ya no ve esta pestaña (arma sus links desde Anteojos y ve su Dashboard).
+type LinkDeTodos = MiLink & { influencer_id: number; influencer: string; influencer_activo: boolean; admin: string | null; pct: number }
+
+function LinksTodos({ clave, rol, adminId }: { clave: string; rol: Entrada['rol']; adminId: number | null }) {
+  const [filas, setFilas] = useState<LinkDeTodos[] | null>(null)
+  const [abierto, setAbierto] = useState<number | null>(null)
+
+  useEffect(() => {
+    supabase.rpc('colab_links_todos', { p_clave: clave, p_admin: adminId })
+      .then(({ data }) => setFilas((data as LinkDeTodos[]) ?? []))
+  }, [clave, adminId])
+
+  if (!filas) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
+
+  // Un bloque por promotor, ordenados por lo que vendieron.
+  const porInf = new Map<number, { nombre: string; admin: string | null; pct: number; activo: boolean; links: LinkDeTodos[] }>()
+  for (const l of filas) {
+    if (!porInf.has(l.influencer_id)) porInf.set(l.influencer_id, { nombre: l.influencer, admin: l.admin, pct: Number(l.pct) || 0, activo: l.influencer_activo, links: [] })
+    porInf.get(l.influencer_id)!.links.push(l)
+  }
+  const sum = (ls: LinkDeTodos[]) => ls.reduce((a, f) => ({ clicks: a.clicks + f.clicks, pedidos: a.pedidos + f.pedidos, neto: a.neto + Number(f.neto), com: a.com + Number(f.com) }), { clicks: 0, pedidos: 0, neto: 0, com: 0 })
+  const grupos = [...porInf.entries()].map(([id, g]) => ({ id, ...g, tot: sum(g.links) })).sort((a, b) => b.tot.neto - a.tot.neto)
+  const tot = sum(filas)
+
+  return (
+    <>
+      <div className="mb-4">
+        <h1 className="text-[15px] font-bold tracking-wide uppercase">Links</h1>
+        <p className="text-[11px] text-neutral-500 mt-1">
+          Cada link es una publicación de un promotor. Sirve para ver cómo va cada uno: qué publicó, cuántos toques trajo y cuánto vendió.
+        </p>
+      </div>
+
+      <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">Venta neta por links</div>
+            <div className="text-[30px] font-bold leading-none mt-1">{kAr(tot.neto)}</div>
+          </div>
+          <div className="flex gap-5 text-[11px]">
+            {[['Promotores', String(grupos.length)], ['Links', String(filas.length)], ['Toques', nAr(tot.clicks)], ['Pedidos', nAr(tot.pedidos)], ['Comisión', kAr(tot.com)]].map(([k, v]) => (
+              <div key={k}><div className="text-[9px] uppercase tracking-wide opacity-50">{k}</div><div className="font-bold">{v}</div></div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {grupos.length === 0 && <p className="text-sm text-neutral-500 py-10 text-center">Todavía no hay links generados.</p>}
+
+      <div className="space-y-3">
+        {grupos.map((g) => (
+          <div key={g.id} className={`bg-white rounded-xl border border-black/10 p-3 ${g.activo ? '' : 'opacity-60'}`}>
+            <div className="min-w-0">
+              <div className="text-[13px] font-bold">{g.nombre} <span className="text-[10px] font-normal text-neutral-400">{g.pct}%</span>{!g.activo && <span className="text-[10px] font-normal text-neutral-500"> · inactivo</span>}</div>
+              {rol === 'orbital' && g.admin && <div className="text-[10px] text-neutral-500">{g.admin}</div>}
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-2">
+              <Stat k="Links" v={g.links.length} />
+              <Stat k="Toques" v={nAr(g.tot.clicks)} />
+              <Stat k="Pedidos" v={g.tot.pedidos} />
+              <Stat k="Venta neta" v={kAr(g.tot.neto)} />
+              <Stat k="Comisión" v={kAr(g.tot.com)} />
+            </div>
+            <button onClick={() => setAbierto(abierto === g.id ? null : g.id)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: ACENTO }}>
+              <ExternalLink size={12} /> {abierto === g.id ? 'Ocultar links' : 'Ver links'} {abierto === g.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+            {abierto === g.id && (
+              <div className="mt-2 space-y-2">
+                {g.links.map((l) => {
+                  const conv = l.clicks ? (l.pedidos / l.clicks) * 100 : 0
+                  return (
+                    <div key={l.id} className={`rounded-lg border border-black/10 p-2.5 ${l.activo ? '' : 'opacity-60'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold uppercase tracking-wide">
+                            {l.modelo}{l.color ? <span className="font-normal text-neutral-400"> · {l.color}</span> : null}
+                            {!l.activo && <span className="text-[9px] font-normal text-neutral-500"> · pausado</span>}
+                          </div>
+                          <div className="text-[10px] text-neutral-500">
+                            {labelRed(l.red)} · {labelFormato(l.formato)}
+                            {l.url_pub && <> · <a href={l.url_pub} target="_blank" rel="noopener noreferrer" className="underline">ver publicación</a></>}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[13px] font-bold tabular-nums leading-none">{kAr(Number(l.neto))}</div>
+                          <div className="text-[9px] text-neutral-400">comisión {kAr(Number(l.com))}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-4 text-[9px] text-neutral-500 mt-1.5">
+                        <span>Toques <b className="text-black">{nAr(l.clicks)}</b></span>
+                        <span>Pedidos <b className="text-black">{l.pedidos}</b></span>
+                        <span>Conversión <b className="text-black">{conv.toFixed(1)}%</b></span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-[#F5F5F7] px-2 py-1.5">
+                        <span className="flex-1 truncate font-mono text-[10px]">{linkPublico(l.codigo).replace('https://', '')}</span>
+                        <BotonCopiar texto={linkPublico(l.codigo)} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 export function MisLinks({ clave, pct, irAnteojos }: { clave: string; pct: number; irAnteojos: () => void }) {
   const [filas, setFilas] = useState<MiLink[] | null>(null)
   const cargar = () => supabase.rpc('colab_mis_links', { p_clave: clave }).then(({ data }) => setFilas((data as MiLink[]) ?? []))

@@ -34,9 +34,15 @@ function Foto({ src, alt }: { src: string | null; alt: string }) {
 
 type Filtro = 'Todos' | 'Triple protección' | 'Sol' | 'Receta' | 'Nuevos'
 
-export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, filtroInicial }: {
+// "orbital-x-zaira" → "Orbital x Zaira"
+function nombreColeccion(c: string) {
+  return c.split('-').map((p) => (p === 'x' ? 'x' : p.charAt(0).toUpperCase() + p.slice(1))).join(' ')
+}
+
+export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, filtroInicial, coleccion }: {
   clave: string; pct: number; puedeLink: boolean; onLink?: () => void
   oscuro?: boolean; filtroInicial?: 'triple' | null
+  coleccion?: string | null   // promotor de colección: acá solo ve la suya
 }) {
   const [modelos, setModelos] = useState<Modelo[] | null>(null)
   const [q, setQ] = useState('')
@@ -73,7 +79,10 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
       <div className="mb-4">
         <h1 className="text-[15px] font-bold tracking-wide uppercase">Anteojos para promocionar</h1>
         <p className="text-[11px] text-neutral-500 mt-1">
-          Solo los que hay en stock en la tienda. Tocá uno para ver su data, los copies y
+          {coleccion
+            ? <>Los de tu colección <b>{nombreColeccion(coleccion)}</b> que están activos en la tienda. </>
+            : 'Solo los que hay en stock en la tienda. '}
+          Tocá uno para ver su data, los copies y
           {puedeLink ? ' generar tu link.' : ' los textos.'}{' '}
           {pct > 0 ? <>Quien toque tu link tiene <b>{pct}% OFF extra</b> sobre el precio de la web.</> : 'Tu link lleva al precio de la web y cuenta lo que se vende por ahí.'}
         </p>
