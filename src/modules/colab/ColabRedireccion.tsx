@@ -20,6 +20,7 @@ type ColorLanding = {
 type Elegido = { codigo: string; modelo: string; imagen: string | null; price: number | null; compare_at: number | null }
 type Ver = {
   ok: boolean; error?: string; redirect?: string
+  directo?: string   // promotor sin cupón: sin landing, derecho a la ficha de la tienda
   modelo?: string; influencer?: string; pct?: number; descuento_activo?: boolean
   seleccionado?: string | null; colores?: ColorLanding[]; tienda?: string; utm?: string
   ver_mas?: string | null  // promotor de una colección (cobranding ZN): la colección de la tienda con UTM
@@ -60,6 +61,7 @@ export default function ColabRedireccion() {
   const [foto, setFoto] = useState(0)
   const [yendo, setYendo] = useState(false)
   const [fallo, setFallo] = useState<string | null>(null)
+  const [cant, setCant] = useState(1)
   const galeria = useRef<HTMLDivElement>(null)
 
   // Volver atrás desde otro anteojo del catálogo
@@ -76,12 +78,14 @@ export default function ColabRedireccion() {
       if (!vivo) return
       const r = (data as Ver) ?? { ok: false, redirect: TIENDA }
       if (!r.ok) { setD(r); setTimeout(() => window.location.replace(r.redirect || TIENDA), 1800); return }
+      // Sin cupón no hay nada que mostrar acá: el link lleva a la ficha del anteojo.
+      if (r.directo) { window.location.replace(r.directo); return }
       setD(r); setSel(r.seleccionado ?? null)
     })
     return () => { vivo = false }
   }, [codigo])
 
-  useEffect(() => { setFoto(0); galeria.current?.scrollTo({ left: 0 }) }, [sel])
+  useEffect(() => { setFoto(0); setCant(1); galeria.current?.scrollTo({ left: 0 }) }, [sel])
 
   // Otro anteojo del catálogo del promotor, sin salir de la página
   function irA(otro: string) {
@@ -94,7 +98,7 @@ export default function ColabRedireccion() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-white" style={{ background: FONDO }}>
         <div className="w-8 h-8 rounded-full border-2 border-white/15 animate-spin" style={{ borderTopColor: ACENTO }} />
-        <p className="text-sm text-white/60 mt-4">Preparando tu descuento exclusivo…</p>
+        <p className="text-sm text-white/60 mt-4">Un segundo…</p>
       </div>
     )
   }
@@ -134,13 +138,20 @@ export default function ColabRedireccion() {
   const offPublico = conDesc && precioRef && precioFinal && precioRef > precioFinal ? Math.ceil((1 - precioFinal / precioRef) * 100 - 1e-9) : null
   const esReceta = c?.tipo === 'RECETA'
   const texto = intro(c?.descripcion ?? null)
+  // Sin cupón y de sol: se elige la cantidad y va directo al checkout con el carrito armado.
+  const conCantidad = !conDesc && !esReceta && !!c?.variant_id
   const catalogo = d.catalogo ?? []
   const destinoBanner = d.ver_mas ?? (catalogo.length ? '#elegidos' : d.tienda ?? TIENDA)
 
   async function comprar() {
     if (!c) return
     // Sin descuento el link igual lleva su UTM: con eso se atribuye el pedido (promotor sin cupón).
-    if (!conDesc) { window.location.href = `${TIENDA}/products/${c.handle}${utm ? `?${utm}` : ''}`; return }
+    if (!conDesc) {
+      window.location.href = conCantidad
+        ? `${TIENDA}/cart/${c.variant_id}:${cant}${utm ? `?${utm}` : ''}`
+        : `${TIENDA}/products/${c.handle}${utm ? `?${utm}` : ''}`
+      return
+    }
     setYendo(true); setFallo(null)
     const { data } = await supabase.functions.invoke('colab-click', { body: { codigo, visitante: visitante(), accion: 'comprar', handle: c.handle } })
     const r = data as { ok: boolean; redirect?: string; error?: string } | null
@@ -220,6 +231,19 @@ export default function ColabRedireccion() {
             <p className="text-[11px] text-white/50 mt-1">
               Precio con tu código de descuento. Ya va aplicado al pagar.
             </p>
+          )}
+
+          {conCantidad && (
+            <div className="mt-5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">Cantidad</div>
+              <div className="inline-flex items-center rounded-full border-2 border-white/30">
+                <button onClick={() => setCant((n) => Math.max(1, n - 1))} disabled={cant <= 1} aria-label="Menos"
+                  className="w-11 h-10 text-[20px] font-bold disabled:opacity-30">−</button>
+                <span className="w-8 text-center font-mono text-[15px] font-bold tabular-nums">{cant}</span>
+                <button onClick={() => setCant((n) => Math.min(10, n + 1))} disabled={cant >= 10} aria-label="Más"
+                  className="w-11 h-10 text-[20px] font-bold disabled:opacity-30">+</button>
+              </div>
+            </div>
           )}
 
           {colores.length > 1 && (
@@ -328,7 +352,7 @@ export default function ColabRedireccion() {
               className="w-full rounded-full text-white py-3.5 font-mono text-[14px] font-bold disabled:opacity-70" style={{ background: ACENTO }}>
               {yendo ? 'Aplicando tu descuento…'
                 : conDesc ? `[ ${esReceta ? 'ELEGIR LENTES' : 'COMPRAR'}${offPublico ? ` CON ${offPublico}% OFF` : ''}${precioFinal ? ` · ${kAr(precioFinal)}` : ''} ]`
-                : '[ VER EN LA TIENDA ]'}
+                : `[ COMPRAR${conCantidad && precioFinal ? ` · ${kAr(precioFinal * cant)}` : ''} ]`}
             </button>
             {d.ver_mas && (
               <a href={d.ver_mas} className="block w-full text-center mt-2 rounded-full border-2 py-3 font-mono text-[13px] font-bold text-white border-white/40">

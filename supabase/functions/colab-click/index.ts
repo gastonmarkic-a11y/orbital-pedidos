@@ -156,6 +156,11 @@ Deno.serve(async (req) => {
     } else {
       await db.from('colab_click').insert({ link_id: link.id, visitante: null })
     }
+    // Promotor sin cupón (colección / cobranding ZN): no hay descuento que preparar, así que
+    // el link va derecho a la ficha de la tienda con los UTM. La venta se atribuye por
+    // utm_content = código del link (colab-ventas-sync). El toque ya quedó registrado arriba.
+    if (pct === 0) return json({ ok: true, directo: `${TIENDA}/products/${link.handle}?${utm}` })
+
     const { data: store } = await db.from('shopify_stores').select('scope').eq('id', 'linea').maybeSingle()
     const descuentoActivo = pct > 0 && /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
 
