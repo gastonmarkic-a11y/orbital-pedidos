@@ -156,11 +156,6 @@ Deno.serve(async (req) => {
     } else {
       await db.from('colab_click').insert({ link_id: link.id, visitante: null })
     }
-    // Promotor sin cupón (colección / cobranding ZN): no hay descuento que preparar, así que
-    // el link va derecho a la ficha de la tienda con los UTM. La venta se atribuye por
-    // utm_content = código del link (colab-ventas-sync). El toque ya quedó registrado arriba.
-    if (pct === 0) return json({ ok: true, directo: `${TIENDA}/products/${link.handle}?${utm}` })
-
     const { data: store } = await db.from('shopify_stores').select('scope').eq('id', 'linea').maybeSingle()
     const descuentoActivo = pct > 0 && /write_price_rules|write_discounts/.test(String(store?.scope ?? ''))
 
@@ -199,6 +194,10 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true, modelo: link.modelo, influencer: inf.nombre, pct, descuento_activo: descuentoActivo,
+      // Promotor sin cupón (colección / cobranding ZN): no hay descuento que preparar, así que el
+      // link va derecho a la ficha con los UTM (la venta se atribuye por utm_content). Igual van
+      // todos los datos de la landing: una versión vieja de la página sigue funcionando.
+      directo: pct === 0 ? `${TIENDA}/products/${link.handle}?${utm}` : null,
       seleccionado: colores.some((c) => c.handle === link.handle) ? link.handle : colores[0]?.handle ?? null,
       colores, tienda: `${TIENDA}/products/${link.handle}?${utm}`, utm: utm.toString(),
       ver_mas: inf.coleccion ? `${TIENDA}/collections/${encodeURIComponent(inf.coleccion)}?${utm}` : null,
