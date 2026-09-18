@@ -1,10 +1,7 @@
 // colab-telegram — agente de Telegram para los promotores (influencers).
-// Bot aparte del Ojo: chat privado con cada promotor.
+// Bot aparte del Ojo: chat privado con cada promotor, y un grupo interno de Orbital que ve todo.
 //   POST /            -> webhook de Telegram
 //   GET  ?tarea=avisos -> cron: cambios de promo y acciones (Día de la Madre, Navidad…)
-//
-// Env: COLAB_TELEGRAM_BOT_TOKEN, COLAB_TELEGRAM_WEBHOOK_SECRET (opcional),
-//      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_KEY (opcional)
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -22,6 +19,20 @@ async function cfg(clave: string, env?: string): Promise<string> {
   return cacheCfg[clave];
 }
 const token = () => cfg('colab_telegram_bot_token', 'COLAB_TELEGRAM_BOT_TOKEN');
+
+async function guardarCfg(clave: string, valor: string) {
+  await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify({ clave, valor }),
+  });
+  cacheCfg[clave] = valor;
+}
 
 const BASE = "https://ver.orbitaleyewear.com.ar";
 
@@ -43,7 +54,7 @@ async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}):
 
 type Boton = { text: string; callback_data: string };
 
-async function enviar(chat: number, texto: string, botones?: Boton[][]) {
+async function enviar(chat: number, texto: string, botones?: Boton[][], teclado?: unknown) {
   const res = await fetch(`https://api.telegram.org/bot${await token()}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -53,10 +64,18 @@ async function enviar(chat: number, texto: string, botones?: Boton[][]) {
       parse_mode: "HTML",
       disable_web_page_preview: true,
       ...(botones ? { reply_markup: { inline_keyboard: botones } } : {}),
+      ...(teclado ? { reply_markup: teclado } : {}),
     }),
   });
   if (!res.ok) console.error("sendMessage", res.status, await res.text());
 }
+
+// Teclado de alta: un toque y Telegram manda su teléfono
+const PEDIR_TEL = {
+  keyboard: [[{ text: "📱 Entrar con mi teléfono", request_contact: true }]],
+  resize_keyboard: true,
+  one_time_keyboard: true,
+};
 
 async function responderCallback(id: string, texto?: string) {
   await fetch(`https://api.telegram.org/bot${await token()}/answerCallbackQuery`, {
@@ -64,6 +83,13 @@ async function responderCallback(id: string, texto?: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ callback_query_id: id, ...(texto ? { text: texto } : {}) }),
   });
+}
+
+// Grupo interno de Orbital: ve todo lo que hace cada promotor con el bot
+async function espejo(texto: string) {
+  const g = await cfg("colab_telegram_grupo");
+  if (!g) return;
+  await enviar(Number(g), "👁 " + texto);
 }
 
 const pesos = (n: number) =>
@@ -171,6 +197,38 @@ async function pantallaComoVa(chat: number, q: Quien) {
   await enviar(chat, t);
 }
 
+// Resumen para el grupo interno: todos los promotores, agrupados
+async function pantallaResumenInterno(chat: number) {
+  const clave = await cfg("colab_telegram_grupo_clave");
+  if (!clave) {
+    await enviar(chat, "Me falta la clave de Orbital. Mandá <code>/panel or-…</code>");
+    return;
+  }
+  const links = await rpc<
+    { influencer: string; influencer_id: number; admin: string; modelo: string; clicks: number; pedidos: number; com: number; activo: boolean; influencer_activo: boolean }[]
+  >("colab_links_todos", { p_clave: clave });
+  if (!links?.length) {
+    await enviar(chat, "Todavía no hay ningún link publicado.");
+    return;
+  }
+  const por = new Map<number, { nombre: string; admin: string; links: number; clicks: number; pedidos: number; com: number }>();
+  for (const l of links) {
+    if (!l.influencer_activo) continue;
+    const a = por.get(l.influencer_id) ??
+      { nombre: l.influencer, admin: l.admin, links: 0, clicks: 0, pedidos: 0, com: 0 };
+    a.links++; a.clicks += l.clicks; a.pedidos += l.pedidos; a.com += Number(l.com);
+    por.set(l.influencer_id, a);
+  }
+  const filas = [...por.values()].sort((a, b) => b.clicks - a.clicks);
+  let t = "<b>Promotores — cómo vienen</b>\n\n";
+  for (const f of filas) {
+    const conv = f.clicks ? ((f.pedidos / f.clicks) * 100).toFixed(1).replace(".", ",") : "0";
+    t += `<b>${f.nombre}</b> <i>(${f.admin})</i>\n`;
+    t += `${f.links} link${f.links === 1 ? "" : "s"} · ${f.clicks} visitas · ${f.pedidos} pedidos · ${conv}% · ${pesos(f.com)}\n\n`;
+  }
+  await enviar(chat, t);
+}
+
 async function crearLink(chat: number, q: Quien, handle: string, red: string, formato: string) {
   try {
     const r = await rpc<{ codigo: string }>("colab_crear_link", {
@@ -190,6 +248,10 @@ async function crearLink(chat: number, q: Quien, handle: string, red: string, fo
       t += `Están ${pesos(tachado)} en la web y con mi link los conseguís a ${pesos(promo)}. Link en mi bio 👇\n${link}`;
     }
     await enviar(chat, t, [[{ text: "Ver cómo va", callback_data: "v|" + r.codigo }]]);
+    await espejo(
+      `<b>${q.nombre}</b> pidió un link${col ? ` de <b>${col.modelo}</b> ${col.color}` : ""} para ${red} ${formato}\n` +
+      `${BASE}/r/${r.codigo}`,
+    );
   } catch (e) {
     const msg = String(e);
     const amable = msg.includes("solo_sol")
@@ -218,14 +280,62 @@ async function manejarMensaje(msg: Record<string, any>) {
   const texto = String(msg.text ?? "").trim();
   if (!chat || !from) return;
 
+  // En un grupo el bot no atiende promotores: es el panel interno de Orbital
+  const tipoChat = String(msg.chat?.type ?? "private");
+  if (tipoChat === "group" || tipoChat === "supergroup") {
+    const or = texto.match(/\bor-[a-z0-9]{6,}\b/i)?.[0];
+    if (or) {
+      const ok = await rpc<boolean>("colab_orbital_ok", { p_clave: or });
+      if (!ok) {
+        await enviar(chat, "Esa no es la clave de Orbital.");
+        return;
+      }
+      await guardarCfg("colab_telegram_grupo", String(chat));
+      await guardarCfg("colab_telegram_grupo_clave", or);
+      await enviar(chat,
+        "Listo 👁 Este grupo queda como panel interno.\n\n" +
+        "Acá les voy a ir contando todo lo que hace cada promotor: cuando se vincula, " +
+        "cuando pide un link, cuando mira qué promocionar y cuando consulta sus números.\n\n" +
+        "Escriban <b>/resumen</b> cuando quieran ver cómo vienen todos.");
+      return;
+    }
+    if (texto.startsWith("/resumen")) {
+      await pantallaResumenInterno(chat);
+      return;
+    }
+    return; // en grupo no contesta nada más
+  }
+
   const q = await rpc<Quien | null>("colab_tg_quien", { p_tg: from });
 
-  // alta: manda su clave in-…
+  const nombreTg = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") || null;
+
+  // alta con un toque: comparte su teléfono y lo busco en los promotores
+  const tel = msg.contact?.user_id === from ? String(msg.contact?.phone_number ?? "") : "";
+  if (!q && tel) {
+    const r = await rpc<{ ok: boolean; error?: string; nombre?: string }>("colab_tg_vincular_tel", {
+      p_tg: from, p_chat: chat, p_tel: tel, p_nombre: nombreTg, p_username: msg.from?.username ?? null,
+    });
+    if (!r?.ok) {
+      await enviar(chat, r?.error === "inactivo"
+        ? "Tu acceso está dado de baja. Hablá con tu administrador."
+        : r?.error === "repetido"
+          ? "Ese teléfono figura en más de un promotor. Avisale a tu administrador."
+          : "Ese teléfono no me figura como promotor. Pedile a tu administrador que lo cargue, " +
+            "o mandame tu clave de acceso (empieza con <code>in-</code>).");
+      return;
+    }
+    await enviar(chat, `¡Hola ${r.nombre}! Quedaste vinculado 🎉\n\n${AYUDA}`, undefined, { remove_keyboard: true });
+    await espejo(`<b>${r.nombre}</b> se vinculó al bot con su teléfono`);
+    return;
+  }
+
+  // alta alternativa: manda su clave in-…
   const clave = texto.match(/\bin-[a-z0-9]{6,}\b/i)?.[0];
   if (!q && clave) {
     const r = await rpc<{ ok: boolean; error?: string; nombre?: string }>("colab_tg_vincular", {
       p_tg: from, p_chat: chat, p_clave: clave,
-      p_nombre: [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") || null,
+      p_nombre: nombreTg,
       p_username: msg.from?.username ?? null,
     });
     if (!r?.ok) {
@@ -234,15 +344,16 @@ async function manejarMensaje(msg: Record<string, any>) {
         : "Esa clave no me figura. Fijate que sea la que te pasaron, empieza con <code>in-</code>.");
       return;
     }
-    await enviar(chat, `¡Hola ${r.nombre}! Quedaste vinculado 🎉\n\n${AYUDA}`);
+    await enviar(chat, `¡Hola ${r.nombre}! Quedaste vinculado 🎉\n\n${AYUDA}`, undefined, { remove_keyboard: true });
+    await espejo(`<b>${r.nombre}</b> se vinculó al bot`);
     return;
   }
 
   if (!q) {
     await enviar(chat,
       "Hola 👋 Soy el asistente de promotores de Orbital.\n\n" +
-      "Para empezar, mandame tu clave de acceso (la que empieza con <code>in-</code>). " +
-      "Te la pasó tu administrador junto con el link de tu panel.");
+      "Tocá el botón de acá abajo y entrás con tu teléfono, sin claves ni contraseñas.",
+      undefined, PEDIR_TEL);
     return;
   }
 
@@ -254,10 +365,12 @@ async function manejarMensaje(msg: Record<string, any>) {
   }
   if (t.includes("que promociono") || t.includes("recomend") || texto.startsWith("/recomendar")) {
     await pantallaRecomendar(chat, q);
+    await espejo(`<b>${q.nombre}</b> pidió recomendaciones`);
     return;
   }
   if (t.includes("como va") || t.includes("como viene") || t.includes("numeros") || texto.startsWith("/comova")) {
     await pantallaComoVa(chat, q);
+    await espejo(`<b>${q.nombre}</b> miró cómo van sus links`);
     return;
   }
 
@@ -266,9 +379,11 @@ async function manejarMensaje(msg: Record<string, any>) {
   const m = buscarModelo(cat, texto);
   if (m) {
     await pantallaModelo(chat, q, m);
+    await espejo(`<b>${q.nombre}</b> está mirando <b>${m.modelo}</b>`);
     return;
   }
 
+  await espejo(`<b>${q.nombre}</b> escribió algo que el bot no entendió: «${texto}»`);
   await enviar(chat, "No te entendí 🤔\n\n" + AYUDA, [
     [{ text: "¿Qué promociono?", callback_data: "r|" }],
     [{ text: "¿Cómo van mis links?", callback_data: "k|" }],
@@ -284,7 +399,7 @@ async function manejarCallback(cb: Record<string, any>) {
 
   const q = await rpc<Quien | null>("colab_tg_quien", { p_tg: from });
   if (!q) {
-    await enviar(chat, "Mandame tu clave (empieza con <code>in-</code>) para vincularte.");
+    await enviar(chat, "Tocá el botón para entrar con tu teléfono.", undefined, PEDIR_TEL);
     return;
   }
 
@@ -348,6 +463,7 @@ async function correrAvisos(): Promise<{ mandados: number }> {
     if (!texto) continue;
     await enviar(p.chat_id, texto);
     await rpc("colab_tg_aviso_ok", { p_inf: p.influencer_id, p_tipo: p.tipo, p_ref: p.ref });
+    await espejo(`Aviso mandado a <b>${p.nombre}</b>: ${p.tipo === "promo" ? `cambio de precio de ${p.modelo}` : p.accion}`);
     mandados++;
   }
   return { mandados };
