@@ -69,7 +69,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
   const principal = (s?: typeof ult) => !s ? 0 : rol === 'influencer' ? s.com_inf : rol === 'admin' ? s.com_adm : s.neto
   const delta = prev && principal(prev) ? (principal(ult) / principal(prev) - 1) * 100 : null
   const maxMes = Math.max(...r.serie.map((s) => s.neto), 1)
-  const etiquetaPrincipal = rol === 'influencer' ? `Tu ${pctInf ?? 15}%` : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
+  const etiquetaPrincipal = rol === 'influencer' ? `Tu ${pctInf ?? 10}%` : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
   const conv = ult && ult.clicks ? (ult.pedidos / ult.clicks) * 100 : 0
 
   return (
@@ -178,7 +178,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                   <div className="text-right shrink-0 tabular-nums">
                     <div className="font-bold">{kAr(o.neto)}</div>
                     <div className="text-[9px] text-neutral-500">
-                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctInf ?? 15}%: ${kAr(o.com_inf)}` : ''}
+                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctInf ?? 10}%: ${kAr(o.com_inf)}` : ''}
                     </div>
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                     ['Impresiones', nAr(c.impresiones)],
                     ['Clics', nAr(c.clicks)],
                     ['Pedidos', nAr(c.pedidos)],
-                    rol === 'influencer' ? [`Tu ${pctInf ?? 15}%`, kAr(c.com_inf)] : ['Venta neta', kAr(c.neto)],
+                    rol === 'influencer' ? [`Tu ${pctInf ?? 10}%`, kAr(c.com_inf)] : ['Venta neta', kAr(c.neto)],
                   ] as [string, string][]).map(([k, v]) => (
                     <div key={k}>
                       <div className="text-[9px] uppercase tracking-wide text-neutral-400">{k}</div>
@@ -287,7 +287,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-[13px] font-bold tabular-nums leading-none">{kM(p.neto)}</div>
-                      {rol === 'influencer' && <div className="text-[9px] text-neutral-400">tu {pctInf ?? 15}%: {kAr(p.neto * (pctInf ?? 15) / 100)}</div>}
+                      {rol === 'influencer' && <div className="text-[9px] text-neutral-400">tu {pctInf ?? 10}%: {kAr(p.neto * (pctInf ?? 10) / 100)}</div>}
                     </div>
                   </div>
                   <div className="h-2 rounded-r-[4px] mt-1.5" style={{ background: C_RED[p.red] ?? '#8d8a82', width: `${(p.neto / maxP) * 100}%`, minWidth: 2 }} />
@@ -437,7 +437,7 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
       <div className="grid grid-cols-3 gap-2 mb-3">
         <Kpi k="Venta neta" v={kAr(neto)} />
         {rol === 'influencer'
-          ? <Kpi k={`Tu ${pctInf ?? 15}%`} v={kAr(cInf)} fuerte />
+          ? <Kpi k={`Tu ${pctInf ?? 10}%`} v={kAr(cInf)} fuerte />
           : <Kpi k={`Influencers`} v={kAr(cInf)} fuerte={rol === 'orbital'} />}
         {rol === 'influencer'
           ? <Kpi k="Pedidos" v={String(pagadas.length)} />

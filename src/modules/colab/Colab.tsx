@@ -174,13 +174,13 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
                 </button>
               </div>
             )}
-            <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 30} puedeLink onLink={() => setVersion((v) => v + 1)} oscuro={oscuro} coleccion={ent.coleccion} />
+            <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 15} puedeLink onLink={() => setVersion((v) => v + 1)} oscuro={oscuro} coleccion={ent.coleccion} />
           </>
         )}
         {tab === 'links' && <LinksTodos key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} />}
         {tab === 'dashboard' && (
           <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}
-            pctInf={ent.rol === 'influencer' ? ent.pct : 15} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
+            pctInf={ent.rol === 'influencer' ? ent.pct : 10} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
         )}
         {tab === 'liquidacion' && (
           <Liquidacion clave={clave} rol={ent.rol} adminId={adminSel} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
@@ -438,7 +438,7 @@ function Promotores({ clave }: { clave: string }) {
 }
 
 function FormPromotor({ clave, inicial, onClose, onOk }: { clave: string; inicial: Partial<Influencer>; onClose: () => void; onOk: () => void }) {
-  const [f, setF] = useState({ nombre: inicial.nombre ?? '', email: inicial.email ?? '', telefono: inicial.telefono ?? '', nota: inicial.nota ?? '', cbu_alias: inicial.cbu_alias ?? '', pct: inicial.pct ?? 15 })
+  const [f, setF] = useState({ nombre: inicial.nombre ?? '', email: inicial.email ?? '', telefono: inicial.telefono ?? '', nota: inicial.nota ?? '', cbu_alias: inicial.cbu_alias ?? '', pct: inicial.pct ?? 10 })
   const [redes, setRedes] = useState<Red[]>(inicial.redes?.length ? inicial.redes : [{ red: 'instagram', usuario: '' }])
   const [guardando, setGuardando] = useState(false)
   const [err, setErr] = useState<string | null>(null)

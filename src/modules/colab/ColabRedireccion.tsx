@@ -114,7 +114,7 @@ export default function ColabRedireccion() {
 
   const colores = d.colores ?? []
   const c = colores.find((x) => x.handle === sel) ?? colores[0]
-  const pct = d.pct ?? 30
+  const pct = d.pct ?? 15
   const conDesc = !!d.descuento_activo
   const utm = d.utm
   const fotosBase = c ? (c.imagenes?.length ? c.imagenes : c.imagen ? [c.imagen] : []) : []
