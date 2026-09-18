@@ -32,7 +32,7 @@ type Ver = {
 
 const TIENDA = 'https://www.orbitaleyewear.com.ar'
 const FONDO = '#0A0A0A'
-const FOTO = '#E9E9E9'   // tarjeta clara de la foto, como en la tienda
+const FOTO = '#FFFFFF'   // igual que el fondo de las fotos: el recuadro no se nota
 
 function visitante() {
   try {

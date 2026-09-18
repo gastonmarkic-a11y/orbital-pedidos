@@ -12,6 +12,9 @@ import { supabase } from '../../lib/supabase'
 import { ACENTO, Color, Modelo, REDES, FORMATOS, copiesDe, copiar, kAr, linkPublico, partesColor } from './colabUtil'
 
 export const ROJO_TRIPLE = '#E11D2E'
+// Las fotos de la tienda vienen con fondo blanco: la tarjeta va del mismo color para
+// que no se vea el recuadro alrededor del anteojo.
+export const FONDO_FOTO = '#FFFFFF'
 export const esTriple = (c: Color) => /infrarrojo/i.test(c.tratamiento ?? '')
 
 export function BotonCopiar({ texto, label = 'Copiar', grande }: { texto: string; label?: string; grande?: boolean }) {
@@ -120,7 +123,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
           if (oscuro) {
             return (
               <button key={m.modelo} onClick={() => setAbierto(idx)} className="text-left group">
-                <div className="aspect-square p-3 relative rounded-md overflow-hidden" style={{ background: '#E9E9E9' }}>
+                <div className="aspect-square p-3 relative rounded-md overflow-hidden" style={{ background: FONDO_FOTO }}>
                   <Foto src={c0?.imagen} alt={m.modelo} />
                   {insignias}
                 </div>
