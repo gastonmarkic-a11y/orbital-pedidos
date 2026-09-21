@@ -1249,16 +1249,33 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
     supabase.rpc('catalogo_ficha_tienda', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setFicha((data as typeof ficha) ?? null))
   }, [clave, modelo.modelo])
   const v = vars[i]
-  // "Sobre este anteojo": la ficha de la tienda (la misma data que usan los colaboradores).
-  // Solo lo del modelo: color, tipo y tratamiento ya se ven arriba, y las medidas en su bloque.
+  // "Sobre este anteojo": la misma "Data del anteojo" que ven los colaboradores, por color:
+  // ficha de la tienda + armazón / lente / tratamiento del color elegido + medidas.
+  // Sale para todos los modelos (aunque la tienda no tenga descripción).
   const sobre = useMemo(() => {
-    if (!ficha?.descripcion || !v) return null
+    if (!v) return null
     const tipo = (v.tipo || '').toUpperCase() === 'RECETA' ? 'RECETA' : 'SOL'
+    const trat = v.tratamiento && !/^(ninguno|sin tratamiento|-)$/i.test(v.tratamiento) ? v.tratamiento : null
     const cp = copiesDe(
-      { modelo: modelo.modelo, linea: ficha.linea, tipos: [tipo], descripcion: ficha.descripcion, nuevo: false, best: false, precio_desde: null, colores: [] },
-      { product_id: 0, handle: '', color: null, imagen: null, price: null, compare_at: null, sku: null, tipo, tratamiento: null }, 0)
-    const datos = cp.datos.filter((d) => !/^(Anteojo de sol|Armazón para receta)$/.test(d) && !(medidas && /^Medidas:/.test(d)))
-    return cp.intro || datos.length ? { intro: cp.intro, datos } : null
+      { modelo: modelo.modelo, linea: ficha?.linea ?? null, tipos: [tipo], descripcion: ficha?.descripcion ?? null, nuevo: false, best: false, precio_desde: null, colores: [] },
+      { product_id: 0, handle: '', color: colorLegible(v.descripcion) || null, imagen: null, price: null, compare_at: null, sku: null, tipo, tratamiento: trat }, 0)
+    const datos = [...cp.datos]
+    // Si la tienda no trae la ficha técnica, se completa con las medidas cargadas en la Suite
+    if (medidas && !datos.some((d) => /^Frente:/.test(d)) && medidas.frente) datos.push(`Frente: ${cap(medidas.frente)}`)
+    if (medidas && !datos.some((d) => /^Varillas:/.test(d)) && medidas.patilla) datos.push(`Varillas: ${cap(medidas.patilla)}`)
+    if (medidas?.formato) datos.push(`Formato: ${cap(medidas.formato)}`)
+    if (medidas && (medidas.ancho || medidas.alto || medidas.largo) && !datos.some((d) => /^Medidas:/.test(d)))
+      datos.push(`Medidas: ${[medidas.ancho && `ancho ${medidas.ancho} cm`, medidas.alto && `alto ${medidas.alto} cm`, medidas.largo && `varilla ${medidas.largo} cm`].filter(Boolean).join(' · ')}`)
+    if (medidas?.para) datos.push(`Para: ${cap(medidas.para)}`)
+    // Qué hace cada tratamiento, contado para el cliente
+    const extra: string[] = []
+    const t = `${trat ?? ''} ${v.descripcion ?? ''}`
+    if (/infrarrojo/i.test(t)) extra.push('Triple Protección: UV400 + Blue Cut 420 nm (hasta 98% menos luz azul de pantallas) + filtro infrarrojo 808 nm (bloquea el calor del sol que llega al ojo). Adentro y afuera, en un mismo cristal.')
+    else if (/blue ?cut/i.test(t)) extra.push('Blue Cut: filtra la luz azul de pantallas y LEDs. Menos fatiga visual frente a la compu y el celular.')
+    if (/polariz/i.test(t)) extra.push('Polarizado: corta el reflejo del agua, la ruta y el asfalto mojado. Se ve más nítido y cansa menos.')
+    if (/espej/i.test(t)) extra.push('Espejado: refleja parte de la luz antes de que entre al ojo. Ideal para mucho sol.')
+    if (/(ocre|naranja|rojo|amarill)/i.test(cp.datos.find((d) => /^Lente:/.test(d)) ?? '')) extra.push('Cristal de color: suma contraste cuando baja la luz, en días grises o con niebla.')
+    return { intro: cp.intro, destacados: cp.destacados, datos, extra }
   }, [ficha, v, modelo.modelo, medidas])
   const enCarrito = v ? cart[v.codigo]?.cantidad ?? 0 : 0
 
@@ -1355,11 +1372,19 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
               <div className="mt-4 border border-black/10 rounded-xl p-3">
                 <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Sobre este anteojo</p>
                 {sobre.intro && <p className="text-[12px] text-neutral-700 leading-relaxed font-sans">{sobre.intro}</p>}
+                {sobre.destacados.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 font-sans">
+                    {sobre.destacados.map((d) => <span key={d} className="text-[10px] rounded-full px-2 py-0.5 bg-[#0004FF]/[0.07] text-[#0004FF] font-semibold">✔ {d}</span>)}
+                  </div>
+                )}
                 {sobre.datos.length > 0 && (
-                  <ul className={`space-y-1 text-[11px] text-neutral-700 font-sans ${sobre.intro ? 'mt-2 pt-2 border-t border-black/5' : ''}`}>
+                  <ul className={`space-y-1 text-[11px] text-neutral-700 font-sans ${sobre.intro || sobre.destacados.length ? 'mt-2 pt-2 border-t border-black/5' : ''}`}>
                     {sobre.datos.map((d) => <li key={d} className="flex gap-2"><span className="text-neutral-300">•</span><span>{d}</span></li>)}
                   </ul>
                 )}
+                {sobre.extra.map((d) => (
+                  <p key={d} className="mt-2 text-[11px] text-neutral-600 leading-relaxed font-sans rounded-lg bg-[#F5F5F7] px-2.5 py-2">{d}</p>
+                ))}
               </div>
             )}
 
