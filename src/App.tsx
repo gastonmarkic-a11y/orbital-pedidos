@@ -61,6 +61,7 @@ import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import CentralConsigna from './modules/consigna/CentralConsigna'
 import AyudaConsigna from './modules/consigna/AyudaConsigna'
 import Consignas from './modules/consigna/Consignas'
+import RedOpticas from './modules/consigna/RedOpticas'
 import CatalogoZN from './modules/catalogo/CatalogoZN'
 import Colab from './modules/colab/Colab'
 import ColabRedireccion from './modules/colab/ColabRedireccion'
@@ -105,6 +106,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/ventas-historico': TrendingUp,
   '/finanzas': Landmark,
   '/consignas': Package,
+  '/red-opticas': Store,
 }
 
 function iconoDe(to: string, label: string) {
@@ -177,6 +179,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/panel-resultados', label: 'Resultados' },
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/envios-ecom', label: 'Envíos' },
+        { to: '/red-opticas', label: 'Red de ópticas' },
       ],
       secundarios: [
         { to: '/seguimiento', label: 'Seguimiento' },
@@ -205,6 +208,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
         { to: '/consignas', label: 'Consignas' },
+        { to: '/red-opticas', label: 'Red de ópticas' },
         { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
       ],
@@ -225,6 +229,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/marketing', label: 'Marketing' },
     { to: '/guiones', label: 'Guiones' },
     { to: '/conversaciones', label: 'Conversaciones' },
+    { to: '/red-opticas', label: 'Red de ópticas' },
   ]
   const menu: NavItem[] = []
   // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día,
@@ -627,6 +632,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/accesos" element={<Usuarios />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/consignas" element={<Consignas />} />}
+          {['admin', 'administracion', 'postventa', 'vendedor'].includes(rol) && <Route path="/red-opticas" element={<RedOpticas />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}

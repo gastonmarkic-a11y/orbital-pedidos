@@ -10,6 +10,7 @@ import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from '../colab/ColabInspiracion'
 import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
+import MiOptica, { PublicarLink, type Solapa } from './MiOptica'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -820,6 +821,7 @@ export default function CatalogoPublico() {
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
   // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
   const [conoce, setConoce] = useState(false)
+  const [miOptica, setMiOptica] = useState<Solapa | null>(null)
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
@@ -888,6 +890,8 @@ export default function CatalogoPublico() {
   const cartTotal = Object.values(cart).reduce((a, c) => a + c.cantidad * c.precio, 0)
   // Token de vendedores de un distribuidor: ven disponibilidad, no precios.
   const sinPrecios = acceso?.tipo === 'dist_vend'
+  // Panel de la óptica (postventa, mis anteojos, publicaciones): solo accesos de óptica con cliente
+  const esOptica = acceso?.tipo === 'optica' && !!acceso.cod_cliente
 
   // ¿este token trae bono? Se consulta una vez, al validar el acceso.
   useEffect(() => {
@@ -1016,6 +1020,21 @@ export default function CatalogoPublico() {
   // ¿hay barra fija abajo (pack o bono)? Los flotantes se corren para no taparla.
   const barraFija = !!packCalc || !!(bonoCalc && !bonoCalc.vencido)
 
+  // Inspiración (todos) y Postventa / Mi óptica (solo ópticas), al lado de Pedido; en el celu, fila propia
+  const accesosHeader = (
+    <>
+      <button onClick={verConoce}
+        className={`flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border ${conoce && !buscando ? 'bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 text-white border-transparent' : 'bg-gradient-to-r from-fuchsia-50 to-orange-50 border-fuchsia-300 text-fuchsia-700'}`}>
+        ✦ Inspiración
+      </button>
+      {esOptica && (
+        <button onClick={() => setMiOptica('postventa')}
+          className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
+          Postventa
+        </button>
+      )}
+    </>
+  )
   const navPill = (active: boolean, accent: Grupo['accent']) =>
     `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
@@ -1047,6 +1066,7 @@ export default function CatalogoPublico() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <button onClick={irInicio} className="shrink-0"><Logo /></button>
           <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2">{accesosHeader}</div>
             <InstalarApp nombre="Catálogo Orbital" que="el catálogo" bajada="Queda con el ícono de Orbital y entra directo a tu catálogo, sin clave." mono />
             <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
               <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
@@ -1054,6 +1074,8 @@ export default function CatalogoPublico() {
             </button>
           </div>
         </div>
+        {/* En el celu, Inspiración / Postventa van en su propia fila */}
+        <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2">{accesosHeader}</div>
         {/* Buscador */}
         <div className="max-w-6xl mx-auto px-4 pb-2">
           <div className="relative">
@@ -1066,7 +1088,6 @@ export default function CatalogoPublico() {
         <div className="max-w-6xl mx-auto px-4 pb-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
             <button onClick={irInicio} className={navPill(!buscando && !grupoActivo && !conoce, 'dark')}>Inicio</button>
-            <button onClick={verConoce} className={`text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${conoce && !buscando ? 'bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 text-white border-transparent' : 'bg-gradient-to-r from-fuchsia-50 to-orange-50 border-fuchsia-300 text-fuchsia-700 hover:border-fuchsia-500'}`}>✦ Inspiradores redes sociales</button>
             {GRUPOS.map((g) => (
               <button key={g.key} onClick={() => verGrupo(g.key)} className={navPill(grupoActivo === g.key, g.accent)}>{g.nombre}</button>
             ))}
@@ -1135,7 +1156,8 @@ export default function CatalogoPublico() {
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
-      {sel && <ModeloSheet modelo={sel} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
+      {miOptica && acceso && <MiOptica clave={clave} inicial={miOptica} identidad={{ cod_cliente: acceso.cod_cliente ?? null, label: acceso.label ?? null, vendedor: acceso.vendedor ?? null }} onClose={() => setMiOptica(null)} />}
+      {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Bono: cartel de escalón desbloqueado + barra de progreso fija */}
@@ -1232,8 +1254,8 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
 }
 
 // ── Ficha del modelo con carrusel de colores ──
-function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
-  modelo: Modelo; clave: string; cart: Record<string, CartItem>
+function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }: {
+  modelo: Modelo; clave: string; esOptica: boolean; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
@@ -1444,6 +1466,7 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                   )}
                   <BotonCopiar texto={sobre[tabCopy]} label="Copiar texto" />
                 </div>
+                {esOptica && <PublicarLink clave={clave} modelo={modelo.modelo} color={colorLegible(v.descripcion) || null} />}
               </div>
             )}
 
