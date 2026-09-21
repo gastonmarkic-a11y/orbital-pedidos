@@ -1,15 +1,14 @@
 // ── Panel de la óptica dentro del catálogo ──────────────────────────────────
-// Tres solapas, solo para accesos de óptica (el token trae cod_cliente):
-//   · Postventa: garantía / rotura / repuesto, con fotos. Queda el ticket (optica_postventa) y un
-//     trigger avisa al grupo de Telegram para Postventa; se gestiona en la Suite (Red de ópticas).
-//   · Mis anteojos: lo que Orbital le vendió (Tango + Suite). Lo que tacha deja de salir como
-//     "dónde comprar" cuando un cliente final le pregunta al bot. Al consumidor solo le llega
-//     nombre y dirección de la óptica: nada de precios ni catálogo mayorista.
-//   · Mis publicaciones: link y/o fotos de lo que publicó con Orbital, para que Orbital lo comparta
-//     mandando a la dirección de la óptica.
+// Solo accesos de óptica (el token trae cod_cliente):
+//   · Postventa (ventana propia): garantía / rotura / repuesto, con fotos. Queda el ticket
+//     (optica_postventa) y un trigger avisa al grupo de Telegram para Postventa.
+//   · Mis anteojos y Mis publicaciones: van dentro de "Crear contenido", separados de postventa.
+//     Mis anteojos = lo que Orbital le vendió; lo que tacha deja de salir como "dónde comprar"
+//     en IRIS (al consumidor solo le llega nombre y dirección: nada de precios ni catálogo).
+//     Mis publicaciones = link y/o fotos de lo que publicó, para que Orbital lo comparta.
 // Las fotos van al bucket optica-fotos bajo <clave>/ (la política exige un token de óptica válido).
 import { useEffect, useRef, useState } from 'react'
-import { X, Wrench, Glasses, Megaphone, ExternalLink, Camera } from 'lucide-react'
+import { X, Wrench, ExternalLink, Camera } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const QUIEN_KEY = 'orbital_catalogo_quien'
@@ -30,8 +29,6 @@ const ESTADO: Record<Ticket['estado'], [string, string]> = {
   en_proceso: ['En proceso', 'bg-sky-100 text-sky-800'],
   resuelto: ['Resuelto', 'bg-emerald-100 text-emerald-800'],
 }
-
-export type Solapa = 'postventa' | 'anteojos' | 'publicaciones'
 
 async function subirFotos(clave: string, files: File[]): Promise<string[]> {
   const urls: string[] = []
@@ -118,49 +115,46 @@ export function PublicarLink({ clave, modelo, color }: { clave: string; modelo: 
   )
 }
 
-export default function MiOptica({ clave, inicial, onClose }: { clave: string; inicial: Solapa; onClose: () => void }) {
-  const [solapa, setSolapa] = useState<Solapa>(inicial)
-  const [modelos, setModelos] = useState<MiModelo[] | null>(null)
+// Postventa: ventana propia, separada de lo de contenido (Mis anteojos / Mis publicaciones)
+export default function PostventaOptica({ clave, onClose }: { clave: string; onClose: () => void }) {
+  const [modelos, setModelos] = useState<MiModelo[]>([])
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
-  const [pubs, setPubs] = useState<Publicacion[] | null>(null)
-
-  const cargarModelos = () => supabase.rpc('catalogo_mis_modelos', { p_clave: clave }).then(({ data }) => setModelos((data as MiModelo[]) ?? []))
   const cargarTickets = () => supabase.rpc('catalogo_postventa_lista', { p_clave: clave }).then(({ data }) => setTickets((data as Ticket[]) ?? []))
-  const cargarPubs = () => supabase.rpc('catalogo_publicaciones', { p_clave: clave }).then(({ data }) => setPubs((data as Publicacion[]) ?? []))
-  useEffect(() => { cargarModelos(); cargarTickets(); cargarPubs() }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const SOLAPAS: [Solapa, string, typeof Wrench][] = [
-    ['postventa', 'Postventa', Wrench],
-    ['anteojos', 'Mis anteojos', Glasses],
-    ['publicaciones', 'Mis publicaciones', Megaphone],
-  ]
-
+  useEffect(() => {
+    supabase.rpc('catalogo_mis_modelos', { p_clave: clave }).then(({ data }) => setModelos((data as MiModelo[]) ?? []))
+    cargarTickets()
+  }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-black/5 px-4 pt-3 z-10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold">Mi óptica</h2>
-            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
-          </div>
-          <div className="flex gap-1 mt-2 -mb-px overflow-x-auto">
-            {SOLAPAS.map(([k, label, Icono]) => (
-              <button key={k} onClick={() => setSolapa(k)}
-                className={`flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide px-3 py-2 border-b-2 ${solapa === k ? 'border-[#0004FF] text-[#0004FF]' : 'border-transparent text-neutral-500'}`}>
-                <Icono size={13} /> {label}
-              </button>
-            ))}
-          </div>
+        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 z-10 flex items-center justify-between">
+          <h2 className="text-base font-bold flex items-center gap-2"><Wrench size={16} /> Postventa</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
         </div>
-        <div className="p-4">
-          {solapa === 'postventa' && <SolapaPostventa clave={clave} modelos={modelos ?? []} tickets={tickets} onCargado={cargarTickets} />}
-          {solapa === 'anteojos' && <SolapaAnteojos clave={clave} modelos={modelos} onCambio={cargarModelos} />}
-          {solapa === 'publicaciones' && <SolapaPublicaciones clave={clave} modelos={modelos ?? []} pubs={pubs} onCargado={cargarPubs} />}
-        </div>
+        <div className="p-4"><SolapaPostventa clave={clave} modelos={modelos} tickets={tickets} onCargado={cargarTickets} /></div>
       </div>
     </div>
   )
+}
+
+// Mis anteojos y Mis publicaciones: van dentro de "Crear contenido" (se cargan solos)
+export function MisAnteojos({ clave }: { clave: string }) {
+  const [modelos, setModelos] = useState<MiModelo[] | null>(null)
+  const cargar = () => supabase.rpc('catalogo_mis_modelos', { p_clave: clave }).then(({ data }) => setModelos((data as MiModelo[]) ?? []))
+  useEffect(() => { cargar() }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
+  return <SolapaAnteojos clave={clave} modelos={modelos} onCambio={cargar} />
+}
+
+export function MisPublicaciones({ clave }: { clave: string }) {
+  const [modelos, setModelos] = useState<MiModelo[]>([])
+  const [pubs, setPubs] = useState<Publicacion[] | null>(null)
+  const cargar = () => supabase.rpc('catalogo_publicaciones', { p_clave: clave }).then(({ data }) => setPubs((data as Publicacion[]) ?? []))
+  useEffect(() => {
+    supabase.rpc('catalogo_mis_modelos', { p_clave: clave }).then(({ data }) => setModelos((data as MiModelo[]) ?? []))
+    cargar()
+  }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
+  return <SolapaPublicaciones clave={clave} modelos={modelos} pubs={pubs} onCargado={cargar} />
 }
 
 const campo = 'w-full bg-white border border-black/15 rounded-lg px-3 py-2 text-sm font-sans'

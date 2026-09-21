@@ -10,7 +10,7 @@ import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from '../colab/ColabInspiracion'
 import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
-import MiOptica, { PublicarLink, type Solapa } from './MiOptica'
+import PostventaOptica, { MisAnteojos, MisPublicaciones, PublicarLink } from './MiOptica'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -821,7 +821,7 @@ export default function CatalogoPublico() {
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
   // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
   const [conoce, setConoce] = useState(false)
-  const [miOptica, setMiOptica] = useState<Solapa | null>(null)
+  const [postventa, setPostventa] = useState(false)
   // Crear contenido: buscador de modelos que abre la ficha sin precio ni carrito
   const [contenido, setContenido] = useState(false)
   const [selContenido, setSelContenido] = useState<Modelo | null>(null)
@@ -1037,7 +1037,7 @@ export default function CatalogoPublico() {
         </button>
       )}
       {!sinPrecios && acceso?.tipo !== 'campana' && (
-        <button onClick={() => setMiOptica('postventa')}
+        <button onClick={() => setPostventa(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Postventa
         </button>
@@ -1165,9 +1165,9 @@ export default function CatalogoPublico() {
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
-      {miOptica && !esOptica && <SinOptica onClose={() => setMiOptica(null)} />}
-      {miOptica && esOptica && acceso && <MiOptica clave={clave} inicial={miOptica} onClose={() => setMiOptica(null)} />}
-      {contenido && <ContenidoBuscar modelos={todos} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
+      {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
+      {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
+      {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
@@ -1290,8 +1290,12 @@ function SinOptica({ onClose }: { onClose: () => void }) {
 }
 
 // ── Crear contenido: buscar un modelo y abrir su ficha para redes (sin precio ni carrito) ──
-function ContenidoBuscar({ modelos, onElegir, onClose }: { modelos: Modelo[]; onElegir: (m: Modelo) => void; onClose: () => void }) {
+// Para ópticas suma "Mis anteojos" y "Mis publicaciones": todo lo de redes junto, separado de postventa.
+function ContenidoBuscar({ modelos, clave, esOptica, onElegir, onClose }: {
+  modelos: Modelo[]; clave: string; esOptica: boolean; onElegir: (m: Modelo) => void; onClose: () => void
+}) {
   const [q, setQ] = useState('')
+  const [solapa, setSolapa] = useState<'crear' | 'anteojos' | 'publicaciones'>('crear')
   const lista = modelos.filter((m) => !q.trim() || m.modelo.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 60)
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
@@ -1302,14 +1306,26 @@ function ContenidoBuscar({ modelos, onElegir, onClose }: { modelos: Modelo[]; on
             <h2 className="text-base font-bold">Crear contenido</h2>
             <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
           </div>
+          {esOptica && (
+            <div className="flex gap-1 mt-1 mb-2 overflow-x-auto">
+              {([['crear', 'Crear contenido'], ['anteojos', 'Mis anteojos'], ['publicaciones', 'Mis publicaciones']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setSolapa(k)}
+                  className={`whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide px-3 py-1.5 rounded-full border ${solapa === k ? 'bg-fuchsia-600 text-white border-transparent' : 'bg-white border-black/10 text-neutral-600'}`}>{l}</button>
+              ))}
+            </div>
+          )}
+          {solapa === 'crear' && <>
           <p className="text-[11px] text-neutral-500 font-sans mb-2">Elegí un modelo y te armamos historia, posteo y guion para las redes de tu óptica. No toca tu pedido.</p>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
               className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-300" />
           </div>
+          </>}
         </div>
-        <div className="overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {solapa === 'anteojos' && <div className="overflow-y-auto p-4"><MisAnteojos clave={clave} /></div>}
+        {solapa === 'publicaciones' && <div className="overflow-y-auto p-4"><MisPublicaciones clave={clave} /></div>}
+        {solapa === 'crear' && <div className="overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
           {lista.map((m) => (
             <button key={m.modelo} onClick={() => onElegir(m)} className="rounded-xl border border-black/10 p-1.5 text-left hover:border-fuchsia-400">
               <div className="aspect-square bg-white rounded-lg overflow-hidden">
@@ -1319,7 +1335,7 @@ function ContenidoBuscar({ modelos, onElegir, onClose }: { modelos: Modelo[]; on
             </button>
           ))}
           {lista.length === 0 && <p className="col-span-full text-sm text-neutral-400 text-center py-6">Sin modelos con ese nombre.</p>}
-        </div>
+        </div>}
       </div>
     </div>
   )
