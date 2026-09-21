@@ -79,7 +79,7 @@ export default function ColabInspiracion({ clave, rol, onVerTriple, optica, mode
     <>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[15px] font-bold tracking-wide uppercase">{optica ? 'Conocé más' : 'Inspiración'}</h1>
+          <h1 className="text-[15px] font-bold tracking-wide uppercase">{optica ? 'Inspiradores redes sociales' : 'Inspiración'}</h1>
           <p className="text-[11px] text-neutral-500 mt-1">
             {optica
               ? <>Lo que está funcionando en TikTok e Instagram con anteojos, y todo sobre la <b>Triple Protección</b>. Te sirve para saber qué van a buscar tus clientes y para armar el contenido de tu óptica.</>

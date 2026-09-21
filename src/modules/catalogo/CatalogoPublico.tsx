@@ -1065,7 +1065,7 @@ export default function CatalogoPublico() {
         <div className="max-w-6xl mx-auto px-4 pb-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
             <button onClick={irInicio} className={navPill(!buscando && !grupoActivo && !conoce, 'dark')}>Inicio</button>
-            <button onClick={verConoce} className={navPill(conoce && !buscando, 'red')}>✦ Conocé más</button>
+            <button onClick={verConoce} className={`text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${conoce && !buscando ? 'bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 text-white border-transparent' : 'bg-gradient-to-r from-fuchsia-50 to-orange-50 border-fuchsia-300 text-fuchsia-700 hover:border-fuchsia-500'}`}>✦ Inspiradores redes sociales</button>
             {GRUPOS.map((g) => (
               <button key={g.key} onClick={() => verGrupo(g.key)} className={navPill(grupoActivo === g.key, g.accent)}>{g.nombre}</button>
             ))}
