@@ -235,6 +235,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
+  // Cada vendedor abre su catálogo personal (su token): lo que arme ahí queda a su nombre.
+  if (rol === 'vendedor') principales.push({ to: '/mi-catalogo', label: 'Catálogo' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
@@ -572,9 +574,9 @@ function Layout() {
             </>
           )}
           {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
+          {(rol === 'revendedor' || rol === 'vendedor') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
           {rol === 'revendedor' && (
             <>
-              <Route path="/mi-catalogo" element={<MiCatalogo />} />
               <Route path="/cartera" element={<Cartera />} />
               <Route path="/marketing" element={<Marketing />} />
             </>

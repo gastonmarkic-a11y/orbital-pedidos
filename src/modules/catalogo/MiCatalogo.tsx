@@ -17,9 +17,17 @@ export default function MiCatalogo() {
   }
 
   useEffect(() => {
-    const cod = (vendedor as { cod_cliente?: string | null } | null)?.cod_cliente
-    if (!cod) { setMsg('Todavía no tenés una ficha de cliente asociada. Avisale a Orbital para activarla.'); return }
-    supabase.rpc('catalogo_link_revendedor', { p_cod_cliente: cod }).then(({ data }) => {
+    if (!vendedor) return
+    let pedido
+    // Vendedor: su catálogo personal (su token) → lo que arme ahí queda a su nombre.
+    if (vendedor.rol === 'vendedor') {
+      pedido = supabase.rpc('catalogo_mi_link', { p_codigo: vendedor.codigo })
+    } else {
+      const cod = (vendedor as { cod_cliente?: string | null }).cod_cliente
+      if (!cod) { setMsg('Todavía no tenés una ficha de cliente asociada. Avisale a Orbital para activarla.'); return }
+      pedido = supabase.rpc('catalogo_link_revendedor', { p_cod_cliente: cod })
+    }
+    pedido.then(({ data }) => {
       const r = data as { ok?: boolean; codigo?: string } | null
       if (r?.ok && r.codigo) {
         const u = 'https://ver.orbitaleyewear.com.ar/catalogo?k=' + r.codigo
