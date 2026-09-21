@@ -7,6 +7,8 @@ import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenComp
 import { calcularPack, esOportunidad, packObs } from './pack'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import InstalarApp from '../../components/InstalarApp'
+import ColabInspiracion from '../colab/ColabInspiracion'
+import { copiesDe } from '../colab/colabUtil'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -815,6 +817,8 @@ export default function CatalogoPublico() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
+  // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
+  const [conoce, setConoce] = useState(false)
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
@@ -995,8 +999,14 @@ export default function CatalogoPublico() {
     })
   }
 
-  function verGrupo(k: string) { setGrupoActivo(k); setQ(''); window.scrollTo({ top: 0 }) }
-  function irInicio() { setGrupoActivo(null); setQ('') }
+  function verGrupo(k: string) { setGrupoActivo(k); setQ(''); setConoce(false); window.scrollTo({ top: 0 }) }
+  function irInicio() { setGrupoActivo(null); setQ(''); setConoce(false) }
+  function verConoce() { setConoce(true); setGrupoActivo(null); setQ(''); window.scrollTo({ top: 0 }) }
+  const modelosDe = (key: string) => {
+    const g = GRUPOS.find((x) => x.key === key)
+    return g ? todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo).sort() : []
+  }
+  function abrirModelo(nombre: string) { const m = todos.find((x) => x.modelo === nombre); if (m) setSel(m) }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
   if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} codigo={clave} />
@@ -1047,14 +1057,15 @@ export default function CatalogoPublico() {
         <div className="max-w-6xl mx-auto px-4 pb-2">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input value={q} onChange={(e) => { setQ(e.target.value); setGrupoActivo(null) }} placeholder="Buscar modelo…"
+            <input value={q} onChange={(e) => { setQ(e.target.value); setGrupoActivo(null); setConoce(false) }} placeholder="Buscar modelo…"
               className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
         </div>
         {/* Propuestas: acceso directo a cada grupo */}
         <div className="max-w-6xl mx-auto px-4 pb-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-            <button onClick={irInicio} className={navPill(!buscando && !grupoActivo, 'dark')}>Inicio</button>
+            <button onClick={irInicio} className={navPill(!buscando && !grupoActivo && !conoce, 'dark')}>Inicio</button>
+            <button onClick={verConoce} className={navPill(conoce && !buscando, 'red')}>✦ Conocé más</button>
             {GRUPOS.map((g) => (
               <button key={g.key} onClick={() => verGrupo(g.key)} className={navPill(grupoActivo === g.key, g.accent)}>{g.nombre}</button>
             ))}
@@ -1064,7 +1075,7 @@ export default function CatalogoPublico() {
 
       <main className="max-w-6xl mx-auto px-3 py-4">
         {/* Los tres pasos del pack, arriba de todo en la home del catálogo */}
-        {packCalc && !buscando && !grupoActivo && (
+        {packCalc && !buscando && !grupoActivo && !conoce && (
           <div className="mb-4">
             <PackPasos calc={packCalc} onVerOportunidades={() => verGrupo('oportunidades')} />
           </div>
@@ -1078,6 +1089,11 @@ export default function CatalogoPublico() {
               </div>
             ) : <p className="text-sm text-neutral-400 text-center py-16">No hay modelos con ese nombre.</p>}
           </>
+        ) : conoce ? (
+          <div className="font-sans">
+            <ColabInspiracion optica clave={clave} onVerTriple={() => verGrupo('triple')} onModelo={abrirModelo}
+              modelosTriple={modelosDe('triple')} modelosColor={modelosDe('bajaluz')} />
+          </div>
         ) : grupoObj ? (
           <>
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
@@ -1223,14 +1239,27 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
   const [medidas, setMedidas] = useState<Medidas | null>(null)
+  const [ficha, setFicha] = useState<{ linea: string | null; descripcion: string | null } | null>(null)
   const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
     })
     supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))
+    supabase.rpc('catalogo_ficha_tienda', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setFicha((data as typeof ficha) ?? null))
   }, [clave, modelo.modelo])
   const v = vars[i]
+  // "Sobre este anteojo": la ficha de la tienda (la misma data que usan los colaboradores).
+  // Solo lo del modelo: color, tipo y tratamiento ya se ven arriba, y las medidas en su bloque.
+  const sobre = useMemo(() => {
+    if (!ficha?.descripcion || !v) return null
+    const tipo = (v.tipo || '').toUpperCase() === 'RECETA' ? 'RECETA' : 'SOL'
+    const cp = copiesDe(
+      { modelo: modelo.modelo, linea: ficha.linea, tipos: [tipo], descripcion: ficha.descripcion, nuevo: false, best: false, precio_desde: null, colores: [] },
+      { product_id: 0, handle: '', color: null, imagen: null, price: null, compare_at: null, sku: null, tipo, tratamiento: null }, 0)
+    const datos = cp.datos.filter((d) => !/^(Anteojo de sol|Armazón para receta)$/.test(d) && !(medidas && /^Medidas:/.test(d)))
+    return cp.intro || datos.length ? { intro: cp.intro, datos } : null
+  }, [ficha, v, modelo.modelo, medidas])
   const enCarrito = v ? cart[v.codigo]?.cantidad ?? 0 : 0
 
   return (
@@ -1318,6 +1347,19 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                     <span key={t as string} className="text-[10px] rounded-full px-2 py-0.5 bg-[#EEEEF0] text-neutral-600">{t}</span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Sobre este anteojo (ficha de la tienda) */}
+            {sobre && (
+              <div className="mt-4 border border-black/10 rounded-xl p-3">
+                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Sobre este anteojo</p>
+                {sobre.intro && <p className="text-[12px] text-neutral-700 leading-relaxed font-sans">{sobre.intro}</p>}
+                {sobre.datos.length > 0 && (
+                  <ul className={`space-y-1 text-[11px] text-neutral-700 font-sans ${sobre.intro ? 'mt-2 pt-2 border-t border-black/5' : ''}`}>
+                    {sobre.datos.map((d) => <li key={d} className="flex gap-2"><span className="text-neutral-300">•</span><span>{d}</span></li>)}
+                  </ul>
+                )}
               </div>
             )}
 

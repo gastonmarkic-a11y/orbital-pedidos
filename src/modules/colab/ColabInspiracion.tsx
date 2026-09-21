@@ -3,6 +3,8 @@
 // Tres secciones: Virales · Triple protección (con el link a la landing) · Lentes de color.
 // Cada tarjeta trae los datos reales de la publicación, de qué se trata y por qué es viral.
 // Lo llena colab-inspiracion-sync todos los días; Orbital puede buscar al momento.
+// optica: la misma pestaña dentro del catálogo mayorista (clave o token), con los textos
+// pensados para la óptica y los modelos que salen del propio catálogo.
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -40,15 +42,23 @@ const corto = (n: number) =>
     : n.toLocaleString('es-AR')
 const duracion = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 
-export default function ColabInspiracion({ clave, rol, onVerTriple }: { clave: string; rol: Rol; onVerTriple?: () => void }) {
+export default function ColabInspiracion({ clave, rol, onVerTriple, optica, modelosTriple, modelosColor, onModelo }: {
+  clave: string; rol?: Rol; onVerTriple?: () => void
+  optica?: boolean; modelosTriple?: string[]; modelosColor?: string[]; onModelo?: (m: string) => void
+}) {
   const [datos, setDatos] = useState<Datos | null>(null)
   const [sec, setSec] = useState<Seccion>('viral')
   const [buscando, setBuscando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  const cargar = () => supabase.rpc('colab_inspiracion_lista', { p_clave: clave })
-    .then(({ data }) => setDatos((data as Datos | null) ?? { items: [], modelos_color: [] }))
+  const cargar = () => optica
+    ? supabase.rpc('catalogo_inspiracion', { p_clave: clave })
+      .then(({ data }) => setDatos({ items: (data as Item[] | null) ?? [], modelos_color: [] }))
+    : supabase.rpc('colab_inspiracion_lista', { p_clave: clave })
+      .then(({ data }) => setDatos((data as Datos | null) ?? { items: [], modelos_color: [] }))
   useEffect(() => { cargar() }, [clave])
+  const mTriple = optica ? modelosTriple ?? [] : datos?.modelos_triple ?? []
+  const mColor = optica ? modelosColor ?? [] : datos?.modelos_color ?? []
 
   async function buscarAhora() {
     setBuscando(true); setAviso(null)
@@ -69,9 +79,11 @@ export default function ColabInspiracion({ clave, rol, onVerTriple }: { clave: s
     <>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[15px] font-bold tracking-wide uppercase">Inspiración</h1>
+          <h1 className="text-[15px] font-bold tracking-wide uppercase">{optica ? 'Conocé más' : 'Inspiración'}</h1>
           <p className="text-[11px] text-neutral-500 mt-1">
-            Publicaciones que están funcionando en TikTok e Instagram. Son <b>referencias de formato</b>: mirá el original y hacé tu versión con Orbital, no copies el video.
+            {optica
+              ? <>Lo que está funcionando en TikTok e Instagram con anteojos, y todo sobre la <b>Triple Protección</b>. Te sirve para saber qué van a buscar tus clientes y para armar el contenido de tu óptica.</>
+              : <>Publicaciones que están funcionando en TikTok e Instagram. Son <b>referencias de formato</b>: mirá el original y hacé tu versión con Orbital, no copies el video.</>}
           </p>
         </div>
         {rol === 'orbital' && (
@@ -97,8 +109,8 @@ export default function ColabInspiracion({ clave, rol, onVerTriple }: { clave: s
         })}
       </div>
 
-      {sec === 'triple' && <KitTriple modelos={datos.modelos_triple ?? []} onVer={onVerTriple} />}
-      {sec === 'color' && <KitColor modelos={datos.modelos_color} />}
+      {sec === 'triple' && <KitTriple modelos={mTriple} onVer={onVerTriple} optica={optica} onModelo={onModelo} />}
+      {sec === 'color' && <KitColor modelos={mColor} onModelo={onModelo} />}
 
       {items.length === 0
         ? <p className="text-sm text-neutral-500 py-10 text-center">Todavía no hay publicaciones en esta sección. Se suman solas cada día.</p>
@@ -193,17 +205,24 @@ function Tarjeta({ i }: { i: Item }) {
   )
 }
 
-function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }) {
+// Chip de modelo: en el catálogo abre la ficha del anteojo
+function Chip({ m, onModelo, className }: { m: string; onModelo?: (m: string) => void; className: string }) {
+  return onModelo
+    ? <button onClick={() => onModelo(m)} className={`${className} hover:border-black/40 hover:underline underline-offset-2`}>{m}</button>
+    : <span className={className}>{m}</span>
+}
+
+function KitTriple({ modelos, onVer, optica, onModelo }: { modelos: string[]; onVer?: () => void; optica?: boolean; onModelo?: (m: string) => void }) {
   return (
     <div className="bg-white rounded-xl border-2 p-4 mb-4" style={{ borderColor: ROJO_TRIPLE }}>
       <div className="-mx-4 -mt-4 mb-3 rounded-t-[10px] px-4 py-2.5 text-white text-center" style={{ background: ROJO_TRIPLE }}>
-        <div className="text-[13px] font-extrabold tracking-wide">TE RECOMIENDO PROMOCIONARLO</div>
+        <div className="text-[13px] font-extrabold tracking-wide">{optica ? 'EL DIFERENCIAL PARA TU ÓPTICA' : 'TE RECOMIENDO PROMOCIONARLO'}</div>
         <div className="text-[10px] font-bold tracking-[0.18em] opacity-90">ÚNICO EN EL MERCADO ARGENTINO</div>
       </div>
       {modelos.length > 0 && (
         <div className="mb-3 rounded-lg bg-[#F5F5F7] p-2.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-[11px] font-bold">{modelos.length} modelos de sol con Triple Protección en stock</div>
+            <div className="text-[11px] font-bold">{modelos.length} modelos {optica ? '' : 'de sol '}con Triple Protección en stock</div>
             {onVer && (
               <button onClick={onVer} className="rounded-full text-white px-3 py-1.5 text-[11px] font-bold" style={{ background: ROJO_TRIPLE }}>
                 Ver los anteojos con Triple Protección →
@@ -211,7 +230,7 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
             )}
           </div>
           <div className="flex flex-wrap gap-1 mt-2">
-            {modelos.map((m) => <span key={m} className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[10px] font-semibold">{m}</span>)}
+            {modelos.map((m) => <Chip key={m} m={m} onModelo={onModelo} className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[10px] font-semibold" />)}
           </div>
         </div>
       )}
@@ -220,9 +239,11 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
 
       {/* El foco del promotor: la landing es la explicación para él, no un link para compartir */}
       <div className="mt-3 rounded-lg border-2 p-3" style={{ borderColor: ROJO_TRIPLE }}>
-        <div className="text-[14px] font-extrabold tracking-wide">ESTE ES TU FOCO PARA DIFERENCIARTE</div>
+        <div className="text-[14px] font-extrabold tracking-wide">{optica ? 'PARA EXPLICARLE A TU CLIENTE' : 'ESTE ES TU FOCO PARA DIFERENCIARTE'}</div>
         <p className="text-[11px] text-neutral-600 mt-1">
-          Acá te explico los beneficios para que los cuentes con tus palabras. No hace falta que compartas el link: es la explicación completa y te puede servir para armar tus contenidos.
+          {optica
+            ? 'La explicación completa de la Triple Protección, para contarla en el mostrador o mandársela a tu cliente.'
+            : 'Acá te explico los beneficios para que los cuentes con tus palabras. No hace falta que compartas el link: es la explicación completa y te puede servir para armar tus contenidos.'}
         </p>
         <a href={LANDING_TRIPLE} target="_blank" rel="noopener noreferrer"
           className="mt-2 inline-flex items-center gap-1.5 rounded-full text-white px-3 py-1.5 text-[11px] font-bold" style={{ background: ROJO_TRIPLE }}>
@@ -299,7 +320,7 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
 
       {/* A quién le hablás */}
       <div className="mt-3">
-        <div className="text-[11px] font-bold uppercase tracking-wide">A quién le hablás en cada contenido</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide">{optica ? 'A quién se lo ofrecés' : 'A quién le hablás en cada contenido'}</div>
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 mt-1.5">
           {[
             ['Profesional digital', '8 a 10 horas de pantalla, cansancio de ojos.', 'Fatiga + descanso + antiage'],
@@ -325,11 +346,12 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
       </div>
 
       {/* Guiones */}
-      <div className="grid gap-2 sm:grid-cols-3 mt-3">
+      {optica && <div className="text-[11px] font-bold uppercase tracking-wide mt-3">Ideas para las redes de tu óptica</div>}
+      <div className={`grid gap-2 sm:grid-cols-3 ${optica ? 'mt-1.5' : 'mt-3'}`}>
         {[
           ['El protector solar de tus ojos', '0–3 s: "¿Sabés qué es lo único que protege el contorno de tus ojos?". 3–12 s: protector en la cara… y el anteojo. 12–15 s: "Y encima ves mejor".'],
           ['Adentro y afuera', 'Primero con la compu o el celular (Blue Cut), después al sol (infrarrojo). Cierre: "Un solo anteojo para todo el día".'],
-          ['3 protecciones en 15 segundos', 'Plano de cerca del cristal: UV400, Blue Cut e infrarrojo, una por una con texto en pantalla. Cierre con tu código de descuento.'],
+          ['3 protecciones en 15 segundos', 'Plano de cerca del cristal: UV400, Blue Cut e infrarrojo, una por una con texto en pantalla. ' + (optica ? 'Cierre: "Pedilo en nuestra óptica".' : 'Cierre con tu código de descuento.')],
         ].map(([t, d]) => (
           <div key={t} className="rounded-lg bg-[#F5F5F7] p-2.5">
             <div className="text-[11px] font-bold">{t}</div>
@@ -338,13 +360,16 @@ function KitTriple({ modelos, onVer }: { modelos: string[]; onVer?: () => void }
         ))}
       </div>
       <p className="text-[10px] text-neutral-500 mt-2">
-        Contalo como lo explica Orbital: son beneficios de protección y confort, no tratamientos médicos. Antes de publicar, fijate que el anteojo que mostrás tenga la etiqueta roja de Triple Protección en Anteojos.
+        Contalo como lo explica Orbital: son beneficios de protección y confort, no tratamientos médicos.{' '}
+        {optica
+          ? 'Los anteojos con Triple Protección están en la sección Triple Protección del catálogo.'
+          : 'Antes de publicar, fijate que el anteojo que mostrás tenga la etiqueta roja de Triple Protección en Anteojos.'}
       </p>
     </div>
   )
 }
 
-function KitColor({ modelos }: { modelos: string[] }) {
+function KitColor({ modelos, onModelo }: { modelos: string[]; onModelo?: (m: string) => void }) {
   return (
     <div className="bg-white rounded-xl border border-black/10 p-4 mb-4">
       <h2 className="text-[14px] font-bold">Lentes ocre, naranja y rojo</h2>
@@ -355,7 +380,7 @@ function KitColor({ modelos }: { modelos: string[] }) {
         <div className="mt-2">
           <div className="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Modelos de Orbital con lente de color, con stock</div>
           <div className="flex flex-wrap gap-1">
-            {modelos.map((m) => <span key={m} className="rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[10px] font-semibold">{m}</span>)}
+            {modelos.map((m) => <Chip key={m} m={m} onModelo={onModelo} className="rounded-full border border-transparent bg-[#F5F5F7] px-2 py-0.5 text-[10px] font-semibold" />)}
           </div>
         </div>
       )}
