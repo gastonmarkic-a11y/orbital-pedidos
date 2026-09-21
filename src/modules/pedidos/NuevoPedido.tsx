@@ -93,6 +93,8 @@ export default function NuevoPedido() {
   const [mail, setMail] = useState('')
   const [obs, setObs] = useState('')
   const [confirmando, setConfirmando] = useState(false)
+  // Lo que no se pudo confirmar por falta de stock: se marca en el carrito para cambiarlo ahí mismo.
+  const [faltantes, setFaltantes] = useState<Record<string, { disponible: number; proy: number }>>({})
   const [cdEditando, setCdEditando] = useState(false)
   const [cd, setCd] = useState({ direccion: '', telefono: '', email: '', contacto: '', horario: '' })
   const [cdSaving, setCdSaving] = useState(false)
@@ -494,7 +496,14 @@ export default function NuevoPedido() {
     return { net, total: net * cart[k], tag }
   }
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
-  const pendientesCarrito = cartKeys.reduce((a, k) => a + pendienteDe(k), 0)
+  // No se puede entregar: pide más que stock + proyectado. Se ve en vivo (antes de confirmar) y,
+  // si la verificación fresca del confirmar encontró menos, manda esa.
+  const faltaDe = (k: string) => {
+    const f = faltantes[k] ?? { disponible: stock.find((x) => x.codigo === k)?.cantidad ?? 0, proy: proyDe(k) }
+    return (cart[k] || 0) > f.disponible + f.proy ? f : null
+  }
+  // Solo lo que de verdad cubre producción (los faltantes van en rojo aparte).
+  const pendientesCarrito = cartKeys.reduce((a, k) => a + (faltaDe(k) ? 0 : pendienteDe(k)), 0)
   const totalCuotas = cuotas.reduce((a, c) => a + (c.pct || 0), 0)
 
   // Los 6 plazos fijos + cualquier plazo extra que el usuario haya agregado y esté tildado.
@@ -596,19 +605,19 @@ export default function NuevoPedido() {
         for (const r of fresh) freshMap[r.codigo] = { cantidad: r.cantidad, modelo: r.modelo, descripcion: r.descripcion, precio: r.precio }
       }
       const freshDe = (k: string) => freshMap[k]
+      // Revisa TODO el carrito (no corta en el primero): los que no alcanzan quedan marcados en rojo.
+      const sinStock: Record<string, { disponible: number; proy: number }> = {}
       for (const k of cartKeys) {
         const disponible = freshDe(k)?.cantidad ?? 0
-        if (cart[k] > disponible + proyDe(k)) {
-          const info = stock.find((x) => x.codigo === k)
-          toast(
-            esConsigna
-              ? `En consigna hay ${disponible} de ${info?.modelo ?? k} y pedís ${cart[k]}.`
-              : `Sin stock suficiente de ${info?.modelo ?? k}. Disponible: ${disponible} · proyectado: ${proyDe(k)}`,
-            'error'
-          )
-          setConfirmando(false)
-          return
-        }
+        const proy = esConsigna ? 0 : proyDe(k)
+        if (cart[k] > disponible + proy) sinStock[k] = { disponible, proy }
+      }
+      setFaltantes(sinStock)
+      const nFalt = Object.keys(sinStock).length
+      if (nFalt) {
+        toast(`${nFalt === 1 ? '1 artículo no se puede' : `${nFalt} artículos no se pueden`} entregar${esConsigna ? ' desde la consigna' : ''}: están marcados en rojo en el pedido. Cambialos y confirmá.`, 'error')
+        setConfirmando(false)
+        return
       }
 
       // Lo que exceda el stock físico queda como "pendiente" (se cubre con el proyectado cuando ingrese)
@@ -667,10 +676,8 @@ export default function NuevoPedido() {
           if (!p) continue
           const aDescontar = item.cantidad - (item.pendiente ?? 0)
           if (aDescontar <= 0) continue
-          await supabase
-            .from('stock')
-            .update({ cantidad: (p.cantidad ?? 0) - aDescontar, updated_at: new Date().toISOString() })
-            .eq('codigo', item.codigo)
+          // Descuento atómico en la base: no pisa lo que otro haya movido mientras tanto
+          await supabase.rpc('stock_mover', { p_items: [{ codigo: item.codigo, delta: -aDescontar }], p_origen: 'pedido', p_ref: cliente.cod })
         }
       }
 
@@ -1211,6 +1218,26 @@ export default function NuevoPedido() {
             <p className="text-xs font-semibold text-muted uppercase tracking-wide">
               Pedido ({totalUnidades} unidades)
             </p>
+            {(() => {
+              // Sigue marcado mientras no se corrija (bajar cantidad o sacarlo lo destraba solo).
+              const pend = cartKeys.filter((k) => faltaDe(k))
+              if (!pend.length) return null
+              return (
+                <div className="rounded-lg border border-red-300 bg-red-50 p-2 text-[11px] text-red-800 space-y-0.5">
+                  <p className="font-semibold">⛔ No se pueden entregar ({pend.length}) — cambialos para confirmar:</p>
+                  {pend.map((k) => {
+                    const p = stock.find((x) => x.codigo === k)
+                    const f = faltaDe(k)!
+                    return (
+                      <p key={k}>
+                        • <b>{p?.modelo ?? k}</b> {p?.descripcion ?? ''} — pedís {cart[k]}, hay {f.disponible}
+                        {f.proy > 0 ? ` + ${f.proy} proyectado` : ''}
+                      </p>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             {cartKeys.length === 0 ? (
               <p className="text-sm text-faint text-center py-4">
                 El pedido está vacío.
@@ -1221,11 +1248,17 @@ export default function NuevoPedido() {
               cartKeys.map((k) => {
                 const p = stock.find((x) => x.codigo === k)
                 if (!p) return null
+                const falta = faltaDe(k)
                 return (
-                  <div key={k} className="flex items-center justify-between gap-2 text-sm">
+                  <div key={k} className={`flex items-center justify-between gap-2 text-sm ${falta ? 'rounded-lg bg-red-50 ring-1 ring-red-300 px-1.5 py-1' : ''}`}>
                     <div className="min-w-0">
                       <b>{p.modelo}</b> <span className="text-muted text-xs">{p.descripcion || p.codigo}</span>
-                      {pendienteDe(k) > 0 && (
+                      {falta && (
+                        <span className="block text-[10px] text-red-700 font-semibold">
+                          ⛔ Sin stock: hay {falta.disponible}{falta.proy > 0 ? ` + ${falta.proy} proyectado` : ''} — cambialo o bajá la cantidad
+                        </span>
+                      )}
+                      {pendienteDe(k) > 0 && !falta && (
                         <span className="block text-[10px] text-violet-700 font-medium">
                           🏭 {pendienteDe(k)} u. contra producción (se entregan cuando ingresen)
                         </span>
