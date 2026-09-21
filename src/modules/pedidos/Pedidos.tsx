@@ -11,7 +11,9 @@ import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
 
-const VENDEDOR_OPTS = ['Adrian', 'Martin', 'Marketing', 'Corporativo', 'Gaston']
+// Consumidor final = clientes 8888xx (Tienda online / cons. final); el resto es B2B (ópticas, distribuidores).
+const esConsFinal = (p: { cod_cliente: string | null; cliente: string | null }) =>
+  (p.cod_cliente || (p.cliente || '').split(' - ')[0]).trim().startsWith('8888')
 const ESTADOS: EstadoPedido[] = [
   'pendiente',
   'en_preparacion',
@@ -41,6 +43,14 @@ export default function Pedidos() {
   const [busqueda, setBusqueda] = useState('')
   const [filtroVendedor, setFiltroVendedor] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroTipoCli, setFiltroTipoCli] = useState<'' | 'b2b' | 'cf'>('')
+  // Vendedores desde la base (activos) + los que tengan pedidos aunque ya no estén.
+  const [equipo, setEquipo] = useState<{ codigo: string; nombre: string; activo: boolean; rol: string }[]>([])
+  useEffect(() => {
+    supabase.from('vendedores').select('codigo, nombre, activo, rol')
+      .in('rol', ['vendedor', 'admin', 'tienda', 'revendedor'])
+      .then(({ data }) => setEquipo((data as { codigo: string; nombre: string; activo: boolean; rol: string }[]) ?? []))
+  }, [])
   const [abiertos, setAbiertos] = useState<Set<number>>(new Set())
 
   // Modales
@@ -87,6 +97,7 @@ export default function Pedidos() {
     if (esAdministracion) logs = logs.filter((l) => l.origen === 'consigna' || ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
     if (filtroEstado) logs = logs.filter((l) => (l.estado ?? 'pendiente') === filtroEstado)
+    if (filtroTipoCli) logs = logs.filter((l) => esConsFinal(l) === (filtroTipoCli === 'cf'))
     const q = busqueda.toLowerCase().trim()
     if (q)
       logs = logs.filter(
@@ -95,7 +106,17 @@ export default function Pedidos() {
           (l.items || []).some((i) => (i.modelo || '').toLowerCase().includes(q))
       )
     return logs
-  }, [pedidos, esVendedor, esRevendedor, esTienda, esLogistica, esDeposito, esAdministracion, filtroVendedor, filtroEstado, busqueda, vendedor, codigoEfectivo])
+  }, [pedidos, esVendedor, esRevendedor, esTienda, esLogistica, esDeposito, esAdministracion, filtroVendedor, filtroEstado, filtroTipoCli, busqueda, vendedor, codigoEfectivo])
+
+  const vendedorOpts = useMemo(() => {
+    const conPedidos = new Set(pedidos.map((p) => p.vendedor).filter(Boolean) as string[])
+    const porCod = new Map(equipo.map((v) => [v.codigo, v]))
+    const cods = new Set([...equipo.filter((v) => v.activo && v.rol !== 'admin').map((v) => v.codigo), ...conPedidos])
+    return [...cods]
+      .map((c) => { const v = porCod.get(c); const act = v?.activo ?? false
+        return { codigo: c, label: (v?.nombre ?? c) + (act ? '' : ' (ex)'), act } })
+      .sort((a, b) => Number(b.act) - Number(a.act) || a.label.localeCompare(b.label))
+  }, [equipo, pedidos])
 
   async function asignarCodigo() {
     if (!asignarPed) return
@@ -148,7 +169,7 @@ export default function Pedidos() {
         // Solo se devuelve lo que se había descontado: lo pendiente nunca salió del stock
         const devolver = item.cantidad - (item.pendiente ?? 0)
         if (s && devolver > 0) {
-          await supabase.from('stock').update({ cantidad: s.cantidad + devolver }).eq('codigo', item.codigo)
+          await supabase.rpc('stock_mover', { p_items: [{ codigo: item.codigo, delta: devolver }], p_origen: 'anulacion', p_ref: `pedido #${p.id}` })
           s.cantidad += devolver
         }
       }
@@ -197,10 +218,7 @@ export default function Pedidos() {
       const s = stock.find((x) => x.codigo === it.codigo)
       if (!s || s.cantidad <= 0) continue
       const toma = Math.min(pend, s.cantidad)
-      await supabase
-        .from('stock')
-        .update({ cantidad: s.cantidad - toma, updated_at: new Date().toISOString() })
-        .eq('codigo', it.codigo)
+      await supabase.rpc('stock_mover', { p_items: [{ codigo: it.codigo, delta: -toma }], p_origen: 'pedido', p_ref: `pedido #${p.id} (cubre pendiente)` })
       s.cantidad -= toma
       it.pendiente = pend - toma
       cubierto += toma
@@ -322,7 +340,7 @@ export default function Pedidos() {
         const s = stock.find((x) => x.codigo === oldItem.codigo)
         const devolver = oldItem.cantidad - (oldItem.pendiente ?? 0)
         if (s && devolver > 0) {
-          await supabase.from('stock').update({ cantidad: s.cantidad + devolver }).eq('codigo', oldItem.codigo)
+          await supabase.rpc('stock_mover', { p_items: [{ codigo: oldItem.codigo, delta: devolver }], p_origen: 'edicion_pedido', p_ref: `pedido #${modalEditar.id}` })
           s.cantidad += devolver
         }
       }
@@ -336,7 +354,7 @@ export default function Pedidos() {
         const s = stock.find((x) => x.codigo === it.codigo)
         const aDescontar = it.cantidad - (it.pendiente ?? 0)
         if (s && aDescontar > 0) {
-          await supabase.from('stock').update({ cantidad: s.cantidad - aDescontar }).eq('codigo', it.codigo)
+          await supabase.rpc('stock_mover', { p_items: [{ codigo: it.codigo, delta: -aDescontar }], p_origen: 'edicion_pedido', p_ref: `pedido #${modalEditar.id}` })
           s.cantidad -= aDescontar
         }
       }
@@ -520,13 +538,22 @@ export default function Pedidos() {
             className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm"
           >
             <option value="">Todos los vendedores</option>
-            {VENDEDOR_OPTS.map((v) => (
-              <option key={v} value={v}>
-                {v}
+            {vendedorOpts.map((v) => (
+              <option key={v.codigo} value={v.codigo}>
+                {v.label}
               </option>
             ))}
           </select>
         )}
+        <select
+          value={filtroTipoCli}
+          onChange={(e) => setFiltroTipoCli(e.target.value as '' | 'b2b' | 'cf')}
+          className="bg-white border border-black/10 rounded-lg px-2 py-2 text-sm"
+        >
+          <option value="">Todos los clientes</option>
+          <option value="b2b">Clientes B2B</option>
+          <option value="cf">Consumidor final</option>
+        </select>
         <select
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
