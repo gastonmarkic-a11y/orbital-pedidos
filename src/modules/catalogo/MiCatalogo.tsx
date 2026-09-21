@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth'
 // el catálogo a precio normal EN UNA PESTAÑA NUEVA (el Suite queda en la pestaña original).
 // El pedido que arme cae en la cola de su vendedor (Adrián).
 export default function MiCatalogo() {
-  const { vendedor } = useAuth()
+  const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const [url, setUrl] = useState<string | null>(null)
   const [msg, setMsg] = useState('Preparando tu catálogo…')
   const abierto = useRef(false)
@@ -20,8 +20,9 @@ export default function MiCatalogo() {
     if (!vendedor) return
     let pedido
     // Vendedor: su catálogo personal (su token) → lo que arme ahí queda a su nombre.
-    if (vendedor.rol === 'vendedor') {
-      pedido = supabase.rpc('catalogo_mi_link', { p_codigo: vendedor.codigo })
+    // Efectivo: un admin "viendo como" un vendedor abre el catálogo de ese vendedor.
+    if (rolEfectivo === 'vendedor') {
+      pedido = supabase.rpc('catalogo_mi_link', { p_codigo: codigoEfectivo })
     } else {
       const cod = (vendedor as { cod_cliente?: string | null }).cod_cliente
       if (!cod) { setMsg('Todavía no tenés una ficha de cliente asociada. Avisale a Orbital para activarla.'); return }
@@ -37,7 +38,7 @@ export default function MiCatalogo() {
         if (!abierto.current) { abierto.current = true; abrir(u) }
       } else setMsg('No se pudo abrir el catálogo. Probá de nuevo o avisá a Orbital.')
     })
-  }, [vendedor])
+  }, [vendedor, rolEfectivo, codigoEfectivo])
 
   return (
     <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 px-6 text-center">
