@@ -1027,7 +1027,7 @@ export default function CatalogoPublico() {
         className={`flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border ${conoce && !buscando ? 'bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 text-white border-transparent' : 'bg-gradient-to-r from-fuchsia-50 to-orange-50 border-fuchsia-300 text-fuchsia-700'}`}>
         ✦ Inspiración
       </button>
-      {esOptica && (
+      {!sinPrecios && acceso?.tipo !== 'campana' && (
         <button onClick={() => setMiOptica('postventa')}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Postventa
@@ -1156,7 +1156,8 @@ export default function CatalogoPublico() {
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
-      {miOptica && acceso && <MiOptica clave={clave} inicial={miOptica} identidad={{ cod_cliente: acceso.cod_cliente ?? null, label: acceso.label ?? null, vendedor: acceso.vendedor ?? null }} onClose={() => setMiOptica(null)} />}
+      {miOptica && !esOptica && <SinOptica onClose={() => setMiOptica(null)} />}
+      {miOptica && esOptica && acceso && <MiOptica clave={clave} inicial={miOptica} identidad={{ cod_cliente: acceso.cod_cliente ?? null, label: acceso.label ?? null, vendedor: acceso.vendedor ?? null }} onClose={() => setMiOptica(null)} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
@@ -1248,6 +1249,30 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
             <button onClick={onVerDetalle} className="w-full text-[12px] text-[#0004FF] font-medium py-2 mt-1">Ver fotos y detalle →</button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Postventa abierto con un acceso que no es de óptica (clave general, vendedor, campaña):
+// el panel es de cada óptica, se ve con su link personal. Lo que cargan llega a la Suite.
+function SinOptica({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-bold">Postventa · Mi óptica</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+        </div>
+        <p className="text-sm text-neutral-600 font-sans leading-relaxed">
+          Este panel es de cada óptica y se abre con <b>su link personal del catálogo</b>: ahí carga garantías y repuestos,
+          ve los anteojos que nos compró (y tacha los que ya no tiene) y manda sus publicaciones.
+        </p>
+        <p className="text-sm text-neutral-600 font-sans leading-relaxed mt-2">
+          Lo que cargan las ópticas se ve en Orbital Suite → <b>Red de ópticas</b>.
+        </p>
+        <a href="/red-opticas" className="mt-4 block text-center bg-[#0004FF] text-white rounded-xl py-2.5 text-sm font-medium">Abrir Red de ópticas</a>
       </div>
     </div>
   )
