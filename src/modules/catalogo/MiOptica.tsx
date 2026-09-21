@@ -1,31 +1,29 @@
 // ── Panel de la óptica dentro del catálogo ──────────────────────────────────
 // Tres solapas, solo para accesos de óptica (el token trae cod_cliente):
-//   · Postventa: garantía / rotura / repuesto. Queda el ticket (optica_postventa) y el aviso
-//     entra por la misma conversación del chat del catálogo (webhook-web), así IRIS lo deriva
-//     a posventa y la respuesta vuelve al chat.
+//   · Postventa: garantía / rotura / repuesto, con fotos. Queda el ticket (optica_postventa) y un
+//     trigger avisa al grupo de Telegram para Postventa; se gestiona en la Suite (Red de ópticas).
 //   · Mis anteojos: lo que Orbital le vendió (Tango + Suite). Lo que tacha deja de salir como
 //     "dónde comprar" cuando un cliente final le pregunta al bot. Al consumidor solo le llega
 //     nombre y dirección de la óptica: nada de precios ni catálogo mayorista.
-//   · Mis publicaciones: los links de lo que publicó con Orbital, para que Orbital lo comparta
+//   · Mis publicaciones: link y/o fotos de lo que publicó con Orbital, para que Orbital lo comparta
 //     mandando a la dirección de la óptica.
-import { useEffect, useState } from 'react'
-import { X, Wrench, Glasses, Megaphone, ExternalLink } from 'lucide-react'
+// Las fotos van al bucket optica-fotos bajo <clave>/ (la política exige un token de óptica válido).
+import { useEffect, useRef, useState } from 'react'
+import { X, Wrench, Glasses, Megaphone, ExternalLink, Camera } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
-const WEBHOOK = 'https://towcgvphxeqilpdnboki.supabase.co/functions/v1/webhook-web'
-const CHAT_CONV_KEY = 'orbital_catalogo_conv'
-const CHAT_SES_KEY = 'orbital_catalogo_chat_ses'
 const QUIEN_KEY = 'orbital_catalogo_quien'
+const MAX_FOTOS = 4
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* sin storage */ } }
 
 type Ticket = {
   id: number; tipo: 'postventa' | 'repuesto'; producto: string | null; cantidad: number | null
-  detalle: string; estado: 'abierto' | 'en_proceso' | 'resuelto'; solicitado_por: string | null; created_at: string
+  detalle: string; estado: 'abierto' | 'en_proceso' | 'resuelto'; solicitado_por: string | null; created_at: string; fotos?: string[]
 }
 type MiModelo = { modelo: string; anio: number; unidades: number; baja: boolean }
-type Publicacion = { id: number; modelo: string | null; color: string | null; url: string; estado: string; created_at: string }
+type Publicacion = { id: number; modelo: string | null; color: string | null; url: string; fotos: string[]; estado: string; created_at: string }
 
 const ESTADO: Record<Ticket['estado'], [string, string]> = {
   abierto: ['Abierto', 'bg-amber-100 text-amber-800'],
@@ -35,56 +33,92 @@ const ESTADO: Record<Ticket['estado'], [string, string]> = {
 
 export type Solapa = 'postventa' | 'anteojos' | 'publicaciones'
 
-// Aviso al equipo por la conversación del chat del catálogo (misma que usa ChatIris).
-export async function avisarOrbital(texto: string, identidad: { cod_cliente: string | null; label: string | null; vendedor: string | null }) {
-  let ses = leer(CHAT_SES_KEY)
-  if (!ses) { ses = 'cat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); guardar(CHAT_SES_KEY, ses) }
-  try {
-    const res = await fetch(WEBHOOK, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ conversacionId: leer(CHAT_CONV_KEY) || null, sesionId: ses, texto, identidad: { ...identidad, origen: 'catalogo' } }),
-    })
-    const j = await res.json()
-    if (j.conversacionId) guardar(CHAT_CONV_KEY, j.conversacionId)
-  } catch { /* el ticket ya quedó registrado */ }
+async function subirFotos(clave: string, files: File[]): Promise<string[]> {
+  const urls: string[] = []
+  for (const f of files) {
+    const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+    const path = `${clave}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error } = await supabase.storage.from('optica-fotos').upload(path, f, { contentType: f.type || 'image/jpeg' })
+    if (error) throw error
+    urls.push(supabase.storage.from('optica-fotos').getPublicUrl(path).data.publicUrl)
+  }
+  return urls
 }
 
-export function PublicarLink({ clave, modelo, color }: {
-  clave: string; modelo: string; color: string | null
-}) {
-  const [url, setUrl] = useState('')
-  const [estado, setEstado] = useState<'no' | 'enviando' | 'ok' | 'error'>('no')
-  async function enviar() {
-    if (!/^https?:\/\//i.test(url.trim())) { setEstado('error'); return }
-    setEstado('enviando')
-    const { error } = await supabase.rpc('catalogo_publicacion_crear', { p_clave: clave, p_modelo: modelo, p_color: color, p_url: url.trim(), p_foto: null })
-    if (error) { setEstado('error'); return }
-    setEstado('ok'); setUrl('')
-  }
-  if (estado === 'ok') return <p className="mt-2 text-[11px] text-emerald-700 font-sans font-semibold">¡Gracias! Lo recibimos: el equipo de Orbital lo va a compartir mandando a tu óptica.</p>
+// Selector de fotos con miniaturas (hasta MAX_FOTOS)
+function Fotos({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
+  const input = useRef<HTMLInputElement | null>(null)
+  const [previews, setPreviews] = useState<string[]>([])
+  useEffect(() => {
+    const u = files.map((f) => URL.createObjectURL(f))
+    setPreviews(u)
+    return () => u.forEach((x) => URL.revokeObjectURL(x))
+  }, [files])
   return (
-    <div className="mt-3 pt-3 border-t border-fuchsia-200">
-      <p className="text-[11px] font-semibold font-sans">¿Ya lo publicaste? Pegá el link</p>
-      <p className="text-[10px] text-neutral-500 font-sans mb-1.5">Orbital comparte las publicaciones de sus ópticas en sus redes, con la dirección de tu local.</p>
-      <div className="flex gap-2">
-        <input value={url} onChange={(e) => { setUrl(e.target.value); if (estado === 'error') setEstado('no') }} placeholder="https://instagram.com/p/…"
-          className="flex-1 min-w-0 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] font-sans" />
-        <button onClick={enviar} disabled={estado === 'enviando' || !url.trim()} className="rounded-lg bg-neutral-900 text-white px-3 text-[11px] font-bold disabled:opacity-40">
-          {estado === 'enviando' ? '…' : 'Enviar'}
+    <div className="flex flex-wrap items-center gap-2">
+      {previews.map((p, i) => (
+        <div key={p} className="relative w-14 h-14 rounded-lg overflow-hidden border border-black/10">
+          <img src={p} alt="" className="w-full h-full object-cover" />
+          <button onClick={() => onChange(files.filter((_, j) => j !== i))} className="absolute top-0 right-0 bg-black/60 text-white rounded-bl-md p-0.5"><X size={11} /></button>
+        </div>
+      ))}
+      {files.length < MAX_FOTOS && (
+        <button type="button" onClick={() => input.current?.click()}
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-black/25 px-3 py-2 text-[12px] font-sans text-neutral-600 hover:bg-black/[0.03]">
+          <Camera size={14} /> {files.length ? 'Otra foto' : 'Agregar fotos'}
         </button>
-      </div>
-      {estado === 'error' && <p className="text-[10px] text-red-600 mt-1 font-sans">Pegá el link completo de la publicación (empieza con https://).</p>}
+      )}
+      <input ref={input} type="file" accept="image/*" multiple className="hidden"
+        onChange={(e) => { const n = [...files, ...Array.from(e.target.files ?? [])].slice(0, MAX_FOTOS); onChange(n); e.target.value = '' }} />
     </div>
   )
 }
 
-export default function MiOptica({ clave, identidad, inicial, onClose }: {
-  clave: string
-  identidad: { cod_cliente: string | null; label: string | null; vendedor: string | null }
-  inicial: Solapa
-  onClose: () => void
-}) {
+function Miniaturas({ urls }: { urls?: string[] }) {
+  if (!urls?.length) return null
+  return (
+    <div className="flex gap-1.5 mt-1.5">
+      {urls.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-12 h-12 rounded-md object-cover border border-black/10" /></a>)}
+    </div>
+  )
+}
+
+export function PublicarLink({ clave, modelo, color }: { clave: string; modelo: string; color: string | null }) {
+  const [url, setUrl] = useState('')
+  const [files, setFiles] = useState<File[]>([])
+  const [estado, setEstado] = useState<'no' | 'enviando' | 'ok' | 'error'>('no')
+  const [err, setErr] = useState('')
+  async function enviar() {
+    const u = url.trim()
+    if (u && !/^https?:\/\//i.test(u)) { setErr('Pegá el link completo (empieza con https://).'); setEstado('error'); return }
+    if (!u && !files.length) { setErr('Pegá el link o subí una foto.'); setEstado('error'); return }
+    setEstado('enviando')
+    try {
+      const fotos = await subirFotos(clave, files)
+      const { error } = await supabase.rpc('catalogo_publicacion_crear', { p_clave: clave, p_modelo: modelo, p_color: color, p_url: u, p_fotos: fotos })
+      if (error) throw error
+      setEstado('ok'); setUrl(''); setFiles([])
+    } catch { setErr('No se pudo enviar. Probá de nuevo.'); setEstado('error') }
+  }
+  if (estado === 'ok') return <p className="mt-2 text-[11px] text-emerald-700 font-sans font-semibold">¡Gracias! Lo recibimos: el equipo de Orbital lo va a compartir mandando a tu óptica.</p>
+  return (
+    <div className="mt-3 pt-3 border-t border-fuchsia-200 space-y-1.5">
+      <p className="text-[11px] font-semibold font-sans">¿Ya lo publicaste? Mandanos el link o tus fotos</p>
+      <p className="text-[10px] text-neutral-500 font-sans">Orbital comparte las publicaciones de sus ópticas en sus redes, con la dirección de tu local.</p>
+      <div className="flex gap-2">
+        <input value={url} onChange={(e) => { setUrl(e.target.value); if (estado === 'error') setEstado('no') }} placeholder="https://instagram.com/p/…"
+          className="flex-1 min-w-0 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] font-sans" />
+        <button onClick={enviar} disabled={estado === 'enviando' || (!url.trim() && !files.length)} className="rounded-lg bg-neutral-900 text-white px-3 text-[11px] font-bold disabled:opacity-40">
+          {estado === 'enviando' ? '…' : 'Enviar'}
+        </button>
+      </div>
+      <Fotos files={files} onChange={setFiles} />
+      {estado === 'error' && <p className="text-[10px] text-red-600 font-sans">{err}</p>}
+    </div>
+  )
+}
+
+export default function MiOptica({ clave, inicial, onClose }: { clave: string; inicial: Solapa; onClose: () => void }) {
   const [solapa, setSolapa] = useState<Solapa>(inicial)
   const [modelos, setModelos] = useState<MiModelo[] | null>(null)
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
@@ -110,17 +144,17 @@ export default function MiOptica({ clave, identidad, inicial, onClose }: {
             <h2 className="text-base font-bold">Mi óptica</h2>
             <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
           </div>
-          <div className="flex gap-1 mt-2 -mb-px">
+          <div className="flex gap-1 mt-2 -mb-px overflow-x-auto">
             {SOLAPAS.map(([k, label, Icono]) => (
               <button key={k} onClick={() => setSolapa(k)}
-                className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide px-3 py-2 border-b-2 ${solapa === k ? 'border-[#0004FF] text-[#0004FF]' : 'border-transparent text-neutral-500'}`}>
+                className={`flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide px-3 py-2 border-b-2 ${solapa === k ? 'border-[#0004FF] text-[#0004FF]' : 'border-transparent text-neutral-500'}`}>
                 <Icono size={13} /> {label}
               </button>
             ))}
           </div>
         </div>
         <div className="p-4">
-          {solapa === 'postventa' && <SolapaPostventa clave={clave} identidad={identidad} modelos={modelos ?? []} tickets={tickets} onCargado={cargarTickets} />}
+          {solapa === 'postventa' && <SolapaPostventa clave={clave} modelos={modelos ?? []} tickets={tickets} onCargado={cargarTickets} />}
           {solapa === 'anteojos' && <SolapaAnteojos clave={clave} modelos={modelos} onCambio={cargarModelos} />}
           {solapa === 'publicaciones' && <SolapaPublicaciones clave={clave} modelos={modelos ?? []} pubs={pubs} onCargado={cargarPubs} />}
         </div>
@@ -131,14 +165,14 @@ export default function MiOptica({ clave, identidad, inicial, onClose }: {
 
 const campo = 'w-full bg-white border border-black/15 rounded-lg px-3 py-2 text-sm font-sans'
 
-function SolapaPostventa({ clave, identidad, modelos, tickets, onCargado }: {
-  clave: string; identidad: { cod_cliente: string | null; label: string | null; vendedor: string | null }
-  modelos: MiModelo[]; tickets: Ticket[] | null; onCargado: () => void
+function SolapaPostventa({ clave, modelos, tickets, onCargado }: {
+  clave: string; modelos: MiModelo[]; tickets: Ticket[] | null; onCargado: () => void
 }) {
   const [tipo, setTipo] = useState<Ticket['tipo']>('postventa')
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState(1)
   const [detalle, setDetalle] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [quien, setQuien] = useState(() => leer(QUIEN_KEY) ?? '')
   const [enviando, setEnviando] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
@@ -147,26 +181,27 @@ function SolapaPostventa({ clave, identidad, modelos, tickets, onCargado }: {
     if (!detalle.trim()) { setMsg({ ok: false, t: 'Contanos qué pasó o qué repuesto necesitás.' }); return }
     setEnviando(true); setMsg(null)
     if (quien.trim()) guardar(QUIEN_KEY, quien.trim())
-    const { data, error } = await supabase.rpc('catalogo_postventa_crear', {
-      p_clave: clave, p_tipo: tipo, p_producto: producto || null, p_cantidad: tipo === 'repuesto' ? cantidad : null,
-      p_detalle: detalle, p_quien: quien.trim() || null,
-    })
-    if (error) { setEnviando(false); setMsg({ ok: false, t: 'No se pudo cargar. Probá de nuevo.' }); return }
-    const id = (data as { id: number }).id
-    await avisarOrbital(
-      `[${tipo === 'repuesto' ? 'PEDIDO DE REPUESTO' : 'POSTVENTA'} #${id} · catálogo${quien.trim() ? ` · ${quien.trim()}` : ''}]\n` +
-      (producto ? `Producto: ${producto}${tipo === 'repuesto' ? ` · Cantidad: ${cantidad}` : ''}\n` : '') + detalle.trim(),
-      identidad,
-    )
-    setEnviando(false); setDetalle(''); setProducto(''); setCantidad(1)
-    setMsg({ ok: true, t: `Listo, quedó el pedido #${id}. Te respondemos por el chat del catálogo.` })
-    onCargado()
+    try {
+      const fotos = await subirFotos(clave, files)
+      const { data, error } = await supabase.rpc('catalogo_postventa_crear', {
+        p_clave: clave, p_tipo: tipo, p_producto: producto || null, p_cantidad: tipo === 'repuesto' ? cantidad : null,
+        p_detalle: detalle, p_quien: quien.trim() || null, p_fotos: fotos,
+      })
+      if (error) throw error
+      const id = (data as { id: number }).id
+      setDetalle(''); setProducto(''); setCantidad(1); setFiles([])
+      setMsg({ ok: true, t: `Listo, quedó el pedido #${id}. Ya le llegó al equipo de postventa de Orbital.` })
+      onCargado()
+    } catch {
+      setMsg({ ok: false, t: 'No se pudo cargar. Probá de nuevo.' })
+    }
+    setEnviando(false)
   }
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-black/10 p-3 space-y-2.5">
-        <p className="text-[11px] text-neutral-500 font-sans">Garantías, roturas y repuestos. Cargalo acá y te respondemos por el chat del catálogo.</p>
+        <p className="text-[11px] text-neutral-500 font-sans">Garantías, roturas y repuestos. Cargalo acá con fotos y le llega directo al equipo de postventa de Orbital.</p>
         <div className="flex gap-1.5">
           {(['postventa', 'repuesto'] as const).map((t) => (
             <button key={t} onClick={() => setTipo(t)}
@@ -183,10 +218,11 @@ function SolapaPostventa({ clave, identidad, modelos, tickets, onCargado }: {
           </label>
         )}
         <textarea value={detalle} onChange={(e) => setDetalle(e.target.value)} rows={3}
-          placeholder={tipo === 'repuesto' ? '¿Qué repuesto necesitás? (varilla, tornillo, plaqueta…)' : '¿Qué pasó? Si podés, mandanos después una foto por el chat.'} className={campo} />
+          placeholder={tipo === 'repuesto' ? '¿Qué repuesto necesitás? (varilla, tornillo, plaqueta…)' : '¿Qué pasó?'} className={campo} />
+        <Fotos files={files} onChange={setFiles} />
         <input value={quien} onChange={(e) => setQuien(e.target.value)} placeholder="Tu nombre (opcional)" className={campo} />
         <button onClick={crear} disabled={enviando} className="w-full bg-[#0004FF] text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-50">
-          {enviando ? 'Enviando…' : 'Cargar pedido'}
+          {enviando ? (files.length ? 'Subiendo fotos…' : 'Enviando…') : 'Cargar pedido'}
         </button>
         {msg && <p className={`text-[12px] font-sans ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.t}</p>}
       </div>
@@ -203,6 +239,7 @@ function SolapaPostventa({ clave, identidad, modelos, tickets, onCargado }: {
                   <span className={`text-[10px] rounded-full px-2 py-0.5 font-semibold ${ESTADO[t.estado][1]}`}>{ESTADO[t.estado][0]}</span>
                 </div>
                 <p className="text-[12px] text-neutral-600 mt-0.5">{t.detalle}</p>
+                <Miniaturas urls={t.fotos} />
                 <p className="text-[10px] text-neutral-400 mt-0.5">{new Date(t.created_at).toLocaleDateString('es-AR')}</p>
               </li>
             ))}
@@ -250,20 +287,25 @@ function SolapaAnteojos({ clave, modelos, onCambio }: { clave: string; modelos: 
 }
 
 function SolapaPublicaciones({ clave, modelos, pubs, onCargado }: {
-  clave: string
-  modelos: MiModelo[]; pubs: Publicacion[] | null; onCargado: () => void
+  clave: string; modelos: MiModelo[]; pubs: Publicacion[] | null; onCargado: () => void
 }) {
   const [modelo, setModelo] = useState('')
   const [url, setUrl] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   async function enviar() {
-    if (!/^https?:\/\//i.test(url.trim())) { setErr('Pegá el link completo de la publicación (empieza con https://).'); return }
+    const u = url.trim()
+    if (u && !/^https?:\/\//i.test(u)) { setErr('Pegá el link completo de la publicación (empieza con https://).'); return }
+    if (!u && !files.length) { setErr('Pegá el link o subí al menos una foto.'); return }
     setEnviando(true); setErr(null)
-    const { error } = await supabase.rpc('catalogo_publicacion_crear', { p_clave: clave, p_modelo: modelo || null, p_color: null, p_url: url.trim(), p_foto: null })
+    try {
+      const fotos = await subirFotos(clave, files)
+      const { error } = await supabase.rpc('catalogo_publicacion_crear', { p_clave: clave, p_modelo: modelo || null, p_color: null, p_url: u, p_fotos: fotos })
+      if (error) throw error
+      setUrl(''); setModelo(''); setFiles([]); onCargado()
+    } catch { setErr('No se pudo guardar. Probá de nuevo.') }
     setEnviando(false)
-    if (error) { setErr('No se pudo guardar. Probá de nuevo.'); return }
-    setUrl(''); setModelo(''); onCargado()
   }
   const ESTADO_PUB: Record<string, [string, string]> = {
     nueva: ['Recibida', 'bg-amber-100 text-amber-800'],
@@ -274,13 +316,14 @@ function SolapaPublicaciones({ clave, modelos, pubs, onCargado }: {
     <div className="space-y-4">
       <div className="rounded-xl border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50/60 to-orange-50/60 p-3 space-y-2">
         <p className="text-[12px] text-neutral-700 font-sans">
-          ¿Publicaste un anteojo Orbital en las redes de tu óptica? Pegá el link: Orbital lo comparte en sus redes <b>con la dirección de tu local</b>.
+          ¿Publicaste un anteojo Orbital en las redes de tu óptica? Mandanos el link o tus fotos: Orbital lo comparte en sus redes <b>con la dirección de tu local</b>.
         </p>
         <input list="mi-optica-modelos-pub" value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="Modelo (opcional)" className={campo} />
         <datalist id="mi-optica-modelos-pub">{modelos.map((m) => <option key={m.modelo} value={m.modelo} />)}</datalist>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://instagram.com/p/…" className={campo} />
-        <button onClick={enviar} disabled={enviando || !url.trim()} className="w-full bg-neutral-900 text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-40">
-          {enviando ? 'Enviando…' : 'Enviar publicación'}
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Link de la publicación (opcional si subís fotos)" className={campo} />
+        <Fotos files={files} onChange={setFiles} />
+        <button onClick={enviar} disabled={enviando || (!url.trim() && !files.length)} className="w-full bg-neutral-900 text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-40">
+          {enviando ? (files.length ? 'Subiendo fotos…' : 'Enviando…') : 'Enviar publicación'}
         </button>
         {err && <p className="text-[11px] text-red-600 font-sans">{err}</p>}
       </div>
@@ -291,12 +334,15 @@ function SolapaPublicaciones({ clave, modelos, pubs, onCargado }: {
         ) : (
           <ul className="space-y-2">
             {pubs.map((p) => (
-              <li key={p.id} className="rounded-lg border border-black/10 px-3 py-2 flex items-center gap-2 font-sans">
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold">{p.modelo ?? 'Publicación'}{p.color ? ` · ${p.color}` : ''}</div>
-                  <a href={p.url} target="_blank" rel="noreferrer" className="text-[11px] text-[#0004FF] truncate flex items-center gap-1"><ExternalLink size={11} /> {p.url.replace(/^https?:\/\//, '')}</a>
+              <li key={p.id} className="rounded-lg border border-black/10 px-3 py-2 font-sans">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-semibold">{p.modelo ?? 'Publicación'}{p.color ? ` · ${p.color}` : ''}</div>
+                    {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="text-[11px] text-[#0004FF] truncate flex items-center gap-1"><ExternalLink size={11} /> {p.url.replace(/^https?:\/\//, '')}</a>}
+                  </div>
+                  <span className={`shrink-0 text-[10px] rounded-full px-2 py-0.5 font-semibold ${(ESTADO_PUB[p.estado] ?? ESTADO_PUB.nueva)[1]}`}>{(ESTADO_PUB[p.estado] ?? ESTADO_PUB.nueva)[0]}</span>
                 </div>
-                <span className={`shrink-0 text-[10px] rounded-full px-2 py-0.5 font-semibold ${(ESTADO_PUB[p.estado] ?? ESTADO_PUB.nueva)[1]}`}>{(ESTADO_PUB[p.estado] ?? ESTADO_PUB.nueva)[0]}</span>
+                <Miniaturas urls={p.fotos} />
               </li>
             ))}
           </ul>

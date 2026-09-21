@@ -1,10 +1,10 @@
 // ── Red de ópticas ───────────────────────────────────────────────────────────
 // Lo que llega de las ópticas por el catálogo, en una pantalla:
-//   · Postventa: tickets de garantía / rotura / repuesto (optica_postventa). La charla sigue
-//     en Conversaciones / Telegram (entra por el chat del catálogo).
+//   · Postventa: tickets de garantía / rotura / repuesto con fotos (optica_postventa). Cada alta
+//     avisa al grupo de Telegram para Postventa (trigger optica_postventa_aviso).
 //   · Dónde comprar: qué ópticas tienen cada modelo según lo que les vendimos (Tango + Suite),
 //     menos lo que la óptica tachó. Es lo mismo que usa IRIS para derivar al cliente final.
-//   · Publicaciones: links que mandan las ópticas para que Orbital los comparta. Al compartir,
+//   · Publicaciones: links y fotos que mandan las ópticas para que Orbital los comparta. Al compartir,
 //     siempre a la dirección de la óptica: nunca precios, catálogo ni tienda online.
 import { useEffect, useState } from 'react'
 import { ExternalLink, MapPin, Search } from 'lucide-react'
@@ -13,9 +13,19 @@ import { useToast } from '../../lib/toast'
 
 type Vista = 'postventa' | 'donde' | 'publicaciones'
 type Cli = { cod: string; nomcomerc: string | null; razon: string | null; direccion: string | null; localidad: string | null; provincia: string | null; telefono: string | null }
-type Ticket = { id: number; cod_cliente: string; tipo: string; producto: string | null; cantidad: number | null; detalle: string; estado: 'abierto' | 'en_proceso' | 'resuelto'; solicitado_por: string | null; created_at: string }
-type Pub = { id: number; cod_cliente: string; modelo: string | null; color: string | null; url: string; estado: 'nueva' | 'compartida' | 'descartada'; created_at: string }
+type Ticket = { id: number; cod_cliente: string; tipo: string; fotos: string[]; producto: string | null; cantidad: number | null; detalle: string; estado: 'abierto' | 'en_proceso' | 'resuelto'; solicitado_por: string | null; created_at: string }
+type Pub = { id: number; cod_cliente: string; modelo: string | null; color: string | null; url: string; fotos: string[]; estado: 'nueva' | 'compartida' | 'descartada'; created_at: string }
 type Donde = { cod: string; nombre: string; direccion: string | null; localidad: string | null; provincia: string | null; anio: number; unidades: number }
+
+// Fotos que subió la óptica (bucket optica-fotos): miniatura que abre la foto completa para descargar.
+function Fotos({ urls }: { urls?: string[] }) {
+  if (!urls?.length) return null
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {urls.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-20 h-20 rounded-lg object-cover border border-black/10" /></a>)}
+    </div>
+  )
+}
 
 const nombreDe = (c?: Cli) => (c?.nomcomerc?.trim() || c?.razon || '')
 const dirDe = (c?: Cli) => [c?.direccion, c?.localidad, c?.provincia].filter(Boolean).join(', ')
@@ -89,6 +99,7 @@ function Postventa() {
                 </div>
                 {t.producto && <div className="text-sm mt-1">Producto: <b>{t.producto}</b>{t.cantidad ? ` · ${t.cantidad} u.` : ''}</div>}
                 <p className="text-sm text-neutral-700 mt-1 whitespace-pre-wrap">{t.detalle}</p>
+                <Fotos urls={t.fotos} />
                 <div className="text-[11px] text-muted mt-1">{new Date(t.created_at).toLocaleString('es-AR')}{t.solicitado_por ? ` · ${t.solicitado_por}` : ''}{c?.telefono ? ` · tel ${c.telefono}` : ''}</div>
                 <div className="flex gap-2 mt-2">
                   {(['abierto', 'en_proceso', 'resuelto'] as const).filter((e) => e !== t.estado).map((e) => (
@@ -184,7 +195,8 @@ function Publicaciones() {
                   <div className="text-sm font-semibold">{nombreDe(c) || p.cod_cliente} <span className="text-muted font-normal">({p.cod_cliente})</span>{p.modelo ? ` · ${p.modelo}` : ''}</div>
                   <span className={`text-[11px] rounded-full px-2 py-0.5 ${ESTADO_P[p.estado][1]}`}>{ESTADO_P[p.estado][0]}</span>
                 </div>
-                <a href={p.url} target="_blank" rel="noreferrer" className="text-[13px] text-[#0004FF] flex items-center gap-1 mt-1 break-all"><ExternalLink size={13} /> {p.url}</a>
+                {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="text-[13px] text-[#0004FF] flex items-center gap-1 mt-1 break-all"><ExternalLink size={13} /> {p.url}</a>}
+                <Fotos urls={p.fotos} />
                 <div className="text-[12px] text-muted mt-1">{dirDe(c) || 'Sin dirección cargada en la ficha del cliente'} · {new Date(p.created_at).toLocaleDateString('es-AR')}</div>
                 <pre className="whitespace-pre-wrap text-[12px] bg-[#F5F5F7] rounded-lg p-2 mt-2 font-sans">{txt}</pre>
                 <div className="flex flex-wrap gap-2 mt-2">

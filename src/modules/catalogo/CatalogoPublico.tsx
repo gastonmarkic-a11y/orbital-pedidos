@@ -822,6 +822,9 @@ export default function CatalogoPublico() {
   // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
   const [conoce, setConoce] = useState(false)
   const [miOptica, setMiOptica] = useState<Solapa | null>(null)
+  // Crear contenido: buscador de modelos que abre la ficha sin precio ni carrito
+  const [contenido, setContenido] = useState(false)
+  const [selContenido, setSelContenido] = useState<Modelo | null>(null)
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
@@ -1027,6 +1030,12 @@ export default function CatalogoPublico() {
         className={`flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border ${conoce && !buscando ? 'bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 text-white border-transparent' : 'bg-gradient-to-r from-fuchsia-50 to-orange-50 border-fuchsia-300 text-fuchsia-700'}`}>
         ✦ Inspiración
       </button>
+      {!sinPrecios && (
+        <button onClick={() => setContenido(true)}
+          className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-fuchsia-300 bg-white text-fuchsia-700 hover:border-fuchsia-500">
+          Crear contenido
+        </button>
+      )}
       {!sinPrecios && acceso?.tipo !== 'campana' && (
         <button onClick={() => setMiOptica('postventa')}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
@@ -1157,7 +1166,9 @@ export default function CatalogoPublico() {
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {miOptica && !esOptica && <SinOptica onClose={() => setMiOptica(null)} />}
-      {miOptica && esOptica && acceso && <MiOptica clave={clave} inicial={miOptica} identidad={{ cod_cliente: acceso.cod_cliente ?? null, label: acceso.label ?? null, vendedor: acceso.vendedor ?? null }} onClose={() => setMiOptica(null)} />}
+      {miOptica && esOptica && acceso && <MiOptica clave={clave} inicial={miOptica} onClose={() => setMiOptica(null)} />}
+      {contenido && <ContenidoBuscar modelos={todos} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
+      {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
@@ -1278,9 +1289,45 @@ function SinOptica({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Crear contenido: buscar un modelo y abrir su ficha para redes (sin precio ni carrito) ──
+function ContenidoBuscar({ modelos, onElegir, onClose }: { modelos: Modelo[]; onElegir: (m: Modelo) => void; onClose: () => void }) {
+  const [q, setQ] = useState('')
+  const lista = modelos.filter((m) => !q.trim() || m.modelo.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 60)
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col">
+        <div className="px-4 pt-3 pb-3 border-b border-black/5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold">Crear contenido</h2>
+            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+          </div>
+          <p className="text-[11px] text-neutral-500 font-sans mb-2">Elegí un modelo y te armamos historia, posteo y guion para las redes de tu óptica. No toca tu pedido.</p>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
+              className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-300" />
+          </div>
+        </div>
+        <div className="overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+          {lista.map((m) => (
+            <button key={m.modelo} onClick={() => onElegir(m)} className="rounded-xl border border-black/10 p-1.5 text-left hover:border-fuchsia-400">
+              <div className="aspect-square bg-white rounded-lg overflow-hidden">
+                {m.imagenes?.[0] ? <img src={m.imagenes[0]} alt={m.modelo} className="w-full h-full object-contain" loading="lazy" /> : null}
+              </div>
+              <p className="text-[10px] font-bold mt-1 truncate">{m.modelo}</p>
+            </button>
+          ))}
+          {lista.length === 0 && <p className="col-span-full text-sm text-neutral-400 text-center py-6">Sin modelos con ese nombre.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Ficha del modelo con carrusel de colores ──
-function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }: {
-  modelo: Modelo; clave: string; esOptica: boolean; cart: Record<string, CartItem>
+function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSetQty, onClose }: {
+  modelo: Modelo; clave: string; esOptica: boolean; soloContenido?: boolean; cart: Record<string, CartItem>
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
@@ -1365,7 +1412,7 @@ function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }
         <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
           <div>
             <h2 className="text-base font-bold">{modelo.modelo}</h2>
-            <p className="text-[11px] text-neutral-400">{vars.length} colores con stock</p>
+            <p className="text-[11px] text-neutral-400">{soloContenido ? 'Modo contenido · no suma al pedido' : `${vars.length} colores con stock`}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
         </div>
@@ -1412,7 +1459,7 @@ function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }
                   <span key={t} className="text-[10px] rounded-full px-2 py-0.5 bg-[#EEEEF0] text-neutral-600">{cap(t)}</span>
                 ))}
               </div>
-              {sinPrecios ? (
+              {soloContenido ? null : sinPrecios ? (
                 <div className="flex items-baseline gap-2 mt-3">
                   <span className="text-base font-bold text-emerald-600">{v.proyectado ? 'Proyectado' : 'Disponible'}</span>
                   <span className="text-[11px] text-neutral-400">{v.proyectado ? 'en producción' : 'stock en depósito'}</span>
@@ -1495,8 +1542,8 @@ function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }
               </div>
             )}
 
-            {/* Agregar */}
-            <div className="mt-4">
+            {/* Agregar (en modo contenido no hay carrito: no se cruza con el pedido) */}
+            {!soloContenido && <div className="mt-4">
               {enCarrito === 0 ? (
                 <button onClick={() => onAdd(v, modelo.modelo)} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
                   <Plus size={16} /> Agregar al pedido
@@ -1511,7 +1558,7 @@ function ModeloSheet({ modelo, clave, esOptica, cart, onAdd, onSetQty, onClose }
                   {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">{v.proyectado ? 'Llegaste al máximo en proyectado' : 'Llegaste al stock disponible'}</p>}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         )}
       </div>
