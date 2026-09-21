@@ -8,7 +8,8 @@ import { calcularPack, esOportunidad, packObs } from './pack'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from '../colab/ColabInspiracion'
-import { copiesDe } from '../colab/colabUtil'
+import { copiesDe, partesColor } from '../colab/colabUtil'
+import { BotonCopiar } from '../colab/ColabAnteojos'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -1275,8 +1276,39 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
     if (/polariz/i.test(t)) extra.push('Polarizado: corta el reflejo del agua, la ruta y el asfalto mojado. Se ve más nítido y cansa menos.')
     if (/espej/i.test(t)) extra.push('Espejado: refleja parte de la luz antes de que entre al ojo. Ideal para mucho sol.')
     if (/(ocre|naranja|rojo|amarill)/i.test(cp.datos.find((d) => /^Lente:/.test(d)) ?? '')) extra.push('Cristal de color: suma contraste cuando baja la luz, en días grises o con niebla.')
-    return { intro: cp.intro, destacados: cp.destacados, datos, extra }
+    // Copies para las redes de la óptica. Solo B2B: sin precios, sin links ni códigos de la tienda
+    // online de Orbital; el cierre siempre lleva al local de la óptica.
+    const { armazon, lente } = partesColor(colorLegible(v.descripcion) || null)
+    const nombre = modelo.modelo.toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase())
+    const colorTxt = [armazon, lente && `lente ${lente.toLowerCase()}`].filter(Boolean).join(' con ')
+    // El label del acceso es razón social / código de Tango: no sirve para publicar.
+    const local = 'nuestra óptica'
+    const dest = cp.destacados
+    const esSol = tipo === 'SOL'
+    const historia = [
+      'Nuevo en la óptica 🕶️',
+      `${nombre} de Orbital${colorTxt ? ` · ${colorTxt}` : ''}`,
+      dest.length ? `✔ ${dest.slice(0, 2).join('\n✔ ')}` : null,
+      'Vení a probártelo 📍',
+    ].filter(Boolean).join('\n')
+    const posteo = [
+      `${nombre}${colorTxt ? ` · ${colorTxt}` : ''} ✨`,
+      cp.intro,
+      dest.length ? `✔ ${dest.slice(0, 4).join('\n✔ ')}` : null,
+      /infrarrojo/i.test(t) ? 'Triple Protección: UV400 + Blue Cut + filtro infrarrojo, en un mismo cristal.' : null,
+      `📍 Lo tenés en ${local}. Vení a probártelo o escribinos por privado.`,
+      ['#OrbitalEyewear', `#${modelo.modelo.replace(/[^A-Za-z0-9]/g, '')}`, esSol ? '#AnteojosDeSol' : '#AnteojosDeReceta'].join(' '),
+    ].filter(Boolean).join('\n\n')
+    const guion = [
+      'Guion de 15 segundos (Reel / TikTok)',
+      `0–3 s · Sacalo de la vitrina o de la caja: "Llegó lo nuevo de Orbital".`,
+      `3–8 s · Que se lo pruebe alguien del equipo y mire a cámara. Texto en pantalla: "${nombre}${lente ? ` · ${lente}` : ''}".`,
+      `8–12 s · Detalle de cerca${dest.length ? `: ${dest.slice(0, 2).join(' + ')}` : ''}.`,
+      `12–15 s · Cierre en la puerta del local: "Lo tenés en ${local}, vení a probártelo". Sumá la ubicación en la historia.`,
+    ].join('\n')
+    return { intro: cp.intro, destacados: cp.destacados, datos, extra, historia, posteo, guion }
   }, [ficha, v, modelo.modelo, medidas])
+  const [tabCopy, setTabCopy] = useState<'historia' | 'posteo' | 'guion'>('historia')
   const enCarrito = v ? cart[v.codigo]?.cantidad ?? 0 : 0
 
   return (
@@ -1370,7 +1402,10 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
             {/* Sobre este anteojo (ficha de la tienda) */}
             {sobre && (
               <div className="mt-4 border border-black/10 rounded-xl p-3">
-                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Sobre este anteojo</p>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500">Sobre este anteojo</p>
+                  <BotonCopiar texto={[`${modelo.modelo} · ${colorLegible(v.descripcion) ?? ''}`, ...sobre.datos.map((d) => `• ${d}`), ...sobre.extra].join('\n')} />
+                </div>
                 {sobre.intro && <p className="text-[12px] text-neutral-700 leading-relaxed font-sans">{sobre.intro}</p>}
                 {sobre.destacados.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2 font-sans">
@@ -1385,6 +1420,30 @@ function ModeloSheet({ modelo, clave, cart, onAdd, onSetQty, onClose }: {
                 {sobre.extra.map((d) => (
                   <p key={d} className="mt-2 text-[11px] text-neutral-600 leading-relaxed font-sans rounded-lg bg-[#F5F5F7] px-2.5 py-2">{d}</p>
                 ))}
+              </div>
+            )}
+
+            {/* Copies para las redes de la óptica (no para vendedores del distribuidor) */}
+            {sobre && !sinPrecios && (
+              <div className="mt-4 border border-fuchsia-200 rounded-xl p-3 bg-gradient-to-br from-fuchsia-50/60 to-orange-50/60">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-fuchsia-700">Para tus redes</p>
+                  <div className="flex rounded-lg border border-black/10 overflow-hidden text-[10px] bg-white">
+                    {(['historia', 'posteo', 'guion'] as const).map((t) => (
+                      <button key={t} onClick={() => setTabCopy(t)} className={`px-2 py-1 font-semibold ${tabCopy === t ? 'bg-neutral-900 text-white' : 'text-neutral-600'}`}>
+                        {t === 'historia' ? 'Historia' : t === 'posteo' ? 'Posteo' : 'Guion'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500 mb-2 font-sans">Texto listo para publicar este anteojo en las redes de tu óptica. Copialo y sumale tu foto o la de acá.</p>
+                <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed rounded-lg bg-white border border-black/5 p-3">{sobre[tabCopy]}</pre>
+                <div className="flex justify-end gap-2 mt-2">
+                  {(v.imagen || modelo.imagenes?.[0]) && (
+                    <a href={v.imagen || modelo.imagenes[0]} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg border border-black/10 bg-white px-2 py-1 text-[10px] font-bold">Abrir foto</a>
+                  )}
+                  <BotonCopiar texto={sobre[tabCopy]} label="Copiar texto" />
+                </div>
               </div>
             )}
 
