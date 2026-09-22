@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
+import { TXT_APP } from '../../lib/mensajes'
 
 // Acción de marketing: enviar el catálogo B2B a un cliente con un link/token que
 // lo deja auto-asociado a su óptica. Cada vendedor tiene además su propio código
@@ -40,7 +41,7 @@ export default function EnvioCatalogo() {
   }
 
   const msgCliente = genLink
-    ? `¡Hola! Te comparto el catálogo mayorista de Orbital para que armes tu pedido directo desde acá 🕶️\n\n${link(genLink.codigo)}\n\nEntrás sin clave y el pedido queda asociado a tu óptica. Cualquier cosa te ayudo.`
+    ? `¡Hola! Te comparto el catálogo mayorista de Orbital para que armes tu pedido directo desde acá 🕶️\n\n${link(genLink.codigo)}\n\nEntrás sin clave y el pedido queda asociado a tu óptica. Cualquier cosa te ayudo.\n\n${TXT_APP}`
     : ''
 
   return (

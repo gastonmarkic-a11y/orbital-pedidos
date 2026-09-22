@@ -25,6 +25,7 @@ const MOTIVO: Record<string, { label: string; color: string }> = {
   precio_mayorista: { label: '💲 Precio mayorista (óptica)', color: 'border-brand' },
   iris_deriva: { label: '🤖 IRIS derivó la charla', color: 'border-amber-400' },
   envio_incidencia: { label: '🚚 Incidencia con el envío', color: 'border-red-500' },
+  postventa_garantia: { label: '🔧 Posventa: producto roto / repuesto', color: 'border-red-500' },
   recuperada: { label: '↩ Conversación recuperada', color: 'border-amber-400' },
 }
 function motivoInfo(m: string) {

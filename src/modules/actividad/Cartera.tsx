@@ -165,11 +165,15 @@ export default function Cartera() {
   const [tabsDuenos, setTabsDuenos] = useState<{ codigo: string; label: string }[]>([])
   useEffect(() => {
     if (!esAdmin) return
-    supabase.rpc('cartera_duenos').then(({ data }) =>
+    // La solapa Tienda cuenta compradores de Shopify (su cartera son solo 2 clientes facturadores).
+    Promise.all([
+      supabase.rpc('cartera_duenos'),
+      supabase.from('tienda_compradores').select('comprador_key', { count: 'exact', head: true }),
+    ]).then(([{ data }, { count }]) =>
       setTabsDuenos(
         ((data as { codigo: string; nombre: string; n: number }[]) ?? []).map((d) => ({
           codigo: d.codigo,
-          label: `${d.nombre.replace(/\s*\((Admin|Vendedor)\)$/, '')} · ${d.n}`,
+          label: `${d.nombre.replace(/\s*\((Admin|Vendedor)\)$/, '')} · ${d.codigo === 'Tienda' && count ? count : d.n}`,
         }))
       )
     )

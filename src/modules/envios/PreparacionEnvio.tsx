@@ -6,6 +6,7 @@ import { Cliente, PiezaMarketing, Propuesta } from '../../lib/types'
 import { siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 import { nombreDePila } from '../../lib/operadores'
+import { TXT_APP } from '../../lib/mensajes'
 
 // Modal de preparación de contacto. Vive acá (y no dentro de Envios) para poder
 // abrirlo también desde Cartera sin salir de la página: enviar es la acción más
@@ -312,7 +313,7 @@ export default function PreparacionEnvio({
 
   // Cierre fijo de TODOS los mensajes: invitar a bajar el catálogo como app.
   function conDescarga(msg: string) {
-    return `${msg}\n\n📲 Podés bajar el catálogo de Orbital a tu compu o celular para tener una mejor experiencia, conocer las novedades y ver siempre en línea el stock disponible para tu negocio.`
+    return `${msg}\n\n${TXT_APP}`
   }
 
   // Los paquetes van con el token del cliente, si no la visita queda anónima

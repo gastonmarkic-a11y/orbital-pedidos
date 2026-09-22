@@ -7,7 +7,7 @@
 export function responsableLabel(motivo: string, tipo: string | null): string {
   if (['pagos_cobranza'].includes(motivo)) return 'Administración (pagos/cobranza)'
   if (['envio_incidencia', 'confirmar_stock'].includes(motivo)) return 'Mauro (envíos)'
-  if (motivo === 'reclamo_excepcion') return 'Mauro (posventa)'
+  if (['reclamo_excepcion', 'postventa_garantia'].includes(motivo)) return 'Mauro (posventa)'
   if (motivo === 'precio_mayorista' || (motivo === 'iris_deriva' && tipo === 'mayorista')) return 'Prospección (Luna/Damián)'
   return 'Gastón (general/redes)'
 }
@@ -15,7 +15,7 @@ export function responsableLabel(motivo: string, tipo: string | null): string {
 // Códigos de usuario responsables del tema (para filtrar "las mías").
 export function responsableCodes(motivo: string, tipo: string | null): string[] {
   if (motivo === 'pagos_cobranza') return ['Administracion']
-  if (['envio_incidencia', 'confirmar_stock', 'reclamo_excepcion'].includes(motivo)) return ['Mauro']
+  if (['envio_incidencia', 'confirmar_stock', 'reclamo_excepcion', 'postventa_garantia'].includes(motivo)) return ['Mauro']
   if (motivo === 'precio_mayorista' || (motivo === 'iris_deriva' && tipo === 'mayorista')) return ['Marketing', 'Damian', 'ProspeccionVenta']
   return ['Gaston']
 }

@@ -49,10 +49,11 @@ export default function StockAdmin() {
       toast('Valor inválido', 'error')
       return
     }
-    const { error } = await supabase
-      .from('stock')
-      .update({ cantidad: val, updated_at: new Date().toISOString() })
-      .eq('codigo', p.codigo)
+    // Queda en stock_movimientos como 'manual' y le llega la alerta a Gastón por Telegram
+    const { error } = await supabase.rpc('stock_fijar', {
+      p_items: [{ codigo: p.codigo, cantidad: val }],
+      p_origen: 'manual',
+    })
     if (error) {
       toast('Error al actualizar el stock', 'error')
       return
@@ -127,25 +128,20 @@ export default function StockAdmin() {
         if (codigo && !isNaN(cantidad)) filas.push({ codigo, cantidad, precio })
       }
 
+      // Carga masiva: queda registrada como 'carga_masiva' (alerta con los cambios más grandes)
       let ok = 0
       let errores = 0
-      for (let i = 0; i < filas.length; i += 50) {
-        const batch = filas.slice(i, i + 50)
-        setMasivoStatus(`Actualizando… ${Math.min(i + batch.length, filas.length)}/${filas.length}`)
-        await Promise.all(
-          batch.map(async (fila) => {
-            const stripped = fila.codigo.replace(/^0+/, '')
-            const local = stock.find((x) => x.codigo === fila.codigo || x.codigo.replace(/^0+/, '') === stripped)
-            const updateData: Record<string, number> = { cantidad: fila.cantidad }
-            if (fila.precio !== undefined && fila.precio > 0) updateData.precio = fila.precio
-            const { error } = await supabase
-              .from('stock')
-              .update(updateData)
-              .eq('codigo', local ? local.codigo : fila.codigo)
-            if (error) errores++
-            else ok++
-          })
-        )
+      const items = filas.map((fila) => {
+        const stripped = fila.codigo.replace(/^0+/, '')
+        const local = stock.find((x) => x.codigo === fila.codigo || x.codigo.replace(/^0+/, '') === stripped)
+        return { codigo: local ? local.codigo : fila.codigo, cantidad: fila.cantidad, precio: fila.precio ?? 0 }
+      })
+      for (let i = 0; i < items.length; i += 200) {
+        const batch = items.slice(i, i + 200)
+        setMasivoStatus(`Actualizando… ${Math.min(i + batch.length, items.length)}/${items.length}`)
+        const { data, error } = await supabase.rpc('stock_fijar', { p_items: batch, p_origen: 'carga_masiva', p_nota: file.name })
+        if (error) errores += batch.length
+        else ok += Number(data ?? 0)
       }
       setMasivoStatus(`✓ Completado: ${ok} actualizados, ${errores} errores`)
       await cargar()
