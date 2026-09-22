@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
-import { MessageCircle, Mail, RefreshCw, Undo2, CalendarClock, Copy, BookOpen, Eye, EyeOff } from 'lucide-react'
+import { MessageCircle, Mail, Phone, RefreshCw, Undo2, CalendarClock, Copy, BookOpen, Eye, EyeOff } from 'lucide-react'
 
 // Mi tanda de hoy — una acción por vez, decidida por el motor.
 // El prospectador no elige a quién, ni por qué canal, ni qué mandar: eso ya lo resolvió
@@ -294,7 +294,11 @@ export default function MiTanda() {
     if (a.es_visita) { void avanzar(a, 'enviado'); return }
     const texto = armarMensaje(a, deParte)
     if (!texto) { toast('Esta pieza todavía no tiene mensaje cargado', 'error'); return }
-    if (a.canal === 'mail') {
+    if (a.canal === 'llamada') {
+      const tel = (a.telefono ?? '').replace(/[^\d+]/g, '')
+      if (!tel) { toast('Este contacto no tiene teléfono cargado', 'error'); return }
+      window.open(`tel:${tel}`)
+    } else if (a.canal === 'mail') {
       window.open(`mailto:${a.email ?? ''}?subject=${encodeURIComponent(a.pieza_titulo ?? 'Orbital Eyewear')}&body=${encodeURIComponent(texto)}`)
     } else {
       const tel = telefonoWa(a.telefono)
@@ -460,7 +464,9 @@ export default function MiTanda() {
                 <div className="mt-5">
                   <div className="flex items-baseline justify-between gap-3 mb-1.5">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-faint">
-                      Mensaje para mandar{actual.canal === 'mail' ? ' por mail' : ''}
+                      {actual.canal === 'llamada'
+                        ? `Llamar al ${actual.telefono ?? '—'} · qué decir`
+                        : `Mensaje para mandar${actual.canal === 'mail' ? ' por mail' : ''}`}
                     </p>
                     {mensaje && (
                       <button onClick={() => void copiar()}
@@ -496,8 +502,8 @@ export default function MiTanda() {
             <div className="border-t border-black/[0.07] p-4 flex items-center gap-2">
               <button onClick={() => enviar(actual)} disabled={guardando}
                 className="flex-1 flex items-center justify-center gap-2 rounded-md bg-brand text-white px-4 py-2.5 text-sm font-medium hover:bg-ink transition-colors disabled:opacity-40">
-                {actual.es_visita ? <CalendarClock size={16} /> : actual.canal === 'mail' ? <Mail size={16} /> : <MessageCircle size={16} />}
-                {guardando ? 'Guardando…' : actual.es_visita ? 'Ya la agendé' : actual.canal === 'mail' ? 'Escribir mail' : 'Enviar por WhatsApp'}
+                {actual.es_visita ? <CalendarClock size={16} /> : actual.canal === 'llamada' ? <Phone size={16} /> : actual.canal === 'mail' ? <Mail size={16} /> : <MessageCircle size={16} />}
+                {guardando ? 'Guardando…' : actual.es_visita ? 'Ya la agendé' : actual.canal === 'llamada' ? 'Llamar' : actual.canal === 'mail' ? 'Escribir mail' : 'Enviar por WhatsApp'}
               </button>
               <button onClick={() => void avanzar(actual, 'omitido')} disabled={guardando}
                 className="rounded-md border border-black/10 px-4 py-2.5 text-sm text-muted hover:bg-black/[0.03] transition-colors disabled:opacity-40">
