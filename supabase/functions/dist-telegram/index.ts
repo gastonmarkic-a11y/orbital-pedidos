@@ -701,7 +701,7 @@ async function altaVendedor(chat: number, u: Usuario, texto: string) {
   await ins("dist_tg_usuario", { distribuidor_id: u.distribuidor_id, nombre, telefono: tel, rol: "vendedor", alta_por: u.nombre });
   await guardarEstado(chat, null);
   await enviar(chat, `✅ Listo. ${esc(nombre)} ya puede entrar: que abra este bot, toque /start y comparta su teléfono.`, undefined, menu(u));
-  await avisoOjo(`👥 Bot distribuidores: ${u.nombre} (${u.distribuidores.nombre}) sumó al vendedor ${nombre} · +${tel}`);
+  await avisoOjo(`👥 Bot distribuidores: ${u.nombre} (${u.distribuidores.nombre}) sumó al vendedor ${nombre} · +${tel}`, u.id);
 }
 
 // ————— webhook —————
@@ -723,7 +723,7 @@ async function onMensaje(m: Msg) {
     if (cmd === "/panel") {
       if (resto[0] && resto[0] === (await cfg("dist_telegram_grupo_clave"))) {
         await guardarCfg("dist_telegram_grupo", String(m.chat.id));
-        await tg("sendMessage", { chat_id: m.chat.id, text: "✅ Listo: este grupo ve todo lo que pasa en el bot de distribuidores.\n\n/quienes — quién está conectado\n/decile <id> <texto> — escribirle a uno\n/aviso <texto> — a todos\nTambién podés responder un mensaje 👁 y le llega a esa persona." });
+        await tg("sendMessage", { chat_id: m.chat.id, text: "✅ Listo: este grupo ve todo lo que pasa en el bot de distribuidores.\n\n/quienes — quién está conectado\n/cristaldo <texto> · /optisur <texto> — al titular de ese distribuidor\n/decile <distribuidor o id> <texto> — a uno\n/aviso <texto> — a todos\nTambién podés responder un mensaje 👁 y le llega a esa persona." });
       } else {
         await tg("sendMessage", { chat_id: m.chat.id, text: "Clave incorrecta." });
       }
@@ -743,13 +743,28 @@ async function onMensaje(m: Msg) {
       const f = await sel<{ id: number; nombre: string; rol: string; chat_id: number | null; distribuidores: { nombre: string } }>(
         "dist_tg_usuario?activo=eq.true&select=id,nombre,rol,chat_id,distribuidores(nombre)&order=distribuidor_id");
       const r = f.map((x) => `#d${x.id} · ${x.nombre} · ${x.distribuidores.nombre} · ${x.rol === "vendedor" ? "vendedor" : "titular"} · ${x.chat_id ? "conectado" : "no entró"}`);
-      await tg("sendMessage", { chat_id: m.chat.id, text: "👥 Usuarios del bot\n" + (r.join("\n") || "todavía no hay") + "\n\nPara escribirle: /decile <id sin la d> <texto>" });
+      await tg("sendMessage", { chat_id: m.chat.id, text: "👥 Usuarios del bot\n" + (r.join("\n") || "todavía no hay") + "\n\nPara escribirle: /decile optisur <texto>, /cristaldo <texto> o /decile <id> <texto>" });
       return;
     }
+    // Por id (#d2), por nombre del distribuidor (cristaldo) o por nombre de la persona
+    const buscarUid = async (quien: string): Promise<number | null> => {
+      const n = Number(quien.replace(/\D/g, ""));
+      if (/^#?d?\d+$/.test(quien) && n) return n;
+      const k = clave(quien);
+      if (k.length < 3) return null;
+      const f = await sel<{ id: number; nombre: string; rol: string; distribuidores: { nombre: string } }>(
+        "dist_tg_usuario?activo=eq.true&chat_id=not.is.null&select=id,nombre,rol,distribuidores(nombre)");
+      const porDist = f.filter((x) => clave(x.distribuidores.nombre).startsWith(k) && x.rol !== "admin");
+      const titular = porDist.find((x) => x.rol === "dueno");
+      if (titular) return titular.id;
+      if (porDist.length === 1) return porDist[0].id;
+      const porNombre = f.filter((x) => clave(x.nombre).includes(k));
+      return porNombre.length === 1 ? porNombre[0].id : null;
+    };
     if (cmd === "/decile") {
-      const uid = Number(String(resto[0] ?? "").replace(/\D/g, ""));
       const texto = resto.slice(1).join(" ");
-      if (!uid || !texto) { await tg("sendMessage", { chat_id: m.chat.id, text: "Se usa así: /decile 2 Mañana sale tu pedido" }); return; }
+      const uid = await buscarUid(String(resto[0] ?? ""));
+      if (!uid || !texto) { await tg("sendMessage", { chat_id: m.chat.id, text: "Se usa así: /decile optisur Mañana sale tu pedido\nTambién sirve el id: /decile 2 …" }); return; }
       await escribirle(uid, texto);
       return;
     }
@@ -760,6 +775,11 @@ async function onMensaje(m: Msg) {
       for (const x of f) await enviar(x.chat_id, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
       await tg("sendMessage", { chat_id: m.chat.id, text: `✅ Enviado a ${f.length} ${f.length === 1 ? "persona" : "personas"}.` });
       return;
+    }
+    // /cristaldo <texto>, /optisur <texto>: derecho al titular de ese distribuidor
+    if (cmd?.startsWith("/") && resto.length) {
+      const uid = await buscarUid(cmd.slice(1));
+      if (uid) { await escribirle(uid, resto.join(" ")); return; }
     }
     // Responder un 👁 del bot: le llega a esa persona
     const ref = m.reply_to_message?.text ?? "";
