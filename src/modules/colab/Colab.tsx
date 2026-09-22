@@ -15,6 +15,7 @@ import ColabAnteojos, { BotonCopiar } from './ColabAnteojos'
 import ColabDashboard, { Liquidacion } from './ColabDashboard'
 import ColabAgregar from './ColabAgregar'
 import ColabPropuestas from './ColabPropuestas'
+import ColabInfluencers from './ColabInfluencers'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from './ColabInspiracion'
 import './colab-oscuro.css'
@@ -91,10 +92,10 @@ export default function Colab() {
   return <Panel clave={clave} ent={ent} salir={() => { localStorage.removeItem(CLAVE_KEY); setClave(null); setEnt(null) }} />
 }
 
-type Tab = 'admins' | 'promotores' | 'propuestas' | 'anteojos' | 'inspiracion' | 'links' | 'dashboard' | 'liquidacion'
+type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' | 'inspiracion' | 'links' | 'dashboard' | 'liquidacion'
 // Inspiración y Links son internos: el promotor ve solo sus anteojos y su dashboard.
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
-  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['influencers', 'Influencers'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   admin: [['promotores', 'Promotores'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   influencer: [['anteojos', 'Anteojos'], ['dashboard', 'Dashboard']],
 }
@@ -162,6 +163,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
         {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
+        {tab === 'influencers' && <ColabInfluencers clave={clave} />}
         {tab === 'inspiracion' && <ColabInspiracion clave={clave} rol={ent.rol} />}
         {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
         {tab === 'anteojos' && !(ent.coleccion && agregando) && (
