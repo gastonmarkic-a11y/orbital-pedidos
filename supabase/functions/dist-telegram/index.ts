@@ -28,7 +28,8 @@ async function guardarCfg(clave: string, valor: string) {
   });
   cacheCfg[clave] = valor;
 }
-const token = () => cfg("dist_telegram_bot_token");
+// El token: primero el secret de Edge Functions, si no, app_config
+const token = async () => Deno.env.get("DIST_TELEGRAM_BOT_TOKEN") || (await cfg("dist_telegram_bot_token"));
 
 // ————— base de datos (PostgREST con service role) —————
 
