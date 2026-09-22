@@ -63,13 +63,14 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   });
   if (!res.ok) console.error(fn, res.status, await res.text());
 }
-// Grupo interno del bot (Gastón, Gustavo, Administración, Mauro, Postventa): ve todo
-async function espejo(texto: string) {
+// Grupo interno del bot (Gastón, Gustavo, Administración, Mauro, Postventa): ve todo.
+// La marca #d<id> al pie sirve para contestarle a ESE usuario respondiendo el mensaje.
+async function espejo(texto: string, uid?: number) {
   const g = await cfg("dist_telegram_grupo");
-  if (g) await tg("sendMessage", { chat_id: Number(g), text: "👁 " + texto, disable_web_page_preview: true });
+  if (g) await tg("sendMessage", { chat_id: Number(g), text: "👁 " + texto + (uid ? `\n#d${uid}` : ""), disable_web_page_preview: true });
 }
 // Lo que tiene que gestionar alguien va además al grupo del Ojo
-const avisoOjo = async (texto: string) => { await rpc("dist_aviso_ojo", { p_texto: texto }); await espejo(texto); };
+const avisoOjo = async (texto: string, uid?: number) => { await rpc("dist_aviso_ojo", { p_texto: texto }); await espejo(texto, uid); };
 
 // ————— Telegram —————
 
@@ -479,6 +480,7 @@ async function confirmarPedido(chat: number, u: Usuario, lineas: Linea[]) {
       items.map((i) => `• ${i.modelo} ${i.descripcion} (${i.codigo.slice(-5)}) × ${i.cantidad}`).join("\n") +
       `\nTotal: ${items.reduce((a, i) => a + i.cantidad, 0)} u. · ${pesos(items.reduce((a, i) => a + i.cantidad * i.precio, 0))}` +
       (proy.length ? `\nSin stock completo: ${proy.join(", ")}` : "") + "\nSe confirma en la Suite.",
+      u.id,
     );
     partes.push(`✅ Pedido recibido <b>#P${pre.id}</b> · ${items.reduce((a, i) => a + i.cantidad, 0)} u. Orbital lo revisa y lo confirma; lo seguís en ${B.pedidos}.`);
   }
@@ -667,7 +669,7 @@ async function crearReclamo(chat: number, u: Usuario, detalle: string, fotos: st
     solicitado_por: `Bot distribuidor · ${u.nombre}`, fotos,
   });
   await espejo(`🔧 RECLAMO #${f.id} — ${u.distribuidores.nombre} (${cod(u)})\nCargó: ${u.nombre}\n${detalle}` +
-    (fotos.length ? `\n📷 ${fotos.join("\n")}` : ""));
+    (fotos.length ? `\n📷 ${fotos.join("\n")}` : ""), u.id);
   await guardarEstado(chat, null);
   await enviar(chat, `✅ Reclamo <b>#${f.id}</b> cargado. Postventa de Orbital lo revisa; el estado lo ves en ${B.postventa}.`, undefined, menu(u));
 }
@@ -708,22 +710,61 @@ type Msg = {
   chat: { id: number; type: string }; from: { id: number; is_bot?: boolean; first_name?: string };
   text?: string; caption?: string; photo?: { file_id: string }[];
   contact?: { phone_number: string; user_id?: number };
+  reply_to_message?: { text?: string };
 };
 
 async function onMensaje(m: Msg) {
   if (m.from.is_bot) return;
-  // En un grupo solo atiende el alta del grupo interno: /panel <clave>
+  // En un grupo: alta del grupo interno y, ya dado de alta, hablarle a los distribuidores
   if (m.chat.type !== "private") {
-    const [cmd, clave] = (m.text ?? "").trim().split(/\s+/);
-    if (cmd?.split("@")[0] === "/panel") {
-      const ok = clave && clave === (await cfg("dist_telegram_grupo_clave"));
-      if (ok) {
+    const crudo = (m.text ?? "").trim();
+    const [cmd0, ...resto] = crudo.split(/\s+/);
+    const cmd = cmd0?.split("@")[0];
+    if (cmd === "/panel") {
+      if (resto[0] && resto[0] === (await cfg("dist_telegram_grupo_clave"))) {
         await guardarCfg("dist_telegram_grupo", String(m.chat.id));
-        await tg("sendMessage", { chat_id: m.chat.id, text: "✅ Listo: este grupo ve todo lo que pasa en el bot de distribuidores." });
+        await tg("sendMessage", { chat_id: m.chat.id, text: "✅ Listo: este grupo ve todo lo que pasa en el bot de distribuidores.\n\n/quienes — quién está conectado\n/decile <id> <texto> — escribirle a uno\n/aviso <texto> — a todos\nTambién podés responder un mensaje 👁 y le llega a esa persona." });
       } else {
         await tg("sendMessage", { chat_id: m.chat.id, text: "Clave incorrecta." });
       }
+      return;
     }
+    if (String(m.chat.id) !== (await cfg("dist_telegram_grupo"))) return;
+
+    const escribirle = async (uid: number, texto: string) => {
+      const [d] = await sel<{ nombre: string; chat_id: number | null; distribuidores: { nombre: string } }>(
+        `dist_tg_usuario?id=eq.${uid}&activo=eq.true&select=nombre,chat_id,distribuidores(nombre)`);
+      if (!d?.chat_id) { await tg("sendMessage", { chat_id: m.chat.id, text: "Esa persona todavía no entró al bot." }); return; }
+      await enviar(d.chat_id, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
+      await tg("sendMessage", { chat_id: m.chat.id, text: `✅ Enviado a ${d.nombre} (${d.distribuidores.nombre}).` });
+    };
+
+    if (cmd === "/quienes") {
+      const f = await sel<{ id: number; nombre: string; rol: string; chat_id: number | null; distribuidores: { nombre: string } }>(
+        "dist_tg_usuario?activo=eq.true&select=id,nombre,rol,chat_id,distribuidores(nombre)&order=distribuidor_id");
+      const r = f.map((x) => `#d${x.id} · ${x.nombre} · ${x.distribuidores.nombre} · ${x.rol === "vendedor" ? "vendedor" : "titular"} · ${x.chat_id ? "conectado" : "no entró"}`);
+      await tg("sendMessage", { chat_id: m.chat.id, text: "👥 Usuarios del bot\n" + (r.join("\n") || "todavía no hay") + "\n\nPara escribirle: /decile <id sin la d> <texto>" });
+      return;
+    }
+    if (cmd === "/decile") {
+      const uid = Number(String(resto[0] ?? "").replace(/\D/g, ""));
+      const texto = resto.slice(1).join(" ");
+      if (!uid || !texto) { await tg("sendMessage", { chat_id: m.chat.id, text: "Se usa así: /decile 2 Mañana sale tu pedido" }); return; }
+      await escribirle(uid, texto);
+      return;
+    }
+    if (cmd === "/aviso") {
+      const texto = resto.join(" ");
+      if (!texto) { await tg("sendMessage", { chat_id: m.chat.id, text: "Se usa así: /aviso Esta semana no despachamos el viernes" }); return; }
+      const f = await sel<{ chat_id: number }>("dist_tg_usuario?activo=eq.true&chat_id=not.is.null&select=chat_id");
+      for (const x of f) await enviar(x.chat_id, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
+      await tg("sendMessage", { chat_id: m.chat.id, text: `✅ Enviado a ${f.length} ${f.length === 1 ? "persona" : "personas"}.` });
+      return;
+    }
+    // Responder un 👁 del bot: le llega a esa persona
+    const ref = m.reply_to_message?.text ?? "";
+    const marca = ref.match(/#d(\d+)/);
+    if (marca && crudo) await escribirle(Number(marca[1]), crudo);
     return;
   }
   const chat = m.chat.id;
@@ -766,7 +807,7 @@ async function onMensaje(m: Msg) {
     await enviar(chat, "📦 Escribí el pedido abajo, en el cuadro de mensaje (o mandá una foto). Un renglón por artículo, ej:\n<code>ASCARI 038-04 x5\nPALERMO negro brillo polarizado x10</code>");
     return;
   }
-  const miro = (que: string) => espejo(`🔎 ${u.nombre} (${u.distribuidores.nombre}) consultó ${que}`);
+  const miro = (que: string) => espejo(`🔎 ${u.nombre} (${u.distribuidores.nombre}) consultó ${que}`, u.id);
   if (texto === B.pedidos) { await guardarEstado(chat, null); await misPedidos(chat, u); await miro("sus pedidos"); return; }
   if (texto === B.envios) { await guardarEstado(chat, null); await envios(chat, u); await miro("envíos"); return; }
   if (texto === B.cc) { await guardarEstado(chat, null); await cuentaCorriente(chat, u); await miro("la cuenta corriente"); return; }
@@ -857,6 +898,8 @@ async function onMensaje(m: Msg) {
       if (leido) { await recibirPedido(chat, u, leido + (texto ? `\n${texto}` : ""), []); return; }
     } else { await recibirPedido(chat, u, texto, []); return; }
   }
+  // No entendió: lo pasa al grupo interno, donde se le puede contestar respondiendo el 👁
+  if (texto) await espejo(`💬 ${u.nombre} (${u.distribuidores.nombre}) escribió: "${texto}"`, u.id);
   await enviar(chat, "Elegí una opción del menú de abajo 👇", undefined, menu(u));
 }
 
