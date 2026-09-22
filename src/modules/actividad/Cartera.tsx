@@ -72,12 +72,10 @@ const COLOR_OPERADOR: Record<string, { barra: string; pill: string }> = {
 }
 const COLOR_LIBRE = '#d4d4d8' // sin contactar / reserva vencida
 
-const TABS_VENDEDOR = [
-  { codigo: 'Adrian', label: 'Adrián' },
-  { codigo: 'Martin', label: 'Martín' },
+// Solapas fijas de prospección; las de dueños se arman con cartera_duenos() (todo el que tenga cuentas asignadas).
+const TABS_PROSPECCION = [
   { codigo: 'Marketing', label: 'Prospección' },
   { codigo: 'ProspeccionVenta', label: 'Venta directa' },
-  { codigo: 'Corporativo', label: 'Corporativo' },
 ]
 
 // Destinos de derivación. Disponibles para todos los roles; se descarta el propio.
@@ -162,6 +160,20 @@ export default function Cartera() {
       pill: vigente && por ? (COLOR_OPERADOR[por]?.pill ?? 'bg-black/5 text-muted') : 'bg-black/5 text-muted',
     }
   }
+
+  const [tabsDuenos, setTabsDuenos] = useState<{ codigo: string; label: string }[]>([])
+  useEffect(() => {
+    if (!esAdmin) return
+    supabase.rpc('cartera_duenos').then(({ data }) =>
+      setTabsDuenos(
+        ((data as { codigo: string; nombre: string; n: number }[]) ?? []).map((d) => ({
+          codigo: d.codigo,
+          label: `${d.nombre.replace(/\s*\((Admin|Vendedor)\)$/, '')} · ${d.n}`,
+        }))
+      )
+    )
+  }, [esAdmin, recarga])
+  const tabsVendedor = [...tabsDuenos, ...TABS_PROSPECCION]
 
   useEffect(() => {
     supabase.from('propuestas_julio').select('*').then(({ data }) => setPropuestas((data as Propuesta[]) ?? []))
@@ -534,7 +546,7 @@ export default function Cartera() {
     <div className="space-y-3 text-ink">
       {esAdmin && (
         <div className="flex gap-1 overflow-x-auto border-b border-black/10 pb-px">
-          {TABS_VENDEDOR.map((t) => (
+          {tabsVendedor.map((t) => (
             <button
               key={t.codigo}
               onClick={() => setTabVendedor(t.codigo)}
