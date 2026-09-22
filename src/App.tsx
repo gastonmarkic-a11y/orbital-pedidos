@@ -171,26 +171,19 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'revendedor')
     return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
   // Rol financiero: solo el tablero de tesorería. No ve pedidos ni carteras comerciales.
-  // Postventa: lo de después de la venta (devoluciones, envíos, reclamos) y además
-  // su propia cola de prospección del interior. No ve plata: ni cobranzas ni finanzas.
+  // Postventa: lo de después de la venta, en 6 accesos (Postventa, Catálogo, Devoluciones,
+  // Envíos, Pedidos, Conversaciones). No ve plata: ni cobranzas ni finanzas.
   if (rol === 'postventa')
     return {
       principales: [
         { to: '/postventa', label: 'Postventa' },
         { to: '/mi-catalogo', label: 'Catálogo' },
-        { to: '/mi-tanda', label: 'Mi tanda' },
-        { to: '/panel-resultados', label: 'Resultados' },
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/envios-ecom', label: 'Envíos' },
-        { to: '/red-opticas', label: 'Red de ópticas' },
-      ],
-      secundarios: [
-        { to: '/seguimiento', label: 'Seguimiento' },
         { to: '/pedidos', label: 'Pedidos' },
         { to: '/conversaciones', label: 'Conversaciones' },
-        { to: '/guiones', label: 'Guiones' },
-        { to: '/marketing', label: 'Marketing' },
       ],
+      secundarios: [],
       menu: [],
     }
 

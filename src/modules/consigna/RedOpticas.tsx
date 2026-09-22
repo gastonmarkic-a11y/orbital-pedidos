@@ -50,7 +50,7 @@ export default function RedOpticas() {
           <button key={k} onClick={() => setVista(k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${vista === k ? 'border-[#0004FF] text-[#0004FF]' : 'border-transparent text-muted'}`}>{l}</button>
         ))}
       </div>
-      {vista === 'postventa' && <Postventa />}
+      {vista === 'postventa' && <PostventaTickets />}
       {vista === 'donde' && <DondeComprar />}
       {vista === 'publicaciones' && <Publicaciones />}
     </div>
@@ -63,7 +63,7 @@ const ESTADO_T: Record<Ticket['estado'], [string, string]> = {
   resuelto: ['Resuelto', 'bg-emerald-100 text-emerald-800'],
 }
 
-function Postventa() {
+export function PostventaTickets() {
   const toast = useToast()
   const [ts, setTs] = useState<Ticket[] | null>(null)
   const [clis, setClis] = useState<Map<string, Cli>>(new Map())

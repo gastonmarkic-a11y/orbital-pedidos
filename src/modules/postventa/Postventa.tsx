@@ -1,7 +1,8 @@
 // ── Postventa ────────────────────────────────────────────────────────────────
-// La pantalla de trabajo de Postventa, en cuatro solapas:
+// La pantalla de trabajo de Postventa, en cinco solapas:
 //   · Mensajes: todas las charlas del bot (WhatsApp/IG/web) agrupadas por óptica, con el
 //     historial y para responder desde ahí (at-responder, igual que en Conversaciones).
+//   · Garantías y repuestos: lo que cargan las ópticas desde el catálogo (optica_postventa, con fotos).
 //   · Pedidos: en qué estado está cada pedido, buscable por óptica. Sin importes: Postventa no ve plata.
 //   · Envíos: el panel de envíos de siempre (B2B para despacho + e-commerce de Envia).
 //   · Enviar catálogo: el link (token) del catálogo de cualquier óptica, o alta de una óptica
@@ -13,12 +14,13 @@ import { useAuth } from '../../lib/auth'
 import { estadoLabel, ESTADO_COLORS } from '../pedidos/calc'
 import type { EstadoPedido } from '../../lib/types'
 import Envios from '../atencion/Envios'
+import { PostventaTickets } from '../consigna/RedOpticas'
 
-type Vista = 'mensajes' | 'pedidos' | 'envios' | 'catalogo'
+type Vista = 'mensajes' | 'garantias' | 'pedidos' | 'envios' | 'catalogo'
 
 export default function Postventa() {
   const [vista, setVista] = useState<Vista>('mensajes')
-  const TABS: [Vista, string][] = [['mensajes', 'Mensajes por óptica'], ['pedidos', 'Estado de pedidos'], ['envios', 'Envíos'], ['catalogo', 'Enviar catálogo']]
+  const TABS: [Vista, string][] = [['mensajes', 'Mensajes por óptica'], ['garantias', 'Garantías y repuestos'], ['pedidos', 'Estado de pedidos'], ['envios', 'Envíos'], ['catalogo', 'Enviar catálogo']]
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 text-ink">
       <h1 className="text-xl font-semibold">Postventa</h1>
@@ -29,6 +31,7 @@ export default function Postventa() {
         ))}
       </div>
       {vista === 'mensajes' && <Mensajes />}
+      {vista === 'garantias' && <PostventaTickets />}
       {vista === 'pedidos' && <EstadoPedidos />}
       {vista === 'envios' && <Envios />}
       {vista === 'catalogo' && <EnviarCatalogo />}
