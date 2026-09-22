@@ -536,7 +536,30 @@ export default function Cartera() {
     setNotaCli(null)
   }
 
-  if (loading) return <p className="text-sm text-muted p-4">Cargando cartera...</p>
+  // Solapas de dueño (admin): visibles también mientras carga, para poder cambiar de cartera.
+  const solapas = esAdmin && (
+    <div className="flex gap-1 overflow-x-auto border-b border-black/10 pb-px">
+      {tabsVendedor.map((t) => (
+        <button
+          key={t.codigo}
+          onClick={() => setTabVendedor(t.codigo)}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 ${
+            tabVendedor === t.codigo ? 'text-brandDark border-brand' : 'text-muted border-transparent'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (loading)
+    return (
+      <div className="space-y-3 text-ink">
+        {solapas}
+        <p className="text-sm text-muted p-4">Cargando cartera...</p>
+      </div>
+    )
 
   const buscando = !!busqueda.trim()
   const mostrarCanjeCols = !buscando && segmento === 'canje'
@@ -544,21 +567,7 @@ export default function Cartera() {
 
   return (
     <div className="space-y-3 text-ink">
-      {esAdmin && (
-        <div className="flex gap-1 overflow-x-auto border-b border-black/10 pb-px">
-          {tabsVendedor.map((t) => (
-            <button
-              key={t.codigo}
-              onClick={() => setTabVendedor(t.codigo)}
-              className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 ${
-                tabVendedor === t.codigo ? 'text-brandDark border-brand' : 'text-muted border-transparent'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {solapas}
 
       {esProspOperador && (
         <div className="flex gap-1 bg-black/5 rounded-lg p-1 w-fit">
