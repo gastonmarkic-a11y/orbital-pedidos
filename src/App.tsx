@@ -66,6 +66,7 @@ import CatalogoZN from './modules/catalogo/CatalogoZN'
 import Colab from './modules/colab/Colab'
 import ColabRedireccion from './modules/colab/ColabRedireccion'
 import MiCatalogo from './modules/catalogo/MiCatalogo'
+import Postventa from './modules/postventa/Postventa'
 import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
@@ -175,6 +176,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'postventa')
     return {
       principales: [
+        { to: '/postventa', label: 'Postventa' },
+        { to: '/mi-catalogo', label: 'Catálogo' },
         { to: '/mi-tanda', label: 'Mi tanda' },
         { to: '/panel-resultados', label: 'Resultados' },
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
@@ -263,6 +266,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
       { to: '/prospeccion-social', label: 'Cola de prospección social' },
       { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' },
+      { to: '/postventa', label: 'Postventa' },
       { to: '/accesos', label: 'Accesos y usuarios' }
     )
   }
@@ -274,7 +278,7 @@ function homeFor(rol: Rol): string {
   if (rol === 'contenido') return '/marketing'
   if (rol === 'social') return '/prospeccion-social'
   if (rol === 'financiero') return '/finanzas'
-  if (rol === 'postventa') return '/mi-tanda'
+  if (rol === 'postventa') return '/postventa'
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   if (rol === 'usa') return '/usa-pedidos'
@@ -579,7 +583,8 @@ function Layout() {
             </>
           )}
           {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
-          {(rol === 'revendedor' || rol === 'vendedor') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
+          {(rol === 'revendedor' || rol === 'vendedor' || rol === 'postventa') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
+          {(rol === 'admin' || rol === 'postventa') && <Route path="/postventa" element={<Postventa />} />}
           {rol === 'revendedor' && (
             <>
               <Route path="/cartera" element={<Cartera />} />

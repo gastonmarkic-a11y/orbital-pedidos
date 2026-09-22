@@ -21,7 +21,8 @@ export default function MiCatalogo() {
     let pedido
     // Vendedor: su catálogo personal (su token) → lo que arme ahí queda a su nombre.
     // Efectivo: un admin "viendo como" un vendedor abre el catálogo de ese vendedor.
-    if (rolEfectivo === 'vendedor') {
+    // Postventa entra igual que un vendedor, con su propio acceso.
+    if (rolEfectivo === 'vendedor' || rolEfectivo === 'postventa') {
       pedido = supabase.rpc('catalogo_mi_link', { p_codigo: codigoEfectivo })
     } else {
       const cod = (vendedor as { cod_cliente?: string | null }).cod_cliente
