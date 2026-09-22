@@ -894,6 +894,14 @@ export default function Pedidos() {
                           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-2 text-xs">
                             ⚠ <b>Obs:</b> {l.obs_deposito || 'Sin detalle'}
                           </div>
+                          {esAdmin && (
+                            <button
+                              onClick={() => abrirEditar(l)}
+                              className="w-full rounded-lg bg-[#e07020] text-white py-2 text-xs font-bold"
+                            >
+                              ✏️ Modificar pedido y reenviar a Depósito
+                            </button>
+                          )}
                           <button
                             onClick={() => cambiarEstado(l.id, 'en_preparacion').then((ok) => ok && toast('↩ Retomada la preparación', 'success'))}
                             className="w-full rounded-lg bg-[#1a7abf] text-white py-2 text-xs font-bold"
