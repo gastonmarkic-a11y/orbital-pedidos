@@ -74,10 +74,7 @@ const COLOR_OPERADOR: Record<string, { barra: string; pill: string }> = {
 const COLOR_LIBRE = '#d4d4d8' // sin contactar / reserva vencida
 
 // Solapas fijas de prospección; las de dueños se arman con cartera_duenos() (todo el que tenga cuentas asignadas).
-const TABS_PROSPECCION = [
-  { codigo: 'Marketing', label: 'Prospección' },
-  { codigo: 'ProspeccionVenta', label: 'Venta directa' },
-]
+const TABS_PROSPECCION = [{ codigo: 'Marketing', label: 'Prospección' }]
 
 // Destinos de derivación. Disponibles para todos los roles; se descarta el propio.
 type Segmento = 'canje' | 'recuperar' | 'bienvenida' | 'fidelizacion'
