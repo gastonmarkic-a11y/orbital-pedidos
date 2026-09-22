@@ -7,6 +7,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
+import CompradoresTienda from './CompradoresTienda'
 import PreparacionEnvio, { leerEnvioPendiente } from '../envios/PreparacionEnvio'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
@@ -568,6 +569,9 @@ export default function Cartera() {
   return (
     <div className="space-y-3 text-ink">
       {solapas}
+
+      {/* Tienda online: la cartera son 2 clientes facturadores, el detalle real son los compradores de Shopify. */}
+      {codigoActivo === 'Tienda' && <CompradoresTienda />}
 
       {esProspOperador && (
         <div className="flex gap-1 bg-black/5 rounded-lg p-1 w-fit">
