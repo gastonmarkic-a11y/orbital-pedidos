@@ -426,11 +426,11 @@ function ResumenSheet({ modelos, rol, zn, orb, sub, toggle, limpiar, onClose, cl
 
 // ── Mis links · Zaira como promotora del panel de Colaboradores ─────────────
 // Misma lógica que /colab: un link /r/<codigo> por publicación (red + formato),
-// se pega el link de la publicación y cuenta toques, pedidos y su 10%.
+// se pega el link de la publicación y cuenta toques, pedidos y su 20%.
 // El catálogo se limita a la colección "Orbital x Zaira" de la tienda (zn_links_color).
 // Sin cupón: la colección ya tiene su precio; el pedido se atribuye por el
-// utm_content del link. Comisión: 10% sobre la venta sin IVA ni envío (colab-ventas-sync).
-const PCT_ZN = 10
+// utm_content del link. Comisión: 20% sobre la venta sin IVA ni envío (colab-ventas-sync).
+const PCT_ZN = 20
 
 function MisLinks({ clave }: { clave: string }) {
   const [colab, setColab] = useState<{ clave: string; pct: number } | null | undefined>(undefined)
@@ -460,7 +460,7 @@ function MisLinks({ clave }: { clave: string }) {
 }
 
 // ── Dashboard de ZN ─────────────────────────────────────────────────────────
-// SOLO lo suyo: su alcance, sus visitas, sus pedidos, su venta y su 10%.
+// SOLO lo suyo: su alcance, sus visitas, sus pedidos, su venta y su 20%.
 // Deliberadamente NO trae nada del panel interno de Orbital (ventas B2B,
 // inversión en pauta, ROAS, parámetros de canal, estado de integraciones).
 const C_SHOPIFY = '#eb6834'
