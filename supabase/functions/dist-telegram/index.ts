@@ -63,7 +63,13 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   });
   if (!res.ok) console.error(fn, res.status, await res.text());
 }
-const avisoOjo = (texto: string) => rpc("dist_aviso_ojo", { p_texto: texto });
+// Grupo interno del bot (Gastón, Gustavo, Administración, Mauro, Postventa): ve todo
+async function espejo(texto: string) {
+  const g = await cfg("dist_telegram_grupo");
+  if (g) await tg("sendMessage", { chat_id: Number(g), text: "👁 " + texto, disable_web_page_preview: true });
+}
+// Lo que tiene que gestionar alguien va además al grupo del Ojo
+const avisoOjo = async (texto: string) => { await rpc("dist_aviso_ojo", { p_texto: texto }); await espejo(texto); };
 
 // ————— Telegram —————
 
@@ -118,9 +124,13 @@ const B = {
   especial: "✨ Pedido especial",
   postventa: "🔧 Postventa",
   vendedores: "👥 Mis vendedores",
+  cambiar: "🔄 Cambiar distribuidor",
 };
-const menu = (dueno: boolean) => ({
-  keyboard: dueno
+// Admin de Orbital: ve como titular y cambia de distribuidor
+const menu = (u: { rol: string }) => ({
+  keyboard: u.rol === "admin"
+    ? [[{ text: B.cargar }, { text: B.pedidos }], [{ text: B.envios }, { text: B.cc }], [{ text: B.especial }, { text: B.postventa }], [{ text: B.vendedores }, { text: B.cambiar }]]
+    : u.rol === "dueno"
     ? [[{ text: B.cargar }, { text: B.pedidos }], [{ text: B.envios }, { text: B.cc }], [{ text: B.especial }, { text: B.postventa }], [{ text: B.vendedores }]]
     : [[{ text: B.cargar }, { text: B.pedidos }], [{ text: B.envios }, { text: B.especial }], [{ text: B.postventa }]],
   resize_keyboard: true,
@@ -145,11 +155,12 @@ const fecha = (s?: string | null) => {
 // ————— quién escribe —————
 
 type Usuario = {
-  id: number; nombre: string; telefono: string; rol: "dueno" | "vendedor";
+  id: number; nombre: string; telefono: string; rol: "dueno" | "vendedor" | "admin";
   distribuidor_id: number; chat_id: number | null;
   distribuidores: { nombre: string; cod_cliente: string };
 };
-const esDueno = (u: Usuario) => u.rol === "dueno";
+const esDueno = (u: { rol: string }) => u.rol === "dueno" || u.rol === "admin";
+const esAdmin = (u: { rol: string }) => u.rol === "admin";
 const cod = (u: Usuario) => u.distribuidores.cod_cliente;
 
 async function usuarioPorTelegram(tgId: number): Promise<Usuario | null> {
@@ -463,6 +474,12 @@ async function confirmarPedido(chat: number, u: Usuario, lineas: Linea[]) {
       total_units: items.reduce((a, i) => a + i.cantidad, 0),
       importe: items.reduce((a, i) => a + i.cantidad * i.precio, 0),
     });
+    await espejo(
+      `📦 PEDIDO #P${pre.id} (precarga) — ${u.distribuidores.nombre} (${cod(u)})\nCargó: ${u.nombre}\n` +
+      items.map((i) => `• ${i.modelo} ${i.descripcion} (${i.codigo.slice(-5)}) × ${i.cantidad}`).join("\n") +
+      `\nTotal: ${items.reduce((a, i) => a + i.cantidad, 0)} u. · ${pesos(items.reduce((a, i) => a + i.cantidad * i.precio, 0))}` +
+      (proy.length ? `\nSin stock completo: ${proy.join(", ")}` : "") + "\nSe confirma en la Suite.",
+    );
     partes.push(`✅ Pedido recibido <b>#P${pre.id}</b> · ${items.reduce((a, i) => a + i.cantidad, 0)} u. Orbital lo revisa y lo confirma; lo seguís en ${B.pedidos}.`);
   }
   if (especiales.length) {
@@ -473,7 +490,7 @@ async function confirmarPedido(chat: number, u: Usuario, lineas: Linea[]) {
     partes.push(`✨ Lo que no está en stock ni en el proyectado va como <b>pedido especial #E${id}</b>. Orbital lo evalúa y te avisa.`);
   }
   await guardarEstado(chat, null);
-  await enviar(chat, partes.join("\n\n") || "No quedó nada para cargar.", undefined, menu(esDueno(u)));
+  await enviar(chat, partes.join("\n\n") || "No quedó nada para cargar.", undefined, menu(u));
 }
 
 // ————— pedido especial —————
@@ -641,7 +658,7 @@ async function confirmarRepuestos(chat: number, u: Usuario, items: Repuesto[]) {
     "\nSe gestiona en Orbital Suite → Red de ópticas → Postventa",
   );
   await guardarEstado(chat, null);
-  await enviar(chat, `✅ Cargué ${filas.length} pedido${filas.length > 1 ? "s" : ""} de repuesto (#${filas[0].id}${filas.length > 1 ? `–#${filas[filas.length - 1].id}` : ""}). Los seguís en ${B.postventa} → Estado.`, undefined, menu(esDueno(u)));
+  await enviar(chat, `✅ Cargué ${filas.length} pedido${filas.length > 1 ? "s" : ""} de repuesto (#${filas[0].id}${filas.length > 1 ? `–#${filas[filas.length - 1].id}` : ""}). Los seguís en ${B.postventa} → Estado.`, undefined, menu(u));
 }
 
 async function crearReclamo(chat: number, u: Usuario, detalle: string, fotos: string[]) {
@@ -649,8 +666,10 @@ async function crearReclamo(chat: number, u: Usuario, detalle: string, fotos: st
     cod_cliente: cod(u), tipo: "postventa", detalle, estado: "abierto",
     solicitado_por: `Bot distribuidor · ${u.nombre}`, fotos,
   });
+  await espejo(`🔧 RECLAMO #${f.id} — ${u.distribuidores.nombre} (${cod(u)})\nCargó: ${u.nombre}\n${detalle}` +
+    (fotos.length ? `\n📷 ${fotos.join("\n")}` : ""));
   await guardarEstado(chat, null);
-  await enviar(chat, `✅ Reclamo <b>#${f.id}</b> cargado. Postventa de Orbital lo revisa; el estado lo ves en ${B.postventa}.`, undefined, menu(esDueno(u)));
+  await enviar(chat, `✅ Reclamo <b>#${f.id}</b> cargado. Postventa de Orbital lo revisa; el estado lo ves en ${B.postventa}.`, undefined, menu(u));
 }
 
 // ————— vendedores del distribuidor (lo maneja el dueño) —————
@@ -679,7 +698,7 @@ async function altaVendedor(chat: number, u: Usuario, texto: string) {
   if (ya.length) { await enviar(chat, "Ese teléfono ya tiene acceso."); return; }
   await ins("dist_tg_usuario", { distribuidor_id: u.distribuidor_id, nombre, telefono: tel, rol: "vendedor", alta_por: u.nombre });
   await guardarEstado(chat, null);
-  await enviar(chat, `✅ Listo. ${esc(nombre)} ya puede entrar: que abra este bot, toque /start y comparta su teléfono.`, undefined, menu(true));
+  await enviar(chat, `✅ Listo. ${esc(nombre)} ya puede entrar: que abra este bot, toque /start y comparta su teléfono.`, undefined, menu(u));
   await avisoOjo(`👥 Bot distribuidores: ${u.nombre} (${u.distribuidores.nombre}) sumó al vendedor ${nombre} · +${tel}`);
 }
 
@@ -692,7 +711,21 @@ type Msg = {
 };
 
 async function onMensaje(m: Msg) {
-  if (m.chat.type !== "private" || m.from.is_bot) return;
+  if (m.from.is_bot) return;
+  // En un grupo solo atiende el alta del grupo interno: /panel <clave>
+  if (m.chat.type !== "private") {
+    const [cmd, clave] = (m.text ?? "").trim().split(/\s+/);
+    if (cmd?.split("@")[0] === "/panel") {
+      const ok = clave && clave === (await cfg("dist_telegram_grupo_clave"));
+      if (ok) {
+        await guardarCfg("dist_telegram_grupo", String(m.chat.id));
+        await tg("sendMessage", { chat_id: m.chat.id, text: "✅ Listo: este grupo ve todo lo que pasa en el bot de distribuidores." });
+      } else {
+        await tg("sendMessage", { chat_id: m.chat.id, text: "Clave incorrecta." });
+      }
+    }
+    return;
+  }
   const chat = m.chat.id;
 
   // Alta por teléfono: solo vale el contacto propio
@@ -707,13 +740,13 @@ async function onMensaje(m: Msg) {
       return;
     }
     await upd("dist_tg_usuario", `id=eq.${f[0].id}`, { telegram_user_id: m.from.id, chat_id: chat, vinculado_at: new Date().toISOString() });
-    const dueno = f[0].rol === "dueno";
+    const dueno = esDueno(f[0]);
     await enviar(chat,
       `👋 Hola ${esc(f[0].nombre)}, ya estás conectado como ${dueno ? "titular" : "vendedor"} de <b>${esc(f[0].distribuidores.nombre)}</b>.\n\n` +
       `Por acá podés:\n• cargar pedidos (texto o foto)\n• ver tus pedidos y envíos\n${dueno ? "• ver tu cuenta corriente\n" : ""}` +
       `• pedir mercadería fuera de stock (pedido especial)\n• cargar postventa y varios repuestos de una vez` +
       (dueno ? "\n• sumar a tus vendedores" : ""),
-      undefined, menu(dueno));
+      undefined, menu(f[0]));
     await avisoOjo(`👥 Bot distribuidores: se conectó ${f[0].nombre} (${dueno ? "titular" : "vendedor"} de ${f[0].distribuidores.nombre})`);
     return;
   }
@@ -727,15 +760,16 @@ async function onMensaje(m: Msg) {
   const dueno = esDueno(u);
 
   // botones del menú: siempre cortan lo que estaba a medias
-  if (texto === "/start" || texto === "/menu") { await guardarEstado(chat, null); await enviar(chat, "¿Qué necesitás?", undefined, menu(dueno)); return; }
+  if (texto === "/start" || texto === "/menu") { await guardarEstado(chat, null); await enviar(chat, "¿Qué necesitás?", undefined, menu(u)); return; }
   if (texto === B.cargar) {
     await guardarEstado(chat, "pedido", { lineas: [] });
-    await enviar(chat, "📦 Mandame el pedido: una foto o un renglón por artículo, ej:\n<code>ASCARI 038-04 x5\nPALERMO negro brillo polarizado x10</code>");
+    await enviar(chat, "📦 Escribí el pedido abajo, en el cuadro de mensaje (o mandá una foto). Un renglón por artículo, ej:\n<code>ASCARI 038-04 x5\nPALERMO negro brillo polarizado x10</code>");
     return;
   }
-  if (texto === B.pedidos) { await guardarEstado(chat, null); await misPedidos(chat, u); return; }
-  if (texto === B.envios) { await guardarEstado(chat, null); await envios(chat, u); return; }
-  if (texto === B.cc) { await guardarEstado(chat, null); await cuentaCorriente(chat, u); return; }
+  const miro = (que: string) => espejo(`🔎 ${u.nombre} (${u.distribuidores.nombre}) consultó ${que}`);
+  if (texto === B.pedidos) { await guardarEstado(chat, null); await misPedidos(chat, u); await miro("sus pedidos"); return; }
+  if (texto === B.envios) { await guardarEstado(chat, null); await envios(chat, u); await miro("envíos"); return; }
+  if (texto === B.cc) { await guardarEstado(chat, null); await cuentaCorriente(chat, u); await miro("la cuenta corriente"); return; }
   if (texto === B.especial) {
     await guardarEstado(chat, "especial");
     await enviar(chat, "✨ Contame qué necesitás que no está en stock ni en el proyectado (modelo, color, cantidad, para cuándo). Podés mandar una foto.");
@@ -751,6 +785,13 @@ async function onMensaje(m: Msg) {
     return;
   }
   if (texto === B.vendedores && dueno) { await guardarEstado(chat, null); await misVendedores(chat, u); return; }
+  if (texto === B.cambiar && esAdmin(u)) {
+    await guardarEstado(chat, null);
+    const ds = await sel<{ id: number; nombre: string }>("distribuidores?activo=eq.true&select=id,nombre&order=id");
+    await enviar(chat, `Estás en <b>${esc(u.distribuidores.nombre)}</b>. ¿A cuál pasás?`,
+      ds.map((d) => [{ text: `${d.id === u.distribuidor_id ? "● " : ""}${d.nombre}`, callback_data: `d|${d.id}` }]));
+    return;
+  }
 
   const est = await leerEstado(chat);
   const foto = m.photo?.length ? m.photo[m.photo.length - 1].file_id : null;
@@ -801,7 +842,7 @@ async function onMensaje(m: Msg) {
     if (detalle) {
       const id = await crearEspecial(u, detalle);
       await guardarEstado(chat, null);
-      await enviar(chat, `✨ Pedido especial <b>#E${id}</b> recibido. Orbital lo evalúa y te avisa; lo ves en ${B.pedidos}.`, undefined, menu(dueno));
+      await enviar(chat, `✨ Pedido especial <b>#E${id}</b> recibido. Orbital lo evalúa y te avisa; lo ves en ${B.pedidos}.`, undefined, menu(u));
       return;
     }
   }
@@ -816,7 +857,7 @@ async function onMensaje(m: Msg) {
       if (leido) { await recibirPedido(chat, u, leido + (texto ? `\n${texto}` : ""), []); return; }
     } else { await recibirPedido(chat, u, texto, []); return; }
   }
-  await enviar(chat, "Elegí una opción del menú de abajo 👇", undefined, menu(dueno));
+  await enviar(chat, "Elegí una opción del menú de abajo 👇", undefined, menu(u));
 }
 
 async function onCallback(q: { id: string; from: { id: number }; message?: { chat: { id: number }; message_id: number }; data?: string }) {
@@ -849,7 +890,7 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
     return;
   }
   if (acc === "ped") {
-    if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Pedido cancelado.", undefined, menu(esDueno(u))); return; }
+    if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Pedido cancelado.", undefined, menu(u)); return; }
     const lineas = (est.data.lineas as Linea[]) ?? [];
     if (!lineas.length) return;
     if (lineas.some((l) => l.estado === "amb")) { await seguirPedido(chat, u, lineas); return; }
@@ -858,14 +899,21 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
     return;
   }
   if (acc === "p") { await detallePedido(chat, u, Number(a1)); return; }
+  if (acc === "d" && esAdmin(u)) {
+    await upd("dist_tg_usuario", `id=eq.${u.id}`, { distribuidor_id: Number(a1) });
+    await guardarEstado(chat, null);
+    const nuevo = await usuarioPorTelegram(q.from.id);
+    await enviar(chat, `🔄 Ahora estás en <b>${esc(nuevo?.distribuidores.nombre)}</b> (${esc(nuevo?.distribuidores.cod_cliente)}).`, undefined, menu(u));
+    return;
+  }
   if (acc === "pv") {
     if (a1 === "rec") { await guardarEstado(chat, "pv", { fotos: [] }); await enviar(chat, "📝 Contame el reclamo: modelo, color y qué pasó. Podés mandar fotos."); }
-    if (a1 === "rep") { await guardarEstado(chat, "rep", { items: [] }); await enviar(chat, "🔩 Mandame todos los repuestos juntos: un renglón por cada uno (o una foto de la lista), ej:\n<code>ASCARI 038-04 x2 patilla izquierda\nPALERMO negro x1 bisagra</code>"); }
-    if (a1 === "est") await estadoPostventa(chat, u);
+    if (a1 === "rep") { await guardarEstado(chat, "rep", { items: [] }); await enviar(chat, "🔩 Escribí abajo, en el cuadro de mensaje, todos los repuestos juntos: un renglón por cada uno (o mandá una foto de la lista), ej:\n<code>ASCARI 038-04 x2 patilla izquierda\nPALERMO negro x1 bisagra</code>"); }
+    if (a1 === "est") { await estadoPostventa(chat, u); await espejo(`🔎 ${u.nombre} (${u.distribuidores.nombre}) consultó el estado de postventa`); }
     return;
   }
   if (acc === "rep") {
-    if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Cancelado.", undefined, menu(esDueno(u))); return; }
+    if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Cancelado.", undefined, menu(u)); return; }
     const items = (est.data.items as Repuesto[]) ?? [];
     if (!items.length) return;
     await guardarEstado(chat, "rep_confirmando", {});
