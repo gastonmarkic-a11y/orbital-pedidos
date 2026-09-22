@@ -819,18 +819,26 @@ async function onMensaje(m: Msg) {
   await enviar(chat, "Elegí una opción del menú de abajo 👇", undefined, menu(dueno));
 }
 
-async function onCallback(q: { id: string; from: { id: number }; message?: { chat: { id: number } }; data?: string }) {
+async function onCallback(q: { id: string; from: { id: number }; message?: { chat: { id: number }; message_id: number }; data?: string }) {
   const chat = q.message?.chat.id;
   const u = await usuarioPorTelegram(q.from.id);
   if (!chat || !u) { await responderCallback(q.id); return; }
   const [acc, a1, a2] = (q.data ?? "").split("|");
-  await responderCallback(q.id);
   const est = await leerEstado(chat);
+  // Botones de pedido/color/repuestos: se usan una sola vez
+  const sacarBotones = () =>
+    tg("editMessageReplyMarkup", { chat_id: chat, message_id: q.message!.message_id, reply_markup: { inline_keyboard: [] } });
+  if (["col", "ped", "rep"].includes(acc)) {
+    const abierto = acc === "rep" ? est.paso === "rep" : est.paso === "pedido";
+    if (!abierto) { await responderCallback(q.id, "Eso ya se envió"); await sacarBotones(); return; }
+    await sacarBotones();
+  }
+  await responderCallback(q.id);
 
   if (acc === "col") {
     const lineas = (est.data.lineas as Linea[]) ?? [];
     const l = lineas[Number(a1)];
-    if (est.paso !== "pedido" || !l) { await enviar(chat, "Ese pedido ya no está abierto. Tocá " + B.cargar + "."); return; }
+    if (!l) return;
     if (a2 === "x") l.estado = "nf";
     else {
       const s = (l.opciones ?? []).find((o) => o.codigo === a2);
@@ -843,7 +851,7 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
   if (acc === "ped") {
     if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Pedido cancelado.", undefined, menu(esDueno(u))); return; }
     const lineas = (est.data.lineas as Linea[]) ?? [];
-    if (est.paso !== "pedido" || !lineas.length) { await enviar(chat, "No hay un pedido abierto."); return; }
+    if (!lineas.length) return;
     if (lineas.some((l) => l.estado === "amb")) { await seguirPedido(chat, u, lineas); return; }
     await guardarEstado(chat, "pedido_confirmando", {}); // evita doble toque
     await confirmarPedido(chat, u, lineas);
@@ -859,7 +867,7 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
   if (acc === "rep") {
     if (a1 === "no") { await guardarEstado(chat, null); await enviar(chat, "Cancelado.", undefined, menu(esDueno(u))); return; }
     const items = (est.data.items as Repuesto[]) ?? [];
-    if (est.paso !== "rep" || !items.length) { await enviar(chat, "No hay una lista abierta."); return; }
+    if (!items.length) return;
     await guardarEstado(chat, "rep_confirmando", {});
     await confirmarRepuestos(chat, u, items);
     return;
