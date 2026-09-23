@@ -32,7 +32,19 @@ const MSJ_DEFECTO =
 
 const primerNombre = (f: Fila) => (f.nombre ?? f.usuario).trim().split(/[\s·|,]/)[0] || f.usuario
 
-export default function ColabInfluencers({ clave }: { clave: string }) {
+// La misma pantalla vive en dos lados: en /colab entra con la clave de Orbital y en la
+// Suite con el login de admin. Cambia sólo qué RPC llama; las de la Suite validan el rol.
+export default function ColabInfluencers({ clave }: { clave?: string }) {
+  const porClave = !!clave
+  const rpc = {
+    listar: porClave ? 'ig_infl_listar' : 'ig_infl_listar_admin',
+    resumen: porClave ? 'ig_infl_resumen' : 'ig_infl_resumen_admin',
+    marcar: porClave ? 'ig_infl_marcar' : 'ig_infl_marcar_admin',
+  }
+  return <Lista clave={clave} rpc={rpc} />
+}
+
+function Lista({ clave, rpc }: { clave?: string; rpc: { listar: string; resumen: string; marcar: string } }) {
   const [filas, setFilas] = useState<Fila[] | null>(null)
   const [resumen, setResumen] = useState<Record<string, number>>({})
   const [min, setMin] = useState(5000)
@@ -44,12 +56,14 @@ export default function ColabInfluencers({ clave }: { clave: string }) {
   const [copiado, setCopiado] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
+  const conClave = clave ? { p_clave: clave } : {}
+
   async function cargar() {
     const [{ data }, { data: r }] = await Promise.all([
-      supabase.rpc('ig_infl_listar', {
-        p_clave: clave, p_min: min, p_estado: estado || null, p_buscar: q || null, p_limite: 300,
+      supabase.rpc(rpc.listar, {
+        ...conClave, p_min: min, p_estado: estado || null, p_buscar: q || null, p_limite: 300,
       }),
-      supabase.rpc('ig_infl_resumen', { p_clave: clave, p_min: min }),
+      supabase.rpc(rpc.resumen, { ...conClave, p_min: min }),
     ])
     setFilas((data as Fila[]) ?? [])
     setResumen((r as Record<string, number>) ?? {})
@@ -70,9 +84,9 @@ export default function ColabInfluencers({ clave }: { clave: string }) {
 
   async function marcar(f: Fila, e: Estado) {
     setOcupado(f.usuario)
-    await supabase.rpc('ig_infl_marcar', { p_clave: clave, p_usuario: f.usuario, p_estado: e })
+    await supabase.rpc(rpc.marcar, { ...conClave, p_usuario: f.usuario, p_estado: e })
     setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: e } : x)) : prev))
-    supabase.rpc('ig_infl_resumen', { p_clave: clave, p_min: min }).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
+    supabase.rpc(rpc.resumen, { ...conClave, p_min: min }).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
     setOcupado(null)
   }
 
