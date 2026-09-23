@@ -16,8 +16,8 @@ export default function ProduccionHub() {
   const esProd = rolEfectivo === 'produccion' || rolEfectivo === 'admin'
   const tabs: { key: Tab; label: string }[] = esProd
     ? [
-        { key: 'pedidos', label: '📋 Pedidos' },
-        { key: 'generar', label: '⚙️ Orden de producción' },
+        { key: 'pedidos', label: '📋 Órdenes' },
+        { key: 'generar', label: '⚙️ Calcular' },
         { key: 'cristales', label: '🔬 Cristales' },
         { key: 'costeo', label: '🧮 Costeo' },
       ]

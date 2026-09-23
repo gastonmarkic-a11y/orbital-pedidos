@@ -316,7 +316,7 @@ export default function GeneradorProduccion() {
     <div className="space-y-4 text-ink">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-base font-semibold">🏭 Órdenes de producción</h2>
+          <h2 className="text-base font-semibold">🏭 Calcular producción</h2>
           <p className="text-[11px] text-faint">
             {propuestas.length} familias · {ent.format(totalUnidades)} u. a producir
             {totalNecesidad > totalUnidades && ` (necesidad ${ent.format(totalNecesidad)}, recortada por tope de familia o cristales)`} · lo
