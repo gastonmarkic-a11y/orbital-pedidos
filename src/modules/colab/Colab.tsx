@@ -101,7 +101,10 @@ const TABS: Record<Entrada['rol'], [Tab, string][]> = {
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {
-  const tabs = TABS[ent.rol]
+  // Algunos administradores (Mery) también escriben a los influencers de Instagram.
+  const tabs: [Tab, string][] = ent.rol === 'admin' && ent.influencers_ig
+    ? [TABS.admin[0], ['influencers', 'Influencers'], ...TABS.admin.slice(1)]
+    : TABS[ent.rol]
   const [tab, setTab] = useState<Tab>(tabs[0][0])
   const [version, setVersion] = useState(0)
   const [adminSel, setAdminSel] = useState<number | null>(null)
@@ -163,7 +166,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'admins' && <Administradores clave={clave} admins={admins} recargar={() => setVersion((v) => v + 1)} />}
         {tab === 'promotores' && <Promotores clave={clave} />}
         {tab === 'propuestas' && <ColabPropuestas clave={clave} />}
-        {tab === 'influencers' && <ColabInfluencers clave={clave} />}
+        {tab === 'influencers' && <ColabInfluencers clave={clave} yo={ent.rol === 'admin' ? ent.nombre : undefined} />}
         {tab === 'inspiracion' && <ColabInspiracion clave={clave} rol={ent.rol} />}
         {tab === 'anteojos' && ent.coleccion && agregando && <ColabAgregar clave={clave} volver={() => setAgregando(false)} />}
         {tab === 'anteojos' && !(ent.coleccion && agregando) && (

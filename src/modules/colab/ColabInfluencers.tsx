@@ -11,7 +11,7 @@ type Estado = 'pendiente' | 'escrito' | 'respondio' | 'alta' | 'descartado'
 type Fila = {
   usuario: string; pk: string | null; nombre: string | null; seguidores: number
   categoria: string | null; verificado: boolean; negocio: boolean; bio: string | null
-  ultimo_dm: string | null; estado: Estado; notas: string | null; escrito_en: string | null
+  ultimo_dm: string | null; estado: Estado; notas: string | null; escrito_en: string | null; escrito_por: string | null
 }
 
 const ESTADOS: { k: Estado; t: string }[] = [
@@ -30,28 +30,36 @@ const MSJ_DEFECTO =
   'Nos gustaría invitarte: elegís los modelos que van con vos y preparamos un descuento exclusivo para tu comunidad.\n' +
   '¿Te interesa que te cuente cómo sería?'
 
+// Cuando escribe una administradora (Mery) lo hace desde su propia cuenta: se presenta ella.
+const msjAdmin = (yo: string) =>
+  'Hola {nombre}! Soy ' + yo + ', trabajo con Orbital Eyewear 👋\n' +
+  'Es una marca argentina de anteojos y estamos armando un grupo chico de creadores para esta temporada.\n' +
+  'Me gustaría invitarte: elegís los modelos que van con vos y te preparamos un descuento exclusivo para tu comunidad.\n' +
+  '¿Te interesa que te cuente cómo sería?'
+
 const primerNombre = (f: Fila) => (f.nombre ?? f.usuario).trim().split(/[\s·|,]/)[0] || f.usuario
 
 // La misma pantalla vive en dos lados: en /colab entra con la clave de Orbital y en la
 // Suite con el login de admin. Cambia sólo qué RPC llama; las de la Suite validan el rol.
-export default function ColabInfluencers({ clave }: { clave?: string }) {
+export default function ColabInfluencers({ clave, yo }: { clave?: string; yo?: string }) {
   const porClave = !!clave
   const rpc = {
     listar: porClave ? 'ig_infl_listar' : 'ig_infl_listar_admin',
     resumen: porClave ? 'ig_infl_resumen' : 'ig_infl_resumen_admin',
     marcar: porClave ? 'ig_infl_marcar' : 'ig_infl_marcar_admin',
   }
-  return <Lista clave={clave} rpc={rpc} />
+  return <Lista clave={clave} rpc={rpc} yo={yo} />
 }
 
-function Lista({ clave, rpc }: { clave?: string; rpc: { listar: string; resumen: string; marcar: string } }) {
+function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resumen: string; marcar: string }; yo?: string }) {
+  const msjKey = yo ? MSJ_KEY + '_admin' : MSJ_KEY
   const [filas, setFilas] = useState<Fila[] | null>(null)
   const [resumen, setResumen] = useState<Record<string, number>>({})
   const [min, setMin] = useState(5000)
   const [estado, setEstado] = useState<Estado | ''>('pendiente')
   const [buscar, setBuscar] = useState('')
   const [q, setQ] = useState('')
-  const [msj, setMsj] = useState(() => localStorage.getItem(MSJ_KEY) ?? MSJ_DEFECTO)
+  const [msj, setMsj] = useState(() => localStorage.getItem(msjKey) ?? (yo ? msjAdmin(yo) : MSJ_DEFECTO))
   const [editando, setEditando] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -85,7 +93,8 @@ function Lista({ clave, rpc }: { clave?: string; rpc: { listar: string; resumen:
   async function marcar(f: Fila, e: Estado) {
     setOcupado(f.usuario)
     await supabase.rpc(rpc.marcar, { ...conClave, p_usuario: f.usuario, p_estado: e })
-    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: e } : x)) : prev))
+    const quien = e === 'pendiente' ? null : (yo ?? 'Orbital')
+    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: e, escrito_por: quien } : x)) : prev))
     supabase.rpc(rpc.resumen, { ...conClave, p_min: min }).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
     setOcupado(null)
   }
@@ -138,7 +147,7 @@ function Lista({ clave, rpc }: { clave?: string; rpc: { listar: string; resumen:
           <p className="text-[10px] text-neutral-500 mb-1.5">
             {'{nombre}'} se reemplaza por el nombre de cada uno y {'{usuario}'} por su @. Se guarda en este dispositivo.
           </p>
-          <textarea value={msj} onChange={(e) => { setMsj(e.target.value); localStorage.setItem(MSJ_KEY, e.target.value) }}
+          <textarea value={msj} onChange={(e) => { setMsj(e.target.value); localStorage.setItem(msjKey, e.target.value) }}
             rows={6} className="w-full rounded-lg border border-black/10 p-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
         </div>
       )}
@@ -162,7 +171,7 @@ function Lista({ clave, rpc }: { clave?: string; rpc: { listar: string; resumen:
                   <span className="text-[12px] font-bold tabular-nums" style={{ color: ACENTO }}>{nAr(f.seguidores)}</span>
                   {f.estado !== 'pendiente' && (
                     <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-600">
-                      {ESTADOS.find((e) => e.k === f.estado)?.t}
+                      {ESTADOS.find((e) => e.k === f.estado)?.t}{f.escrito_por ? ` · ${f.escrito_por}` : ''}
                     </span>
                   )}
                 </div>
