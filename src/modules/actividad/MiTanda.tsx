@@ -52,6 +52,10 @@ const POSTA: Record<string, { label: string; calida: boolean }> = {
 }
 const postaInfo = (p: string) => POSTA[p] ?? { label: p, calida: false }
 
+type Vista = 'llamada' | 'ws'
+/** Las llamadas van en su tanda; todo lo demás (WhatsApp, mail, visita) en la de WhatsApp. */
+const vistaDe = (a: Accion): Vista => (a.canal === 'llamada' ? 'llamada' : 'ws')
+
 const primerNombre = (r: string | null) => (r || '').trim().split(/\s+/)[0] || ''
 
 // Nombres de pila usuales en el padrón de ópticas. Es la única forma honesta de
@@ -241,46 +245,58 @@ function porQue(a: Accion): string {
 export default function MiTanda() {
   const { vendedor, codigoEfectivo, rolEfectivo } = useAuth()
   const toast = useToast()
-  const [acciones, setAcciones] = useState<Accion[]>([])
+  const [todas, setAcciones] = useState<Accion[]>([])
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
-  const [hechas, setHechas] = useState(0)
+  const [hechasPor, setHechasPor] = useState<Record<Vista, number>>({ llamada: 0, ws: 0 })
   const [ultima, setUltima] = useState<Accion | null>(null)
   const [quien, setQuien] = useState<string>(codigoEfectivo ?? '')
-  const [equipo, setEquipo] = useState<{ codigo: string; nombre: string }[]>([])
+  const [equipo, setEquipo] = useState<{ codigo: string; nombre: string; llamadas: number; whatsapp: number; hechas: number; omitidas: number }[]>([])
+  // La tanda viene partida en dos: primero las llamadas, después lo que se manda por WhatsApp.
+  const [vista, setVista] = useState<Vista>('llamada')
 
   const esAdmin = rolEfectivo === 'admin'
+  const acciones = useMemo(() => todas.filter((a) => vistaDe(a) === vista), [todas, vista])
+  const nLlamadas = useMemo(() => todas.filter((a) => vistaDe(a) === 'llamada').length, [todas])
+  const nWs = todas.length - nLlamadas
+  const hechas = hechasPor[vista]
+  const setHechas = (n: 0) => setHechasPor({ llamada: n, ws: n })
   const actual = acciones[0] ?? null
 
   const cargar = useCallback(async (cod: string) => {
     if (!cod) { setLoading(false); return }
     setLoading(true)
     const { data, error } = await supabase.rpc('mi_tanda', { p_vendedor: cod })
-    setAcciones(error ? [] : ((data as Accion[]) ?? []))
+    const lista = error ? [] : ((data as Accion[]) ?? [])
+    setAcciones(lista)
+    // Si no quedan llamadas, abre directo en WhatsApp.
+    setVista(lista.some((a) => vistaDe(a) === 'llamada') ? 'llamada' : 'ws')
     setLoading(false)
   }, [])
 
   useEffect(() => { void cargar(quien) }, [quien, cargar])
 
-  useEffect(() => {
-    if (!esAdmin) return
-    supabase.from('prospeccion_config').select('codigo, vendedores(nombre)').eq('prospecta', true)
-      .then(({ data }) => {
-        const rows = (data ?? []) as unknown as { codigo: string; vendedores: { nombre: string } | { nombre: string }[] | null }[]
-        setEquipo(rows.map((r) => {
-          const v = Array.isArray(r.vendedores) ? r.vendedores[0] : r.vendedores
-          return { codigo: r.codigo, nombre: v?.nombre ?? r.codigo }
-        }))
-      })
-  }, [esAdmin])
+  // Admin: cómo va la tanda de cada uno hoy. Si su propio código no prospecta, arranca por el primero del equipo.
+  const cargarEquipo = useCallback(async () => {
+    const { data } = await supabase.rpc('tanda_resumen')
+    const rows = ((data ?? []) as { vendedor: string; nombre: string; llamadas: number; whatsapp: number; hechas: number; omitidas: number }[])
+      .map((r) => ({ codigo: r.vendedor, nombre: r.nombre, llamadas: r.llamadas, whatsapp: r.whatsapp, hechas: r.hechas, omitidas: r.omitidas }))
+    setEquipo(rows)
+    setQuien((q) => (rows.some((r) => r.codigo === q) || !rows.length ? q : rows[0].codigo))
+  }, [])
+
+  useEffect(() => { if (esAdmin) void cargarEquipo() }, [esAdmin, cargarEquipo])
 
   const avanzar = useCallback(async (a: Accion, resultado: 'enviado' | 'omitido') => {
     setGuardando(true)
     const { error } = await supabase.rpc('tanda_marcar', { p_id: a.id, p_resultado: resultado })
     setGuardando(false)
     if (error) { toast('No se pudo registrar: ' + error.message, 'error'); return }
-    setAcciones((xs) => xs.slice(1))
-    if (resultado === 'enviado') { setHechas((n) => n + 1); setUltima(a) } else setUltima(null)
+    setAcciones((xs) => xs.filter((x) => x.id !== a.id))
+    if (resultado === 'enviado') {
+      setHechasPor((h) => ({ ...h, [vistaDe(a)]: h[vistaDe(a)] + 1 }))
+      setUltima(a)
+    } else setUltima(null)
   }, [toast])
 
   // Quién firma el mensaje: el que está trabajando la tanda, no siempre el que mira.
@@ -317,7 +333,8 @@ export default function MiTanda() {
     const { error } = await supabase.rpc('tanda_marcar', { p_id: ultima.id, p_resultado: 'pendiente' })
     if (error) { toast('No se pudo deshacer', 'error'); return }
     setAcciones((xs) => [ultima, ...xs])
-    setHechas((n) => Math.max(0, n - 1))
+    setHechasPor((h) => ({ ...h, [vistaDe(ultima)]: Math.max(0, h[vistaDe(ultima)] - 1) }))
+    setVista(vistaDe(ultima))
     setUltima(null)
   }
 
@@ -346,19 +363,43 @@ export default function MiTanda() {
 
   return (
     <div className="max-w-[600px] mx-auto px-4 py-8">
-      {/* Progreso — lo único que hay arriba */}
+      {/* Admin: la tanda de hoy de cada vendedor y prospectador. Tocás uno y ves la suya. */}
+      {esAdmin && equipo.length > 0 && (
+        <div className="mb-6">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-faint mb-2">Tandas de hoy del equipo</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {equipo.map((v) => (
+              <button key={v.codigo} onClick={() => { setHechas(0); setUltima(null); setQuien(v.codigo) }}
+                className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                  v.codigo === quien ? 'border-brand bg-black/[0.03]' : 'border-black/10 bg-white hover:bg-black/[0.02]'}`}>
+                <p className="text-[13px] font-medium truncate">{v.nombre}</p>
+                <p className="text-[11px] text-faint tabular-nums mt-0.5">
+                  {v.llamadas} llamadas · {v.whatsapp} WhatsApp · {v.hechas} hechas{v.omitidas ? ` · ${v.omitidas} salteadas` : ''}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Dos tandas: llamadas y WhatsApp */}
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-black/[0.04] p-1 mb-5">
+        {([['llamada', 'Llamadas', nLlamadas, Phone], ['ws', 'WhatsApp', nWs, MessageCircle]] as const).map(([k, label, n, Icono]) => (
+          <button key={k} onClick={() => { setVista(k); setUltima(null) }}
+            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+              vista === k ? 'bg-white text-ink font-medium shadow-sm' : 'text-muted hover:text-ink'}`}>
+            <Icono size={14} /> {label}
+            <span className="tabular-nums text-xs text-faint">{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Progreso */}
       <div className="flex items-center justify-between gap-4 mb-3">
         <p className="text-sm text-muted tabular-nums">
           {total === 0 ? 'Sin acciones' : <><span className="text-ink font-medium">{hechas}</span> de {total} hechas</>}
         </p>
         <div className="flex items-center gap-2">
-          {esAdmin && equipo.length > 0 && (
-            <select value={quien} onChange={(e) => { setHechas(0); setUltima(null); setQuien(e.target.value) }}
-              className="rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs text-muted">
-              {equipo.map((v) => <option key={v.codigo} value={v.codigo}>{v.nombre}</option>)}
-            </select>
-          )}
-          <button onClick={() => { setHechas(0); setUltima(null); void cargar(quien) }}
+          <button onClick={() => { setHechas(0); setUltima(null); void cargar(quien); if (esAdmin) void cargarEquipo() }}
             className="rounded-md p-1.5 text-faint hover:bg-black/5 transition-colors" title="Actualizar">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -373,7 +414,16 @@ export default function MiTanda() {
       {!loading && !actual && (
         <div className="text-center py-16">
           <p className="text-[32px] mb-4">{hechas > 0 ? '✦' : '—'}</p>
-          <p className="text-xl font-medium tracking-tight">{hechas > 0 ? 'Terminaste por hoy' : 'No hay acciones para hoy'}</p>
+          <p className="text-xl font-medium tracking-tight">
+            {vista === 'llamada' ? (hechas > 0 ? 'Terminaste las llamadas' : 'No hay llamadas para hoy')
+                                 : (hechas > 0 ? 'Terminaste por hoy' : 'No hay mensajes para hoy')}
+          </p>
+          {(vista === 'llamada' ? nWs : nLlamadas) > 0 && (
+            <button onClick={() => setVista(vista === 'llamada' ? 'ws' : 'llamada')}
+              className="mt-4 inline-flex items-center gap-2 rounded-md bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-ink transition-colors">
+              Seguir con {vista === 'llamada' ? `WhatsApp (${nWs})` : `llamadas (${nLlamadas})`}
+            </button>
+          )}
           <p className="text-sm text-muted mt-2">
             {hechas > 0 ? `${hechas} contacto${hechas !== 1 ? 's' : ''} trabajado${hechas !== 1 ? 's' : ''}. Mañana a las 7 está la próxima tanda.`
                         : 'La tanda se arma de lunes a viernes a las 7 de la mañana.'}
