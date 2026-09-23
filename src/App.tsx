@@ -31,6 +31,7 @@ import AdminActividad from './modules/actividad/AdminActividad'
 import AdminMarketing from './modules/actividad/AdminMarketing'
 
 import NuevoPedido from './modules/pedidos/NuevoPedido'
+import Escanear from './modules/pedidos/Escanear'
 import Pedidos from './modules/pedidos/Pedidos'
 import Devoluciones from './modules/pedidos/Devoluciones'
 import Envios from './modules/envios/Envios'
@@ -573,6 +574,7 @@ function Layout() {
               <Route path="/resultados" element={<MisResultados />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
+              <Route path="/pedidos/escanear" element={<Escanear />} />
               <Route path="/envios" element={<Envios />} />
               <Route path="/gestion-clientes" element={<GestionClientes />} />
             </>

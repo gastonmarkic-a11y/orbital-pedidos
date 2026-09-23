@@ -487,6 +487,11 @@ export default function Pedidos() {
         <h2 className="text-base font-semibold">{titulo}</h2>
         <div className="flex items-center gap-3">
           {(esVendedor || esAdmin) && (
+            <Link to="/pedidos/escanear" className="text-xs font-semibold border border-emerald-600 text-emerald-700 rounded-lg px-3 py-1.5">
+              📷 Escanear
+            </Link>
+          )}
+          {(esVendedor || esAdmin) && (
             <Link to="/pedidos/nuevo" className="text-xs font-semibold bg-emerald-600 text-white rounded-lg px-3 py-1.5">
               + Nuevo Pedido
             </Link>
