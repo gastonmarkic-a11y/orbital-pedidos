@@ -4,7 +4,7 @@ import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio, clienteCorto } from '../../lib/format'
 import { addDias, diasDesde, formatFecha, parsePedidoFecha } from '../../lib/dates'
 import { fetchPaged } from '../../lib/fetchAll'
-import { estadoLabel, ESTADO_COLORS, importeDe, parseFP } from './calc'
+import { estadoLabel, ESTADO_COLORS, esPedidoShopify, importeDe, parseFP } from './calc'
 
 const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
 const ESTADOS_ORDEN = ['pendiente', 'en_preparacion', 'observado', 'listo', 'facturado', 'listo_despachar', 'despachado']
@@ -46,12 +46,15 @@ export default function DashboardPedidos() {
   }
 
   const imp = (l: Pedido) => importeDe(l, stock)
-  const facturadoMesActual = pedidosMesActual.filter((l) => FACTURABLES.includes(l.estado ?? '')).reduce((a, l) => a + imp(l), 0)
-  const facturadoMesAnterior = pedidosMesAnterior.filter((l) => FACTURABLES.includes(l.estado ?? '')).reduce((a, l) => a + imp(l), 0)
+  // B2B = pedidos facturables que NO son de la tienda (888888/9 duplican lo que ya trae Shopify).
+  const esB2BFact = (l: Pedido) => FACTURABLES.includes(l.estado ?? '') && !esPedidoShopify(l)
+  const facturadoMesActual = pedidosMesActual.filter(esB2BFact).reduce((a, l) => a + imp(l), 0)
+  const facturadoMesAnterior = pedidosMesAnterior.filter(esB2BFact).reduce((a, l) => a + imp(l), 0)
   const facturadosCount = pedidosMesActual.filter((l) => FACTURABLES.includes(l.estado ?? '')).length
+  const facturadosB2BCount = pedidosMesActual.filter(esB2BFact).length
   const observadosMes = pedidosMesActual.filter((l) => l.estado === 'observado').length
   const tasaFacturacion = pedidosMesActual.length > 0 ? Math.round((facturadosCount / pedidosMesActual.length) * 100) : 0
-  const ticketProm = facturadosCount > 0 ? Math.round(facturadoMesActual / facturadosCount) : 0
+  const ticketProm = facturadosB2BCount > 0 ? Math.round(facturadoMesActual / facturadosB2BCount) : 0
   const pctObservado = pedidosMesActual.length > 0 ? Math.round((observadosMes / pedidosMesActual.length) * 100) : 0
 
   // Venta minorista (Shopify B2C) del mes → para que el operativo cuadre con Ventas.
@@ -70,19 +73,19 @@ export default function DashboardPedidos() {
 
   // Ranking vendedores
   const vendMap: Record<string, { pedidos: number; facturado: number; observados: number }> = {}
+  // Todas las operaciones: la suma de las barras = Facturado este mes.
   for (const l of pedidosMesActual) {
-    const v = l.vendedor || '—'
+    if (esPedidoShopify(l)) continue // la tienda se toma de Shopify (abajo)
+    const raw = l.vendedor || ''
+    const v = raw === 'Gaston' || raw === 'Gastón' ? 'Gastón (directo)' : raw || 'Sin vendedor'
     if (!vendMap[v]) vendMap[v] = { pedidos: 0, facturado: 0, observados: 0 }
     vendMap[v].pedidos++
     if (FACTURABLES.includes(l.estado ?? '')) vendMap[v].facturado += imp(l)
     if (l.estado === 'observado') vendMap[v].observados++
   }
-  // Tienda = venta minorista Shopify del mes (no viene de pedidos)
+  // Tienda = venta minorista Shopify del mes
   vendMap['Tienda'] = { pedidos: 0, facturado: b2cActual, observados: 0 }
-  // Gastón es admin, no vendedor: no se lista en el ranking de facturación.
-  const NO_VENDEDORES = new Set(['Gaston', 'Gastón', '—', ''])
   const vendArr = Object.entries(vendMap)
-    .filter(([nombre]) => !NO_VENDEDORES.has(nombre))
     .map(([nombre, d]) => ({ nombre, ...d }))
     .sort((a, b) => b.facturado - a.facturado)
   const maxFact = Math.max(...vendArr.map((v) => v.facturado), 1)
@@ -220,7 +223,7 @@ export default function DashboardPedidos() {
         </div>
         {vendArr.length > 0 && (
           <div className="mt-4 space-y-1.5">
-            <p className="text-xs font-semibold text-white/70">Facturación por vendedor (este mes)</p>
+            <p className="text-xs font-semibold text-white/70">Facturación por vendedor / canal (este mes — todas las operaciones)</p>
             {vendArr.map((v) => (
               <div key={v.nombre} className="flex items-center gap-2 text-xs">
                 <span className="w-20 truncate">{v.nombre}</span>
