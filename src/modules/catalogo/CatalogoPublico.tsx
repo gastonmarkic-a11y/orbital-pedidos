@@ -1078,7 +1078,7 @@ export default function CatalogoPublico() {
             <div className="hidden sm:flex items-center gap-2">{accesosHeader}</div>
             <InstalarApp nombre="Catálogo Orbital" que="el catálogo" bajada="Queda con el ícono de Orbital y entra directo a tu catálogo, sin clave." mono />
             <button onClick={() => setCarritoOpen(true)} className="relative flex items-center gap-1.5 text-sm bg-[#0004FF] text-white rounded-full px-4 py-2 font-medium">
-              <ShoppingCart size={16} /> <span className="hidden sm:inline">Pedido</span>
+              <ShoppingCart size={16} /> <span className="hidden sm:inline">{cartCount > 0 ? 'Terminar pedido →' : 'Pedido'}</span>
               {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{cartCount}</span>}
             </button>
           </div>
@@ -1184,14 +1184,24 @@ export default function CatalogoPublico() {
 
       {/* Ayuda al cliente: FAQ automática + WhatsApp del vendedor asignado */}
       {!carritoOpen && !sel && !quick && !infoGrupo && (
-        <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (barraFija ? "bottom-44 md:bottom-5" : "bottom-20 md:bottom-5") : (barraFija ? "bottom-28 md:bottom-5" : "bottom-5")} />
+        <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (barraFija ? "bottom-52 md:bottom-5" : "bottom-28 md:bottom-5") : (barraFija ? "bottom-28 md:bottom-5" : "bottom-5")} />
       )}
 
       {/* Barra flotante de pedido en mobile */}
       {cartCount > 0 && !carritoOpen && !sel && (
-        <button onClick={() => setCarritoOpen(true)} className={`md:hidden fixed ${barraFija ? 'bottom-28' : 'bottom-4'} inset-x-4 bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg z-20`}>
-          <span className="text-sm font-medium">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</span>
-          <span className="text-sm font-bold">{sinPrecios ? 'Ver pedido →' : `${kAr(cartTotal)} · Ver pedido →`}</span>
+        <div className={`md:hidden fixed ${barraFija ? 'bottom-28' : 'bottom-4'} inset-x-4 z-20`}>
+          <p className="text-[11px] text-center font-semibold text-[#0004FF] bg-white/95 rounded-full py-1 mb-1.5 shadow-sm">Cuando termines de elegir, tocá acá para enviarlo 👇</p>
+          <button onClick={() => setCarritoOpen(true)} className="w-full bg-[#0004FF] text-white rounded-xl py-3 px-4 flex items-center justify-between shadow-lg animate-[pulse_1.5s_ease-in-out_3]">
+            <span className="text-sm font-medium">{cartCount} u.{!sinPrecios && ` · ${kAr(cartTotal)}`}</span>
+            <span className="text-sm font-bold">Terminar pedido →</span>
+          </button>
+        </div>
+      )}
+      {/* Desktop: la misma barra, abajo al centro */}
+      {cartCount > 0 && !carritoOpen && !sel && (
+        <button onClick={() => setCarritoOpen(true)} className={`hidden md:flex fixed ${barraFija ? 'bottom-28' : 'bottom-5'} left-1/2 -translate-x-1/2 bg-[#0004FF] text-white rounded-full py-3 px-6 items-center gap-3 shadow-lg z-20`}>
+          <span className="text-sm">{cartCount} u. elegidas{!sinPrecios && ` · ${kAr(cartTotal)}`}</span>
+          <span className="text-sm font-bold">Terminar y enviar pedido →</span>
         </button>
       )}
     </div>
@@ -1650,7 +1660,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
     if (error) { setErr('No se pudo enviar. Revisá la conexión.'); return }
     const r = data as { ok: boolean; need?: string; error?: string; precarga_id?: number; cliente?: string; identificado?: boolean }
     if (!r.ok) {
-      if (r.need === 'razon') { setPedirRazon(true); setErr('No encontramos tu óptica. Ingresá la razón social para registrar el pedido.') }
+      if (r.need === 'razon') { setPedirRazon(true); setFase('datos'); setErr('No encontramos tu óptica. Ingresá la razón social para registrar el pedido.') }
       else setErr(r.error || 'No se pudo enviar.')
       return
     }
@@ -1731,7 +1741,19 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
                   sinCargoUnidades={sinCargoUnidades} sinCargoImporte={sinCargoImp} contado={contado} onContado={setContado} />
               )}
               {!packCalc && !bonoPct && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
-              <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
+              {/* Óptica identificada por el link: se envía de un toque, sin formulario */}
+              {identFijo ? (
+                <>
+                  <p className="text-[11px] text-neutral-500 mb-2">Pedido para <b className="text-neutral-800">{sinPrecios ? empresaDe(acceso?.label) || identFijo : acceso?.label || identFijo}</b></p>
+                  {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+                  <button onClick={enviar} disabled={enviando} className="w-full bg-[#0004FF] text-white rounded-xl py-3.5 text-sm font-bold disabled:opacity-50">
+                    {enviando ? 'Enviando…' : `Enviar pedido (${unidades} u.)`}
+                  </button>
+                  <button onClick={() => setFase('datos')} className="w-full text-[12px] text-neutral-500 underline mt-2">Agregar una observación</button>
+                </>
+              ) : (
+                <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
+              )}
             </div>
           </>
         ) : (
