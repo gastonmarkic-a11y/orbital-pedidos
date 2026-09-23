@@ -11,6 +11,7 @@ const SB = 'https://towcgvphxeqilpdnboki.supabase.co'
 const K = 'sb_publishable_YhNbcs63Zx6na8pfEsQgCw_C3iKSk-A'
 const ORIGENES = ['https://www.instagram.com', 'https://instagram.com']
 let cargadas = 0
+try { if (window.parent !== window) window.parent.postMessage({ igCarga: 'listo' }, '*') } catch (e) {}
 
 window.addEventListener('message', async (ev) => {
   if (!ORIGENES.includes(ev.origin)) return
@@ -18,12 +19,15 @@ window.addEventListener('message', async (ev) => {
   if (!clave || !Array.isArray(datos)) return
   for (let i = 0; i < datos.length; i += 50) {
     const parte = datos.slice(i, i + 50)
-    const r = await fetch(SB + '/rest/v1/rpc/ig_infl_cargar', {
-      method: 'POST',
-      headers: { apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_clave: clave, p_datos: parte }),
-    })
-    if (!r.ok) { ev.source.postMessage({ igCarga: 'error', estado: r.status, cargadas }, ev.origin); return }
+    let r
+    try {
+      r = await fetch(SB + '/rest/v1/rpc/ig_infl_cargar', {
+        method: 'POST',
+        headers: { apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_clave: clave, p_datos: parte }),
+      })
+    } catch (e) { ev.source.postMessage({ igCarga: 'error', detalle: String(e), cargadas }, ev.origin); return }
+    if (!r.ok) { ev.source.postMessage({ igCarga: 'error', estado: r.status, detalle: (await r.text()).slice(0, 200), cargadas }, ev.origin); return }
     cargadas += parte.length
   }
   document.getElementById('e').textContent = 'Cargadas ' + cargadas
