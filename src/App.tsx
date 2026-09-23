@@ -210,42 +210,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       ],
       menu: [],
     }
-  // Admin: accesos directos a lo que maneja (catálogo, red, consignas, stock, cobranzas,
-  // producción, finanzas). Agenda, tanda, seguimiento, prospección, devoluciones, postventa
-  // y accesos salen del menú (las rutas siguen vivas). Guiones y Conversaciones, en Gestión.
-  if (rol === 'admin')
-    return {
-      principales: [
-        { to: '/panel-resultados', label: 'Resultados' },
-        { to: '/cartera', label: 'Cartera' },
-        { to: '/pedidos', label: 'Pedidos' },
-        { to: '/mi-catalogo', label: 'Catálogo' },
-      ],
-      secundarios: [
-        { to: '/gestion-clientes', label: 'Mis clientes' },
-        { to: '/resultados', label: 'Asistente' },
-        { to: '/envios-ecom', label: 'Envíos' },
-        { to: '/marketing', label: 'Marketing' },
-        { to: '/red-opticas', label: 'Red de ópticas' },
-        { to: '/pedidos/stock', label: 'Stock' },
-        { to: '/consignas', label: 'Consignas' },
-        { to: '/pedidos/cobranzas', label: 'Cobranzas' },
-        { to: '/produccion', label: 'Producción' },
-        { to: '/finanzas', label: 'Finanzas' },
-      ],
-      menu: [
-        { to: '/guiones', label: 'Guiones' },
-        { to: '/conversaciones', label: 'Conversaciones (bot)' },
-        { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
-        { to: '/pedidos/dashboard', label: 'Dashboard' },
-        { to: '/pedidos/clientes', label: 'Clientes' },
-        { to: '/tienda', label: 'Tienda Shopify' },
-        { to: '/mercadolibre/precios', label: 'Precios Mercado Libre' },
-        { to: '/publicidad', label: 'Publicidad / ROAS' },
-        { to: '/actividad-admin', label: 'Equipo' },
-        { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
-      ],
-    }
   // Envíos ya no está en el menú: se abre como popup desde Cartera (la ruta sigue viva
   // por si hace falta volver a la vista completa con la cola del día).
   const principales: NavItem[] = [
@@ -267,7 +231,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // La tanda diaria la trabaja todo el que prospecta: es su primera pantalla del día,
   // y al lado el resultado de lo que ya mandó (quién abrió el catálogo o la propuesta).
   // Van juntas y arriba: en secundarios quedaban dentro de "Más" y no las encontraban.
-  if (rol === 'vendedor')
+  if (['vendedor', 'admin'].includes(rol))
     principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' }, { to: '/seguimiento', label: 'Seguimiento' })
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
@@ -277,6 +241,28 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
+  if (rol === 'admin') {
+    secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' })
+    menu.push(
+      { to: '/finanzas', label: 'Finanzas (tesorería)' },
+      { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
+      { to: '/pedidos/dashboard', label: 'Dashboard' },
+      { to: '/pedidos/cobranzas', label: 'Cobranzas' },
+      { to: '/pedidos/clientes', label: 'Clientes' },
+      { to: '/produccion', label: 'Producción (órdenes y costos)' },
+      { to: '/tienda', label: 'Tienda Shopify' },
+      { to: '/mercadolibre/precios', label: 'Precios Mercado Libre' },
+      { to: '/publicidad', label: 'Publicidad / ROAS' },
+      { to: '/conversaciones', label: 'Conversaciones (bot)' },
+      { to: '/envios-ecom', label: 'Envíos' },
+      { to: '/actividad-admin', label: 'Equipo' },
+      { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
+      { to: '/prospeccion-social', label: 'Cola de prospección social' },
+      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' },
+      { to: '/postventa', label: 'Postventa' },
+      { to: '/accesos', label: 'Accesos y usuarios' }
+    )
+  }
   return { principales, secundarios, menu }
 }
 
@@ -289,7 +275,6 @@ function homeFor(rol: Rol): string {
   if (rol === 'revendedor') return '/cartera'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   if (rol === 'usa') return '/usa-pedidos'
-  if (rol === 'admin') return '/panel-resultados'
   return '/hoy'
 }
 
@@ -591,7 +576,7 @@ function Layout() {
             </>
           )}
           {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
-          {(rol === 'revendedor' || rol === 'vendedor' || rol === 'postventa' || rol === 'admin') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
+          {(rol === 'revendedor' || rol === 'vendedor' || rol === 'postventa') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
           {(rol === 'admin' || rol === 'postventa') && <Route path="/postventa" element={<Postventa />} />}
           {rol === 'revendedor' && (
             <>
