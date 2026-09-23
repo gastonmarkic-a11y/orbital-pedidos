@@ -28,6 +28,9 @@ function repartirCuotas(dias: number[]): Cuota[] {
   return cuotas
 }
 
+// 2026-10-13 → 13/10
+const fechaCorta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
 export default function NuevoPedido() {
   const { vendedor, codigoEfectivo } = useAuth()
   const toast = useToast()
@@ -54,6 +57,8 @@ export default function NuevoPedido() {
   )
   // Unidades en producción por SKU (stock_ingresos pendientes de que Depósito confirme)
   const [proyectado, setProyectado] = useState<Record<string, number>>({})
+  // Fecha estimada de llegada del proyectado por SKU (la más próxima de sus órdenes de producción)
+  const [llegada, setLlegada] = useState<Record<string, string>>({})
   const [busquedaCliente, setBusquedaCliente] = useState('')
   const [sugerencias, setSugerencias] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
@@ -112,9 +117,13 @@ export default function NuevoPedido() {
       modelo: string | null
       descripcion: string | null
       precio: number | null
+      fecha_estimada: string | null
     }>(() =>
-      supabase.from('stock_ingresos').select('codigo, cantidad, modelo, descripcion, precio').eq('estado', 'proyectado').order('id')
+      supabase.from('stock_ingresos').select('codigo, cantidad, modelo, descripcion, precio, fecha_estimada').eq('estado', 'proyectado').order('id')
     )
+    const lleg: Record<string, string> = {}
+    for (const i of ing) if (i.fecha_estimada && (!lleg[i.codigo] || i.fecha_estimada < lleg[i.codigo])) lleg[i.codigo] = i.fecha_estimada
+    setLlegada(lleg)
     // Lo que se puede pedir sale de la base (stock_libre): físico + proyectado − pendientes de otros
     // pedidos − precargas abiertas. Acá "proyectado" = libre − físico (puede ser negativo si lo físico
     // ya está comprometido con pendientes).
@@ -1188,6 +1197,7 @@ export default function NuevoPedido() {
                                     title="En producción — se entrega cuando ingrese a depósito"
                                   >
                                     🏭 {proy}
+                                    {llegada[p.codigo] && <span className="font-normal"> · llega {fechaCorta(llegada[p.codigo])}</span>}
                                   </span>
                                 )}
                                 <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${qtyClass(Math.max(0, disp))}`}>
@@ -1287,7 +1297,8 @@ export default function NuevoPedido() {
                       )}
                       {pendienteDe(k) > 0 && !falta && (
                         <span className="block text-[10px] text-violet-700 font-medium">
-                          🏭 {pendienteDe(k)} u. contra producción (se entregan cuando ingresen)
+                          🏭 {pendienteDe(k)} u. contra producción (se entregan cuando ingresen
+                          {llegada[k] ? `, estimado ${fechaCorta(llegada[k])}` : ''})
                         </span>
                       )}
                       {p.precio_preventa != null && (

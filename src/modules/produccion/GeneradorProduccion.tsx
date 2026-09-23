@@ -95,6 +95,16 @@ export default function GeneradorProduccion() {
     setOverrides((prev) => ({ ...prev, [familia]: { ...(prev[familia] ?? {}), [sku]: Math.max(0, Math.floor(val || 0)) } }))
   // Foto del proyectado de cristales al abrir (lo generado en esta sesión se descuenta aparte)
   const [cristales, setCristales] = useState<Record<number, CristalResumen>>({})
+  // Vista: lo que propone el sistema o todos los SKUs habilitados (con cantidad a mano)
+  const [vista, setVista] = useState<'propuesta' | 'todos'>('propuesta')
+  const [busca, setBusca] = useState('')
+  const [manual, setManual] = useState<Record<string, number>>({}) // sku -> cantidad cargada en "Todos"
+  const [recarga, setRecarga] = useState(0)
+  // Alta de SKU / modelo nuevo
+  const [altaOpen, setAltaOpen] = useState(false)
+  const ALTA_VACIA = { modelo: '', codigo: '', colorArmazon: '', colorCristal: '', tipo: 'sol', clasificacion: '', tratamiento: '', precio: '', cristal_id: '' }
+  const [alta, setAlta] = useState(ALTA_VACIA)
+  const [altaSaving, setAltaSaving] = useState(false)
 
   useEffect(() => {
     async function cargar() {
@@ -166,7 +176,7 @@ export default function GeneradorProduccion() {
       setLoading(false)
     }
     cargar()
-  }, [])
+  }, [recarga])
 
   const propuestas: Propuesta[] = useMemo(() => {
     const grupos = new Map<string, SkuRow[]>()
@@ -259,16 +269,15 @@ export default function GeneradorProduccion() {
     return { filas, sinCristal }
   }
 
-  async function generar(p: Propuesta) {
-    const itemsAjust = p.items
-      .map((i) => ({ ...i, cantidad: cantEfectiva(p.familia, i) }))
-      .filter((i) => i.cantidad > 0)
+  // itemsDirectos: cantidades ya resueltas (vista "Todos"); si no, las de la propuesta con sus ajustes
+  async function generar(p: Propuesta, itemsDirectos?: ItemProp[], marca = p.familia) {
+    const itemsAjust = (itemsDirectos ?? p.items.map((i) => ({ ...i, cantidad: cantEfectiva(p.familia, i) }))).filter((i) => i.cantidad > 0)
     const loteTotal = itemsAjust.reduce((a, i) => a + i.cantidad, 0)
     if (loteTotal <= 0) {
       toast('La orden quedó en 0 unidades — ajustá las cantidades', 'error')
       return
     }
-    const faltantes = necesidadCristales(p).filas.filter((f) => f.queda < 0)
+    const faltantes = itemsDirectos ? [] : necesidadCristales(p).filas.filter((f) => f.queda < 0)
     if (
       faltantes.length &&
       !window.confirm(
@@ -276,7 +285,7 @@ export default function GeneradorProduccion() {
       )
     )
       return
-    setGenerando(p.familia)
+    setGenerando(marca)
     const { data: ped, error } = await supabase
       .from('pedidos_produccion')
       .insert({ familia_armazon: p.familia, estado: 'pendiente', lote_total: loteTotal, creado_por: codigoEfectivo })
@@ -303,8 +312,124 @@ export default function GeneradorProduccion() {
       toast('Orden creada pero falló el detalle: ' + e2.message, 'error')
       return
     }
-    setGeneradas((prev) => new Set(prev).add(p.familia))
-    toast(`✓ Orden de producción generada — ${p.titulo} (${loteTotal} u.)`, 'success')
+    setGeneradas((prev) => new Set(prev).add(marca))
+    toast(`✓ Orden de producción generada — ${p.titulo} (${loteTotal} u.) · queda en Órdenes para aceptar`, 'success')
+  }
+
+  // ---- Vista "Todos los SKUs": agrupados por modelo, con lo que propone el sistema y cantidad a mano ----
+  const propuestoDe = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const p of propuestas) for (const i of p.items) m[i.sku] = (m[i.sku] ?? 0) + cantEfectiva(p.familia, i)
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propuestas, overrides])
+  const cantManual = (sku: string) => manual[sku] ?? propuestoDe[sku] ?? 0
+
+  const gruposTodos = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    const g = new Map<string, SkuRow[]>()
+    for (const s of skus) {
+      if (q && !`${s.modelo} ${s.descripcion} ${s.sku}`.toLowerCase().includes(q)) continue
+      const k = (s.modelo || s.armazon_id).toUpperCase()
+      if (!g.has(k)) g.set(k, [])
+      g.get(k)!.push(s)
+    }
+    return [...g.entries()]
+      .map(([modelo, rows]) => ({ modelo, rows: rows.sort((a, b) => a.dias - b.dias) }))
+      .sort((a, b) => a.modelo.localeCompare(b.modelo))
+  }, [skus, busca])
+
+  function generarManual(modelo: string, rows: SkuRow[]) {
+    const items: ItemProp[] = rows.map((r) => ({
+      sku: r.sku,
+      modelo: r.modelo,
+      descripcion: r.descripcion,
+      stock: r.stock,
+      enCamino: r.enCamino,
+      dias: r.dias,
+      deficit: r.deficit,
+      cantidad: cantManual(r.sku),
+      topeCristal: false,
+      cristal_id: r.cristal_id,
+    }))
+    const total = items.reduce((a, i) => a + i.cantidad, 0)
+    const p: Propuesta = { familia: modelo, titulo: modelo, loteTotal: total, items, sumDeficits: 0 }
+    generar(p, items, `todos|${modelo}`)
+  }
+
+  // ---- Alta de SKU / modelo nuevo: crea el artículo en stock (en 0) y lo habilita para producción ----
+  const modelosExistentes = useMemo(() => [...new Set(skus.map((s) => (s.modelo || '').toUpperCase()))].filter(Boolean).sort(), [skus])
+
+  async function prellenarModelo(modelo: string) {
+    const m = modelo.trim().toUpperCase()
+    setAlta((a) => ({ ...a, modelo }))
+    if (!m) return
+    const { data } = await supabase.from('stock').select('codigo, tipo, clasificacion, tratamiento, precio').eq('modelo', m).limit(50)
+    const rows = (data as { codigo: string; tipo: string | null; clasificacion: string | null; tratamiento: string | null; precio: number | null }[]) ?? []
+    if (!rows.length) return
+    // prefijo común de los códigos del modelo, como punto de partida del código nuevo
+    let pref = rows[0].codigo
+    for (const r of rows) while (pref && !r.codigo.startsWith(pref)) pref = pref.slice(0, -1)
+    const r0 = rows[0]
+    setAlta((a) => ({
+      ...a,
+      codigo: a.codigo || pref,
+      tipo: r0.tipo || a.tipo,
+      clasificacion: a.clasificacion || r0.clasificacion || '',
+      tratamiento: a.tratamiento || r0.tratamiento || '',
+      precio: a.precio || (r0.precio ? String(r0.precio) : ''),
+    }))
+  }
+
+  async function guardarAlta() {
+    const modelo = alta.modelo.trim().toUpperCase()
+    const codigo = alta.codigo.trim().toUpperCase()
+    if (!modelo || !codigo || !alta.colorArmazon.trim()) return toast('Completá modelo, código y color de armazón', 'error')
+    setAltaSaving(true)
+    const descripcion = [alta.colorArmazon.trim(), alta.colorCristal.trim()].filter(Boolean).join(' / ')
+    const { data: existe } = await supabase.from('stock').select('codigo, modelo').eq('codigo', codigo).maybeSingle()
+    if (existe) {
+      const ex = existe as { codigo: string; modelo: string }
+      if (!window.confirm(`El código ${codigo} ya existe (${ex.modelo}). ¿Solo habilitarlo para producción?`)) {
+        setAltaSaving(false)
+        return
+      }
+    } else {
+      const { error } = await supabase.from('stock').insert({
+        codigo,
+        modelo,
+        descripcion,
+        cantidad: 0,
+        precio: Number(alta.precio) || 0,
+        tipo: alta.tipo || null,
+        clasificacion: alta.clasificacion || null,
+        tratamiento: alta.tratamiento || null,
+      })
+      if (error) {
+        setAltaSaving(false)
+        return toast('No se pudo crear el artículo: ' + error.message, 'error')
+      }
+    }
+    const { error: e2 } = await supabase.from('skus_habilitados_produccion').upsert(
+      {
+        sku: codigo,
+        armazon_id: existe ? (existe as { modelo: string }).modelo.toUpperCase() : modelo,
+        color_armazon: alta.colorArmazon.trim(),
+        color_cristal: alta.colorCristal.trim() || null,
+        activo: true,
+        cristal_id: alta.cristal_id ? Number(alta.cristal_id) : null,
+        cristal_match: alta.cristal_id ? 'manual' : null,
+      },
+      { onConflict: 'sku' }
+    )
+    setAltaSaving(false)
+    if (e2) return toast('Artículo creado pero no se pudo habilitar: ' + e2.message, 'error')
+    toast(`✓ ${modelo} · ${descripcion} (${codigo}) listo para producir — acordate de darlo de alta en Tango`, 'success')
+    setAlta(ALTA_VACIA)
+    setAltaOpen(false)
+    setVista('todos')
+    setBusca(modelo)
+    setRecarga((n) => n + 1)
   }
 
   if (loading) return <p className="text-sm text-muted p-4">Analizando demanda, stock y lo que viene en camino…</p>
@@ -329,7 +454,225 @@ export default function GeneradorProduccion() {
         </label>
       </div>
 
-      {propuestas.length === 0 ? (
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1 bg-black/5 rounded-lg p-0.5 w-fit">
+          {(['propuesta', 'todos'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setVista(v)}
+              className={`text-xs px-3 py-1 rounded-md font-medium ${vista === v ? 'bg-white shadow-sm' : 'text-muted'}`}
+            >
+              {v === 'propuesta' ? `Propone reponer (${propuestas.length})` : `Todos los SKUs (${skus.length})`}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setAltaOpen((o) => !o)} className="text-xs px-3 py-1.5 rounded-lg border border-black/10 font-medium">
+          {altaOpen ? 'Cerrar alta' : '+ Nuevo SKU / modelo'}
+        </button>
+      </div>
+
+      {altaOpen && (
+        <div className="bg-white rounded-xl border border-black/10 p-4 space-y-3">
+          <p className="text-sm font-semibold">+ Nuevo SKU / modelo para producir</p>
+          <p className="text-[11px] text-faint">
+            Si el modelo ya existe se completan tipo, precio y el comienzo del código. Se crea en stock en 0 (los vendedores lo ven recién cuando haya proyectado) y queda
+            habilitado para producción. Después hay que darlo de alta en Tango con el mismo código.
+          </p>
+          <datalist id="modelos-existentes">
+            {modelosExistentes.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <div className="grid sm:grid-cols-3 gap-2 text-xs">
+            <label className="text-muted">
+              Modelo (existente o nuevo)
+              <input
+                list="modelos-existentes"
+                value={alta.modelo}
+                onChange={(e) => setAlta((a) => ({ ...a, modelo: e.target.value }))}
+                onBlur={(e) => prellenarModelo(e.target.value)}
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm uppercase"
+              />
+            </label>
+            <label className="text-muted">
+              Color armazón
+              <input
+                value={alta.colorArmazon}
+                onChange={(e) => setAlta((a) => ({ ...a, colorArmazon: e.target.value }))}
+                placeholder="Negro Mate"
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-muted">
+              Color cristal
+              <input
+                value={alta.colorCristal}
+                onChange={(e) => setAlta((a) => ({ ...a, colorCristal: e.target.value }))}
+                placeholder="Gris Polarizado"
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-muted">
+              Código SKU
+              <input
+                value={alta.codigo}
+                onChange={(e) => setAlta((a) => ({ ...a, codigo: e.target.value }))}
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm font-mono uppercase"
+              />
+            </label>
+            <label className="text-muted">
+              Tipo
+              <select
+                value={alta.tipo}
+                onChange={(e) => setAlta((a) => ({ ...a, tipo: e.target.value }))}
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              >
+                <option value="sol">sol</option>
+                <option value="receta">receta</option>
+              </select>
+            </label>
+            <label className="text-muted">
+              Precio lista
+              <input
+                type="number"
+                value={alta.precio}
+                onChange={(e) => setAlta((a) => ({ ...a, precio: e.target.value }))}
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-muted">
+              Clasificación
+              <input
+                value={alta.clasificacion}
+                onChange={(e) => setAlta((a) => ({ ...a, clasificacion: e.target.value }))}
+                placeholder="urbano / deportivo"
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-muted">
+              Tratamiento
+              <input
+                value={alta.tratamiento}
+                onChange={(e) => setAlta((a) => ({ ...a, tratamiento: e.target.value }))}
+                placeholder="uv400 / polarizado / lentilla"
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-muted">
+              Cristal que usa
+              <select
+                value={alta.cristal_id}
+                onChange={(e) => setAlta((a) => ({ ...a, cristal_id: e.target.value }))}
+                className="block w-full mt-1 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              >
+                <option value="">— sin asignar —</option>
+                {Object.values(cristales)
+                  .sort((a, b) => cristalLabel(a).localeCompare(cristalLabel(b)))
+                  .map((c) => (
+                    <option key={c.cristal_id} value={c.cristal_id}>
+                      {cristalLabel(c)} ({ent.format(c.proyectado)})
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <button
+            onClick={guardarAlta}
+            disabled={altaSaving}
+            className="text-xs px-3 py-2 rounded-lg bg-brand text-white font-medium disabled:opacity-50"
+          >
+            {altaSaving ? 'Guardando…' : 'Crear y habilitar para producir'}
+          </button>
+        </div>
+      )}
+
+      {vista === 'todos' && (
+        <div className="space-y-3">
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar modelo, color o código…"
+            className="w-full sm:w-80 rounded-lg border border-black/10 px-3 py-2 text-sm bg-white"
+          />
+          <p className="text-[11px] text-faint">
+            Todos los SKUs habilitados. “Propone” es lo que sugiere el sistema; en “A producir” podés poner lo que quieras (arranca con lo propuesto) y generar la orden del modelo.
+          </p>
+          {gruposTodos.map(({ modelo, rows }) => {
+            const marca = `todos|${modelo}`
+            const generada = generadas.has(marca)
+            const total = rows.reduce((a, r) => a + cantManual(r.sku), 0)
+            return (
+              <div key={modelo} className={`bg-white rounded-xl border ${generada ? 'border-emerald-300' : 'border-black/10'}`}>
+                <div className="px-4 py-3 flex items-center justify-between gap-2 flex-wrap border-b border-black/5">
+                  <p className="text-sm font-semibold">
+                    {modelo} <span className="text-[11px] text-faint font-normal">· {rows.length} SKUs</span>
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-brandDark">{ent.format(total)} u.</span>
+                    {generada ? (
+                      <span className="text-xs bg-emerald-50 text-emerald-700 rounded-lg px-3 py-1.5 font-medium">✓ generada</span>
+                    ) : (
+                      <button
+                        onClick={() => generarManual(modelo, rows)}
+                        disabled={generando === marca || total <= 0}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white font-medium disabled:opacity-40 whitespace-nowrap"
+                      >
+                        {generando === marca ? 'Generando…' : 'Generar orden'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="px-4 py-2 overflow-x-auto">
+                  <table className="w-full text-[11px] min-w-[620px]">
+                    <thead className="text-faint uppercase">
+                      <tr>
+                        <th className="text-left font-medium pb-1">SKU / color</th>
+                        <th className="text-right font-medium pb-1">Stock</th>
+                        <th className="text-right font-medium pb-1">En camino</th>
+                        <th className="text-right font-medium pb-1">Cobertura</th>
+                        <th className="text-right font-medium pb-1">Propone</th>
+                        <th className="text-right font-medium pb-1">A producir</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.sku} className="border-t border-black/5">
+                          <td className="py-1">
+                            {r.descripcion} <span className="text-faint font-mono">· {r.sku}</span>
+                            {!r.cristal_id && <span className="block text-amber-600">🔬 sin cristal asociado</span>}
+                          </td>
+                          <td className="py-1 text-right">
+                            <span className={r.stock <= params.alarma_min ? 'text-red-600 font-semibold' : ''}>{r.stock}</span>
+                          </td>
+                          <td className="py-1 text-right text-muted">{r.enCamino ? ent.format(r.enCamino) : '—'}</td>
+                          <td className="py-1 text-right text-muted">{Number.isFinite(r.dias) ? `${ent.format(r.dias)}d` : '—'}</td>
+                          <td className="py-1 text-right text-muted">{propuestoDe[r.sku] ? ent.format(propuestoDe[r.sku]) : '—'}</td>
+                          <td className="py-1 text-right">
+                            {generada ? (
+                              <span className="font-bold">{ent.format(cantManual(r.sku))}</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                value={cantManual(r.sku)}
+                                onChange={(e) => setManual((m) => ({ ...m, [r.sku]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                                className="w-16 bg-white border border-black/10 rounded px-1.5 py-0.5 text-right text-[11px] font-bold text-ink"
+                              />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
+          {gruposTodos.length === 0 && <p className="text-sm text-faint text-center py-6">Nada coincide con la búsqueda.</p>}
+        </div>
+      )}
+
+      {vista !== 'propuesta' ? null : propuestas.length === 0 ? (
         <p className="text-sm text-faint text-center py-10">No hay familias con demanda sin cubrir para producir.</p>
       ) : (
         propuestas.map((p) => {

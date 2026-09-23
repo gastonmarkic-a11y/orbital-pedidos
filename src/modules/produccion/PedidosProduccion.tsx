@@ -55,6 +55,7 @@ export default function PedidosProduccion() {
   const [vista, setVista] = useState<'ordenes' | 'skus'>('ordenes')
   const [hechosEdit, setHechosEdit] = useState<Record<number, string>>({})
   const [fechaEdit, setFechaEdit] = useState<Record<number, string>>({})
+  const [sel, setSel] = useState<Set<number>>(new Set()) // órdenes marcadas para exportar
   const [loading, setLoading] = useState(true)
   const [fechas, setFechas] = useState<Record<number, string>>({})
   const [obs, setObs] = useState<Record<number, string>>({})
@@ -296,6 +297,49 @@ export default function PedidosProduccion() {
       return n
     })
 
+  // Excel de las órdenes activas (todas o las marcadas): detalle por SKU, resumen por orden y cristales
+  async function exportarExcel() {
+    const lista = sel.size ? activos.filter((p) => sel.has(p.id)) : activos
+    if (!lista.length) return
+    const XLSX = await import('xlsx')
+    const detalle = lista.flatMap((p) =>
+      itemsDe(p.id).map((i) => ({
+        Orden: p.id,
+        Modelo: (i.modelo || p.familia_armazon).toUpperCase(),
+        Entrega: p.fecha_entrega_estimada ?? '',
+        SKU: i.sku,
+        Color: i.descripcion ?? '',
+        Cristal: i.cristal_id ? cristalesLbl[i.cristal_id] ?? '' : 'SIN CRISTAL',
+        'A hacer': i.cantidad,
+        Hechas: i.producido ?? 0,
+        Faltan: Math.max(0, i.cantidad - (i.producido ?? 0)),
+      }))
+    )
+    const resumen = lista.map((p) => {
+      const av = estadoAvance(p)
+      return {
+        Orden: p.id,
+        Modelo: p.familia_armazon,
+        SKUs: itemsDe(p.id).length,
+        'A hacer': av.total,
+        Hechas: av.hechas,
+        'Avance %': av.pct,
+        Estado: av.txt,
+        Entrega: p.fecha_entrega_estimada ?? '',
+        'Entrega original': p.fecha_entrega_original ?? '',
+      }
+    })
+    const cri = new Map<string, number>()
+    for (const d of detalle) cri.set(d.Cristal, (cri.get(d.Cristal) ?? 0) + d['A hacer'])
+    const cristalesHoja = [...cri.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([Cristal, u]) => ({ Cristal, Unidades: u }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Detalle SKUs')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cristalesHoja), 'Cristales')
+    const hoy = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, sel.size ? `Ordenes_produccion_${lista.map((p) => p.id).join('-')}_${hoy}.xlsx` : `Ordenes_produccion_todas_${hoy}.xlsx`)
+  }
+
   const inputHechos = (i: Item) => (
     <input
       type="number"
@@ -414,17 +458,30 @@ export default function PedidosProduccion() {
             <p className="text-[11px] text-faint mb-2">
               Ordenadas por fecha de entrega. Abrí cada orden y cargá cuántas unidades de cada SKU ya están hechas: el semáforo compara el avance con el tiempo que pasó.
             </p>
-            <div className="flex gap-1 bg-black/5 rounded-lg p-0.5 w-fit mb-3">
-              {(['ordenes', 'skus'] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVista(v)}
-                  className={`text-xs px-3 py-1 rounded-md font-medium ${vista === v ? 'bg-white shadow-sm' : 'text-muted'}`}
-                >
-                  {v === 'ordenes' ? 'Por orden' : `Todos los SKUs (${todosSkus.length})`}
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+              <div className="flex gap-1 bg-black/5 rounded-lg p-0.5 w-fit">
+                {(['ordenes', 'skus'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setVista(v)}
+                    className={`text-xs px-3 py-1 rounded-md font-medium ${vista === v ? 'bg-white shadow-sm' : 'text-muted'}`}
+                  >
+                    {v === 'ordenes' ? 'Por orden' : `Todos los SKUs (${todosSkus.length})`}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                {sel.size > 0 && (
+                  <button onClick={() => setSel(new Set())} className="text-[11px] text-muted underline">
+                    limpiar selección
+                  </button>
+                )}
+                <button onClick={exportarExcel} className="text-xs px-3 py-1.5 rounded-lg border border-black/10 font-medium">
+                  ⬇ Excel {sel.size ? `(${sel.size} seleccionada${sel.size > 1 ? 's' : ''})` : '(todas)'}
                 </button>
-              ))}
+              </div>
             </div>
+            {vista === 'ordenes' && <p className="text-[11px] text-faint mb-2">Marcá el casillero de las órdenes que quieras exportar solas.</p>}
             {vista === 'ordenes' ? (
               <div className="space-y-2">
                 {activos.map((p) => {
@@ -434,7 +491,22 @@ export default function PedidosProduccion() {
                   const abierto = abiertos.has(p.id)
                   return (
                     <div key={p.id} className="border-t border-black/5 pt-2 first:border-0 first:pt-0">
-                      <button onClick={() => toggle(p.id)} className="w-full flex items-center justify-between gap-2 text-sm text-left">
+                      <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={sel.has(p.id)}
+                        onChange={() =>
+                          setSel((prev) => {
+                            const n = new Set(prev)
+                            if (n.has(p.id)) n.delete(p.id)
+                            else n.add(p.id)
+                            return n
+                          })
+                        }
+                        className="mt-1"
+                        title="Seleccionar para exportar"
+                      />
+                      <button onClick={() => toggle(p.id)} className="flex-1 min-w-0 flex items-center justify-between gap-2 text-sm text-left">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">
                             <span className="text-faint mr-1">{abierto ? '▾' : '▸'}</span>
@@ -456,6 +528,7 @@ export default function PedidosProduccion() {
                           <p className="text-[11px] text-faint">{usd.format(costo)}</p>
                         </div>
                       </button>
+                      </div>
                       {abierto && (
                         <div className="mt-2 pl-4">
                           <div className="overflow-x-auto">
