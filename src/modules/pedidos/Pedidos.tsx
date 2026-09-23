@@ -335,33 +335,20 @@ export default function Pedidos() {
     }
     const totalUnits = editItems.reduce((a, b) => a + b.cantidad, 0)
     try {
-      // Devolver el stock que se había descontado de los items originales (lo pendiente no salió)
-      for (const oldItem of modalEditar.items ?? []) {
-        const s = stock.find((x) => x.codigo === oldItem.codigo)
-        const devolver = oldItem.cantidad - (oldItem.pendiente ?? 0)
-        if (s && devolver > 0) {
-          await supabase.rpc('stock_mover', { p_items: [{ codigo: oldItem.codigo, delta: devolver }], p_origen: 'edicion_pedido', p_ref: `pedido #${modalEditar.id}` })
-          s.cantidad += devolver
-        }
-      }
-      // Descontar los nuevos: lo que haya físicamente; el resto queda pendiente de producción
-      const itemsFinal: PedidoItem[] = editItems.map((it) => {
-        const disponible = stock.find((x) => x.codigo === it.codigo)?.cantidad ?? 0
-        const pendiente = Math.max(0, it.cantidad - disponible)
-        return pendiente > 0 ? { ...it, pendiente } : { ...it, pendiente: 0 }
+      // La base devuelve lo descontado antes, valida contra lo libre (físico + proyectado − pendientes
+      // de otros − precargas), descuenta lo físico y deja el resto pendiente, todo en una transacción.
+      const { error } = await supabase.rpc('pedido_guardar', {
+        p_pedido: { items: editItems.map(({ pendiente: _p, ...it }) => it), total_units: totalUnits, estado: 'pendiente' },
+        p_id: modalEditar.id,
       })
-      for (const it of itemsFinal) {
-        const s = stock.find((x) => x.codigo === it.codigo)
-        const aDescontar = it.cantidad - (it.pendiente ?? 0)
-        if (s && aDescontar > 0) {
-          await supabase.rpc('stock_mover', { p_items: [{ codigo: it.codigo, delta: -aDescontar }], p_origen: 'edicion_pedido', p_ref: `pedido #${modalEditar.id}` })
-          s.cantidad -= aDescontar
+      if (error) {
+        if (error.message === 'SIN_STOCK') {
+          const falt = JSON.parse(error.details || '[]') as { modelo: string; descripcion: string | null; pedido: number; disponible: number }[]
+          toast(`No alcanza: ${falt.map((f) => `${f.modelo} ${f.descripcion ?? ''} (pedís ${f.pedido}, hay ${f.disponible})`).join(' · ')}`, 'error')
+          return
         }
+        throw error
       }
-      await supabase
-        .from('pedidos')
-        .update({ estado: 'pendiente', items: itemsFinal, total_units: totalUnits, obs_deposito: null })
-        .eq('id', modalEditar.id)
       setModalEditar(null)
       await cargar()
       toast('📤 Pedido reenviado a Depósito', 'success')

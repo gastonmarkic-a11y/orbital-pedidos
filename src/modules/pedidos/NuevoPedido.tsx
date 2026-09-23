@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
@@ -115,8 +115,17 @@ export default function NuevoPedido() {
     }>(() =>
       supabase.from('stock_ingresos').select('codigo, cantidad, modelo, descripcion, precio').eq('estado', 'proyectado').order('id')
     )
+    // Lo que se puede pedir sale de la base (stock_libre): físico + proyectado − pendientes de otros
+    // pedidos − precargas abiertas. Acá "proyectado" = libre − físico (puede ser negativo si lo físico
+    // ya está comprometido con pendientes).
+    const { data: lib } = await supabase.rpc('stock_libre', {
+      p_cod_cliente: clienteRef.current ?? null,
+      p_excluir_precarga: precargaRef.current ?? null,
+    })
+    const fisicoDe = new Map(data.map((s) => [s.codigo, s.cantidad ?? 0]))
     const m: Record<string, number> = {}
-    for (const i of ing) m[i.codigo] = (m[i.codigo] ?? 0) + i.cantidad
+    for (const l of (lib ?? []) as { codigo: string; libre: number }[])
+      m[l.codigo] = l.libre - (fisicoDe.get(l.codigo) ?? 0)
     setProyectado(m)
     // Artículos que todavía no existen en depósito y solo están en producción: se pueden vender a futuro
     const existentes = new Set(data.map((s) => s.codigo))
@@ -148,9 +157,15 @@ export default function NuevoPedido() {
   const proyDe = (codigo: string) => (esConsigna ? 0 : proyectado[codigo] ?? 0)
   const maxPedible = (p: { codigo: string; cantidad: number }) => p.cantidad + proyDe(p.codigo)
 
+  // Lo libre depende del cliente (reservas de producción a su nombre) y de la precarga abierta
+  // (que no se descuenta contra sí misma): se recalcula cuando cambian.
+  const clienteRef = useRef<string | null>(null)
+  const precargaRef = useRef<number | null>(null)
+  clienteRef.current = cliente?.cod ?? null
+  precargaRef.current = precargaWebId
   useEffect(() => {
     loadStock()
-  }, [])
+  }, [cliente?.cod, precargaWebId])
 
   // Datos de entrega/contacto del cliente elegido
   useEffect(() => {
@@ -640,7 +655,7 @@ export default function NuevoPedido() {
           ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
         }
       })
-      const totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
+      let totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
 
       const negroPct = 100 - blancoPct
       let pagoLabel = getCuotasLabel() + ` | ${labelMedios(medios)}`
@@ -669,20 +684,10 @@ export default function NuevoPedido() {
           cod_cliente: cliente!.cod, codigo: item.codigo, modelo: item.modelo, descripcion: item.descripcion,
           tipo: 'venta', cantidad: -item.cantidad, precio: precioLiq(item), creado_por: quien,
         })))
-      } else {
-        // Descontar del stock central solo las unidades que había físicamente (lo pendiente no se descuenta)
-        for (const item of items) {
-          const p = freshDe(item.codigo)
-          if (!p) continue
-          const aDescontar = item.cantidad - (item.pendiente ?? 0)
-          if (aDescontar <= 0) continue
-          // Descuento atómico en la base: no pisa lo que otro haya movido mientras tanto
-          await supabase.rpc('stock_mover', { p_items: [{ codigo: item.codigo, delta: -aDescontar }], p_origen: 'pedido', p_ref: cliente.cod })
-        }
       }
 
       // Crear pedido (el trigger de la base registra la actividad comercial automáticamente)
-      const { data: pedIns } = await supabase.from('pedidos').insert({
+      const pedidoRow = {
         fecha: new Date().toLocaleString('es-AR'),
         vendedor: codigoEfectivo || (vendedor?.codigo ?? ''),
         nro_lista: cliente.nro_lista ?? 5,
@@ -708,12 +713,34 @@ export default function NuevoPedido() {
         items,
         total_units: totalUnidades,
         estado: 'pendiente',
-      }).select('id').single()
-      const pedidoId = (pedIns as { id: number } | null)?.id ?? null
-
-      // Recién con el pedido creado la precarga sale de la lista (y queda atada al pedido).
-      if (pedidoId && precargaWebId)
-        await supabase.from('catalogo_precarga').update({ estado: 'cargado', pedido_id: pedidoId }).eq('id', precargaWebId)
+      }
+      let pedidoId: number | null = null
+      if (esConsigna) {
+        const { data: pedIns } = await supabase.from('pedidos').insert(pedidoRow).select('id').single()
+        pedidoId = (pedIns as { id: number } | null)?.id ?? null
+        if (pedidoId && precargaWebId)
+          await supabase.from('catalogo_precarga').update({ estado: 'cargado', pedido_id: pedidoId }).eq('id', precargaWebId)
+      } else {
+        // La base valida contra lo libre, descuenta lo físico, deja el resto pendiente, crea el pedido
+        // y cierra la precarga: todo en una transacción (dos confirmaciones a la vez no se pisan).
+        const { data: res, error: errG } = await supabase.rpc('pedido_guardar', {
+          p_pedido: pedidoRow, p_precarga: precargaWebId ?? null,
+        })
+        if (errG) {
+          if (errG.message === 'SIN_STOCK') {
+            const falt = JSON.parse(errG.details || '[]') as { codigo: string; disponible: number }[]
+            setFaltantes(Object.fromEntries(falt.map((f) => [f.codigo, { disponible: f.disponible, proy: 0 }])))
+            await loadStock()
+            toast(`${falt.length === 1 ? '1 artículo ya no alcanza' : `${falt.length} artículos ya no alcanzan`} (se vendieron o comprometieron mientras armabas el pedido): están en rojo. Ajustalos y confirmá.`, 'error')
+            return
+          }
+          throw errG
+        }
+        const r = res as { id: number; items: PedidoItem[] }
+        pedidoId = r.id
+        items.splice(0, items.length, ...r.items)
+        totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)
+      }
       if (pedidoId && precargaFotoId)
         await supabase.from('bot_foto_pedido').update({ estado: 'cargado' }).eq('conversacion_id', precargaFotoId)
 
