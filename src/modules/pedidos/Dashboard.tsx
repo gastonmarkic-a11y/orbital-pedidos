@@ -12,18 +12,27 @@ const ESTADOS_ORDEN = ['pendiente', 'en_preparacion', 'observado', 'listo', 'fac
 export default function DashboardPedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
-  const [ecom, setEcom] = useState<{ anio_mes: string; importe_ars: number }[]>([])
+  const [tiendas, setTiendas] = useState<{ tienda: string; neto: number }[]>([])
+  const [ml, setMl] = useState<{ total: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const h = new Date()
+    const desde = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-01T00:00:00-03:00`
     Promise.all([
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
       fetchPaged<StockItem>(() => supabase.from('stock').select('*')),
-      supabase.from('v_ventas_ecom_mes').select('anio_mes,importe_ars'),
-    ]).then(([p, s, e]) => {
+      // Tiendas Shopify (línea + outlet), mismo criterio que v_ventas_ecom_mes
+      fetchPaged<{ tienda: string; neto: number }>(() =>
+        supabase.from('ventas_shopify_hist').select('tienda,neto').eq('cancelled', false).in('tienda', ['linea', 'outlet']).gte('created_at', desde)
+      ),
+      // Mercado Libre (cuenta Corporativo): órdenes pagas del mes
+      fetchPaged<{ total: number }>(() => supabase.from('ventas_ml').select('total').eq('estado', 'paid').gte('fecha', desde)),
+    ]).then(([p, s, t, m]) => {
       setPedidos((p.data as Pedido[]) ?? [])
       setStock(s)
-      setEcom((e.data as { anio_mes: string; importe_ars: number }[]) ?? [])
+      setTiendas(t)
+      setMl(m)
       setLoading(false)
     })
   }, [])
@@ -57,10 +66,12 @@ export default function DashboardPedidos() {
   const ticketProm = facturadosB2BCount > 0 ? Math.round(facturadoMesActual / facturadosB2BCount) : 0
   const pctObservado = pedidosMesActual.length > 0 ? Math.round((observadosMes / pedidosMesActual.length) * 100) : 0
 
-  // Venta minorista (Shopify B2C) del mes → para que el operativo cuadre con Ventas.
-  const amActual = `${anioActual}-${String(mesActual + 1).padStart(2, '0')}`
-  const b2cActual = ecom.filter((r) => r.anio_mes === amActual).reduce((a, r) => a + Number(r.importe_ars), 0)
-  const facturadoTotal = facturadoMesActual + b2cActual
+  // Venta minorista del mes (Shopify línea + outlet) y Mercado Libre (Corporativo).
+  const tiendaLinea = tiendas.filter((r) => r.tienda === 'linea').reduce((a, r) => a + Number(r.neto), 0)
+  const tiendaOutlet = tiendas.filter((r) => r.tienda === 'outlet').reduce((a, r) => a + Number(r.neto), 0)
+  const b2cActual = tiendaLinea + tiendaOutlet
+  const mlActual = ml.reduce((a, r) => a + Number(r.total), 0)
+  const facturadoTotal = facturadoMesActual + b2cActual + mlActual
 
   function trend(actual: number, anterior: number) {
     if (anterior === 0 && actual === 0) return <span className="text-[10px] text-faint">Sin datos del mes anterior</span>
@@ -76,15 +87,21 @@ export default function DashboardPedidos() {
   // Todas las operaciones: la suma de las barras = Facturado este mes.
   for (const l of pedidosMesActual) {
     if (esPedidoShopify(l)) continue // la tienda se toma de Shopify (abajo)
+    if (l.origen === 'reposicion') continue // reposición a Full de ML: movimiento de stock, no venta
     const raw = l.vendedor || ''
-    const v = raw === 'Gaston' || raw === 'Gastón' ? 'Gastón (directo)' : raw || 'Sin vendedor'
+    const v = /^0100(01|02)\b/.test(l.cliente ?? '')
+      ? 'Distribuidores'
+      : raw === 'Gaston' || raw === 'Gastón'
+        ? 'Gastón (directo)'
+        : raw || 'Sin vendedor'
     if (!vendMap[v]) vendMap[v] = { pedidos: 0, facturado: 0, observados: 0 }
     vendMap[v].pedidos++
     if (FACTURABLES.includes(l.estado ?? '')) vendMap[v].facturado += imp(l)
     if (l.estado === 'observado') vendMap[v].observados++
   }
-  // Tienda = venta minorista Shopify del mes
-  vendMap['Tienda'] = { pedidos: 0, facturado: b2cActual, observados: 0 }
+  vendMap['Tienda línea'] = { pedidos: 0, facturado: tiendaLinea, observados: 0 }
+  vendMap['Tienda outlet'] = { pedidos: 0, facturado: tiendaOutlet, observados: 0 }
+  vendMap['Corporativo (ML)'] = { pedidos: 0, facturado: mlActual, observados: 0 }
   const vendArr = Object.entries(vendMap)
     .map(([nombre, d]) => ({ nombre, ...d }))
     .sort((a, b) => b.facturado - a.facturado)
@@ -96,7 +113,7 @@ export default function DashboardPedidos() {
     const total = vendArr.reduce((a, v) => a + v.facturado, 0)
     conclusiones.push(
       `${vendArr[0].nombre} lidera el mes con ${formatPrecio(vendArr[0].facturado)} facturados${
-        total > 0 ? ` (${Math.round((vendArr[0].facturado / total) * 100)}% del total del equipo)` : ''
+        total > 0 ? ` (${Math.round((vendArr[0].facturado / total) * 100)}% del total)` : ''
       }.`
     )
   }
@@ -209,7 +226,7 @@ export default function DashboardPedidos() {
         </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {[
-            { label: 'Facturado este mes', val: formatPrecio(facturadoTotal) || '$ 0', t: <span className="text-[10px] text-white/50">B2B {formatPrecio(facturadoMesActual)} + Tienda {formatPrecio(b2cActual)}</span> },
+            { label: 'Facturado este mes', val: formatPrecio(facturadoTotal) || '$ 0', t: <span className="text-[10px] text-white/50">B2B {formatPrecio(facturadoMesActual) || '$ 0'} + Tiendas {formatPrecio(b2cActual) || '$ 0'} + ML {formatPrecio(mlActual) || '$ 0'}</span> },
             { label: 'Pedidos cargados', val: String(pedidosMesActual.length), t: trend(pedidosMesActual.length, pedidosMesAnterior.length) },
             { label: 'Tasa de facturación', val: tasaFacturacion + '%', t: <span className="text-[10px] text-white/50">Facturados / cargados</span> },
             { label: 'Ticket promedio', val: formatPrecio(ticketProm) || '$ 0', t: <span className="text-[10px] text-white/50">Por pedido facturado</span> },
@@ -226,7 +243,7 @@ export default function DashboardPedidos() {
             <p className="text-xs font-semibold text-white/70">Facturación por vendedor / canal (este mes — todas las operaciones)</p>
             {vendArr.map((v) => (
               <div key={v.nombre} className="flex items-center gap-2 text-xs">
-                <span className="w-20 truncate">{v.nombre}</span>
+                <span className="w-28 truncate">{v.nombre}</span>
                 <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
                   <div className="h-full bg-gold rounded-full" style={{ width: `${Math.round((v.facturado / maxFact) * 100)}%` }} />
                 </div>
