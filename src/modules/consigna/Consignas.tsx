@@ -425,7 +425,10 @@ function Reposiciones({ madre, nombreSuc, onCambio }: { madre: Madre; nombreSuc:
           <header className="px-4 py-3 border-b border-black/10">
             <div className="font-semibold">{nombreSuc(r.sucursal_id)}</div>
             <div className="text-xs text-muted">
-              {r.origen === 'liquidacion' ? `Reemplazos de la liquidación #${r.liquidacion_id}` : `Faltante del pedido de sucursal #${r.consigna_pedido_id}`} · {fecha(r.created_at)}
+              {r.origen === 'liquidacion' ? `Reemplazos de la liquidación #${r.liquidacion_id}`
+                : r.origen === 'sugerida' ? 'Reposición sugerida (ventas + modelos nuevos)'
+                : `Faltante del pedido de sucursal #${r.consigna_pedido_id}`} · {fecha(r.created_at)}
+              {' · '}{r.items.reduce((a, i) => a + i.cantidad, 0)} u
               {r.sin_cubrir > 0 && <span className="text-amber-700"> · {r.sin_cubrir} u sin reemplazo con stock</span>}
             </div>
           </header>
