@@ -8,6 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   ?tarea=resumen   (cron 9:00 ART, L-S) en el grupo, a cada vendedor: sus carritos sin cerrar de
 //                    los últimos 7 días, con WhatsApp directo y "Pasarlo a precarga" (prc:, lo atiende ojo-conteo).
 //   ?tarea=plantilla (a mano, una vez) da de alta la plantilla en Meta.
+//   ?tarea=anuncio   POST {texto} aviso libre al grupo de Ojo.
 //   ?prueba=1        no manda nada: devuelve a quién le mandaría.
 // En Telegram no se habla de plata: solo unidades y modelos.
 
@@ -142,6 +143,17 @@ async function resumen(prueba: boolean) {
   return { enviados: n };
 }
 
+// Aviso libre al grupo (texto HTML), p.ej. para explicar al equipo un cambio de este circuito.
+async function anuncio(texto: string) {
+  if (!texto.trim()) return { ok: false, error: "falta texto" };
+  const grupo = await grupoAvisos();
+  const r = await fetch(`${TG}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: grupo, text: texto, parse_mode: "HTML", disable_web_page_preview: true }) });
+  const d = await r.json().catch(() => ({}));
+  if (d?.ok) await sb.from("ojo_mensajes_log").insert({ telegram_chat_id: grupo, telegram_message_id: d.result.message_id, autor_nombre: "Ojo", texto: texto.slice(0, 4000), es_del_bot: true });
+  return { ok: !!d?.ok, error: d?.description };
+}
+
 async function grupoAvisos(): Promise<number> {
   const { data } = await sb.from("ojo_grupos").select("telegram_chat_id").eq("activo", true).eq("recibe_avisos", true).limit(1).maybeSingle();
   return Number(data?.telegram_chat_id ?? GRUPO_FALLBACK);
@@ -182,6 +194,7 @@ Deno.serve(async (req) => {
     if (tarea === "resumen") return Response.json(await resumen(prueba));
     if (tarea === "plantilla") return Response.json(await plantilla());
     if (tarea === "estado") return Response.json(await estadoPlantilla());
+    if (tarea === "anuncio") return Response.json(await anuncio(String((await req.json().catch(() => ({})))?.texto ?? "")));
     return Response.json({ ok: false, error: "tarea: clientes | resumen | plantilla | estado" });
   } catch (e) {
     console.error(e);
