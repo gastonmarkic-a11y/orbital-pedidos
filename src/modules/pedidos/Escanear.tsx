@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
+import { crearDetector, limpiarCodigo, pitido } from '../../lib/lector'
 
 // Escaneo en la óptica: el vendedor apunta la cámara al código de barras del anteojo (= SKU),
 // la Suite dice si hay stock libre y, si no, ofrece alternativas. Al terminar genera una
@@ -12,36 +13,6 @@ import { formatPrecio } from '../../lib/format'
 
 type Art = { codigo: string; modelo: string; descripcion: string | null; precio: number; libre: number; mismo_modelo?: boolean }
 type Linea = Art & { cantidad: number }
-type Detector = { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> }
-
-const FORMATOS = ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'qr_code', 'data_matrix']
-
-// Chrome/Android trae BarcodeDetector nativo; en iPhone se usa el lector en wasm.
-async function crearDetector(): Promise<Detector> {
-  const Nativo = (window as unknown as { BarcodeDetector?: { new (o: { formats: string[] }): Detector; getSupportedFormats(): Promise<string[]> } }).BarcodeDetector
-  if (Nativo) {
-    const sop = await Nativo.getSupportedFormats()
-    const f = FORMATOS.filter((x) => sop.includes(x))
-    if (f.includes('code_128')) return new Nativo({ formats: f })
-  }
-  const { BarcodeDetector } = await import('barcode-detector/ponyfill')
-  return new BarcodeDetector({ formats: FORMATOS as never }) as unknown as Detector
-}
-
-// Un QR puede traer una URL: se queda con el último tramo.
-const limpiarCodigo = (raw: string) => raw.trim().split(/[/?#=]/).filter(Boolean).pop()?.toUpperCase() ?? ''
-
-function pitido(ok: boolean) {
-  try {
-    const ctx = new AudioContext()
-    const o = ctx.createOscillator()
-    o.frequency.value = ok ? 1200 : 300
-    o.connect(ctx.destination)
-    o.start()
-    o.stop(ctx.currentTime + (ok ? 0.12 : 0.35))
-    navigator.vibrate?.(ok ? 60 : [80, 60, 80])
-  } catch { /* sin audio */ }
-}
 
 export default function Escanear() {
   const { codigoEfectivo } = useAuth()

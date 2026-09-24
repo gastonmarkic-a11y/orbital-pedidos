@@ -10,6 +10,7 @@ import { calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COL
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
+import PickeoEscaner from './PickeoEscaner'
 
 // Consumidor final = clientes 8888xx (Tienda online / cons. final); el resto es B2B (ópticas, distribuidores).
 const esConsFinal = (p: { cod_cliente: string | null; cliente: string | null }) =>
@@ -66,6 +67,7 @@ export default function Pedidos() {
   const [editBusqueda, setEditBusqueda] = useState('')
   // Completar el N° de cliente de un pedido cargado con cliente provisorio (TMP-…)
   const [asignarPed, setAsignarPed] = useState<Pedido | null>(null)
+  const [pickeo, setPickeo] = useState<Pedido | null>(null)
   const [codNuevo, setCodNuevo] = useState('')
   const [listaNueva, setListaNueva] = useState('')
   const [asignando, setAsignando] = useState(false)
@@ -367,6 +369,14 @@ export default function Pedidos() {
       toast('No se pudo guardar el armado: ' + error.message, 'error')
       setPedidos((prev) => prev.map((x) => (x.id === l.id ? { ...x, picking: actual } : x)))
     }
+  }
+
+  // Picking completo que manda el escáner (mismo campo que el checkbox manual).
+  async function guardarPicking(id: number, nuevo: string[]) {
+    setPedidos((prev) => prev.map((x) => (x.id === id ? { ...x, picking: nuevo } : x)))
+    const { error } = await supabase.from('pedidos').update({ picking: nuevo }).eq('id', id)
+    if (error) toast('No se pudo guardar el armado: ' + error.message, 'error')
+    return !error
   }
 
   async function exportarTango() {
@@ -761,6 +771,9 @@ export default function Pedidos() {
                     {(esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna' && (
                       <p className="text-[11px] font-semibold text-muted mb-1">
                         🛒 Armado en góndola: {(l.picking ?? []).length} / {(l.items ?? []).length} artículos tomados
+                        <button onClick={() => setPickeo(l)} className="ml-2 rounded-full bg-ink text-white px-2.5 py-0.5 text-[11px] font-semibold">
+                          📷 Pickear con cámara
+                        </button>
                       </p>
                     )}
                     {l.origen === 'consigna' && (
@@ -1271,6 +1284,20 @@ export default function Pedidos() {
             📤 Reenviar a Depósito
           </button>
         </Modal>
+      )}
+
+      {pickeo && (
+        <PickeoEscaner
+          pedido={pickeo}
+          onGuardar={(nuevo) => guardarPicking(pickeo.id, nuevo)}
+          onListo={() => cambiarEstado(pickeo.id, 'listo').then((ok) => {
+            if (!ok) return
+            try { localStorage.removeItem('pickeo_' + pickeo.id) } catch { /* sin storage */ }
+            setPickeo(null)
+            toast('✓ Listo — se pasa a Tango y Administración factura con el remito', 'success')
+          })}
+          onCerrar={() => setPickeo(null)}
+        />
       )}
     </div>
   )

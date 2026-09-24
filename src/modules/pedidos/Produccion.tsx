@@ -4,6 +4,7 @@ import { fetchPaged } from '../../lib/fetchAll'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { StockIngreso } from '../../lib/types'
+import IngresoEscaner from './IngresoEscaner'
 
 // Ingresos a confirmar. El stock proyectado lo genera la orden de producción / el movimiento de
 // ventas; acá depósito CONFIRMA lo que llega físicamente. Permite ingreso PARCIAL: se carga lo que
@@ -20,6 +21,7 @@ export default function Produccion() {
   const [recarga, setRecarga] = useState(0)
   const [cantConf, setCantConf] = useState<Record<number, string>>({})
   const [confirmando, setConfirmando] = useState<number | null>(null)
+  const [escaner, setEscaner] = useState(false)
 
   useEffect(() => {
     async function cargar() {
@@ -84,6 +86,20 @@ export default function Produccion() {
           {ingresos.length} artículo{ingresos.length !== 1 ? 's' : ''} · {totalProyectado} u. pendientes
         </span>
       </div>
+
+      {esDeposito && ingresos.length > 0 && (
+        <button onClick={() => setEscaner(true)} className="w-full rounded-xl bg-ink text-white py-3 text-sm font-semibold">
+          📷 Escanear lo que bajó de producción
+        </button>
+      )}
+      {escaner && (
+        <IngresoEscaner
+          ingresos={ingresos}
+          por={codigoEfectivo}
+          onCerrar={() => setEscaner(false)}
+          onHecho={() => { setEscaner(false); setRecarga((r) => r + 1) }}
+        />
+      )}
 
       <div className="bg-white rounded-xl p-4 border border-black/10">
         <p className="text-[11px] text-faint mb-3">
