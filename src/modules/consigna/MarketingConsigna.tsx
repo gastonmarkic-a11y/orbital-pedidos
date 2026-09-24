@@ -11,7 +11,7 @@ export default function MarketingConsigna({ data, onVista }: { data: Central; on
   const cat = data.acceso.catalogo
   const url = (ver: string) => `/catalogo?k=${cat}&ver=${ver}`
   const tarjetas: Tarjeta[] = [
-    { ver: 'inspiracion', titulo: '✦ Inspiración', icono: Sparkles, tono: 'from-fuchsia-600 via-pink-500 to-orange-400 text-white', boton: 'Ver inspiración',
+    { ver: 'inspiracion', titulo: 'Inspiración', icono: Sparkles, tono: 'from-fuchsia-600 via-pink-500 to-orange-400 text-white', boton: 'Ver inspiración',
       texto: 'Las publicaciones virales de anteojos en TikTok e Instagram, con sus números, por qué funcionaron y cómo hacerlo con un Orbital.' },
     { ver: 'contenido', titulo: 'Crear contenido', icono: PenLine, tono: 'from-white to-white text-ink border border-fuchsia-300', boton: 'Crear contenido',
       texto: 'Elegí un anteojo y copiá la historia, el posteo o el guion de video listos, con la ficha técnica y la foto.' },
