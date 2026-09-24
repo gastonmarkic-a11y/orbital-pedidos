@@ -30,12 +30,46 @@ const MSJ_DEFECTO =
   'Nos gustaría invitarte: elegís los modelos que van con vos y preparamos un descuento exclusivo para tu comunidad.\n' +
   '¿Te interesa que te cuente cómo sería?'
 
-// Cuando escribe una administradora (Mery) lo hace desde su propia cuenta: se presenta ella.
-const msjAdmin = (yo: string) =>
-  'Hola {nombre}! Soy ' + yo + ', trabajo con Orbital Eyewear 👋\n' +
-  'Es una marca argentina de anteojos y estamos armando un grupo chico de creadores para esta temporada.\n' +
-  'Me gustaría invitarte: elegís los modelos que van con vos y te preparamos un descuento exclusivo para tu comunidad.\n' +
-  '¿Te interesa que te cuente cómo sería?'
+// Cuando escribe una administradora (Mery) lo hace desde su propia cuenta: se presenta ella,
+// y el mensaje cambia según los seguidores. Criterio de Gastón (2026-09-24): sin "marca
+// argentina", Triple Protección única en Argentina, el panel de resultados como gancho,
+// sin % ni comisión. Texto plano: Instagram no muestra negritas.
+const TRAMOS: { hasta: number; t: string; msj: (yo: string) => string }[] = [
+  { hasta: 10000, t: 'Hasta 10.000', msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋 Nos encanta cómo te conecta tu comunidad.\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub:\n' +
+    '🕶️ Elegís los modelos que van con vos, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina\n' +
+    '🔗 Tu propia página "Elegidos por {nombre}" con un descuento exclusivo para tus seguidores\n' +
+    '📊 Tu panel de resultados: ves cuántos entran, cuántos compran y cómo rinde cada publicación. Tenés el control de todo\n' +
+    '💡 Ideas y formatos para tus historias y posteos\n' +
+    '¿Te cuento cómo sería?' },
+  { hasta: 50000, t: '10.000 a 50.000', msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋 Venimos siguiendo tu contenido y tu estilo va perfecto con la marca.\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub:\n' +
+    '🕶️ Elegís los modelos que van con vos, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina\n' +
+    '🔗 Tu página "Elegidos por {nombre}" con un descuento que tu comunidad solo consigue con vos\n' +
+    '📊 Tu panel de resultados: seguís cada publicación, cuántos entran y cuántos compran. Todo bajo tu control\n' +
+    'Son pocos lugares. ¿Te cuento cómo sería?' },
+  { hasta: 200000, t: '50.000 a 200.000', msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub, con pocos creadores seleccionados:\n' +
+    '🕶️ Una selección de modelos elegida con vos, con la Triple Protección, única en Argentina\n' +
+    '🔗 Tu página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad\n' +
+    '📊 Tu panel de resultados para ver en todo momento el alcance y las ventas de cada publicación\n' +
+    '🤝 Una propuesta armada a tu medida\n' +
+    '¿Coordinamos una charla para contarte todo?' },
+  { hasta: 1000000, t: '200.000 a 1 millón', msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub, con muy pocos creadores esta temporada: una selección de modelos pensada con vos, con la Triple Protección (única en Argentina), y una página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad.\n' +
+    'Además tenés tu panel de resultados: ves en todo momento cuántos entran y cuántos compran por cada publicación. El control lo tenés vos 📊\n' +
+    '¿Coordinamos una charla corta o me pasás el contacto de quien maneja tus marcas?' },
+  { hasta: Infinity, t: 'Más de 1 millón', msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 🕶️ Nos encanta lo que hacés.\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub y crear algo juntos: elegir con vos los modelos que van con tu estilo, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina, y armarte una página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad ✨\n' +
+    'Y con tu panel de resultados seguís cada publicación, cuántos entran y cuántos compran. Todo a la vista, todo bajo tu control 📊\n' +
+    '¿Te gustaría que lo charlemos?' },
+]
+const tramoDe = (seguidores: number) => TRAMOS.findIndex((t) => seguidores < t.hasta)
 
 const primerNombre = (f: Fila) => (f.nombre ?? f.usuario).trim().split(/[\s·|,]/)[0] || f.usuario
 
@@ -52,14 +86,20 @@ export default function ColabInfluencers({ clave, yo }: { clave?: string; yo?: s
 }
 
 function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resumen: string; marcar: string }; yo?: string }) {
-  const msjKey = yo ? MSJ_KEY + '_admin' : MSJ_KEY
   const [filas, setFilas] = useState<Fila[] | null>(null)
   const [resumen, setResumen] = useState<Record<string, number>>({})
   const [min, setMin] = useState(5000)
   const [estado, setEstado] = useState<Estado | ''>('pendiente')
   const [buscar, setBuscar] = useState('')
   const [q, setQ] = useState('')
-  const [msj, setMsj] = useState(() => localStorage.getItem(msjKey) ?? (yo ? msjAdmin(yo) : MSJ_DEFECTO))
+  // Orbital usa un solo mensaje; la administradora, uno por tramo de seguidores.
+  const claves = yo ? TRAMOS.map((_, i) => `${MSJ_KEY}_tramo${i}`) : [MSJ_KEY]
+  const [msjs, setMsjs] = useState<string[]>(() => claves.map((k, i) =>
+    localStorage.getItem(k) ?? (yo ? TRAMOS[i].msj(yo) : MSJ_DEFECTO)))
+  const guardarMsj = (i: number, v: string) => {
+    setMsjs((prev) => prev.map((m, j) => (j === i ? v : m)))
+    localStorage.setItem(claves[i], v)
+  }
   const [editando, setEditando] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -81,6 +121,7 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
   const total = useMemo(() => Object.values(resumen).reduce((a, b) => a + b, 0), [resumen])
 
   function textoDe(f: Fila) {
+    const msj = yo ? msjs[tramoDe(f.seguidores)] : msjs[0]
     return msj.replace(/\{nombre\}/g, primerNombre(f)).replace(/\{usuario\}/g, f.usuario)
   }
 
@@ -146,9 +187,15 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
         <div className="mb-4 rounded-xl border border-black/10 bg-white p-3">
           <p className="text-[10px] text-neutral-500 mb-1.5">
             {'{nombre}'} se reemplaza por el nombre de cada uno y {'{usuario}'} por su @. Se guarda en este dispositivo.
+            {yo && ' «Escribir» usa solo el mensaje que corresponde a los seguidores de cada uno.'}
           </p>
-          <textarea value={msj} onChange={(e) => { setMsj(e.target.value); localStorage.setItem(msjKey, e.target.value) }}
-            rows={6} className="w-full rounded-lg border border-black/10 p-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+          {msjs.map((m, i) => (
+            <div key={i} className={i ? 'mt-3' : ''}>
+              {yo && <div className="text-[11px] font-bold mb-1">{TRAMOS[i].t} seguidores</div>}
+              <textarea value={m} onChange={(e) => guardarMsj(i, e.target.value)}
+                rows={yo ? 7 : 6} className="w-full rounded-lg border border-black/10 p-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+            </div>
+          ))}
         </div>
       )}
 
