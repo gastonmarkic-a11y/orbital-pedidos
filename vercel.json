@@ -13,6 +13,10 @@
   ],
   "rewrites": [
     {
+      "source": "/shopgallery-9x4k",
+      "destination": "/p/shopgallery.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

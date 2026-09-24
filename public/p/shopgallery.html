@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/icon.svg">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>ShopGallery × Orbital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#f4f5f2; --surface:#ffffff; --ink:#15171b; --muted:#5e6468; --faint:#8f9599; --line:#dfe2de;
+  --gold:#a67c2a; --gold-soft:#f3ead6; --new:#1f5d57; --new-soft:#dcebe8; --warn:#9a4a1c; --warn-soft:#f6e3d6;
+  --bar:#c9b27d; --bar2:#15171b;
+  --display:"Familjen Grotesk",system-ui,sans-serif; --body:"Instrument Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  color-scheme:dark; --ground:#121416; --surface:#1a1d20; --ink:#ecebe6; --muted:#a4a9ab; --faint:#767c80; --line:#2c3033;
+  --gold:#d4ab5a; --gold-soft:#2e2717; --new:#7cc4ba; --new-soft:#15302d; --warn:#e39a6c; --warn-soft:#35231a; --bar:#8a7545; --bar2:#ecebe6;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --ground:#121416; --surface:#1a1d20; --ink:#ecebe6; --muted:#a4a9ab; --faint:#767c80; --line:#2c3033;
+  --gold:#d4ab5a; --gold-soft:#2e2717; --new:#7cc4ba; --new-soft:#15302d; --warn:#e39a6c; --warn-soft:#35231a; --bar:#8a7545; --bar2:#ecebe6;}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 var(--body);padding-inline:16px;padding-block:28px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.05}
+h2{font-size:22px}
+h3{font-size:16px}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.lead{color:var(--muted);max-width:62ch;margin:10px 0 0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-direction:column;gap:18px;border-bottom:1px solid var(--line);padding-bottom:28px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi b{font:600 24px/1.1 var(--display)}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi.hl b{color:var(--new)}
+section{display:flex;flex-direction:column;gap:16px}
+.sechead p{color:var(--muted);margin:6px 0 0;max-width:68ch}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:500}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+tfoot td{font-weight:600;background:var(--ground)}
+.minibar{display:flex;align-items:flex-end;gap:3px;height:26px}
+.minibar i{display:block;width:12px;background:var(--bar);border-radius:2px 2px 0 0}
+.minibar i:last-child{background:var(--gold)}
+.models{display:grid;grid-template-columns:1fr;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.mrow{display:grid;grid-template-columns:minmax(110px,160px) 1fr 90px;gap:12px;align-items:center;font-size:13px}
+.mrow .track{position:relative;height:14px}
+.mrow .v{position:absolute;left:0;top:0;height:14px;background:var(--bar2);border-radius:2px}
+.mrow .s{position:absolute;left:0;top:5px;height:4px;background:var(--gold);border-radius:2px}
+.mrow .lab{font:12px var(--mono);color:var(--muted);text-align:right}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.newgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.newcard{background:var(--new-soft);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.newcard h3{color:var(--new)}
+.newcard ul{margin:0;padding:0;list-style:none;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.newcard .tot{font:500 12px var(--mono);color:var(--muted)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{font:500 13px var(--body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.tabs button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.tabs button .n{font-family:var(--mono);opacity:.7;margin-left:6px}
+.pill{display:inline-block;font:500 10.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:4px;white-space:nowrap}
+.p-nuevo{background:var(--new-soft);color:var(--new)}
+.p-reemplazo{background:var(--gold-soft);color:var(--gold)}
+.p-repone{background:var(--ground);color:var(--muted);border:1px solid var(--line)}
+.p-bodega{background:var(--warn-soft);color:var(--warn)}
+td .why{color:var(--muted);font-size:12.5px}
+.sumline{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.sumline b{color:var(--ink);font-family:var(--mono)}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.note ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.over{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.over div{background:var(--warn-soft);border-radius:8px;padding:12px 14px;font-size:13px}
+.over b{display:block;font-family:var(--display);font-size:15px;color:var(--warn)}
+a{color:var(--gold)}
+.live{font:600 13px var(--body);color:var(--ground);background:var(--ink);padding:8px 14px;border-radius:999px;text-decoration:none}
+.live:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-color-scheme: dark){.logo{filter:invert(1)}}
+footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:520px){.mrow{grid-template-columns:96px 1fr 70px}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><img src="/logo-orbital.png" alt="Orbital" style="height:22px;width:auto" class="logo"><a class="live" href="/consigna?k=314ca7e0565cedb69d">Ver stock en vivo por tienda →</a></div>
+  <div class="eyebrow">Consigna · ShopGallery (Duty Paid SA)</div>
+  <div>
+    <h1>Ventas, stock y reposición sugerida</h1>
+    <p class="lead">Julio a septiembre 2026 (septiembre hasta el 24), según el reporte de ventas y stock que nos enviaron. Stock contado al 24/09 en las 5 tiendas y la bodega.</p>
+  </div>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="sechead"><h2>Ventas por tienda</h2><p>Aeroparque hace 3 de cada 4 anteojos. Bariloche tiene mucho stock para lo que vende.</p></div>
+  <div class="tablebox"><table id="tSuc"><thead><tr><th>Tienda</th><th class="r">Jul</th><th class="r">Ago</th><th class="r">Sep</th><th>Tendencia</th><th class="r">Venta 3 m</th><th class="r">Importe</th><th class="r">Stock hoy</th><th class="r">Meses de stock</th></tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Modelos: lo que se vende vs. lo que hay</h2><p>Los cinco modelos que más venden (Silverstone, Le Mans, Buenos Aires I, Palermo, Adelaida) casi no tienen stock. Alaska, Varsovia y Basel tienen stock de sobra.</p></div>
+  <div class="legend"><span><i style="background:var(--bar2)"></i>Vendido jul–sep</span><span><i style="background:var(--gold)"></i>Stock hoy</span></div>
+  <div class="models" id="mods"></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Modelos nuevos que todavía no tienen</h2><p>La línea nueva de Orbital: Ascari, Civic Center, Casa Blanca y 5th Avenue. Ninguna tienda la tiene. Entran en esta reposición, repartidos por tienda y en los colores que más se venden.</p></div>
+  <div class="newgrid" id="nuevos"></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Reposición sugerida por tienda</h2><p>Cada línea dice por qué está.</p></div>
+  <div class="sumline" id="sum"></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="tablebox"><table id="tRepo"><thead><tr><th>Tipo</th><th>Modelo</th><th>Color</th><th class="r">Unid.</th><th>Motivo</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Stock para rotar</h2><p>Estos productos tienen mucho stock y poca venta. Proponemos moverlos a otra tienda o devolverlos a Orbital para liberar lugar para los modelos nuevos.</p></div>
+  <div class="over" id="over"></div>
+</section>
+
+<section>
+  <div class="note">
+    <h3>Cómo se calculó</h3>
+    <ol>
+      <li><b>Repone lo vendido:</b> cada producto vendido vuelve a la tienda donde se vendió, con stock para un mes y medio de venta (máximo 3 por color).</li>
+      <li><b>Primero su bodega:</b> si ya está en la bodega de ShopGallery, se pasa de ahí y no se envía de nuevo.</li>
+      <li><b>Colores discontinuados:</b> se cambian por otro color del mismo modelo. Si el modelo ya no se fabrica, va uno de la línea nueva.</li>
+      <li><b>Lanzamiento:</b> Aeroparque, Córdoba, Iguazú y la venta web reciben los cuatro modelos nuevos. Bariloche y Mendoza reciben dos para probar.</li>
+    </ol>
+  </div>
+</section>
+
+<footer>Orbital Premium Eyewear · El stock, las ventas y los envíos de cada tienda también se ven en el <a href="/consigna?k=314ca7e0565cedb69d">panel de consigna</a>.</footer>
+</div>
+
+<script>
+const SUC=[
+ {n:"Aeroparque",m:[75,54,67],imp:22756062,st:78},
+ {n:"Córdoba",m:[3,10,2],imp:1313550,st:25},
+ {n:"Iguazú",m:[5,6,3],imp:799645,st:8},
+ {n:"Bariloche",m:[1,5,1],imp:505330,st:45},
+ {n:"Mendoza",m:[1,1,0],imp:201600,st:9},
+ {n:"Bodega / Web",m:[3,11,5],imp:1821685,st:33}];
+const MODS=[["Silverstone",30,4],["Le Mans",20,7],["Buenos Aires I",17,5],["Palermo",15,4],["Adelaida",15,1],["Alaska",10,61],["Creta",10,5],["Wynwood",9,2],["Paris",8,1],["Saint Tropez",6,1],["Basel",5,15],["Malta",5,5],["Eivissa",5,2],["Long Beach",4,11],["Varsovia",3,21]];
+const R=[
+["Aeroparque","nuevo","Silverstone","Caramelo / Habano Degradé",1,"Color nuevo de su modelo más vendido"],
+["Aeroparque","nuevo","Silverstone","Pastel Beige Mate / Habano",1,"Color nuevo de su modelo más vendido"],
+["Aeroparque","nuevo","Silverstone","Habano / Celeste Flash",1,"Color nuevo de su modelo más vendido"],
+["Aeroparque","nuevo","5th Avenue","Blanco Marfil Brillo / Habano",1,"En lugar de Rouet (discontinuado)"],
+["Aeroparque","nuevo","5th Avenue","Verde Oscuro / Verde",1,"En lugar de Creta Carey/Habano (discontinuado)"],
+["Aeroparque","nuevo","5th Avenue","Gris Clear / Celeste Espejado",2,"En lugar de St Bart (discontinuado)"],
+["Aeroparque","nuevo","Ascari","Negro Brillo / Gris Degradé",2,"En lugar de Wynwood NB/Gris (discontinuado)"],
+["Aeroparque","nuevo","Ascari","Negro Mate / Gris",2,"En lugar de Saint Tropez (discontinuado)"],
+["Aeroparque","nuevo","Ascari","Clear Mate / Celeste",1,"En lugar de Wynwood NB/NM (discontinuado)"],
+["Aeroparque","nuevo","Casa Blanca","Habano Brillo / Habano Espejado Flash",1,"En lugar de Élysée Gris Flash (discontinuado)"],
+["Aeroparque","nuevo","Casa Blanca","Habano / Habano",1,"En lugar de Wynwood Carey/Celeste (discontinuado)"],
+["Aeroparque","nuevo","Casa Blanca","Marrón / Habano",2,"En lugar de Atlantic City (discontinuado)"],
+["Aeroparque","nuevo","Civic Center","Negro Brillo / Gris",2,"En lugar de Imola (discontinuado)"],
+["Aeroparque","nuevo","Civic Center","Verde Brillo / Verde",1,"En lugar de Wynwood NB/Verde (discontinuado)"],
+["Aeroparque","nuevo","Civic Center","Habano Mate / Habano",1,"En lugar de Seoul (discontinuado)"],
+["Aeroparque","reemplazo","Eivissa","Negro Brillo / Naranja","1","En lugar de Eivissa NB/Gris"],
+["Aeroparque","reemplazo","Emmen","Negro Plata / Rosa",2,"En lugar de Emmen Níquel/Naranja"],
+["Aeroparque","reemplazo","Le Mans","Marrón Mate / Habano Degradé",3,"En lugar de Le Mans Rojo Clear Flash"],
+["Aeroparque","reemplazo","Le Mans","Negro Brillo / Gris Degradé",1,"En lugar de Le Mans NM/Gris Claro"],
+["Aeroparque","reemplazo","Lena","Negro Mate / Habano Degradé",1,"En lugar de Lena NM/Habano"],
+["Aeroparque","reemplazo","Micra","Negro Mate / Gris Degradé",2,"En lugar de Micra Habano Flash"],
+["Aeroparque","reemplazo","Paris","Gris Clear / Gris",1,"En lugar de Paris Habano Flash"],
+["Aeroparque","reemplazo","Paris","Habano Clear / Celeste",2,"En lugar de Paris NM/Gris"],
+["Aeroparque","reemplazo","Roma","Negro Mate / Espejo Oro",1,"En lugar de Roma NB Polarizado"],
+["Aeroparque","reemplazo","Silverstone","Marrón Mate / Habano Degradé",3,"En lugar de Silverstone Habano Espejado"],
+["Aeroparque","reemplazo","Silverstone","Marrón / Verde",1,"En lugar de Silverstone Bordó Degradé"],
+["Aeroparque","reemplazo","Venice","Bordeaux Mate / Rosa",1,"En lugar de Venice Habano Flash"],
+["Aeroparque","reemplazo","Zeta 7","Negro Mate / Gris Polarizado",1,"En lugar de Zeta 7 Espejo Rojo"],
+["Aeroparque","repone","Adelaida","Negro Brillo / Gris Degradé",3,"Vendió 9 en 3 meses"],
+["Aeroparque","repone","Adelaida","Marfil / Rosa",2,"Vendió 3"],
+["Aeroparque","repone","Adelaida","Habano Clear / Habano Degradé",1,"Vendió 1"],
+["Aeroparque","repone","Belfast","Azul Plata / Habano",1,"Vendió 1"],
+["Aeroparque","repone","Brera","Negro Brillo / Gris",2,"Vendió 2"],
+["Aeroparque","repone","Buenos Aires I","Negro Brillo / Gris",2,"Vendió 5"],
+["Aeroparque","repone","Buenos Aires I","Negro Mate / Gris",2,"Vendió 4"],
+["Aeroparque","repone","Buenos Aires I","Negro Brillo / Celeste",2,"Vendió 3"],
+["Aeroparque","repone","Buenos Aires I","Negro Mate / Verde Degradé Flash",1,"Vendió 1"],
+["Aeroparque","repone","Buenos Aires I","Negro Brillo / Naranja",1,"Vendió 1"],
+["Aeroparque","repone","Creta","Carey Mate / Azul Claro",2,"Vendió 3"],
+["Aeroparque","repone","Creta","Negro Brillo / Verde",2,"Vendió 2"],
+["Aeroparque","repone","Eivissa","Negro Mate / Gris",1,"Vendió 2"],
+["Aeroparque","repone","Eivissa","Negro Brillo / Celeste Flash",1,"Vendió 1"],
+["Aeroparque","repone","Hannover","Gris Mate / Gris",1,"Vendió 2"],
+["Aeroparque","repone","Le Mans","Negro Brillo / Gris Claro",2,"Vendió 5"],
+["Aeroparque","repone","Le Mans","Negro Brillo / Celeste Flash",2,"Vendió 4"],
+["Aeroparque","repone","Leiden","Blanco / Gris",1,"Vendió 1"],
+["Aeroparque","repone","Los Hampton","Negro Brillo / Gris Degradé",1,"Vendió 1"],
+["Aeroparque","repone","Marsella","Rosa Mate / Habano Degradé",1,"Vendió 1"],
+["Aeroparque","repone","Milano","Negro Brillo / Gris",1,"Vendió 1"],
+["Aeroparque","repone","Palermo","Negro Brillo / Gris",3,"Vendió 6"],
+["Aeroparque","repone","Palermo","Negro Mate / Gris Degradé",2,"Vendió 3"],
+["Aeroparque","repone","Palermo","Habano / Habano Degradé Flash",1,"Vendió 4"],
+["Aeroparque","repone","Palermo","Bordó Degradé",1,"Vendió 1"],
+["Aeroparque","repone","Paris","Negro Mate / Gris Polarizado",2,"Vendió 3"],
+["Aeroparque","repone","Phoenix","Negro Brillo / Gris",2,"Vendió 3"],
+["Aeroparque","repone","Roterdam","Gris Clear / Gris Degradé",1,"Vendió 1"],
+["Aeroparque","repone","Silverstone","Clear Azul Claro / Azul Claro",3,"Vendió 6"],
+["Aeroparque","repone","Silverstone","Negro Mate / Gris",2,"Vendió 5"],
+["Aeroparque","repone","Silverstone","Negro Brillo / Gris",2,"Vendió 5"],
+["Aeroparque","repone","Silverstone","Clear / Incoloro Antirreflex",2,"Vendió 4"],
+["Aeroparque","repone","Silverstone","Negro Brillo / Incoloro Antirreflex",1,"Vendió 3"],
+["Aeroparque","repone","Sophia","Negro Brillo / Verde",1,"Vendió 1"],
+["Aeroparque","repone","Turin","Negro Mate / Habano",1,"Vendió 2"],
+["Aeroparque","repone","Zelanda","Negro Mate / Rojo",1,"Vendió 1"],
+["Aeroparque","bodega","Barein","Negro Brillo / Gris",1,"Vendió 1"],
+["Aeroparque","bodega","Bari","Negro Brillo / Gris",2,"Vendió 3"],
+["Aeroparque","bodega","Bauhaus","Dorado / Habano Flash",1,"Vendió 1"],
+["Aeroparque","bodega","Emmen","Negro Plata / Rosa",1,"Vendió 1"],
+["Aeroparque","bodega","Hannover","Gris Mate / Gris",1,"Vendió 2"],
+["Aeroparque","bodega","Imola","Negro Brillo / Gris",1,"Vendió 4"],
+["Aeroparque","bodega","Le Mans","Negro Brillo / Celeste Flash",1,"Vendió 4"],
+["Aeroparque","bodega","Palermo","Habano / Habano Degradé Flash",2,"Vendió 4"],
+["Aeroparque","bodega","Silverstone","Negro Mate / Gris",1,"Vendió 5"],
+["Aeroparque","bodega","Sublime","Habano / Habano Degradé Flash",1,"Vendió 1"],
+["Aeroparque","bodega","Turin","Negro Mate / Habano",1,"Vendió 2"],
+["Córdoba","nuevo","5th Avenue","Gris Clear / Celeste Espejado",1,"Lanzamiento"],
+["Córdoba","nuevo","5th Avenue","Blanco Marfil Brillo / Habano",1,"Lanzamiento"],
+["Córdoba","nuevo","Ascari","Negro Brillo / Gris Degradé",1,"Lanzamiento"],
+["Córdoba","nuevo","Ascari","Negro Mate / Gris",1,"En lugar de Wynwood (discontinuado)"],
+["Córdoba","nuevo","Casa Blanca","Habano Brillo / Habano Espejado Flash",1,"Lanzamiento"],
+["Córdoba","nuevo","Casa Blanca","Marrón / Habano",1,"En lugar de Belfast NB/Celeste (discontinuado)"],
+["Córdoba","nuevo","Civic Center","Verde Brillo / Verde",1,"Lanzamiento"],
+["Córdoba","nuevo","Civic Center","Negro Brillo / Gris",1,"En lugar de Wynwood (discontinuado)"],
+["Córdoba","reemplazo","Buenos Aires","Azul Clear / Rosa",1,"En lugar de Buenos Aires Carey/Verde"],
+["Córdoba","repone","Buenos Aires I","Negro Brillo / Ocre",1,"Vendió 1"],
+["Córdoba","repone","Creta","Negro Brillo / Verde",1,"Vendió 1"],
+["Córdoba","repone","Malibu","Blanco Brillo / Habano Flash",1,"Vendió 1"],
+["Córdoba","repone","San Remo","Negro Brillo / Gris",1,"Vendió 1"],
+["Córdoba","repone","Zeta 8","Negro Mate / Espejo Rojo",1,"Vendió 1"],
+["Córdoba","bodega","Malibu","Negro Brillo / Gris Degradé",1,"Vendió 1"],
+["Iguazú","nuevo","5th Avenue","Blanco Marfil Brillo / Habano",1,"Lanzamiento"],
+["Iguazú","nuevo","5th Avenue","Gris Clear / Celeste Espejado",1,"En lugar de Élysée Polarizado (discontinuado)"],
+["Iguazú","nuevo","Ascari","Negro Mate / Gris",1,"Lanzamiento"],
+["Iguazú","nuevo","Ascari","Negro Brillo / Gris Degradé",1,"Lanzamiento"],
+["Iguazú","nuevo","Casa Blanca","Marrón / Habano",1,"Lanzamiento"],
+["Iguazú","nuevo","Casa Blanca","Habano Brillo / Habano Espejado Flash",1,"Lanzamiento"],
+["Iguazú","nuevo","Civic Center","Negro Brillo / Gris",1,"Lanzamiento"],
+["Iguazú","nuevo","Civic Center","Verde Brillo / Verde",1,"Lanzamiento"],
+["Iguazú","repone","Malta","Negro Mate / Rosa Espejado",2,"Vendió 2"],
+["Iguazú","repone","Malta","Negro Mate / Habano Polarizado",1,"Vendió 1"],
+["Iguazú","repone","Filadelfia","Habano / Habano Flash",1,"Vendió 1"],
+["Iguazú","repone","Marsella","Rosa Mate / Habano Degradé",1,"Vendió 1"],
+["Iguazú","repone","Suzuka","Negro Brillo / Gris Polarizado",1,"Vendió 1"],
+["Iguazú","repone","Zeta 2","Negro Mate / Espejo Rosa",1,"Vendió 1"],
+["Iguazú","bodega","Alaska","Negro Mate / Gris",1,"Vendió 1"],
+["Bariloche","nuevo","Ascari","Negro Mate / Gris",1,"Lanzamiento"],
+["Bariloche","nuevo","Civic Center","Negro Brillo / Gris",1,"Lanzamiento"],
+["Bariloche","reemplazo","Zeta 1 Pro","Azul Mate / Habano",1,"En lugar de Zeta 1 Pro Polarizado"],
+["Bariloche","repone","Zeta 2","Negro Mate / Gris",1,"Vendió 1"],
+["Mendoza","nuevo","Ascari","Negro Mate / Gris",1,"Lanzamiento"],
+["Mendoza","nuevo","Civic Center","Negro Brillo / Gris",1,"Lanzamiento"],
+["Mendoza","reemplazo","Palermo","Marrón Mate / Habano Degradé",1,"En lugar de Palermo NB Polarizado"],
+["Mendoza","repone","Malibu","Negro Brillo / Gris Degradé",1,"Vendió 1"],
+["Bodega / Web","nuevo","5th Avenue","Blanco Marfil Brillo / Habano",1,"Lanzamiento"],
+["Bodega / Web","nuevo","5th Avenue","Gris Clear / Celeste Espejado",1,"En lugar de Saint Tropez (discontinuado)"],
+["Bodega / Web","nuevo","Ascari","Negro Mate / Gris",2,"En lugar de Élysée Gris Flash (discontinuado)"],
+["Bodega / Web","nuevo","Casa Blanca","Habano Brillo / Habano Espejado Flash",1,"Lanzamiento"],
+["Bodega / Web","nuevo","Casa Blanca","Marrón / Habano",1,"En lugar de Wynwood (discontinuado)"],
+["Bodega / Web","nuevo","Civic Center","Verde Brillo / Verde",1,"Lanzamiento"],
+["Bodega / Web","nuevo","Civic Center","Negro Brillo / Gris",1,"En lugar de Mykonos (discontinuado)"],
+["Bodega / Web","reemplazo","Adelaida","Negro Brillo / Gris Degradé",1,"En lugar de Adelaida NM/Gris Degradé"],
+["Bodega / Web","reemplazo","Kobe","Clear Naranja / Habano Degradé",2,"En lugar de Kobe NB/Gris"],
+["Bodega / Web","reemplazo","Le Mans","Marrón Mate / Habano Degradé",1,"En lugar de Le Mans Habano"],
+["Bodega / Web","reemplazo","Sublime","Negro Mate / Celeste Flash",1,"En lugar de Sublime NM/Gris Degradé"],
+["Bodega / Web","reemplazo","Versalles","Negro Brillo / Gris Polarizado",1,"En lugar de France (discontinuado)"],
+["Bodega / Web","repone","Elysee","Habano Mate / Habano Degradé",1,"Vendió 1"],
+["Bodega / Web","repone","Le Mans","Negro Brillo / Gris Claro",1,"Vendió 1"],
+["Bodega / Web","repone","Malta","Negro Brillo / Gris Degradé",1,"Vendió 1"],
+["Bodega / Web","repone","Milano","Carey / Habano",1,"Vendió 1"],
+["Bodega / Web","repone","Paris","Negro Mate / Gris Polarizado",1,"Vendió 1"],
+["Bodega / Web","repone","Sophia","Negro Brillo / Gris Degradé",1,"Vendió 1"],
+["Bodega / Web","repone","Sublime","Negro Mate / Celeste Flash",1,"Vendió 1"]
+].map(r=>({s:r[0],t:r[1],m:r[2],d:r[3],q:+r[4],w:r[5]}));
+const OVER=[["Alaska","Bariloche 35 · Bodega 10 · Aeroparque 9 · Córdoba 5 · Iguazú 2",61,10],["Varsovia","Bariloche 9 · Córdoba 6 · Aeroparque 3 · Iguazú 2 · Bodega 1",21,3],["Basel","Bodega 6 · Aeroparque 8 · Córdoba 1",15,5],["Long Beach","Córdoba 7 · Mendoza 2 · Iguazú 2",11,4]];
+
+const $=s=>document.querySelector(s), fmt=n=>n.toLocaleString("es-AR"), pesos=n=>"$"+Math.round(n/1e5)/10+" M";
+const tv=SUC.reduce((a,s)=>a+s.m[0]+s.m[1]+s.m[2],0), ti=SUC.reduce((a,s)=>a+s.imp,0), ts=SUC.reduce((a,s)=>a+s.st,0);
+const orb=R.filter(r=>r.t!=="bodega").reduce((a,r)=>a+r.q,0), nu=R.filter(r=>r.t==="nuevo").reduce((a,r)=>a+r.q,0), bod=R.filter(r=>r.t==="bodega").reduce((a,r)=>a+r.q,0);
+$("#kpis").innerHTML=[[fmt(tv)+" u","vendidas jul–sep"],[pesos(ti),"en ventas (precio de tienda)"],[fmt(ts)+" u","en stock hoy"],[fmt(orb)+" u","reposición desde Orbital"],[fmt(nu)+" u","modelos y colores nuevos",1]]
+ .map(([b,s,h])=>`<div class="kpi${h?" hl":""}"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+const mx=Math.max(...SUC.flatMap(s=>s.m));
+$("#tSuc tbody").innerHTML=SUC.map(s=>{const v=s.m[0]+s.m[1]+s.m[2],mes=v/2.8,cob=mes?s.st/mes:0;
+ return `<tr><td>${s.n}</td>${s.m.map(x=>`<td class="r num">${x}</td>`).join("")}<td><div class="minibar" aria-hidden="true">${s.m.map(x=>`<i style="height:${Math.max(2,x/mx*26)}px"></i>`).join("")}</div></td><td class="r num"><b>${v}</b></td><td class="r num">${pesos(s.imp)}</td><td class="r num">${s.st}</td><td class="r num">${mes?(cob>6?`<span class="pill p-bodega">${cob.toFixed(1)}</span>`:cob.toFixed(1)):"—"}</td></tr>`}).join("");
+$("#tSuc tfoot").innerHTML=`<tr><td>Total</td>${[0,1,2].map(i=>`<td class="r num">${SUC.reduce((a,s)=>a+s.m[i],0)}</td>`).join("")}<td></td><td class="r num">${tv}</td><td class="r num">${pesos(ti)}</td><td class="r num">${ts}</td><td class="r num">${(ts/(tv/2.8)).toFixed(1)}</td></tr>`;
+
+const mm=Math.max(...MODS.flatMap(m=>[m[1],m[2]]));
+$("#mods").innerHTML=MODS.map(([n,v,s])=>`<div class="mrow"><span>${n}</span><div class="track"><div class="v" style="width:${v/mm*100}%"></div><div class="s" style="width:${s/mm*100}%"></div></div><span class="lab">${v} vend · ${s} st</span></div>`).join("");
+
+const NM=["Ascari","Civic Center","Casa Blanca","5th Avenue"];
+$("#nuevos").innerHTML=NM.map(m=>{const rs=R.filter(r=>r.m===m);const by={};rs.forEach(r=>by[r.s]=(by[r.s]||0)+r.q);const cols=[...new Set(rs.map(r=>r.d))];
+ return `<div class="newcard"><h3>${m}</h3><div class="tot">${rs.reduce((a,r)=>a+r.q,0)} u · ${cols.length} colores</div><ul>${Object.entries(by).map(([s,q])=>`<li>${s} <span class="num" style="float:right">${q}</span></li>`).join("")}</ul><div class="tot">${cols.join(" · ")}</div></div>`}).join("");
+
+const LAB={nuevo:"Nuevo",reemplazo:"Reemplazo",repone:"Repone",bodega:"Desde su bodega"};
+const sucs=SUC.map(s=>s.n);
+let cur="Aeroparque"; try{cur=localStorage.getItem("sg_tab")||cur}catch(e){}
+function draw(){
+ $("#tabs").innerHTML=sucs.map(s=>`<button role="tab" id="tab-${sucs.indexOf(s)}" aria-selected="${s===cur}" data-s="${s}">${s}<span class="n">${R.filter(r=>r.s===s&&r.t!=="bodega").reduce((a,r)=>a+r.q,0)}</span></button>`).join("");
+ const rs=R.filter(r=>r.s===cur), g=t=>rs.filter(r=>r.t===t).reduce((a,r)=>a+r.q,0);
+ $("#sum").innerHTML=`<span>Nuevos <b>${g("nuevo")}</b></span><span>Reemplazos <b>${g("reemplazo")}</b></span><span>Repone venta <b>${g("repone")}</b></span><span>Total desde Orbital <b>${g("nuevo")+g("reemplazo")+g("repone")}</b></span>${g("bodega")?`<span>Pasar desde su bodega <b>${g("bodega")}</b></span>`:""}`;
+ $("#tRepo tbody").innerHTML=rs.map(r=>`<tr><td><span class="pill p-${r.t}">${LAB[r.t]}</span></td><td><b>${r.m}</b></td><td>${r.d}</td><td class="r num">${r.q}</td><td class="why">${r.w}</td></tr>`).join("");
+}
+$("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;cur=b.dataset.s;try{localStorage.setItem("sg_tab",cur)}catch(e){}draw()});
+draw();
+$("#over").innerHTML=OVER.map(([m,d,s,v])=>`<div><b>${m}</b><span class="num">${s} en stock · ${v} vendidos en 3 meses</span><br>${d}</div>`).join("");
+</script>
+</body>
+</html>
