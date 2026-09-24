@@ -949,6 +949,22 @@ export default function CatalogoPublico() {
     }
   }, [claveOk, clave])
 
+  // Link del WhatsApp de carrito sin cerrar (?carrito=1): puede abrirlo en otro equipo, así que
+  // traemos el último carrito guardado de ese acceso (recortado a stock libre) y lo abrimos.
+  useEffect(() => {
+    if (!claveOk || !clave) return
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('carrito') !== '1') return
+    sp.delete('carrito')
+    window.history.replaceState(null, '', window.location.pathname + (sp.toString() ? `?${sp}` : ''))
+    supabase.rpc('catalogo_carrito_recuperar', { p_codigo: clave }).then(({ data }) => {
+      const items = Array.isArray(data) ? (data as CartItem[]) : []
+      if (!items.length) return
+      setCart(Object.fromEntries(items.map((i) => [i.codigo, i])))
+      setCarritoOpen(true)
+    })
+  }, [claveOk, clave])
+
   // El carrito se guarda entero y pisado, no por diferencias: lo que queda grabado
   // es siempre el último estado real de la pantalla. Con demora, para no escribir
   // una fila por cada clic en el "+".
