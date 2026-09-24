@@ -21,6 +21,8 @@ import Consultas from './Consultas'
 import LinksSucursales from './LinksSucursales'
 import EnviosRepos from './EnviosRepos'
 import Instructivo from './Instructivo'
+import VentasConsigna from './VentasConsigna'
+import MarketingConsigna from './MarketingConsigna'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
 const DEV_KEY = 'orbital_consigna_dev'
@@ -47,7 +49,7 @@ type Pedido = {
 }
 export type Central = {
   madre: { cod: string; razon: string; nombre: string } | null
-  acceso: { nombre: string | null; sucursal_id: number | null }
+  acceso: { nombre: string | null; sucursal_id: number | null; catalogo?: string | null }
   sucursales: Sucursal[]
   stock: Linea[]
   movs: Mov[]
@@ -58,7 +60,7 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda'
+type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
@@ -123,7 +125,7 @@ export default function CentralConsigna() {
       setData(d)
       // Central arranca en el Total (todas); link de sucursal, en su sucursal.
       setSelSuc((s) => s ?? d.acceso.sucursal_id ?? null)
-      if (d.acceso.sucursal_id == null) setVista((v) => (v === 'tablero' ? 'stock' : v))
+      if (d.acceso.sucursal_id == null) setVista((v) => (v === 'tablero' ? 'ventas' : v))
       // Nombre precargado con el del link (se puede cambiar) para no bloquear la primera operación.
       setQuien((q) => q || (d.acceso.nombre ?? ''))
     })
@@ -176,6 +178,7 @@ export default function CentralConsigna() {
   const tabs: [Vista, string, string][] = [
     ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
     ...(esCentral && !suc ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
+    ['ventas', 'Ventas y análisis', ''],
     ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
     ['camino', 'En camino', tot('en_camino') ? `${fmt(tot('en_camino'))} u` : ''],
     ['repo', 'Reposición por venta', ''],
@@ -183,6 +186,7 @@ export default function CentralConsigna() {
     ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
     ['postventa', 'Postventa', ''],
     ['consultas', 'Consultas IRIS', ''],
+    ['marketing', '✦ Marketing y redes', ''],
     ...(esCentral ? [['links', 'Links de sucursal', ''] as [Vista, string, string]] : []),
   ]
 
@@ -297,6 +301,8 @@ export default function CentralConsigna() {
           <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
         )}
         {vista === 'ayuda' && <Instructivo data={data} esCentral={esCentral} />}
+        {vista === 'ventas' && <VentasConsigna clave={clave} data={data} />}
+        {vista === 'marketing' && <MarketingConsigna data={data} onVista={setVista} />}
         {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
         {(vista === 'camino' || vista === 'repo') && <EnviosRepos clave={clave} data={data} modo={vista === 'camino' ? 'camino' : 'repo'} />}
         {vista === 'links' && esCentral && <LinksSucursales clave={clave} cliente={data.madre?.nombre ?? 'Orbital'} />}

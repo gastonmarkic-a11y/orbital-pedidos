@@ -949,6 +949,16 @@ export default function CatalogoPublico() {
     }
   }, [claveOk, clave])
 
+  // ?ver=inspiracion|triple|contenido|publicaciones|postventa: abre directo esa sección (links del panel de consigna).
+  const [contenidoSolapa, setContenidoSolapa] = useState<'crear' | 'publicaciones'>('crear')
+  useEffect(() => {
+    if (!claveOk || !clave) return
+    const ver = new URLSearchParams(window.location.search).get('ver')
+    if (ver === 'inspiracion' || ver === 'triple') { setConoce(true); setGrupoActivo(null) }
+    else if (ver === 'contenido' || ver === 'publicaciones') { setContenidoSolapa(ver === 'publicaciones' ? 'publicaciones' : 'crear'); setContenido(true) }
+    else if (ver === 'postventa') setPostventa(true)
+  }, [claveOk, clave])
+
   // Link del WhatsApp de carrito sin cerrar (?carrito=1): puede abrirlo en otro equipo, así que
   // traemos el último carrito guardado de ese acceso (recortado a stock libre) y lo abrimos.
   useEffect(() => {
@@ -1183,7 +1193,7 @@ export default function CatalogoPublico() {
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
       {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
-      {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
+      {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
@@ -1317,11 +1327,11 @@ function SinOptica({ onClose }: { onClose: () => void }) {
 
 // ── Crear contenido: buscar un modelo y abrir su ficha para redes (sin precio ni carrito) ──
 // Para ópticas suma "Mis anteojos" y "Mis publicaciones": todo lo de redes junto, separado de postventa.
-function ContenidoBuscar({ modelos, clave, esOptica, onElegir, onClose }: {
-  modelos: Modelo[]; clave: string; esOptica: boolean; onElegir: (m: Modelo) => void; onClose: () => void
+function ContenidoBuscar({ modelos, clave, esOptica, solapaInicial, onElegir, onClose }: {
+  modelos: Modelo[]; clave: string; esOptica: boolean; solapaInicial?: 'crear' | 'publicaciones'; onElegir: (m: Modelo) => void; onClose: () => void
 }) {
   const [q, setQ] = useState('')
-  const [solapa, setSolapa] = useState<'crear' | 'anteojos' | 'publicaciones'>('crear')
+  const [solapa, setSolapa] = useState<'crear' | 'anteojos' | 'publicaciones'>(esOptica ? solapaInicial ?? 'crear' : 'crear')
   const lista = modelos.filter((m) => !q.trim() || m.modelo.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 60)
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
