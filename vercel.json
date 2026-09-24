@@ -17,6 +17,10 @@
       "destination": "/p/shopgallery.html"
     },
     {
+      "source": "/opticalworld-7m2q",
+      "destination": "/p/opticalworld.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

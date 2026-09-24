@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/icon.svg">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Optical World × Orbital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#f3f6f8; --surface:#ffffff; --ink:#12181d; --muted:#5a646b; --faint:#8b949a; --line:#dde3e7;
+  --blue:#1583c2; --blue-soft:#e1f0f9; --sim:#8a5a12; --sim-soft:#f6ecd9; --st2:#5a646b; --st2-soft:#eceff1;
+  --display:"Familjen Grotesk",system-ui,sans-serif; --body:"Instrument Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  color-scheme:dark; --ground:#0f1316; --surface:#171c20; --ink:#e9edef; --muted:#a2abb1; --faint:#737c82; --line:#2a3137;
+  --blue:#5db8ec; --blue-soft:#11293a; --sim:#e0b36a; --sim-soft:#2f2415; --st2:#a2abb1; --st2-soft:#20262b;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --ground:#0f1316; --surface:#171c20; --ink:#e9edef; --muted:#a2abb1; --faint:#737c82; --line:#2a3137;
+  --blue:#5db8ec; --blue-soft:#11293a; --sim:#e0b36a; --sim-soft:#2f2415; --st2:#a2abb1; --st2-soft:#20262b;}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 var(--body);padding-inline:16px;padding-block:28px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.05}
+h2{font-size:22px}
+h3{font-size:16px}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}
+.lead{color:var(--muted);max-width:62ch;margin:10px 0 0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-direction:column;gap:18px;border-bottom:1px solid var(--line);padding-bottom:28px}
+.brands{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.brands .pair{display:flex;align-items:center;gap:14px}
+.brands .x{color:var(--faint);font:500 14px var(--mono)}
+.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:24px;align-items:center}
+.hero img{border-radius:12px;display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover}
+@media (max-width:760px){.hero{grid-template-columns:1fr}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi b{font:600 24px/1.1 var(--display)}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi.hl b{color:var(--blue)}
+section{display:flex;flex-direction:column;gap:16px}
+.sechead p{color:var(--muted);margin:6px 0 0;max-width:68ch}
+.sucgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.suc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.suc h3{font-size:15px}
+.suc .dir{font-size:12.5px;color:var(--muted)}
+.suc.e2{background:var(--st2-soft);border-style:dashed}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:620px}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+tfoot td{font-weight:600;background:var(--ground)}
+tbody tr.grp td{background:var(--ground);font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pill{display:inline-block;font:500 10.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:4px;white-space:nowrap}
+.p-lectura{background:var(--blue-soft);color:var(--blue)}
+.p-similar{background:var(--sim-soft);color:var(--sim)}
+.p-e1{background:var(--blue-soft);color:var(--blue)}
+.p-e2{background:var(--surface);color:var(--st2);border:1px solid var(--line)}
+td .why{color:var(--muted);font-size:12.5px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;counter-reset:s}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.step b{font-family:var(--display);font-size:15px}
+.step b::before{counter-increment:s;content:counter(s) ". ";color:var(--blue)}
+.step span{color:var(--muted)}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.note ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+a{color:var(--blue)}
+.live{font:600 13px var(--body);color:var(--ground);background:var(--ink);padding:8px 14px;border-radius:999px;text-decoration:none}
+.live:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .logo{filter:invert(1)}}
+:root[data-theme="dark"] .logo{filter:invert(1)}
+footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div class="brands">
+    <div class="pair"><img src="/p/ow-logo.webp" alt="Optical World" style="height:44px;width:auto" class="logo"><span class="x">×</span><img src="/logo-orbital.png" alt="Orbital" style="height:20px;width:auto" class="logo"></div>
+    <a class="live" href="/consigna?k=22c78f97e305261c4c">Ver stock en vivo por sucursal →</a>
+  </div>
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Consigna por sucursal · Etapa 1</div>
+      <h1 style="margin-top:10px">Primer envío de Orbital a Optical World</h1>
+      <p class="lead">Los anteojos que se eligieron en la selección, repartidos en cinco sucursales. Cada sucursal tiene su propio stock en consigna y su propia reposición. La facturación y la cobranza se hacen con la central de World Optics.</p>
+    </div>
+    <img src="/p/ow-local.webp" alt="Local de Optical World en Unicenter" width="892" height="502">
+  </div>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="sechead"><h2>Sucursales</h2><p>La etapa 1 arranca en cinco locales. Tortugas, Palmas del Pilar y Galerías Pacífico entran en la etapa 2, con la misma lógica.</p></div>
+  <div class="sucgrid" id="sucs"></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Qué recibe cada sucursal</h2><p>Las cinco sucursales reciben lo mismo: 2 unidades de los colores marcados como principales y 1 de los demás. Cuando un color no tenía stock suficiente para enviar ya, va el más parecido del mismo modelo. Esos van marcados como <b>Similar</b>.</p></div>
+  <div class="tablebox"><table id="tEnv"><thead><tr><th>Origen</th><th>Modelo</th><th>Color</th><th class="r">Por sucursal</th><th class="r">Total</th><th>Detalle</th></tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+</section>
+
+<section>
+  <div class="sechead"><h2>Cómo funciona la consigna</h2><p>Los anteojos siguen siendo de Orbital hasta que se venden. Optical World paga solo lo que vende.</p></div>
+  <div class="steps">
+    <div class="step"><b>Llega el envío</b><span>Cada sucursal lo recibe en el panel, línea por línea o todo junto.</span></div>
+    <div class="step"><b>Se vende</b><span>La liquidación de ventas se manda por Excel, semanal o mensual. Sale una sola factura a la central.</span></div>
+    <div class="step"><b>Se repone solo</b><span>Lo vendido vuelve a la sucursal donde se vendió. Si un color no rota, se cambia por lo que más se vende.</span></div>
+    <div class="step"><b>Se mueve entre locales</b><span>Una sucursal le puede pasar un anteojo a otra desde el panel, sin pasar por Orbital.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="note">
+    <h3>Qué tiene el panel de consigna</h3>
+    <ul>
+      <li><b>Stock por sucursal:</b> qué hay en cada local, qué está en camino y qué se marcó para devolver.</li>
+      <li><b>Links por sucursal:</b> cada local entra con su propio link, sin usuario ni contraseña. Se puede instalar como app.</li>
+      <li><b>Pedir a Orbital:</b> ven el stock de Orbital y piden lo que necesitan. La central lo autoriza.</li>
+      <li><b>Ventas y análisis:</b> qué se vende en cada local, qué se agota y qué no rota.</li>
+      <li><b>Marketing y redes:</b> fotos, contenido para redes, Triple Protección y postventa.</li>
+      <li><b>IRIS:</b> la asistente de Orbital deriva a la sucursal más cercana que tenga el modelo que busca el cliente.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>Orbital Premium Eyewear · El stock y los envíos de cada sucursal se ven en el <a href="/consigna?k=22c78f97e305261c4c">panel de consigna</a>.</footer>
+</div>
+
+<script>
+const SUC=[
+ ["Alto Palermo","Av. Santa Fe 3253 · CABA",1],
+ ["Abasto","Av. Corrientes 3247 · CABA",1],
+ ["Unicenter","Paraná 3745 · Martínez",1],
+ ["Alto Avellaneda","Güemes 897 · Avellaneda",1],
+ ["Av. Santa Fe","CABA",1],
+ ["Tortugas Open Mall","Panamericana km 36,5 · Tortuguitas",2],
+ ["Palmas del Pilar","Las Magnolias 698 · Pilar",2],
+ ["Galerías Pacífico","Florida 737 · CABA",2]];
+const E=[
+ ["lectura","Adelaida","Negro Brillo / Ocre",2,""],
+ ["similar","Adelaida","Negro Brillo / Gris Degradé",1,"En lugar de Negro Mate / Gris Degradé"],
+ ["lectura","Adelaida","Marrón Mate / Habano Degradé",1,""],
+ ["lectura","Adelaida","Marfil / Rosa",1,""],
+ ["similar","Adelaida","Negro Mate / Verde",1,"En lugar de Gris Clear / Negro Degradé"],
+ ["similar","Adelaida","Marrón Mate / Verde",1,"En lugar de Caramelo / Verde"],
+ ["lectura","Adelaida","Beige Pastel / Habano",1,""],
+ ["similar","Le Mans","Negro Brillo / Amarillo",2,"En lugar de Negro Brillo / Naranja"],
+ ["similar","Le Mans","Marrón Mate / Habano Degradé",1,"En lugar de Habano / Habano"],
+ ["lectura","Le Mans","Verde Oscuro Mate / Gris",1,""],
+ ["lectura","Le Mans","Negro Brillo / Gris Claro",2,""],
+ ["lectura","Buenos Aires I","Negro Mate / Gris",2,""],
+ ["lectura","Buenos Aires I","Gris Brillo / Gris",1,""],
+ ["lectura","Buenos Aires I","Beige Pastel Mate / Habano",1,""],
+ ["lectura","Buenos Aires I","Negro Brillo / Ocre",2,""],
+ ["similar","Buenos Aires I","Negro Brillo / Antirreflex (receta)",1,"En lugar de Ascari receta Negro Brillo"],
+ ["lectura","Ascari","Negro Brillo / Gris Degradé",2,""],
+ ["similar","Ascari","Clear Mate / Naranja",1,"En lugar de Marrón / Habano Degradé"]
+].map(r=>({t:r[0],m:r[1],d:r[2],q:r[3],w:r[4]}));
+const N1=SUC.filter(s=>s[2]===1).length;
+const $=s=>document.querySelector(s);
+const perSuc=E.reduce((a,r)=>a+r.q,0), tot=perSuc*N1, sim=E.filter(r=>r.t==="similar").length;
+$("#kpis").innerHTML=[[N1,"sucursales en la etapa 1",1],[tot+" u","en el primer envío"],[perSuc+" u","por sucursal"],[new Set(E.map(r=>r.m)).size,"modelos"],[E.length,"colores"]]
+ .map(([b,s,h])=>`<div class="kpi${h?" hl":""}"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+$("#sucs").innerHTML=SUC.map(([n,d,e])=>`<div class="suc${e===2?" e2":""}"><span class="pill p-e${e}">Etapa ${e}</span><h3>${n}</h3><span class="dir">${d}</span><span class="num" style="font-size:13px">${e===1?perSuc+" u":"—"}</span></div>`).join("");
+let last="";
+$("#tEnv tbody").innerHTML=E.map(r=>{const g=r.m!==last?`<tr class="grp"><td colspan="6">${r.m} · ${E.filter(x=>x.m===r.m).reduce((a,x)=>a+x.q,0)*N1} u</td></tr>`:"";last=r.m;
+ return g+`<tr><td><span class="pill p-${r.t}">${r.t==="lectura"?"Selección":"Similar"}</span></td><td><b>${r.m}</b></td><td>${r.d}</td><td class="r num">${r.q}</td><td class="r num">${r.q*N1}</td><td class="why">${r.w}</td></tr>`}).join("");
+$("#tEnv tfoot").innerHTML=`<tr><td colspan="3">Total · ${sim} colores similares</td><td class="r num">${perSuc}</td><td class="r num">${tot}</td><td></td></tr>`;
+</script>
+</body>
+</html>
