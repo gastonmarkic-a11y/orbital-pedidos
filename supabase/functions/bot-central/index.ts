@@ -1,4 +1,9 @@
 // bot-central — IRIS, asistente de atención de Orbital (multicanal).
+// v71 (2026-09-25): chat de la tienda (web anónimo) = canal minorista: óptica/comercio → sin precios, se le piden
+//      nombre, localidad y WhatsApp y pasa a ventas (derivación optica_tienda). "Palermo" como respuesta a "tu localidad"
+//      es el barrio, no el modelo (dondeConseguir esLugar).
+// v70 (2026-09-25): widget en orbitaleyewear.com.ar — "¿tienen local?" de un visitante sin segmento ya no dispara
+//      "¿sos óptica o consumidor?": se contesta directo con las ópticas autorizadas.
 // v69 (2026-09-25, relevamiento de Messenger): "¿tienen local / sucursal / dirección / horario?" → no hay locales, solo ópticas
 //      autorizadas + óptica cercana (zona sur/oeste/norte y Capital por sus localidades) · FAQ consumidor: envío gratis,
 //      cuotas según la web, cambio sin uso + arrepentimiento, exterior → orbitaleyewear.com · repuestos → Postventa por
@@ -443,8 +448,10 @@ async function faqDiferenciarte(f: FlujoDif, texto: string): Promise<string | nu
 // 1) sucursal de consigna que TIENE el modelo (stock real) · 2) óptica de la zona que lo compró este
 // año (comprobantes Tango + pedidos de la Suite) · 3) la zona, para saber dónde se vende Orbital.
 // A las sucursales de consigna que le pasamos al cliente les queda la consulta en su panel.
-async function dondeConseguir(conversacionId: string, texto: string, tel: string | null, nombre: string | null, ingles = false): Promise<RespuestaBot | null> {
-  const modelos = (await cotizarFull(conversacionId, texto, 5, true)).map((m) => m.modelo).slice(0, 3);
+async function dondeConseguir(conversacionId: string, texto: string, tel: string | null, nombre: string | null, ingles = false, esLugar = false): Promise<RespuestaBot | null> {
+  // esLugar: el texto es la respuesta a "¿en qué localidad?" — "Palermo" es el barrio, no el modelo PALERMO.
+  const modelos = (await cotizarFull(conversacionId, texto, 5, true)).map((m) => m.modelo)
+    .filter((m) => !esLugar || !(" " + norm(texto) + " ").includes(" " + norm(m) + " ")).slice(0, 3);
   const tz = expandirZona(texto);
   const { data: sc } = await supabase.rpc("bot_sucursal_consigna_cercana", { p_texto: tz, p_modelos: modelos });
   const consigna = (sc ?? []) as { sucursal_id: number; nombre: string; direccion: string; localidad: string; modelos: string | null }[];
@@ -602,7 +609,7 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
     const sinLocal = RE_LOCAL_PROPIO.test(texto) && !RE_NO_LOCAL.test(texto) ? TXT_SIN_LOCAL + "\n\n" : "";
     if (pideDonde || f.campo_pedido === "localidad_prueba" || respondeLocalidad) {
       const { localidad, provincia: provLoc } = await ubicar(texto);
-      const donde = await dondeConseguir(conversacionId, texto, tel, f.contacto_nombre);
+      const donde = await dondeConseguir(conversacionId, texto, tel, f.contacto_nombre, false, !pideDonde);
       if (donde) {
         await guardarFlujo(conversacionId, { campo_pedido: null, localidad });
         return { texto: sinLocal + donde.texto + yOptica };
@@ -1451,6 +1458,8 @@ async function explicarTriple(): Promise<string> {
     `Los ves en ${TIENDA} — ¿querés el link de alguno? 🙌`;
 }
 const RE_DISPOSITIVO = /(habilit\w*|este dispositivo|no me deja entrar|no puedo entrar|no me abre)/i;
+const TXT_PIDE_DATOS_OPTICA = "¡Qué bueno! 🙌 A las ópticas y comercios los atiende nuestro equipo comercial, con condiciones especiales (los precios de esta tienda son de venta al público). Pasame en un mensaje el *nombre de tu óptica*, la *localidad* y un *WhatsApp* de contacto, y un vendedor te escribe.";
+const RE_PIDE_DATOS_OPTICA = /nombre de tu [oó]ptica\*?, la \*?localidad/i;
 
 async function handler(req: Request): Promise<Response> {
   const body = await req.json();
@@ -1521,6 +1530,27 @@ async function handler(req: Request): Promise<Response> {
   if (humanoReciente && !prueba) return silencio();
   // "Tu consulta ya está con…" una sola vez; después IRIS espera callada a la persona.
   if (modoDerivada && ultimasBot[0] && /^(Tu consulta ya est[aá] con|Your query is already)/.test(ultimasBot[0]) && !RE_POSTVENTA_TEC.test(texto)) return silencio();
+
+  // v71: chat de la tienda (orbitaleyewear.com.ar, visitante anónimo): canal minorista. Si escribe una óptica o un
+  // comercio, por acá no se pasan precios: se le piden los datos y pasa a ventas (🆘 en Telegram).
+  const chatTienda = canal === "web" && !cod && (contacto?.email ?? "").startsWith("anon:");
+  if (chatTienda && !modoDerivada) {
+    if (ultimasBot[0] && RE_PIDE_DATOS_OPTICA.test(ultimasBot[0])) {
+      if (!prueba) {
+        await supabase.from("derivaciones").insert({
+          conversacion_id: conversacionId, motivo: "optica_tienda",
+          resumen: `Óptica/comercio que escribió en el chat de la tienda online. Datos: ${texto.slice(0, 400)}`,
+          estado: "pendiente", tipo_cliente: "mayorista", asignado_a: await vendedorId(VENDEDOR_LEADS),
+        });
+        await supabase.from("at_conversaciones").update({ estado: "derivada" }).eq("id", conversacionId);
+      }
+      return responder(conversacionId, canal, { texto: "¡Gracias! 🙌 Ya se lo pasé al equipo comercial: un vendedor te contacta a la brevedad con la propuesta para ópticas.", derivar: { motivo: "optica_tienda", resumen: texto } }, ultimasBot);
+    }
+    if (RE_DICE_OPTICA.test(texto) || RE_REVENDE.test(texto) || RE_OTRO_COMERCIO.test(texto) || detectarTipo(texto) === "mayorista") {
+      await supabase.from("contactos").update({ tipo_cliente: "mayorista" }).eq("id", contactoId);
+      return responder(conversacionId, canal, { texto: TXT_PIDE_DATOS_OPTICA }, ultimasBot);
+    }
+  }
 
   // v69: consumidor final (declarado, o sin segmento que no es óptica ni lead de campaña).
   const tipoCont = contacto?.tipo_cliente ?? null;
@@ -1718,7 +1748,8 @@ async function handler(req: Request): Promise<Response> {
     else if (yaPregunteSegmento >= 2) {
       return responder(conversacionId, canal, await derivar("sin_segmento", conversacionId, texto, undefined, vendCod), ultimasBot);
     }
-    else if ((RE_PRECIO.test(texto) || RE_COMPRA.test(texto)) && !yaPregunteSegmento && !RE_NEGATIVA.test(texto)) {
+    // "¿tienen local?" no es una cotización: se contesta abajo (dónde probarlos) sin preguntar el segmento.
+    else if ((RE_PRECIO.test(texto) || RE_COMPRA.test(texto)) && !yaPregunteSegmento && !RE_NEGATIVA.test(texto) && !esPreguntaDonde(texto)) {
       return responder(conversacionId, canal, { texto: ingles ? "To quote you right — are you an optical shop/business, or an end consumer?" : "Para cotizarte bien — ¿sos óptica/comercio o consumidor final?", quickReplies: ingles ? ["Optical / business", "End consumer"] : ["Soy óptica / comercio", "Soy consumidor final"] }, ultimasBot);
     }
   }
@@ -1747,12 +1778,12 @@ async function handler(req: Request): Promise<Response> {
 
   // ¿Dónde consigo este modelo? En CUALQUIER charla (no solo la campaña) y en todos los canales.
   // Si ya le preguntamos la localidad, el mensaje corto siguiente se toma como la localidad.
-  const pidioLocalidad = ultimasBot.slice(0, 2).some((m) => /en qu[eé] localidad/i.test(m));
+  const pidioLocalidad = ultimasBot.slice(0, 2).some((m) => /(en qu[eé] localidad|tu localidad|localidad o barrio)/i.test(m));
   const cortoLoc = texto.trim().split(/\s+/).length <= 8 && !texto.includes("?");
   const pideDonde = esPreguntaDonde(texto);
   if (tipoCliente !== "mayorista" && !cod && (pideDonde || (pidioLocalidad && cortoLoc))) {
     const sinLocal = !ingles && RE_LOCAL_PROPIO.test(texto) && !RE_NO_LOCAL.test(texto) ? TXT_SIN_LOCAL + "\n\n" : "";
-    const donde = await dondeConseguir(conversacionId, texto, contacto?.telefono ?? null, extraerNombre(texto), ingles);
+    const donde = await dondeConseguir(conversacionId, texto, contacto?.telefono ?? null, extraerNombre(texto), ingles, !pideDonde && pidioLocalidad && cortoLoc);
     if (donde) return responder(conversacionId, canal, { ...donde, texto: sinLocal + donde.texto }, ultimasBot);
     if (!pidioLocalidad) {
       return responder(conversacionId, canal, {
