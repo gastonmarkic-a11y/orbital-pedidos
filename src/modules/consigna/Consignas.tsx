@@ -15,13 +15,14 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { useAuth } from '../../lib/auth'
 import TableroConsigna from './TableroConsigna'
+import { leerHoja, matchTexto, norm, type DetalleCliente, type LineaLeida } from './liquidacionParser'
 
 type Madre = { cod: string; nombre: string; sucursales: number; local: number; devolver: number; camino: number; repos: number; postventa: number }
 type Suc = { id: number; cod_madre: string; nombre: string; direccion: string | null; orden: number }
 type StockRow = { sucursal_id: number; codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; devolver: number; en_camino: number; precio: number | null }
 type RepoItem = { codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; motivo?: string }
 type Repo = { id: number; sucursal_id: number; origen: string; liquidacion_id: number | null; consigna_pedido_id: number | null; items: RepoItem[]; sin_cubrir: number; created_at: string }
-type Liq = { id: number; archivo: string | null; desde: string | null; hasta: string | null; total_units: number; importe: number; creado_por: string | null; created_at: string }
+type Liq = { id: number; archivo: string | null; desde: string | null; hasta: string | null; total_units: number; importe: number; importe_cliente: number | null; detalle_cliente: DetalleCliente | null; creado_por: string | null; created_at: string }
 type Dev = { id: number; sucursal_id: number; modelo: string; descripcion: string | null; cantidad: number; enviada: number; recibida: number; conservada: number; vendida: number }
 type Pv = { id: number; sucursal_id: number | null; tipo: string; producto: string | null; detalle: string; estado: string; solicitado_por: string | null; created_at: string }
 type Acceso = { codigo: string; sucursal_id: number | null; nombre: string | null }
@@ -146,42 +147,59 @@ function Detalle({ madre, vista, onCambio }: { madre: Madre; vista: Vista; onCam
 }
 
 // ── Liquidación por Excel ────────────────────────────────────────────────────
-type LineaPrev = { fila: number; sucursal_id: number | null; codigo: string | null; cantidad: number; saldo: boolean; texto: string; sucTexto: string }
-
-const norm = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-
-function detectarColumnas(headers: string[]) {
-  const h = headers.map(norm)
-  const buscar = (...claves: string[]) => h.findIndex((x) => claves.some((c) => x === c || x.includes(c)))
-  return {
-    sucursal: buscar('sucursal', 'local', 'punto de venta', 'deposito', 'tienda'),
-    codigo: buscar('codigo', 'cod ', 'sku', 'articulo'),
-    modelo: buscar('modelo'),
-    color: buscar('color', 'descripcion', 'posicion', 'detalle'),
-    cantidad: buscar('cantidad', 'cant', 'unidades', 'vendid', 'venta'),
-    saldo: buscar('saldo', 'liquidacion', 'oferta', 'outlet'),
-  }
+// El formato de cada cliente se reconoce solo (liquidacionParser). El producto se resuelve por:
+// SKU Orbital en el archivo → equivalencia aprendida (consigna_alias) → modelo + color.
+// Sin sucursal en el archivo: se descuenta de la sucursal que tiene ese producto.
+type TipoLinea = 'venta' | 'otra_marca'
+type LineaPrev = {
+  fila: number; sucursal_id: number | null; codigo: string | null; cantidad: number; saldo: boolean; texto: string; sucTexto: string
+  tipo: TipoLinea; forzar: boolean; codigoCliente: string; modelo: string; color: string; seccion: string
+  precioCliente: number | null; importeCliente: number | null
 }
+type Prod = { codigo: string; modelo: string | null; descripcion: string | null; precio: number | null }
+const CAMPOS_CLIENTE: [keyof DetalleCliente, string][] = [
+  ['subtotal', 'Subtotal sin IVA'], ['iva', 'IVA'], ['total', 'Total'], ['publicidad', 'Publicidad'], ['comision', 'Comisión %'], ['pago', 'Pago'],
+]
 
 function Liquidacion({ madre, sucs, stock, onCambio }: { madre: Madre; sucs: Suc[]; stock: StockRow[]; onCambio: () => void }) {
   const toast = useToast()
   const { codigoEfectivo, vendedor } = useAuth()
   const quien = vendedor?.nombre || codigoEfectivo
   const [archivo, setArchivo] = useState<string | null>(null)
+  const [libro, setLibro] = useState<{ nombres: string[]; filas: unknown[][][] } | null>(null)
+  const [hoja, setHoja] = useState(0)
   const [lineas, setLineas] = useState<LineaPrev[]>([])
   const [sucGeneral, setSucGeneral] = useState<number | null>(null)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  const [cliente, setCliente] = useState<DetalleCliente>({})
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<any>(null)
   const [historial, setHistorial] = useState<Liq[]>([])
+  const [alias, setAlias] = useState<Map<string, string>>(new Map())
+  const [catalogo, setCatalogo] = useState<Prod[]>([])
 
   useEffect(() => {
     supabase.from('consigna_liquidacion').select('*').eq('cod_madre', madre.cod).order('created_at', { ascending: false }).limit(30)
       .then(({ data }) => setHistorial((data ?? []) as Liq[]))
   }, [madre.cod, resultado])
+  useEffect(() => {
+    supabase.from('consigna_alias').select('codigo_cliente, codigo').eq('cod_madre', madre.cod)
+      .then(({ data }) => setAlias(new Map((data ?? []).map((a: any) => [String(a.codigo_cliente).toUpperCase(), a.codigo as string]))))
+    supabase.from('stock').select('codigo, modelo, descripcion, precio').then(({ data }) => setCatalogo((data ?? []) as Prod[]))
+  }, [madre.cod, resultado])
 
-  const stockDe = (sid: number | null) => stock.filter((s) => s.sucursal_id === sid && s.cantidad > 0)
+  // productos de la consigna del cliente (todas las sucursales) + catálogo Orbital
+  const prods = useMemo(() => {
+    const m = new Map<string, Prod>()
+    for (const s of stock) if (!m.has(s.codigo)) m.set(s.codigo, { codigo: s.codigo, modelo: s.modelo, descripcion: s.descripcion, precio: s.precio })
+    const enConsigna = [...m.values()]
+    for (const c of catalogo) if (!m.has(c.codigo)) m.set(c.codigo, c)
+    return { enConsigna, todos: m }
+  }, [stock, catalogo])
+  const nombreProd = (c: string | null) => { const p = c ? prods.todos.get(c) : null; return p ? `${p.modelo ?? ''} · ${p.descripcion ?? ''}` : null }
+  const precioLista = (c: string | null) => (c ? prods.todos.get(c)?.precio ?? null : null)
+  const stockEn = (sid: number | null, codigo: string | null) => stock.find((s) => s.sucursal_id === sid && s.codigo === codigo)?.cantidad ?? 0
 
   const matchSucursal = (t: string): number | null => {
     const n = norm(t)
@@ -191,73 +209,115 @@ function Liquidacion({ madre, sucs, stock, onCambio }: { madre: Madre; sucs: Suc
     const parcial = sucs.find((s) => n.includes(norm(s.nombre)) || norm(s.nombre).includes(n) || (s.direccion && (n.includes(norm(s.direccion)) || norm(s.direccion).includes(n))))
     return parcial?.id ?? null
   }
-  const matchProducto = (sid: number | null, codigo: string, texto: string): string | null => {
-    const rows = stockDe(sid)
-    const c = codigo.trim()
-    if (c) { const r = rows.find((x) => x.codigo === c); if (r) return r.codigo }
-    const t = norm(texto)
-    if (!t) return null
-    const exact = rows.find((x) => norm(`${x.modelo} ${x.descripcion}`) === t)
-    if (exact) return exact.codigo
-    // todas las palabras del texto están en modelo + color
-    const pal = t.split(' ').filter((w) => w.length > 1)
-    const cands = rows.filter((x) => { const n = norm(`${x.modelo} ${x.descripcion}`); return pal.every((w) => n.includes(w)) })
-    return cands.length === 1 ? cands[0].codigo : null
+  const resolverProducto = (l: LineaLeida): string | null => {
+    if (l.codigoOrbital && prods.todos.has(l.codigoOrbital)) return l.codigoOrbital
+    const a = l.codigoCliente ? alias.get(l.codigoCliente.toUpperCase()) : undefined
+    if (a) return a
+    const [mod, col] = l.modelo ? [l.modelo, l.color] : [l.texto.split(' ')[0], l.texto.split(' ').slice(1).join(' ')]
+    return matchTexto(mod, col, prods.enConsigna, catalogo) ?? l.codigoOrbital
+  }
+  // reparte la cantidad entre las sucursales que tienen el producto (la de más stock primero)
+  const repartir = (codigo: string | null, cantidad: number): { sucursal_id: number | null; cantidad: number; forzar: boolean }[] => {
+    if (sucGeneral) return [{ sucursal_id: sucGeneral, cantidad, forzar: false }]
+    if (sucs.length === 1) return [{ sucursal_id: sucs[0].id, cantidad, forzar: false }]
+    const con = stock.filter((s) => s.codigo === codigo && s.cantidad > 0).sort((a, b) => b.cantidad - a.cantidad)
+    // sin stock registrado en ninguna: va a la primera sucursal (se cambia en la línea)
+    if (cantidad < 0 || !codigo || !con.length) return [{ sucursal_id: con[0]?.sucursal_id ?? sucs[0]?.id ?? null, cantidad, forzar: false }]
+    const out: { sucursal_id: number | null; cantidad: number; forzar: boolean }[] = []
+    let resto = cantidad
+    for (const s of con) { if (resto <= 0) break; const q = Math.min(resto, s.cantidad); out.push({ sucursal_id: s.sucursal_id, cantidad: q, forzar: false }); resto -= q }
+    if (resto > 0) { out[0].cantidad += resto; out[0].forzar = true }
+    return out
   }
 
-  const leerArchivo = async (f: File) => {
-    const XLSX = await import('xlsx')
-    const wb = XLSX.read(await f.arrayBuffer())
-    const filas = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' })
-    // la primera fila con "cantidad" (o parecido) es el encabezado
-    const hi = filas.findIndex((r) => { const c = detectarColumnas((r as unknown[]).map(String)); return c.cantidad >= 0 && (c.codigo >= 0 || c.modelo >= 0 || c.color >= 0) })
-    if (hi < 0) { toast('No encontré el encabezado (necesito una columna de cantidad y una de código o modelo)', 'error'); return }
-    const col = detectarColumnas((filas[hi] as unknown[]).map(String))
+  const armarLineas = (filas: unknown[][]) => {
+    const r = leerHoja(filas)
+    if (r.error) { toast(r.error, 'error'); setLineas([]); return }
     const out: LineaPrev[] = []
-    filas.slice(hi + 1).forEach((r, i) => {
-      const row = r as unknown[]
-      const cant = Math.round(Number(String(row[col.cantidad] ?? '').replace(',', '.')))
-      if (!cant || cant <= 0) return
-      const sucTexto = col.sucursal >= 0 ? String(row[col.sucursal] ?? '') : ''
-      const sid = col.sucursal >= 0 ? matchSucursal(sucTexto) : sucGeneral
-      const codigo = col.codigo >= 0 ? String(row[col.codigo] ?? '') : ''
-      const texto = [col.modelo >= 0 ? row[col.modelo] : '', col.color >= 0 ? row[col.color] : ''].map(String).join(' ').trim()
-      const saldoTxt = col.saldo >= 0 ? norm(row[col.saldo]) : ''
-      out.push({
-        fila: hi + i + 2, sucursal_id: sid, cantidad: cant, texto: texto || codigo, sucTexto,
-        codigo: matchProducto(sid, codigo, texto), saldo: ['si', 's', 'x', 'saldo', 'yes', '1', 'true'].includes(saldoTxt),
-      })
-    })
-    setArchivo(f.name)
+    for (const l of r.lineas) {
+      const base = {
+        fila: l.fila, texto: l.texto, sucTexto: l.sucTexto, saldo: l.saldo, codigoCliente: l.codigoCliente, modelo: l.modelo, color: l.color,
+        seccion: l.seccion, precioCliente: l.precioCliente,
+      }
+      if (l.otraMarca) {
+        out.push({ ...base, tipo: 'otra_marca', codigo: null, cantidad: l.cantidad, sucursal_id: sucGeneral ?? sucs[0]?.id ?? null, forzar: false, importeCliente: l.importeCliente })
+        continue
+      }
+      const codigo = resolverProducto(l)
+      const partes = l.sucTexto ? [{ sucursal_id: matchSucursal(l.sucTexto), cantidad: l.cantidad, forzar: false }] : repartir(codigo, l.cantidad)
+      for (const p of partes) {
+        out.push({
+          ...base, tipo: 'venta', codigo, ...p,
+          importeCliente: l.importeCliente != null && l.cantidad ? (l.importeCliente * p.cantidad) / l.cantidad : null,
+        })
+      }
+    }
     setLineas(out)
+    setCliente(r.detalle)
+    setDesde(r.desde ?? '')
+    setHasta(r.hasta ?? '')
     setResultado(null)
   }
 
+  const leerArchivo = async (f: File) => {
+    if (/\.pdf$/i.test(f.name)) {
+      toast('El PDF no se puede leer con seguridad (las columnas vienen corridas). Pedile el Excel al cliente o cargá las líneas a mano.', 'error')
+      setArchivo(f.name); setLibro(null); setLineas([]); setCliente({})
+      return
+    }
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(await f.arrayBuffer())
+    const filas = wb.SheetNames.map((n) => XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, defval: '' }))
+    const primera = Math.max(0, wb.SheetNames.findIndex((n) => !/stock/i.test(n)))
+    setArchivo(f.name)
+    setLibro({ nombres: wb.SheetNames, filas })
+    setHoja(primera)
+    armarLineas(filas[primera])
+  }
+
   const setLinea = (i: number, cambios: Partial<LineaPrev>) => setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, ...cambios } : l)))
+  const agregarLinea = () => setLineas((ls) => [...ls, {
+    fila: 0, sucursal_id: sucGeneral ?? sucs[0]?.id ?? null, codigo: null, cantidad: 1, saldo: false, texto: 'Agregada a mano', sucTexto: '',
+    tipo: 'venta', forzar: false, codigoCliente: '', modelo: '', color: '', seccion: '', precioCliente: null, importeCliente: null,
+  }])
 
   // Validación contra el stock de la sucursal (sumando líneas repetidas)
-  const errores = useMemo(() => {
+  const estados = useMemo(() => {
     const usado = new Map<string, number>()
-    return lineas.map((l) => {
-      if (!l.sucursal_id) return 'Elegí la sucursal'
-      if (!l.codigo) return 'Elegí el producto'
+    return lineas.map((l): { error?: string; aviso?: string } => {
+      if (!l.sucursal_id) return { error: 'Elegí la sucursal' }
+      if (l.tipo === 'otra_marca') return { aviso: 'Otra marca: se liquida, no mueve stock' }
+      if (!l.codigo) return { error: 'Elegí el producto' }
+      if (!prods.todos.has(l.codigo)) return { error: 'Ese código no existe' }
+      if (l.cantidad < 0) return { aviso: 'Devolución: vuelve a la consigna' }
       const k = `${l.sucursal_id}|${l.codigo}`
       usado.set(k, (usado.get(k) ?? 0) + l.cantidad)
-      const hay = stock.find((s) => s.sucursal_id === l.sucursal_id && s.codigo === l.codigo)?.cantidad ?? 0
-      return usado.get(k)! > hay ? `La sucursal tiene ${hay}` : null
+      const hay = stockEn(l.sucursal_id, l.codigo)
+      if (usado.get(k)! > hay) return l.forzar ? { aviso: `Sin stock registrado (tiene ${hay}): se carga igual` } : { error: `La sucursal tiene ${hay}` }
+      return {}
     })
-  }, [lineas, stock])
-  const okTodo = lineas.length > 0 && errores.every((e) => !e)
+  }, [lineas, stock, prods])
+  const okTodo = lineas.length > 0 && estados.every((e) => !e.error)
   const totalU = lineas.reduce((s, l) => s + l.cantidad, 0)
+  const nuestro = lineas.reduce((s, l) => s + l.cantidad * ((l.tipo === 'otra_marca' ? l.precioCliente : precioLista(l.codigo)) ?? 0), 0)
+  const sumaCliente = lineas.reduce((s, l) => s + (l.importeCliente ?? 0), 0)
+  const subtotalCliente = cliente.subtotal ?? (sumaCliente || null)
 
   const confirmar = async () => {
     if (!okTodo) return
-    if (!window.confirm(`¿Cargar la liquidación de ${madre.nombre}? Se descuentan ${totalU} u del stock de las sucursales y se generan las reposiciones.`)) return
+    const devol = lineas.filter((l) => l.cantidad < 0).reduce((s, l) => s - l.cantidad, 0)
+    const forz = lineas.filter((l) => l.forzar).length
+    if (!window.confirm(`¿Cargar la liquidación de ${madre.nombre}? ${totalU} u netas${devol ? ` (${devol} devueltas vuelven a la consigna)` : ''}${forz ? ` · ${forz} líneas sin stock registrado` : ''}. Se descuenta el stock de las sucursales y se generan las reposiciones (pedidos reales).`)) return
     setEnviando(true)
     const { data, error } = await supabase.rpc('consigna_liquidar', {
       p_madre: madre.cod,
-      p_lineas: lineas.map((l) => ({ sucursal_id: l.sucursal_id, codigo: l.codigo, cantidad: l.cantidad, saldo: l.saldo })),
-      p_archivo: archivo, p_desde: desde || null, p_hasta: hasta || null, p_quien: quien,
+      p_lineas: lineas.map((l) => ({
+        sucursal_id: l.sucursal_id, codigo: l.codigo, cantidad: l.cantidad, saldo: l.saldo,
+        tipo: l.tipo === 'otra_marca' ? 'otra_marca' : l.forzar ? 'forzar' : 'venta',
+        codigo_cliente: l.codigoCliente || null, texto_cliente: l.texto, precio_cliente: l.precioCliente, importe_cliente: l.importeCliente,
+      })),
+      p_archivo: libro ? `${archivo} · ${libro.nombres[hoja]}` : archivo, p_desde: desde || null, p_hasta: hasta || null, p_quien: quien,
+      p_cliente: { ...cliente, subtotal: subtotalCliente ?? undefined, nuestro_importe: Math.round(nuestro) },
     })
     setEnviando(false)
     if (error) { toast(error.message.replace(/^.*linea_invalida: /, ''), 'error'); return }
@@ -271,75 +331,140 @@ function Liquidacion({ madre, sucs, stock, onCambio }: { madre: Madre; sucs: Suc
     <div className="flex flex-col gap-4">
       <section className="bg-white border border-black/10 rounded-xl p-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted">
-          Excel que mandó el cliente
+          Liquidación que mandó el cliente
           <span className="flex items-center gap-2 border border-dashed border-black/20 rounded-lg px-3 py-2 text-sm text-ink cursor-pointer hover:border-gold">
             <Upload size={15} /> {archivo ?? 'Elegir archivo'}
-            <input id="liq-archivo" type="file" accept=".xlsx,.xls,.csv" className="hidden"
+            <input id="liq-archivo" type="file" accept=".xlsx,.xls,.csv,.pdf" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) leerArchivo(f); e.target.value = '' }} />
           </span>
         </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Si el Excel no trae sucursal
-          <select id="liq-suc-general" value={sucGeneral ?? ''} onChange={(e) => {
-            const v = e.target.value ? Number(e.target.value) : null
-            setSucGeneral(v)
-            setLineas((ls) => ls.map((l) => (l.sucTexto ? l : { ...l, sucursal_id: v, codigo: matchProducto(v, l.codigo ?? '', l.texto) })))
-          }} className="border border-black/15 rounded-lg px-2 py-2 text-sm">
-            <option value="">—</option>
-            {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        </label>
+        {libro && libro.nombres.length > 1 && (
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Hoja
+            <select id="liq-hoja" value={hoja} onChange={(e) => { const h = Number(e.target.value); setHoja(h); armarLineas(libro.filas[h]) }}
+              className="border border-black/15 rounded-lg px-2 py-2 text-sm max-w-[240px]">
+              {libro.nombres.map((n, i) => <option key={i} value={i}>{n}</option>)}
+            </select>
+          </label>
+        )}
+        {sucs.length > 1 && (
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Si no trae sucursal
+            <select id="liq-suc-general" value={sucGeneral ?? ''} onChange={(e) => {
+              const v = e.target.value ? Number(e.target.value) : null
+              setSucGeneral(v)
+              if (v) setLineas((ls) => ls.map((l) => (l.sucTexto ? l : { ...l, sucursal_id: v })))
+            }} className="border border-black/15 rounded-lg px-2 py-2 text-sm">
+              <option value="">Automático (donde hay stock)</option>
+              {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-xs text-muted">Desde<input id="liq-desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border border-black/15 rounded-lg px-2 py-1.5 text-sm" /></label>
         <label className="flex flex-col gap-1 text-xs text-muted">Hasta<input id="liq-hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border border-black/15 rounded-lg px-2 py-1.5 text-sm" /></label>
+        <button onClick={agregarLinea} className="text-sm text-muted underline ml-auto">+ agregar línea a mano</button>
         <p className="text-[11px] text-faint basis-full">
-          Columnas que reconoce: sucursal, código, modelo, color/descripción, cantidad y saldo (si/x). Lo marcado como saldo no se repone igual: se reemplaza por lo que más vende.
+          Reconoce solo los formatos de Prieto, Expovision (hoja por mes; LIQUIDETA = saldo, BE RABBIT = otra marca) y el Excel de ShopGallery.
+          El código propio del cliente se aprende la primera vez que elegís el producto. Cantidades negativas = devolución del cliente final.
         </p>
       </section>
 
       {lineas.length > 0 && (
+        <section className="bg-white border border-black/10 rounded-xl p-4 flex flex-col gap-3">
+          <h3 className="text-sm font-semibold">Lo que liquida el cliente vs. nuestro importe</h3>
+          <div className="flex flex-wrap gap-3">
+            {CAMPOS_CLIENTE.map(([k, label]) => (
+              <label key={k} className="flex flex-col gap-1 text-xs text-muted">
+                {label}
+                <input id={`liq-cli-${k}`} type="number" value={cliente[k] ?? ''} onChange={(e) => setCliente((c) => ({ ...c, [k]: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                  className="w-32 border border-black/15 rounded-md px-2 py-1 text-sm text-right tabular-nums" />
+              </label>
+            ))}
+          </div>
+          <div className="text-sm tabular-nums flex flex-wrap gap-x-6 gap-y-1">
+            <span>Cliente (sin IVA): <b>{subtotalCliente != null ? pesos(subtotalCliente) : '—'}</b></span>
+            <span>Nuestro a precio de lista: <b>{pesos(nuestro)}</b></span>
+            {subtotalCliente != null && nuestro > 0 && (
+              <span className={Math.abs(subtotalCliente - nuestro) / nuestro > 0.02 ? 'text-amber-700' : 'text-emerald-700'}>
+                Diferencia {pesos(subtotalCliente - nuestro)} ({(((subtotalCliente - nuestro) / nuestro) * 100).toFixed(1)}%)
+              </span>
+            )}
+            {cliente.pago != null && <span>Pago que informa: <b>{pesos(cliente.pago)}</b></span>}
+          </div>
+        </section>
+      )}
+
+      {lineas.length > 0 && (
         <section className="bg-white border border-black/10 rounded-xl overflow-x-auto">
+          <datalist id="liq-prods">
+            {[...prods.todos.values()].map((p) => <option key={p.codigo} value={p.codigo}>{p.modelo} · {p.descripcion}</option>)}
+          </datalist>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-muted text-left">
-                <th className="px-3 py-2 font-medium">Fila</th><th className="px-2 py-2 font-medium">En el Excel</th>
-                <th className="px-2 py-2 font-medium">Sucursal</th><th className="px-2 py-2 font-medium">Producto</th>
-                <th className="px-2 py-2 font-medium text-right">Cant.</th><th className="px-2 py-2 font-medium">Saldo</th><th className="px-3 py-2 font-medium" />
+                <th className="px-3 py-2 font-medium">Fila</th><th className="px-2 py-2 font-medium">En el archivo</th>
+                <th className="px-2 py-2 font-medium">Sucursal</th><th className="px-2 py-2 font-medium">Producto Orbital</th>
+                <th className="px-2 py-2 font-medium text-right">Cant.</th><th className="px-2 py-2 font-medium text-right">$ cliente</th>
+                <th className="px-2 py-2 font-medium">Saldo</th><th className="px-3 py-2 font-medium" />
               </tr>
             </thead>
             <tbody>
-              {lineas.map((l, i) => (
-                <tr key={i} className="border-t border-black/5 align-top">
-                  <td className="px-3 py-1.5 text-xs text-faint">{l.fila}</td>
-                  <td className="px-2 py-1.5 text-xs">{l.sucTexto && <div className="text-faint">{l.sucTexto}</div>}{l.texto}</td>
-                  <td className="px-2 py-1.5">
-                    <select id={`liq-suc-${i}`} value={l.sucursal_id ?? ''} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setLinea(i, { sucursal_id: v, codigo: matchProducto(v, l.codigo ?? '', l.texto) }) }}
-                      className="border border-black/15 rounded-md px-1.5 py-1 text-xs max-w-[150px]">
-                      <option value="">—</option>
-                      {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <select id={`liq-prod-${i}`} value={l.codigo ?? ''} onChange={(e) => setLinea(i, { codigo: e.target.value || null })}
-                      className="border border-black/15 rounded-md px-1.5 py-1 text-xs max-w-[260px]">
-                      <option value="">—</option>
-                      {stockDe(l.sucursal_id).map((s) => <option key={s.codigo} value={s.codigo}>{s.modelo} · {s.descripcion} ({s.cantidad})</option>)}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5 text-right">
-                    <input id={`liq-cant-${i}`} type="number" min={1} value={l.cantidad} onChange={(e) => setLinea(i, { cantidad: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
-                      className="w-14 border border-black/15 rounded-md px-1.5 py-1 text-xs text-right" />
-                  </td>
-                  <td className="px-2 py-1.5"><input id={`liq-saldo-${i}`} type="checkbox" checked={l.saldo} onChange={(e) => setLinea(i, { saldo: e.target.checked })} aria-label="Venta por saldo" /></td>
-                  <td className="px-3 py-1.5 text-xs whitespace-nowrap">
-                    {errores[i] ? <span className="text-red-600">{errores[i]}</span> : <Check size={14} className="text-emerald-600" />}
-                    <button onClick={() => setLineas((ls) => ls.filter((_, j) => j !== i))} className="ml-2 text-faint underline">quitar</button>
-                  </td>
-                </tr>
-              ))}
+              {lineas.map((l, i) => {
+                const e = estados[i]
+                return (
+                  <tr key={i} className={`border-t border-black/5 align-top ${l.cantidad < 0 ? 'bg-sky-50/60' : l.tipo === 'otra_marca' ? 'bg-black/[0.02]' : ''}`}>
+                    <td className="px-3 py-1.5 text-xs text-faint">{l.fila || '—'}</td>
+                    <td className="px-2 py-1.5 text-xs">
+                      {l.seccion && <div className="text-[10px] uppercase tracking-wide text-faint">{l.seccion}</div>}
+                      {l.sucTexto && <div className="text-faint">{l.sucTexto}</div>}
+                      {l.texto}{l.codigoCliente && <span className="text-faint"> · {l.codigoCliente}</span>}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <select id={`liq-suc-${i}`} value={l.sucursal_id ?? ''} onChange={(ev) => setLinea(i, { sucursal_id: ev.target.value ? Number(ev.target.value) : null })}
+                        className="border border-black/15 rounded-md px-1.5 py-1 text-xs max-w-[150px]">
+                        <option value="">—</option>
+                        {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}{l.codigo ? ` (${stockEn(s.id, l.codigo)})` : ''}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {l.tipo === 'otra_marca' ? <span className="text-xs text-muted">Otra marca</span> : (
+                        <>
+                          <input id={`liq-prod-${i}`} list="liq-prods" value={l.codigo ?? ''} placeholder="código o buscar…"
+                            onChange={(ev) => { const v = ev.target.value.trim().toUpperCase(); setLinea(i, { codigo: v || null }) }}
+                            className="w-40 border border-black/15 rounded-md px-1.5 py-1 text-xs font-mono" />
+                          <div className="text-[11px] text-muted max-w-[240px] truncate">{nombreProd(l.codigo) ?? ''}</div>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      <input id={`liq-cant-${i}`} type="number" value={l.cantidad} onChange={(ev) => setLinea(i, { cantidad: Math.trunc(Number(ev.target.value) || 0) })}
+                        className="w-14 border border-black/15 rounded-md px-1.5 py-1 text-xs text-right" />
+                    </td>
+                    <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted">{l.importeCliente != null ? pesos(l.importeCliente) : ''}</td>
+                    <td className="px-2 py-1.5"><input id={`liq-saldo-${i}`} type="checkbox" checked={l.saldo} disabled={l.tipo === 'otra_marca'} onChange={(ev) => setLinea(i, { saldo: ev.target.checked })} aria-label="Venta por saldo" /></td>
+                    <td className="px-3 py-1.5 text-xs">
+                      {e.error ? <span className="text-red-600">{e.error}</span> : e.aviso ? <span className="text-amber-700">{e.aviso}</span> : <Check size={14} className="text-emerald-600" />}
+                      {(e.error?.startsWith('La sucursal tiene') || l.forzar) && (
+                        <label className="flex items-center gap-1 mt-1 whitespace-nowrap text-muted">
+                          <input id={`liq-forzar-${i}`} type="checkbox" checked={l.forzar} onChange={(ev) => setLinea(i, { forzar: ev.target.checked })} /> cargar igual
+                        </label>
+                      )}
+                      <button onClick={() => setLineas((ls) => ls.filter((_, j) => j !== i))} className="block mt-1 text-faint underline">quitar</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           <div className="flex flex-wrap items-center gap-3 px-3 py-3 border-t border-black/10">
-            <span className="text-sm mr-auto tabular-nums">{lineas.length} líneas · {totalU} u{errores.some(Boolean) && <span className="text-red-600"> · {errores.filter(Boolean).length} para corregir</span>}</span>
+            <span className="text-sm mr-auto tabular-nums">
+              {lineas.length} líneas · {totalU} u netas
+              {estados.some((e) => e.error) && <span className="text-red-600"> · {estados.filter((e) => e.error).length} para corregir</span>}
+            </span>
+            {estados.some((e) => e.error?.startsWith('La sucursal tiene')) && (
+              <button onClick={() => setLineas((ls) => ls.map((l, j) => (estados[j].error?.startsWith('La sucursal tiene') ? { ...l, forzar: true } : l)))}
+                className="text-sm text-muted underline">Cargar igual todo lo que no tiene stock registrado</button>
+            )}
             <button onClick={() => setLineas([])} className="text-sm text-muted">Cancelar</button>
             <button onClick={confirmar} disabled={!okTodo || enviando} className="bg-ink text-white text-sm font-medium rounded-lg px-4 py-2 disabled:opacity-40">
               {enviando ? 'Cargando…' : 'Cargar liquidación y reponer'}
@@ -350,7 +475,10 @@ function Liquidacion({ madre, sucs, stock, onCambio }: { madre: Madre; sucs: Suc
 
       {resultado && (
         <section className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm">
-          <div className="font-semibold mb-2">Liquidación #{resultado.liquidacion_id}: {resultado.unidades} u · {pesos(resultado.importe)} a facturar a {madre.nombre}</div>
+          <div className="font-semibold mb-2">
+            Liquidación #{resultado.liquidacion_id}: {resultado.unidades} u · {pesos(resultado.importe)} a lista
+            {resultado.importe_cliente != null && <> · el cliente liquida {pesos(resultado.importe_cliente)}</>}
+          </div>
           <ul className="space-y-1">
             {resultado.sucursales.map((s: any) => (
               <li key={s.sucursal}>
@@ -371,7 +499,8 @@ function Liquidacion({ madre, sucs, stock, onCambio }: { madre: Madre; sucs: Suc
               <li key={h.id} className="px-4 py-2 flex flex-wrap gap-x-4 items-baseline">
                 <b>#{h.id}</b>
                 <span className="text-muted">{fecha(h.created_at)}{h.desde ? ` · período ${h.desde} a ${h.hasta ?? ''}` : ''}</span>
-                <span className="tabular-nums">{h.total_units} u · {pesos(h.importe)}</span>
+                <span className="tabular-nums">{h.total_units} u · {pesos(h.importe)} lista</span>
+                {h.importe_cliente != null && <span className="tabular-nums">cliente {pesos(Number(h.detalle_cliente?.subtotal ?? h.importe_cliente))}</span>}
                 <span className="text-xs text-faint">{h.archivo} · {h.creado_por}</span>
               </li>
             ))}
