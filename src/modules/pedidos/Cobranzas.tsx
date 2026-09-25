@@ -64,7 +64,9 @@ export default function Cobranzas() {
     })
   }, [filas, stock])
 
-  const visibles = etapa ? filas.filter((l) => (l.estado ?? 'pendiente') === etapa) : filas
+  // Con una etapa marcada se ven exactamente los pedidos que suma esa tarjeta (pendientes de cobro).
+  const visibles = etapa ? filas.filter((l) => !l.cobrado && (l.estado ?? 'pendiente') === etapa) : filas
+  const etapaSel = porEtapa.find((e) => e.id === etapa)
 
   // Ficha: el cliente tocado, o solo el que queda si la búsqueda apunta a uno.
   const claveFicha = useMemo(() => {
@@ -146,7 +148,12 @@ export default function Cobranzas() {
           {porEtapa.map((e) => (
             <button
               key={e.id}
-              onClick={() => setEtapa(etapa === e.id ? '' : e.id)}
+              onClick={() => {
+                setEtapa(etapa === e.id ? '' : e.id)
+                // La ficha abierta tapa la lista: al elegir etapa se cierra para ver esos pedidos.
+                setClienteSel(null)
+                setBusqueda('')
+              }}
               className={`text-left rounded-lg border px-2 py-1.5 ${
                 etapa === e.id ? 'border-orange-400 bg-orange-50' : 'border-black/10'
               } ${e.n ? '' : 'opacity-40'}`}
@@ -170,6 +177,19 @@ export default function Cobranzas() {
             setBusqueda('')
           }}
         />
+      )}
+
+      {etapaSel && (
+        <div className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-300 rounded-xl px-3 py-2">
+          <p className="text-sm">
+            <span className="font-semibold">{estadoLabel(etapaSel.id)}</span> · {etapaSel.n} pedido
+            {etapaSel.n === 1 ? '' : 's'} · <span className="font-bold">{formatPrecio(etapaSel.monto) || '$ 0'}</span>
+            <span className="text-muted"> · {etapaSel.accion}</span>
+          </p>
+          <button onClick={() => setEtapa('')} className="text-xs text-orange-700 font-semibold shrink-0">
+            Ver todos ✕
+          </button>
+        </div>
       )}
 
       {visibles.length === 0 ? (
