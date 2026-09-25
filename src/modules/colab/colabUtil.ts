@@ -99,6 +99,10 @@ export const labelRed = (id: string) => REDES.find((r) => r.id === id)?.label ??
 export const labelFormato = (id: string) => FORMATOS.find((r) => r.id === id)?.label ?? id
 
 export const linkPublico = (codigo: string) => `${BASE}/r/${codigo}`
+// Ficha del anteojo para el cliente final (la misma a la que lleva el reconocimiento por cámara).
+// Con ?r= el "Comprar" pasa por el link del influencer: le da su código y la venta queda atribuida.
+export const linkFicha = (modelo: string, sku: string | null, codigo: string) =>
+  `${BASE}/modelo/${encodeURIComponent(modelo)}?${sku ? `sku=${encodeURIComponent(sku)}&` : ''}r=${codigo}`
 export const linkPanel = (clave: string) => `${BASE}/colab?k=${clave}`
 
 export const kAr = (n: number | null | undefined) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')

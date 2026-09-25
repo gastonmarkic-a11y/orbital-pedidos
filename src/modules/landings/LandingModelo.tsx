@@ -19,7 +19,11 @@ const TRAT: Record<string, string> = {
 
 export default function LandingModelo() {
   const nombre = decodeURIComponent(window.location.pathname.replace(/^\/modelo\/?/, '').replace(/\/$/, ''))
-  const desdeCamara = new URLSearchParams(window.location.search).get('desde') === 'reconocer'
+  const qs = new URLSearchParams(window.location.search)
+  const desdeCamara = qs.get('desde') === 'reconocer'
+  const sku = qs.get('sku')
+  // Link de un influencer (?r=<codigo>): Comprar pasa por /r/<codigo> → su código y la venta atribuida
+  const ref = qs.get('r')
   const [m, setM] = useState<Modelo | null | undefined>(undefined)
   const [sel, setSel] = useState(0)
   const [foto, setFoto] = useState(0)
@@ -28,8 +32,13 @@ export default function LandingModelo() {
 
   useEffect(() => {
     document.title = `${nombre} · Orbital Eyewear`
-    supabase.rpc('modelo_landing', { p_modelo: nombre }).then(({ data }) => setM((data as Modelo | null) ?? null))
-  }, [nombre])
+    supabase.rpc('modelo_landing', { p_modelo: nombre, p_sku: sku }).then(({ data }) => {
+      const d = (data as Modelo | null) ?? null
+      setM(d)
+      const i = d && sku ? d.colores.findIndex((c) => c.codigo === sku) : -1
+      if (i > 0) setSel(i)
+    })
+  }, [nombre, sku])
 
   const color = m?.colores[sel]
   const fotos = useMemo(() => (color?.fotos?.length ? color.fotos : m?.colores.find((c) => c.fotos.length)?.fotos ?? []), [m, color])
@@ -110,7 +119,7 @@ export default function LandingModelo() {
               ))}
             </div>
 
-            <a href={`${TIENDA}/search?q=${encodeURIComponent(m.modelo)}`} target="_blank" rel="noreferrer"
+            <a href={ref ? `/r/${encodeURIComponent(ref)}` : `${TIENDA}/search?q=${encodeURIComponent(m.modelo)}`} target={ref ? undefined : "_blank"} rel="noreferrer"
               className="mt-8 flex items-center justify-center w-full rounded-2xl bg-neutral-900 text-white font-bold py-4">
               Comprar online
             </a>

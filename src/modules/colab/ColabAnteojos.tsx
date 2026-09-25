@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search, X, Copy, Check, Link2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { ACENTO, Color, Modelo, REDES, FORMATOS, copiesDe, copiar, kAr, linkPublico, partesColor } from './colabUtil'
+import { ACENTO, Color, Modelo, REDES, FORMATOS, copiesDe, copiar, kAr, linkFicha, linkPublico, partesColor } from './colabUtil'
 
 export const ROJO_TRIPLE = '#E11D2E'
 // Las fotos de la tienda vienen con fondo blanco: la tarjeta va del mismo color para
@@ -192,12 +192,13 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
   const [red, setRed] = useState('instagram')
   const [formato, setFormato] = useState('historia')
   const [link, setLink] = useState<string | null>(null)
+  const [ficha, setFicha] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [tab, setTab] = useState<'historia' | 'posteo' | 'guion'>('historia')
 
   // El link es de UNA publicación: si cambia el color, la red o el formato, hace falta otro.
-  useEffect(() => { setLink(null); setErr(null) }, [ci, red, formato])
+  useEffect(() => { setLink(null); setFicha(null); setErr(null) }, [ci, red, formato])
   const cp = useMemo(() => copiesDe(m, c, pct, link), [m, c, pct, link])
   const texto = tab === 'historia' ? cp.historia : tab === 'posteo' ? cp.posteo : cp.guion
 
@@ -212,7 +213,12 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
         : 'No se pudo generar el link. Probá de nuevo.')
       return
     }
-    setLink(linkPublico((data as { codigo: string }).codigo))
+    const codigo = (data as { codigo: string }).codigo
+    setLink(linkPublico(codigo))
+    // La ficha solo si el modelo está en el catálogo con stock (si no, diría "no lo encontré")
+    supabase.rpc('modelo_landing', { p_modelo: m.modelo, p_sku: c.sku }).then(({ data: f }) => {
+      if (f) setFicha(linkFicha(m.modelo, c.sku, codigo))
+    })
     onLink?.()
   }
 
@@ -277,6 +283,18 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
                 <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-2">
                   <span className="flex-1 truncate font-mono text-[12px] font-bold">{link.replace('https://', '')}</span>
                   <BotonCopiar texto={link} label="Copiar link" grande />
+                </div>
+              )}
+              {ficha && (
+                <div className="mt-3 border-t border-black/5 pt-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide">📷 Ficha del anteojo</div>
+                  <p className="text-[10px] text-neutral-500 mt-0.5 mb-2">
+                    La misma página que abre el reconocimiento con la cámara: fotos, colores y ópticas cerca. Al comprar, tu comunidad pasa por tu link.
+                  </p>
+                  <div className="flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-2">
+                    <span className="flex-1 truncate font-mono text-[12px] font-bold">{ficha.replace('https://', '')}</span>
+                    <BotonCopiar texto={ficha} label="Copiar ficha" grande />
+                  </div>
                 </div>
               )}
               {err && <p className="text-[11px] text-red-600 mt-1.5">{err}</p>}
