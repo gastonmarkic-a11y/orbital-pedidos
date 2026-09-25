@@ -308,15 +308,19 @@ const SCREENS={
    <div class="sec-l" style="margin:0">Pedido en pesos</div>
    <div class="tot"><div class="muted"><span>${x.units} armazones · total en dólares</span><span>${usd(x.tot)}</span></div><div class="muted"><span>Dólar oficial vendedor ${fdate(DOLAR.fecha)}</span><span>${ars(DOLAR.venta)}</span></div><div class="big"><span>Total en pesos</span><span>${ars(p)}</span></div></div>
    <div class="split"><div><small>50 % adelanto</small><b>${ars(p/2)}</b></div><div><small>50 % contra entrega</small><b>${ars(p/2)}</b></div></div>
-   <ul class="cond"><li>Pago directo por transferencia.</li><li>${S.acct==="bru"?"A la cuenta en pesos de Brubank.":"A Plenorius S.A., con factura, más IVA."}</li></ul>
+   <ul class="cond"><li>Pago directo por transferencia.</li><li>${S.acct==="bru"?"A la cuenta en pesos de Brubank. Te pasamos los datos al confirmar.":"A Plenorius S.A., con factura, más IVA."}</li></ul>
+   ${S.acct==="ple"?plenBox():""}
    <p class="legend"><b>Cómo sacamos el tipo de cambio:</b> usamos el dólar oficial del Banco de la Nación Argentina, cotización vendedor (venta) del día. El importe en pesos vale para transferencias hechas hoy; el saldo contra entrega se recalcula al dólar vendedor del día en que se paga.</p>
   </div>`},
  ok(){return `<div class="card" style="display:grid;gap:12px;text-align:center;padding:28px 18px">
    <div style="font-size:40px">✓</div><h1 style="font-family:var(--disp);font-size:28px;font-stretch:115%">Pedido recibido</h1>
-   <p style="margin:0;color:var(--ink2)">Quedó precargado con el número <b style="color:var(--ink)">#${okId}</b>. Te escribimos al mail o WhatsApp para confirmar el diseño del logo y enviarte los datos de la transferencia del adelanto.</p>
+   <p style="margin:0;color:var(--ink2)">Quedó precargado con el número <b style="color:var(--ink)">#${okId}</b>. ${S.acct==="ple"?"Te escribimos al mail o WhatsApp para confirmar el diseño del logo. El adelanto del 50 % lo podés transferir a esta cuenta:":"Te escribimos al mail o WhatsApp para confirmar el diseño del logo y enviarte los datos de la transferencia del adelanto."}</p>
+   ${S.acct==="ple"?`<div style="text-align:left">${plenBox()}</div>`:""}
    <button class="btn" type="button" id="nuevo">Hacer otro pedido</button></div>`}
 };
 function extras(){return `${isCustom(S.col)?`<div class="fld" style="margin-top:12px"><label for="cdesc">¿Qué color querés? <span>(Pantone, referencia o descripción)</span></label><input id="cdesc" type="text" maxlength="80" placeholder="Ej.: Pantone 7621 C, verde de mi logo" value="${esc(S.cdesc)}"></div>`:""}${isClear(S.col)?`<div style="margin-top:12px"><div class="sec-l">Terminación del transparente</div><div class="seg"><button type="button" data-fin="mate" aria-pressed="${S.fin==="mate"}">Mate<small>${usd(TIERS[2].p)}</small></button><button type="button" data-fin="brillo" aria-pressed="${S.fin==="brillo"}">Brillo<small>${usd(TIERS[3].p)}</small></button></div></div>`:""}`}
+const PLEN=[["Titular","Plenorius S.A."],["CUIT","30-71453247-9"],["Banco","Credicoop"],["Cuenta corriente $","191-003-004580/0"],["CBU","1910003255000300458000"],["Alias","RELOJ.TAPIA.ENERO"]];
+function plenBox(){return `<div class="condbox" style="gap:6px"><b>Datos para transferir</b>${PLEN.map(([k,v])=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13.5px"><span>${k}</span><span style="display:flex;align-items:center;gap:6px"><b style="font-family:var(--mono);font-size:13.5px;word-break:break-all;text-align:right">${v}</b>${/CBU|Alias|CUIT|Cuenta/.test(k)?`<button type="button" data-copy="${k==="CBU"||k==="CUIT"?v.replace(/[^0-9]/g,""):v}" style="border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;color:inherit">Copiar</button>`:""}</span></div>`).join("")}</div>`}
 function field(id,lab,ph,val,type,ac){return `<div class="fld"><label for="${id}">${lab}</label><input id="${id}" type="${type}" autocomplete="${ac}" placeholder="${ph}" value="${esc(val)}" required></div>`}
 
 function renderBar(){
@@ -378,6 +382,7 @@ document.addEventListener("click",e=>{
   else if(d.qs){S.q=+d.qs;render()}
   else if(d.del!=null){S.lines.splice(+d.del,1);render()}
   else if(d.acct){S.acct=d.acct;render()}
+  else if(d.copy){navigator.clipboard?.writeText(d.copy).then(()=>toast("Copiado"),()=>toast(d.copy))}
 });
 render();
 </script>
