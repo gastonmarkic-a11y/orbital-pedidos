@@ -3,8 +3,10 @@
 // (solo los que tienen stock), precio público de Shopify (precios_publicos), compra online
 // y las ópticas más cercanas que trabajan el modelo (donde_probar, respeta bajas).
 // Si el modelo no está en el catálogo: "No lo encontré en el catálogo".
+// Probador virtual (Probador.tsx): la cámara frontal con el anteojo del color elegido sobre la cara.
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import Probador from './Probador'
 
 interface Color { codigo: string; color: string; tratamiento: string | null; tipo: string | null; precio: number | null; fotos: string[] }
 interface Modelo { modelo: string; tratamientos: string[] | null; tipos: string[] | null; precio_desde: number | null; colores: Color[]; lifestyle: string[] }
@@ -29,6 +31,7 @@ export default function LandingModelo() {
   const [foto, setFoto] = useState(0)
   const [opticas, setOpticas] = useState<Optica[] | null>(null)
   const [geo, setGeo] = useState<'' | 'buscando' | 'sin-permiso'>('')
+  const [probando, setProbando] = useState(false)
 
   useEffect(() => {
     document.title = `${nombre} · Orbital Eyewear`
@@ -147,10 +150,12 @@ export default function LandingModelo() {
               </div>
             )}
 
-            <div className="mt-6 rounded-2xl bg-neutral-50 p-4 flex items-center gap-3">
-              <span className="text-2xl">🪞</span>
-              <span className="text-sm"><b>Probador virtual</b><span className="block text-neutral-500">Muy pronto vas a poder probártelo con la cámara.</span></span>
-            </div>
+            {m.colores.some((c) => c.fotos.length) && (
+              <button onClick={() => setProbando(true)} className="mt-6 w-full rounded-2xl bg-neutral-50 p-4 flex items-center gap-3 text-left hover:bg-neutral-100">
+                <span className="text-2xl">🪞</span>
+                <span className="text-sm"><b>Probátelo con la cámara</b><span className="block text-neutral-500">Probador virtual: mirá cómo te queda cada color.</span></span>
+              </button>
+            )}
           </section>
         </div>
 
@@ -163,6 +168,7 @@ export default function LandingModelo() {
           </section>
         )}
       </main>
+      {probando && <Probador modelo={m.modelo} colores={m.colores} inicial={sel} onCerrar={() => setProbando(false)} />}
     </div>
   )
 }
