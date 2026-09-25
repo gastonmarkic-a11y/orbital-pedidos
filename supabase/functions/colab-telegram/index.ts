@@ -601,8 +601,8 @@ const AYUDA =
   "Y te aviso solo cuando cambia un precio, arranca una promo o el equipo te manda un mensaje.";
 
 // ————— foto → modelo —————
-// El promotor manda la foto de un anteojo: Claude la compara contra una foto de cada
-// modelo de SU catálogo (máx. 34) y, si coincide, sigue el flujo de siempre (color → link + ficha).
+// El promotor manda la foto de un anteojo: Claude la compara contra TODO el catálogo (fotos de producto_imagenes,
+// tandas de 34) y, si es de su tienda, sigue el flujo de siempre (colores disponibles → link + ficha); si no, la ficha.
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
@@ -618,22 +618,21 @@ async function bajarFotoTelegram(fileId: string): Promise<string | null> {
   return btoa(bin);
 }
 
-// Foto chica de la tienda para comparar (Shopify redimensiona con ?width=)
-const miniatura = (url: string) => url + (url.includes("?") ? "&" : "?") + "width=400";
+// Foto chica para comparar: Shopify redimensiona con ?width=, el storage de Supabase va tal cual
+const miniatura = (url: string) =>
+  url.includes("cdn.shopify.com") ? url + (url.includes("?") ? "&" : "?") + "width=400" : url;
 
-async function modeloDeFoto(b64: string, mime: string, cat: Modelo[]): Promise<Modelo | null> {
-  const refs = cat
-    .map((m) => ({ m, img: m.colores.find((c) => c.imagen)?.imagen ?? null }))
-    .filter((r): r is { m: Modelo; img: string } => !!r.img)
-    .slice(0, 40);
-  if (!refs.length || !ANTHROPIC_API_KEY) return null;
+type Ref = { modelo: string; urls: string[] };
+
+// Una llamada a Claude: ¿la FOTO es el mismo modelo que alguna de estas referencias?
+async function compararTanda(b64: string, mime: string, refs: Ref[]): Promise<string | null> {
   const content: unknown[] = [
     { type: "text", text: "FOTO (sacada por una persona):" },
     { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
   ];
   refs.forEach((r, i) => {
     content.push({ type: "text", text: `Referencia ${i + 1}:` });
-    content.push({ type: "image", source: { type: "url", url: miniatura(r.img) } });
+    for (const u of r.urls) content.push({ type: "image", source: { type: "url", url: miniatura(u) } });
   });
   content.push({ type: "text", text:
     `Decidí si el anteojo de la FOTO es el mismo MODELO de armazón que alguna de las ${refs.length} referencias. ` +
@@ -649,7 +648,28 @@ async function modeloDeFoto(b64: string, mime: string, cat: Modelo[]): Promise<M
   if (data?.error) throw new Error("anthropic " + JSON.stringify(data.error));
   const txt = data?.content?.find((c: { type: string }) => c.type === "text")?.text ?? "";
   const n = Number(txt.match(/"referencia"\s*:\s*(\d+)/)?.[1]);
-  return Number.isInteger(n) && n >= 1 && n <= refs.length ? refs[n - 1].m : null;
+  return Number.isInteger(n) && n >= 1 && n <= refs.length ? refs[n - 1].modelo : null;
+}
+
+// Busca en TODO el catálogo (fotos de producto_imagenes, igual que /reconocer):
+// tandas de 34 modelos en paralelo y, si hay varios finalistas, un desempate con 2 fotos de cada uno.
+async function modeloDeFoto(b64: string, mime: string): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const filas = await rpc<{ modelo: string; url: string; lifestyle: boolean }[]>("ar_imagenes");
+  const porModelo = new Map<string, string[]>();
+  for (const f of filas ?? []) {
+    if (f.lifestyle || !f.url) continue;
+    const l = porModelo.get(f.modelo) ?? [];
+    if (l.length < 2) l.push(f.url);
+    porModelo.set(f.modelo, l);
+  }
+  const todos = [...porModelo.entries()].map(([modelo, urls]) => ({ modelo, urls }));
+  if (!todos.length) return null;
+  const tandas: Ref[][] = [];
+  for (let i = 0; i < todos.length; i += 34) tandas.push(todos.slice(i, i + 34).map((r) => ({ modelo: r.modelo, urls: r.urls.slice(0, 1) })));
+  const finalistas = [...new Set((await Promise.all(tandas.map((t) => compararTanda(b64, mime, t)))).filter((m): m is string => !!m))];
+  if (finalistas.length <= 1) return finalistas[0] ?? null;
+  return await compararTanda(b64, mime, finalistas.map((m) => ({ modelo: m, urls: porModelo.get(m) ?? [] })));
 }
 
 async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: string) {
@@ -657,27 +677,43 @@ async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: strin
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chat, action: "typing" }),
   });
-  let m: Modelo | null = null;
+  let modeloStock: string | null = null;
   try {
     const b64 = await bajarFotoTelegram(fileId);
     if (!b64) throw new Error("no bajó la foto");
-    m = await modeloDeFoto(b64, mime, await catalogo(q.clave));
+    modeloStock = await modeloDeFoto(b64, mime);
   } catch (e) {
     console.error("reconocerFoto", String(e));
     await enviar(chat, "No pude mirar la foto ahora 😕 Probá de nuevo en un rato o escribime el nombre del modelo.");
     return;
   }
-  if (!m) {
+  if (!modeloStock) {
     await enviar(chat,
-      "No lo encontré entre tus anteojos 🤔\n\n" +
+      "No lo encontré en el catálogo 🤔\n\n" +
       "Probá con otra foto: el anteojo de frente, con buena luz y ocupando casi toda la foto. " +
       "O escribime el nombre del modelo.");
     await espejo(`<b>${esc(q.nombre)}</b> mandó una foto y no encontré el anteojo`, q.influencer_id);
     return;
   }
-  await enviar(chat, `📷 Es el <b>${m.modelo}</b>`);
-  await pantallaModelo(chat, q, m);
-  await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${m.modelo}</b>`, q.influencer_id);
+
+  // ¿Está entre SUS anteojos de la tienda? (el nombre de stock y el de la tienda pueden diferir: CASA BLANCA / CASABLANCA)
+  const cat = await catalogo(q.clave);
+  const mapa = await rpc<{ modelo_stock: string; modelo: string }[]>("colab_modelos_stock", { p_clave: q.clave });
+  const nombreTienda = mapa?.find((x) => x.modelo_stock === modeloStock)?.modelo ??
+    buscarModelo(cat, modeloStock)?.modelo ?? null;
+  const m = nombreTienda ? cat.find((x) => x.modelo === nombreTienda) ?? null : null;
+
+  if (m) {
+    await enviar(chat, `📷 Es el <b>${m.modelo}</b>`);
+    await pantallaModelo(chat, q, m); // colores disponibles de ese modelo → link + ficha
+    await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${m.modelo}</b>`, q.influencer_id);
+    return;
+  }
+  await enviar(chat,
+    `📷 Es el <b>${esc(modeloStock)}</b>\n\n` +
+    "Ese modelo no está en tu tienda online, así que no te puedo armar un link con comisión. " +
+    `Acá tenés su ficha con los colores disponibles:\n${BASE}/modelo/${encodeURIComponent(modeloStock)}`);
+  await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${esc(modeloStock)}</b> (no está en su tienda)`, q.influencer_id);
 }
 
 // ————— webhook —————
