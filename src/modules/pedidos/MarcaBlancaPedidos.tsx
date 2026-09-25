@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
+import { excelTangoMB, remitoPdfMB } from './marcaBlancaDocs'
 
 // ── Pedidos de marca blanca ──
 // Los cierra el cliente desde la app pública ver.orbitaleyewear.com.ar/marca-blanca
@@ -11,6 +13,7 @@ interface Item {
   modelo: string; ref: string; color: string; cristal: string; logo: string
   cantidad: number; unit_usd: number; total_usd: number
   detalle?: string // desde v3: cristal del cliente + logo + packaging elegido
+  terminacion?: string
 }
 interface Pedido {
   id: number; created_at: string; estado: string; marca: string; razon_social: string
@@ -23,7 +26,9 @@ interface Pedido {
   pago_token: string; adelanto_comp_path: string | null; adelanto_comp_at: string | null
   saldo_comp_path: string | null; saldo_comp_at: string | null
   doc_tipo: 'factura' | 'remito' | null; doc_path: string | null; doc_at: string | null
+  cod_cliente_tango: string | null; exportado_tango_at: string | null
 }
+interface OrdenMB { id: number; estado: string; marca_blanca_id: number; fecha_entrega_estimada: string | null }
 
 const ESTADOS = [
   { k: 'precarga', label: 'Precarga', cls: 'bg-blue-100 text-blue-700' },
@@ -49,11 +54,16 @@ export default function MarcaBlancaPedidos() {
   const [notas, setNotas] = useState<Record<number, string>>({})
   const [guardando, setGuardando] = useState<number | null>(null)
   const [dolarHoy, setDolarHoy] = useState<number | null>(null)
+  const [ordenes, setOrdenes] = useState<Record<number, OrdenMB>>({})
 
   async function cargar() {
     const { data, error } = await supabase.from('marca_blanca_pedidos').select('*').order('created_at', { ascending: false })
     if (error) toast('No se pudieron cargar los pedidos de marca blanca', 'error')
     setPedidos((data ?? []) as Pedido[])
+    // Orden de producción que genera la base al aprobar el adelanto (trigger mb_orden_produccion)
+    const { data: ords } = await supabase.from('pedidos_produccion').select('id, estado, marca_blanca_id, fecha_entrega_estimada')
+      .not('marca_blanca_id', 'is', null).neq('estado', 'anulado')
+    setOrdenes(Object.fromEntries(((ords ?? []) as OrdenMB[]).map((o) => [o.marca_blanca_id, o])))
     setLoading(false)
   }
   useEffect(() => {
@@ -100,14 +110,48 @@ export default function MarcaBlancaPedidos() {
   }
 
   // Factura si paga a Plenorius; remito solo si es en negro (Brubank).
-  async function subirDoc(p: Pedido, file: File) {
+  async function subirDoc(p: Pedido, file: Blob, nombre: string) {
     const tipo = p.cuenta === 'plenorius' ? 'factura' : 'remito'
     setGuardando(p.id)
-    const path = `documentos/${p.id}/${tipo}-${Date.now()}-${file.name.replace(/[^\w.\-]+/g, '_')}`
+    const path = `documentos/${p.id}/${tipo}-${Date.now()}-${nombre.replace(/[^\w.\-]+/g, '_')}`
     const { error } = await supabase.storage.from('marca-blanca-logos').upload(path, file, { contentType: file.type || undefined })
     setGuardando(null)
     if (error) { toast('No se pudo subir: ' + error.message, 'error'); return }
     await actualizar(p, { doc_tipo: tipo, doc_path: path, doc_at: new Date().toISOString() }, `${tipo === 'factura' ? 'Factura' : 'Remito'} cargado · el cliente lo ve en su link`)
+  }
+
+  // Sin IVA (Brubank): remito PDF armado acá con los datos del pedido.
+  async function generarRemito(p: Pedido) {
+    try {
+      const blob = await remitoPdfMB(p)
+      await subirDoc(p, blob, `remito-MB${p.id}.pdf`)
+    } catch (e) { toast('No se pudo generar el remito: ' + (e as Error).message, 'error') }
+  }
+
+  // Con IVA (Plenorius): Excel de Novedades para Tango, precio en pesos neto de IVA al dólar de hoy.
+  async function exportarTango(p: Pedido) {
+    const dolar = dolarHoy ?? p.dolar
+    if (!dolar) { toast('No hay dólar del día para pasar a pesos', 'error'); return }
+    const codCliente = (window.prompt(`Código de cliente en Tango para ${p.razon_social} (si no existe, darlo de alta en Tango primero):`, p.cod_cliente_tango ?? '') || '').trim()
+    if (!codCliente) return
+    const codArticulo = (window.prompt('Código de artículo genérico de marca blanca en Tango:', localStorage.getItem('tango_art_mb') || 'MARCABLANCA') || '').trim()
+    if (!codArticulo) return
+    localStorage.setItem('tango_art_mb', codArticulo)
+    const codModelo = localStorage.getItem('tango_modelo') || 'WEB'
+    try {
+      await excelTangoMB(p, { codCliente, codArticulo, codModelo, dolar })
+      await actualizar(p, { cod_cliente_tango: codCliente, exportado_tango_at: new Date().toISOString() },
+        `Excel para Tango descargado (dólar ${ars(dolar)}) · facturá en Tango y subí la factura acá`)
+    } catch (e) { toast('No se pudo armar el Excel: ' + (e as Error).message, 'error') }
+  }
+
+  async function avanzar(p: Pedido, sig: string) {
+    if (sig === 'confirmado' && !window.confirm(`¿El adelanto de #${p.id} está cobrado?
+Se genera sola la orden de producción (pendiente en Producción → Órdenes).`)) return
+    await actualizar(p, { estado: sig }, sig === 'confirmado' ? `#${p.id} confirmado · orden de producción generada` : `#${p.id} → ${estadoInfo(sig).label}`)
+    if (sig === 'confirmado') cargar()
+    // Sin IVA: al entregar sale el remito solo si todavía no hay uno.
+    if (sig === 'entregado' && p.cuenta === 'brubank' && !p.doc_path) generarRemito(p)
   }
 
   const linkPago = (p: Pedido) => `https://ver.orbitaleyewear.com.ar/marca-blanca?pago=${p.id}.${p.pago_token}`
@@ -234,13 +278,28 @@ export default function MarcaBlancaPedidos() {
                       <div className="flex items-center justify-between gap-2">
                         <span>{p.cuenta === 'plenorius' ? 'Factura (Plenorius)' : 'Remito (Brubank, en negro)'}</span>
                         <span className="flex items-center gap-3">
+                          {p.cuenta === 'plenorius' && (
+                            <button disabled={guardando === p.id} onClick={() => exportarTango(p)} className="text-xs font-semibold text-brandDark disabled:opacity-40"
+                              title={p.exportado_tango_at ? `Ya exportado ${fecha(p.exportado_tango_at)} (cliente ${p.cod_cliente_tango})` : 'Excel de Novedades para facturar en Tango'}>
+                              {p.exportado_tango_at ? '↻ Excel Tango' : '⬇ Excel Tango'}
+                            </button>
+                          )}
+                          {p.cuenta === 'brubank' && !p.doc_path && (
+                            <button disabled={guardando === p.id} onClick={() => generarRemito(p)} className="text-xs font-semibold text-brandDark disabled:opacity-40">Generar remito</button>
+                          )}
                           {p.doc_path && <button onClick={() => verArchivo(p.doc_path!)} className="text-xs font-semibold text-emerald-700">✓ {p.doc_at ? fecha(p.doc_at) : ''} · ver ↗</button>}
                           <label className="text-xs font-semibold text-brandDark cursor-pointer">
                             {p.doc_path ? 'Reemplazar' : `Subir ${p.cuenta === 'plenorius' ? 'factura' : 'remito'}`}
                             <input type="file" accept="application/pdf,image/*" className="hidden" disabled={guardando === p.id}
-                              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) subirDoc(p, f) }} />
+                              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) subirDoc(p, f, f.name) }} />
                           </label>
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Orden de producción</span>
+                        {ordenes[p.id]
+                          ? <Link to="/produccion/pedidos" className="text-xs font-semibold text-violet-700">🏭 #{ordenes[p.id].id} · {ordenes[p.id].estado}{ordenes[p.id].fecha_entrega_estimada ? ` · entrega ${ordenes[p.id].fecha_entrega_estimada!.split('-').reverse().join('/')}` : ''} ↗</Link>
+                          : <span className="text-xs text-muted">Se genera sola al aprobar el adelanto</span>}
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-muted text-xs">Link de pago del cliente (ve datos, sube comprobantes y descarga {p.cuenta === 'plenorius' ? 'la factura' : 'el remito'})</span>
@@ -262,9 +321,9 @@ export default function MarcaBlancaPedidos() {
 
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {sig && (
-                        <button disabled={guardando === p.id} onClick={() => actualizar(p, { estado: sig }, `#${p.id} → ${estadoInfo(sig).label}`)}
+                        <button disabled={guardando === p.id} onClick={() => avanzar(p, sig)}
                           className="text-xs font-semibold rounded-lg bg-brand text-white px-3 py-1.5 disabled:opacity-50">
-                          Pasar a {estadoInfo(sig).label.toLowerCase()}
+                          {sig === 'confirmado' ? '✓ Adelanto cobrado · generar orden' : `Pasar a ${estadoInfo(sig).label.toLowerCase()}`}
                         </button>
                       )}
                       {p.estado !== 'anulado' && p.estado !== 'entregado' && (
