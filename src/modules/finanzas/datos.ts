@@ -13,7 +13,7 @@ import {
   Pedido,
   StockItem,
 } from '../../lib/types'
-import { esPedidoShopify, importeDe, parseFP } from '../pedidos/calc'
+import { esMovimientoConsigna, esPedidoShopify, importeDe, parseFP } from '../pedidos/calc'
 import { ESTADOS_VIVOS, sumarDias, tramoDe, VencimientoCC } from '../../lib/finanzas'
 
 /** Parámetros vigentes = la fila con vigente_desde más reciente que ya arrancó. */
@@ -86,6 +86,7 @@ export function vencimientosDe(pedidos: Pedido[], stock: StockItem[], hoy = new 
     if (p.cobrado) continue
     if (!p.fecha_factura) continue
     if (esPedidoShopify(p)) continue // B2C: no hay cuenta corriente
+    if (esMovimientoConsigna(p)) continue // envío de consigna: stock de Orbital en el local, no deuda
     const total = importeDe(p, stock)
     if (total <= 0) continue
     const cuotas = parseFP(p.cond_pago, p.cuotas_detalle)

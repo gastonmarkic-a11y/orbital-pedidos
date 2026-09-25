@@ -12,6 +12,13 @@ export function esPedidoShopify(p: Pedido): boolean {
   return p.vendedor === 'Tienda' || p.origen === 'shopify'
 }
 
+// Envío/reposición de consigna: movimiento de depósito al local del consignatario (importe 0, no se factura).
+// La mercadería sigue siendo de Orbital, así que NO es deuda: de la consigna se cobra la liquidación de venta
+// (pedido origen 'consigna'), no el stock que tienen en los locales.
+export function esMovimientoConsigna(p: Pedido): boolean {
+  return p.origen === 'reposicion'
+}
+
 export function getPrecioLista(precioBase: number, nroLista: number | null): number {
   if (nroLista === 1) return Math.round(precioBase / FACTOR_DISTRIBUIDOR) // distribuidor
   return Math.round(precioBase) // óptico (lista 5) para todos los demás

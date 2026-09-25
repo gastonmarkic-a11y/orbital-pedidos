@@ -5,7 +5,7 @@ import { useToast } from '../../lib/toast'
 import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { estadoLabel, importeDe } from './calc'
+import { esMovimientoConsigna, estadoLabel, importeDe } from './calc'
 
 export default function Cobranzas() {
   const { rolEfectivo, codigoEfectivo } = useAuth()
@@ -36,8 +36,9 @@ export default function Cobranzas() {
   }, [cargar])
 
   const filas = useMemo(() => {
-    // Todos los pedidos entran al circuito de cobro desde que se cargan
-    let logs = [...pedidos]
+    // Todos los pedidos entran al circuito de cobro desde que se cargan, salvo los envíos de consigna
+    // (movimiento de stock: de la consigna se cobra la liquidación de venta).
+    let logs = pedidos.filter((l) => !esMovimientoConsigna(l))
     if (filtro === 'cobrado') logs = logs.filter((l) => l.cobrado)
     if (filtro === 'pendiente') logs = logs.filter((l) => !l.cobrado)
     // Tipo de cliente: consumidor final = pedidos de la Tienda (Shopify); mayorista = el resto (ópticas).

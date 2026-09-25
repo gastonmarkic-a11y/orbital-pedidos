@@ -4,7 +4,7 @@ import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio, clienteCorto } from '../../lib/format'
 import { addDias, diasDesde, formatFecha, parsePedidoFecha } from '../../lib/dates'
 import { fetchPaged } from '../../lib/fetchAll'
-import { estadoLabel, ESTADO_COLORS, esPedidoShopify, importeDe, parseFP } from './calc'
+import { estadoLabel, ESTADO_COLORS, esMovimientoConsigna, esPedidoShopify, importeDe, parseFP } from './calc'
 
 const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
 const ESTADOS_ORDEN = ['pendiente', 'en_preparacion', 'observado', 'listo', 'facturado', 'listo_despachar', 'despachado']
@@ -55,6 +55,8 @@ export default function DashboardPedidos() {
   }
 
   const imp = (l: Pedido) => importeDe(l, stock)
+  // Por cobrar: sin cobrar y que no sea envío de consigna (eso es stock de Orbital en el local, no deuda).
+  const aCobrar = (l: Pedido) => !l.cobrado && !esMovimientoConsigna(l)
   // B2B = pedidos facturables que NO son de la tienda (888888/9 duplican lo que ya trae Shopify).
   const esB2BFact = (l: Pedido) => FACTURABLES.includes(l.estado ?? '') && !esPedidoShopify(l)
   const facturadoMesActual = pedidosMesActual.filter(esB2BFact).reduce((a, l) => a + imp(l), 0)
@@ -130,7 +132,7 @@ export default function DashboardPedidos() {
     else if (delta <= -10)
       conclusiones.push(`La facturación bajó ${Math.abs(delta)}% respecto al mes pasado — conviene revisar qué frenó el cierre.`)
   }
-  const pendCobro = pedidos.filter((l) => FACTURABLES.includes(l.estado ?? '') && !l.cobrado).reduce((a, l) => a + imp(l), 0)
+  const pendCobro = pedidos.filter((l) => FACTURABLES.includes(l.estado ?? '') && aCobrar(l)).reduce((a, l) => a + imp(l), 0)
   if (pendCobro > 0) conclusiones.push(`Hay ${formatPrecio(pendCobro)} ya facturados y todavía sin cobrar — revisalo en Cobranzas.`)
   const observadosActivos = pedidos.filter((l) => l.estado === 'observado').length
   if (observadosActivos > 0)
@@ -149,7 +151,7 @@ export default function DashboardPedidos() {
     counts[e] = (counts[e] ?? 0) + 1
     const n = imp(l)
     if (e === 'listo') totalListo += n
-    if (FACTURABLES.includes(e) && !l.cobrado) totalPendCobroCard += n
+    if (FACTURABLES.includes(e) && aCobrar(l)) totalPendCobroCard += n
   }
 
   // Alertas
@@ -176,7 +178,7 @@ export default function DashboardPedidos() {
         icono: '📄',
         msg: `${clienteCorto(l.cliente)} — Listo para facturar hace ${dias} días — ${formatPrecio(imp(l))}`,
       })
-    if (FACTURABLES.includes(l.estado ?? '') && !l.cobrado) {
+    if (FACTURABLES.includes(l.estado ?? '') && aCobrar(l)) {
       const n = imp(l)
       for (const v of parseFP(l.cond_pago, l.cuotas_detalle)) {
         const fVto = addDias(l.fecha_entrega || l.fecha_factura || l.fecha || '', v.dias)
@@ -192,7 +194,7 @@ export default function DashboardPedidos() {
 
   // Flujo de caja
   const cobros: { fecha: Date | null; monto: number; cliente: string | null; vencido: boolean }[] = []
-  for (const l of pedidos.filter((l) => !l.cobrado)) {
+  for (const l of pedidos.filter(aCobrar)) {
     const n = imp(l)
     if (n <= 0) continue
     const base = l.fecha_entrega || l.fecha_factura || l.fecha || ''
