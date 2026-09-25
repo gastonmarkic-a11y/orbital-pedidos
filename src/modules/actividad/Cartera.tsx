@@ -84,7 +84,9 @@ export default function Cartera() {
   const { vendedor, rolEfectivo, codigoEfectivo } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
-  const esAdmin = rolEfectivo === 'admin'
+  // Administración ve la cartera como admin: solapas por dueño, todos los clientes.
+  const esAdministracion = rolEfectivo === 'administracion'
+  const esAdmin = rolEfectivo === 'admin' || esAdministracion
   const [tabVendedor, setTabVendedor] = useState('Adrian')
   const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
   // Operador de prospección (Luna=Marketing, Damián=ProspeccionVenta) logueado directamente
@@ -129,7 +131,8 @@ export default function Cartera() {
   const [recarga, setRecarga] = useState(0)
 
   // Prospección: en "Prospectos" solo se deriva; el pedido queda para "Venta directa"
-  const mostrarPedido = !esProspOperador || modoCartera === 'venta_directa'
+  // Administración no carga pedidos desde acá (no tiene Nuevo Pedido).
+  const mostrarPedido = !esAdministracion && (!esProspOperador || modoCartera === 'venta_directa')
   // Derivar disponible para todos MENOS el revendedor (no puede reasignar/cambiar cartera).
   const mostrarDerivar = !esRevendedor
   // El revendedor es de SOLO LECTURA sobre el cliente: no edita datos, no borra, no agrega nota.

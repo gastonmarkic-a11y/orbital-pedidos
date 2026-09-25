@@ -199,6 +199,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       ],
       secundarios: [
+        { to: '/cartera', label: 'Cartera' },
         { to: '/panel-resultados', label: 'Resultados' },
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
@@ -582,6 +583,7 @@ function Layout() {
           {(rol === 'contenido' || rol === 'social') && <Route path="/marketing" element={<Marketing />} />}
           {(rol === 'revendedor' || rol === 'vendedor' || rol === 'postventa') && <Route path="/mi-catalogo" element={<MiCatalogo />} />}
           {(rol === 'admin' || rol === 'postventa') && <Route path="/postventa" element={<Postventa />} />}
+          {rol === 'administracion' && <Route path="/cartera" element={<Cartera />} />}
           {rol === 'revendedor' && (
             <>
               <Route path="/cartera" element={<Cartera />} />
