@@ -199,8 +199,8 @@ const gloss=c=>`radial-gradient(circle at 32% 28%,rgba(255,255,255,.55) 0 12%,tr
 // Los nombres "A medida (…)" caen en el tramo del grupo por tierOf; la descripción del cliente va aparte.
 const RAINBOW="conic-gradient(#e53935,#fdd835,#43a047,#1e88e5,#8e24aa,#e53935)";
 const COLGROUPS=[
- {g:"Negro básico",sub:"mate o brillo",pr:"11,50",items:[["Negro mate","#232426"],["Negro brillo",gloss("#111214")]]},
- {g:"Compacto mate",sub:"color lleno, terminación mate",pr:"12,50",items:[["Gris mate","#8d9195"],["Blanco marfil","#f1ead9"],["Habano","#6b3a1e"],["Bordó mate","#5c1a26"],["Verde militar","#56603a"],["Azul mate","#22407e"],["A medida (mate)",RAINBOW]]},
+ {g:"Negro básico",sub:"negro mate",pr:"11,50",items:[["Negro mate","#232426"]]},
+ {g:"Compacto color",sub:"color lleno · incluye negro brillo",pr:"12,50",items:[["Negro brillo",gloss("#111214")],["Blanco marfil","#f1ead9"],["Habano","#6b3a1e"],["Bordó mate","#5c1a26"],["Verde militar","#56603a"],["Azul mate","#22407e"],["A medida (mate)",RAINBOW]]},
  {g:"Clear",sub:"transparente · mate 13,50 · brillo 14,50",pr:"13,50",items:[["Cristal",clr("rgba(235,238,240,.35)")],["Gris clear",clr("rgba(90,95,100,.55)")],["Habano clear",clr("rgba(120,70,30,.6)")],["Rosa clear",clr("rgba(235,140,165,.5)")],["Verde clear",clr("rgba(60,130,70,.5)")],["Azul clear",clr("rgba(35,70,155,.55)")],["A medida (clear)",clr("rgba(255,255,255,.25)")+","+RAINBOW]]},
  {g:"Brillo · degradé · vetas",sub:"terminación brillante o con efecto",pr:"14,50",items:[["Gris brillo",gloss("#7c8085")],["Blanco brillo",gloss("#f7f7f4")],["Azul brillo",gloss("#1f45a0")],["Negro degradé",dg("#111214","#b9bcbf")],["Azul degradé",dg("#1f45a0","#c8d6f0")],["Rojo vetas",vet("#b3262b","#e0736b")],["A medida (brillo)",gloss(RAINBOW)]]}
 ];
@@ -213,7 +213,7 @@ const LOGOS=[{k:"tampo",n:"Tampografía",d:"tinta, 1 color"},{k:"laser",n:"Graba
 // Marco con logo; el cristal lo aporta el cliente y el calibrado va incluido. Precio por terminación.
 const TIERS=[{n:"Básico negro",p:11.5},{n:"Color mate compacto",p:12.5},{n:"Color clear mate",p:13.5},{n:"Clear brillo · brillo · degradé · vetas",p:14.5}];
 const isClear=c=>/clear/i.test(c)||c==="Cristal";
-const tierOf=(c,fin)=>isClear(c)?(fin==="brillo"?3:2):/^Negro (mate|brillo)$/.test(c)?0:/brillo|degradé|vetas|veteado/i.test(c)?3:1;
+const tierOf=(c,fin)=>isClear(c)?(fin==="brillo"?3:2):c==="Negro mate"?0:c==="Negro brillo"?1:/brillo|degradé|vetas|veteado/i.test(c)?3:1;
 const EST=0.7,CAJA_MIN=100,cajaP=n=>n>=1000?0.45:1.3;
 const IMG="/p/mb/";
 const FN="https://towcgvphxeqilpdnboki.supabase.co/functions/v1/marca-blanca-pedido";
