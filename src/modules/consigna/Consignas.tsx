@@ -1,5 +1,6 @@
 // ── Consignas (Suite) ───────────────────────────────────────────────────────
 // Administración de los clientes de consigna con sucursales (cliente madre + sucursales):
+//   · Tablero: envíos en curso, stock por sucursal, rotación, lo trabado y cómo impulsarlo.
 //   · Liquidación: se sube el Excel que manda el cliente → descuenta del stock de cada
 //     sucursal → reposición automática (consigna_liquidar):
 //       - lo vendido que rota y tiene stock central → pedido de carga automático por sucursal
@@ -13,10 +14,11 @@ import { Upload, Check, Copy, ExternalLink, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { useAuth } from '../../lib/auth'
+import TableroConsigna from './TableroConsigna'
 
 type Madre = { cod: string; nombre: string; sucursales: number; local: number; devolver: number; camino: number; repos: number; postventa: number }
 type Suc = { id: number; cod_madre: string; nombre: string; direccion: string | null; orden: number }
-type StockRow = { sucursal_id: number; codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; devolver: number; en_camino: number }
+type StockRow = { sucursal_id: number; codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; devolver: number; en_camino: number; precio: number | null }
 type RepoItem = { codigo: string; modelo: string | null; descripcion: string | null; cantidad: number; motivo?: string }
 type Repo = { id: number; sucursal_id: number; origen: string; liquidacion_id: number | null; consigna_pedido_id: number | null; items: RepoItem[]; sin_cubrir: number; created_at: string }
 type Liq = { id: number; archivo: string | null; desde: string | null; hasta: string | null; total_units: number; importe: number; creado_por: string | null; created_at: string }
@@ -29,12 +31,12 @@ const pesos = (n: number) => '$' + Math.round(Number(n || 0)).toLocaleString('es
 const fecha = (s: string) => new Date(s).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 const URL_BASE = 'https://ver.orbitaleyewear.com.ar'
 
-type Vista = 'liquidacion' | 'repos' | 'devoluciones' | 'postventa' | 'links'
+type Vista = 'tablero' | 'liquidacion' | 'repos' | 'devoluciones' | 'postventa' | 'links'
 
 export default function Consignas() {
   const [madres, setMadres] = useState<Madre[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
-  const [vista, setVista] = useState<Vista>('liquidacion')
+  const [vista, setVista] = useState<Vista>('tablero')
   const [tick, setTick] = useState(0)
   const refrescar = () => setTick((t) => t + 1)
 
@@ -71,6 +73,7 @@ export default function Consignas() {
   const madre = madres.find((m) => m.cod === sel)!
 
   const tabs: [Vista, string, number?][] = [
+    ['tablero', 'Tablero'],
     ['liquidacion', 'Liquidación'],
     ['repos', 'Reposiciones a aprobar', madre.repos],
     ['devoluciones', 'Devoluciones'],
@@ -128,12 +131,13 @@ function Detalle({ madre, vista, onCambio }: { madre: Madre; vista: Vista; onCam
       .then(({ data }) => {
         const s = (data ?? []) as Suc[]
         setSucs(s)
-        if (s.length) supabase.from('consigna_suc_stock').select('sucursal_id, codigo, modelo, descripcion, cantidad, devolver, en_camino')
+        if (s.length) supabase.from('consigna_suc_stock').select('sucursal_id, codigo, modelo, descripcion, cantidad, devolver, en_camino, precio')
           .in('sucursal_id', s.map((x) => x.id)).then(({ data }) => setStock((data ?? []) as StockRow[]))
       })
   }, [madre.cod])
   const nombreSuc = (id: number | null) => sucs.find((s) => s.id === id)?.nombre ?? 'Central'
 
+  if (vista === 'tablero') return <TableroConsigna cod={madre.cod} nombre={madre.nombre} sucs={sucs} stock={stock} />
   if (vista === 'liquidacion') return <Liquidacion madre={madre} sucs={sucs} stock={stock} onCambio={onCambio} />
   if (vista === 'repos') return <Reposiciones madre={madre} nombreSuc={nombreSuc} onCambio={onCambio} />
   if (vista === 'devoluciones') return <Devoluciones madre={madre} nombreSuc={nombreSuc} />
