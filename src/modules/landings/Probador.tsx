@@ -1,16 +1,17 @@
 // Probador virtual de la landing del modelo (/modelo/<MODELO>): cámara frontal + MediaPipe Face Landmarker
 // en el navegador (nada sale del celular). La foto de frente del color elegido se recorta del fondo blanco
-// y se dibuja sobre la cara: ancho según la distancia entre los ojos, centro en el puente, girada con la cabeza.
+// y se dibuja sobre la cara: ancho = ancho de la cara de sien a sien, centro en el puente, girada con la cabeza.
 import { useEffect, useRef, useState } from 'react'
 
 const MP_VERSION = '1.0.1'
 const WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
 const MODELO = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
 
-// Landmarks de MediaPipe Face Mesh: extremos externos de los ojos y puente de la nariz
-const OJO_IZQ = 33, OJO_DER = 263, PUENTE = 168
-// Ancho del anteojo respecto de la distancia entre los extremos de los ojos
-const ANCHO_X_OJOS = 2.05
+// Landmarks de MediaPipe Face Mesh: extremos externos de los ojos (para el giro), sienes (para el ancho)
+// y puente de la nariz (centro)
+const OJO_IZQ = 33, OJO_DER = 263, SIEN_IZQ = 234, SIEN_DER = 454, PUENTE = 168
+// Un armazón ocupa lo mismo que la cara de sien a sien
+const ANCHO_X_CARA = 1.0
 
 interface ColorProbador { codigo: string; color: string; fotos: string[] }
 
@@ -79,6 +80,7 @@ export default function Probador({ modelo, colores, inicial, onCerrar }: {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const anteojo = useRef<HTMLCanvasElement | null>(null)
   const foto = useRef<HTMLImageElement>(null)
+  const suave = useRef<{ ancho: number; x: number; y: number; giro: number } | null>(null)
   const conFoto = colores.map((c, i) => ({ c, i })).filter((x) => x.c.fotos.length)
   const [sel, setSel] = useState(conFoto.some((x) => x.i === inicial) ? inicial : conFoto[0]?.i ?? 0)
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'sin-cara' | 'error'>('cargando')
@@ -134,13 +136,23 @@ export default function Probador({ modelo, colores, inicial, onCerrar }: {
           const a = anteojo.current
           if (lm && a) {
             const W = cv.width, H = cv.height
-            const iz = lm[OJO_IZQ], de = lm[OJO_DER], pu = lm[PUENTE]
+            const iz = lm[OJO_IZQ], de = lm[OJO_DER], pu = lm[PUENTE], si = lm[SIEN_IZQ], sd = lm[SIEN_DER]
             const dx = (de.x - iz.x) * W, dy = (de.y - iz.y) * H
-            const ancho = Math.hypot(dx, dy) * ANCHO_X_OJOS
+            const objetivo = {
+              ancho: Math.hypot((sd.x - si.x) * W, (sd.y - si.y) * H) * ANCHO_X_CARA,
+              x: pu.x * W, y: pu.y * H, giro: Math.atan2(dy, dx),
+            }
+            // suavizado para que no tiemble
+            const s = suave.current
+            suave.current = s ? {
+              ancho: s.ancho + (objetivo.ancho - s.ancho) * 0.5, x: s.x + (objetivo.x - s.x) * 0.6,
+              y: s.y + (objetivo.y - s.y) * 0.6, giro: s.giro + (objetivo.giro - s.giro) * 0.6,
+            } : objetivo
+            const { ancho, x, y, giro } = suave.current
             const alto = ancho * (a.height / a.width)
             ctx.save()
-            ctx.translate(pu.x * W, pu.y * H + alto * 0.08)
-            ctx.rotate(Math.atan2(dy, dx))
+            ctx.translate(x, y + alto * 0.08)
+            ctx.rotate(giro)
             ctx.drawImage(a, -ancho / 2, -alto / 2, ancho, alto)
             ctx.restore()
           }
