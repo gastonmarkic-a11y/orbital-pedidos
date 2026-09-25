@@ -596,8 +596,89 @@ const AYUDA =
   "• <b>Qué promociono</b> — te digo qué conviene según stock y ventas\n" +
   "• <b>Mis links</b> — visitas, pedidos, conversión y tu comisión por link\n" +
   "• <b>Mi dashboard</b> — del link a la venta, de dónde vienen las ventas, venta por mes, por red, publicaciones y anteojos que más rinden, y tu liquidación pedido por pedido\n" +
-  "• <b>Consultar al equipo</b> — le escribís a Orbital y te responden por acá\n\n" +
+  "• <b>Consultar al equipo</b> — le escribís a Orbital y te responden por acá\n" +
+  "• 📷 <b>Mandame una foto</b> de un anteojo y te digo cuál es, con su link\n\n" +
   "Y te aviso solo cuando cambia un precio, arranca una promo o el equipo te manda un mensaje.";
+
+// ————— foto → modelo —————
+// El promotor manda la foto de un anteojo: Claude la compara contra una foto de cada
+// modelo de SU catálogo (máx. 34) y, si coincide, sigue el flujo de siempre (color → link + ficha).
+
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+
+async function bajarFotoTelegram(fileId: string): Promise<string | null> {
+  const r = await fetch(`https://api.telegram.org/bot${await token()}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  const path = (await r.json())?.result?.file_path;
+  if (!path) return null;
+  const img = await fetch(`https://api.telegram.org/file/bot${await token()}/${path}`);
+  if (!img.ok) return null;
+  const bytes = new Uint8Array(await img.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// Foto chica de la tienda para comparar (Shopify redimensiona con ?width=)
+const miniatura = (url: string) => url + (url.includes("?") ? "&" : "?") + "width=400";
+
+async function modeloDeFoto(b64: string, mime: string, cat: Modelo[]): Promise<Modelo | null> {
+  const refs = cat
+    .map((m) => ({ m, img: m.colores.find((c) => c.imagen)?.imagen ?? null }))
+    .filter((r): r is { m: Modelo; img: string } => !!r.img)
+    .slice(0, 40);
+  if (!refs.length || !ANTHROPIC_API_KEY) return null;
+  const content: unknown[] = [
+    { type: "text", text: "FOTO (sacada por una persona):" },
+    { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+  ];
+  refs.forEach((r, i) => {
+    content.push({ type: "text", text: `Referencia ${i + 1}:` });
+    content.push({ type: "image", source: { type: "url", url: miniatura(r.img) } });
+  });
+  content.push({ type: "text", text:
+    `Decidí si el anteojo de la FOTO es el mismo MODELO de armazón que alguna de las ${refs.length} referencias. ` +
+    "Ignorá el color del armazón y de las lentes: las referencias pueden estar en otro color. Compará la forma del frente y de las lentes, " +
+    "el puente, el grosor, las bisagras, las patillas y los detalles. Si no hay un anteojo o no coincide claramente con ninguna, la referencia es null. " +
+    'Respondé SOLO con JSON: {"referencia": <número o null>}' });
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 60, messages: [{ role: "user", content }] }),
+  });
+  const data = await res.json();
+  if (data?.error) throw new Error("anthropic " + JSON.stringify(data.error));
+  const txt = data?.content?.find((c: { type: string }) => c.type === "text")?.text ?? "";
+  const n = Number(txt.match(/"referencia"\s*:\s*(\d+)/)?.[1]);
+  return Number.isInteger(n) && n >= 1 && n <= refs.length ? refs[n - 1].m : null;
+}
+
+async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: string) {
+  await fetch(`https://api.telegram.org/bot${await token()}/sendChatAction`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chat, action: "typing" }),
+  });
+  let m: Modelo | null = null;
+  try {
+    const b64 = await bajarFotoTelegram(fileId);
+    if (!b64) throw new Error("no bajó la foto");
+    m = await modeloDeFoto(b64, mime, await catalogo(q.clave));
+  } catch (e) {
+    console.error("reconocerFoto", String(e));
+    await enviar(chat, "No pude mirar la foto ahora 😕 Probá de nuevo en un rato o escribime el nombre del modelo.");
+    return;
+  }
+  if (!m) {
+    await enviar(chat,
+      "No lo encontré entre tus anteojos 🤔\n\n" +
+      "Probá con otra foto: el anteojo de frente, con buena luz y ocupando casi toda la foto. " +
+      "O escribime el nombre del modelo.");
+    await espejo(`<b>${esc(q.nombre)}</b> mandó una foto y no encontré el anteojo`, q.influencer_id);
+    return;
+  }
+  await enviar(chat, `📷 Es el <b>${m.modelo}</b>`);
+  await pantallaModelo(chat, q, m);
+  await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${m.modelo}</b>`, q.influencer_id);
+}
 
 // ————— webhook —————
 
@@ -753,6 +834,16 @@ async function manejarMensaje(msg: Record<string, any>) {
 
   const t = sinTilde(texto);
   const lector: Lector = { clave: q.clave, pct: Number(q.pct_comision), nombre: q.nombre, infId: q.influencer_id };
+
+  // Foto (o imagen mandada como archivo) → qué anteojo es
+  const docMime = String(msg.document?.mime_type ?? "");
+  const foto = msg.photo?.length
+    ? { id: msg.photo[msg.photo.length - 1].file_id as string, mime: "image/jpeg" }
+    : ["image/jpeg", "image/png", "image/webp"].includes(docMime) ? { id: msg.document.file_id as string, mime: docMime } : null;
+  if (foto) {
+    await reconocerFoto(chat, q, foto.id, foto.mime);
+    return;
+  }
 
   // Respuesta a "escribí tu consulta" o a un 📣 del equipo → va al equipo como consulta
   const citado = msg.reply_to_message;
