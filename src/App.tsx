@@ -75,6 +75,8 @@ import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import LandingProximamente from './modules/landings/LandingProximamente'
 import LandingBienvenida from './modules/landings/LandingBienvenida'
 import LandingCanje from './modules/landings/LandingCanje'
+import Reconocer from './modules/landings/Reconocer'
+import LandingModelo from './modules/landings/LandingModelo'
 import PreciosML from './modules/mercadolibre/PreciosML'
 import FinanzasHub from './modules/finanzas/FinanzasHub'
 
@@ -765,6 +767,13 @@ export default function App() {
         <LandingCanje />
       </ToastProvider>
     )
+  }
+  // Reconocer un anteojo con la cámara → landing del modelo para el cliente final
+  if (typeof window !== 'undefined' && /^\/reconocer\/?$/.test(window.location.pathname)) {
+    return <Reconocer />
+  }
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/modelo/')) {
+    return <LandingModelo />
   }
   // Campañas con ruta reservada (contenido a definir) → placeholder branded
   if (typeof window !== 'undefined') {
