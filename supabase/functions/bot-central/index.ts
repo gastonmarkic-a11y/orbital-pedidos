@@ -1,4 +1,5 @@
 // bot-central — IRIS, asistente de atención de Orbital (multicanal).
+// v74 (2026-09-25): chat de la tienda → consumidor final salvo que diga óptica/comercio (el saludo igual pregunta).
 // v73 (2026-09-25): tamaño/medidas de un modelo → SIEMPRE desde producto_medidas de la Suite (ancho, alto, largo de
 //      patilla, formato, material); si el modelo no está cargado no se inventa: link a la ficha. Consumidor final que
 //      nombra un modelo → link directo al producto en la tienda (sin cotización ni lista de colores). ¿Es polarizado? →
@@ -1738,6 +1739,9 @@ async function handler(req: Request): Promise<Response> {
   if (modoDerivada) return responder(conversacionId, canal, acuseDerivada, ultimasBot);
 
   let tipoCliente = contacto?.tipo_cliente ?? (cod ? "mayorista" : "desconocido");
+  // v74: en el chat de la tienda, mientras no diga que es óptica/comercio (eso lo toma el bloque chatTienda), es
+  // consumidor final. El saludo igual pregunta; no se persiste, así "soy consumidor final" sigue su camino normal.
+  if (chatTienda && tipoCliente === "desconocido" && !detectarTipo(texto)) tipoCliente = "minorista";
 
   let token: string | null = null;
   if (cod) {
