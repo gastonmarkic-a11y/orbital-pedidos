@@ -1,4 +1,14 @@
 // bot-central — IRIS, asistente de atención de Orbital (multicanal).
+// v69 (2026-09-25, relevamiento de Messenger): "¿tienen local / sucursal / dirección / horario?" → no hay locales, solo ópticas
+//      autorizadas + óptica cercana (zona sur/oeste/norte y Capital por sus localidades) · FAQ consumidor: envío gratis,
+//      cuotas según la web, cambio sin uso + arrepentimiento, exterior → orbitaleyewear.com · repuestos → Postventa por
+//      Telegram (🆘) · Triple Protección solo en modelos marcados + se ofrece una vez por charla al consumidor.
+// v68 (2026-09-23): se publica la v66 del repo (precarga directa) unida a lo de hoy + FAQ receta/Ray-Ban/clip-on/outlet.
+// v67b (2026-09-23, plan de ajuste): nada a Ulises (Gastón / Administración / Postventa) · distribuidor: "tu zona la maneja X, te paso el número de Alejandro" · cotizador solo con modelo nombrado · sin búsqueda literal en la tienda · filtro de salida (tablas, tokens, "soy vendedor", largo) · IRIS callada si respondió una persona · acuse de derivación una vez · proveedores/influencers → Gastón · FAQ mayorista fija · revendedores/emprendimientos al circuito B2B · recordatorio a leads que no contestan.
+// v67a (2026-09-23): ficha encontrada por nombre se valida (otra provincia = otra óptica; zona de distribuidor sin compras
+//      desde 2025 = distribuidor), también la reconocida por teléfono. Primer contacto: saludo y propuesta en mensajes
+//      separados. Consumidor: "Nooo…" es no, el "¿tenés óptica?" se pregunta una vez, no repite modelos, localidad sin
+//      ópticas se contesta. Cambios/roturas/repuestos → WhatsApp de Postventa.
 // v66: cliente identificado (cod real) que confirma la cotización con "sí" → precarga directa en la Suite
 //      (bot_precarga_crear → catalogo_precarga, igual que el catálogo: codigo, precio de su lista, tope de stock,
 //      vendedor de la cuenta). La ve el vendedor en Pedidos y la avisa el Ojo. Sin cod: deriva como antes.
@@ -27,15 +37,19 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const GROQ_KEY = Deno.env.get("GROQ_API_KEY") ?? "";
+const WA_TOKEN = Deno.env.get("WHATSAPP_TOKEN") ?? "";
+const WA_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
 const GROQ_MODELS = [...new Set([Deno.env.get("GROQ_MODEL") ?? "openai/gpt-oss-20b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"])];
 const REABRIR_HORAS = 12;
 const TEST_TELS: string[] = [];
 const CATALOGO_URL = "https://ver.orbitaleyewear.com.ar/catalogo";
-const VENDEDOR_LEADS = "Ulises";
+// 2026-09-23: nada va a Ulises. Lo que IRIS no resuelve va a Gastón (pagos → Administración, postventa → Postventa).
+const VENDEDOR_LEADS = "Gaston";
+const sinUlises = (v: string | null | undefined) => (!v || v === "Ulises" || v === "Corporativo" ? "Gaston" : v);
 
 type Canal = "whatsapp" | "instagram" | "email" | "web" | "mercadolibre_pregunta" | "mercadolibre_posventa";
 interface MensajeEntrante { conversacionId: string; contactoId: string; canal: Canal; texto: string; esLead?: boolean; }
-interface RespuestaBot { texto: string; quickReplies?: string[]; derivar?: { motivo: string; resumen: string }; }
+interface RespuestaBot { texto: string; textos?: string[]; quickReplies?: string[]; derivar?: { motivo: string; resumen: string }; }
 interface Alloc { color: string; qty: number; }
 interface ItemCoti { modelo: string; precio_lista: number; precio_publico: number | null; colores: string[]; objetivo: number; alloc: Alloc[]; }
 interface Msg { emisor: string; contenido: string; created_at: string }
@@ -66,6 +80,7 @@ function cuando(): string { return enHorario() ? "en un rato te escribe" : "mañ
 
 async function vendedorId(codigo: string | null): Promise<number | null> {
   if (!codigo) return null;
+  if (codigo === "Ulises") codigo = "Gaston";
   const { data } = await supabase.from("vendedores").select("id").eq("codigo", codigo).eq("activo", true).maybeSingle();
   return (data as { id: number } | null)?.id ?? null;
 }
@@ -99,7 +114,7 @@ function tipoRespuesta(t: string): "optica" | "consumidor" | null {
   const det = detectarTipo(t);
   if (det === "mayorista" || RE_EX_VENDEDOR.test(t)) return "optica";
   if (det === "minorista") return "consumidor";
-  if (/^\s*no\b/i.test(t) || /no tengo (una )?[oó]ptica/i.test(t)) return "consumidor";
+  if (/^\s*(no+|nop|nah)\b/i.test(t) || /no tengo (una )?[oó]ptica/i.test(t)) return "consumidor";
   if (RE_SI.test(t)) return "optica";
   return null;
 }
@@ -108,11 +123,44 @@ const RE_FORMA_PAGO = /(forma(s)? de pago|c[oó]mo (se )?pag|medios? de pago|pla
 const RE_BONO = /(bono|descuento|promo|beneficio|bonificaci|oferta|300\.?000)/i;
 const RE_VER_PRECIOS = /(precio|lista de precios|cat[aá]logo|cu[aá]nto (sale|cuesta|salen|cuestan|vale|valen)|valores|cotiz|ver (los )?modelos|mandame (el|los)|pasame (el|los))/i;
 const RE_DONDE_PROBAR = /(d[oó]nde (los |las )?(puedo|se pueden|los puedo|lo puedo)?\s*(ver|probar|encontrar|conseguir|comprar)|local(es)? (cerca|f[ií]sico)|en qu[eé] [oó]ptica|punto de venta cerca)/i;
+// v69: "¿tienen local / sucursal / dirección / horario / tienda física / qué ópticas trabajan?" → no hay locales propios,
+// solo ópticas autorizadas, y se busca la óptica cerca (en Facebook IRIS detectaba solo el 9% de estas preguntas).
+const RE_LOCAL_PROPIO = /((ten[eé]s|tienen|hay|cuentan con|tendr[aá]n)\s+(alg[uú]n\s+|un\s+|una\s+)?(local|locales|sucursal|sucursales|tienda|tiendas|negocio|showroom|punto de venta)|\b(sucursal|sucursales|showroom|casa central|casa orbital)\b|tiendas? f[ií]sicas?|locales? f[ií]sicos?|direcci[oó]n|horarios?( de atenci[oó]n| del local)?\s*\??\s*$|horario del local|d[oó]nde (queda|est[aá]|tienen) (el |su )?local|en d[oó]nde est[aá]n|d[oó]nde est[aá]n ubicad|qu[eé] [oó]pticas? (trabajan|venden|tienen|los tienen)|d[oó]nde (los |las |lo |la )?(consigo|compro|venden|encuentro)|solo (venta )?online|para (ir a )?probarlos?|ir a (ver|probar)|pasar a (ver|probar))/i;
+const RE_NO_LOCAL = /(direcci[oó]n (de )?(entrega|env[ií]o|facturaci)|mi direcci[oó]n|la direcci[oó]n es|cambi\w* (la |de )?direcci[oó]n|direcci[oó]n (equivocad|mal))/i;
+const RE_SOLO_ZONA = /^\s*(en |por |de |soy de |estoy en )?(la )?(zona (sur|norte|oeste)|capital( federal)?|caba|gba)\s*[?!.]*\s*$/i;
+function esPreguntaDonde(t: string): boolean {
+  if (RE_NO_LOCAL.test(t) || RE_DICE_OPTICA.test(t)) return false;
+  return RE_DONDE_PROBAR.test(t) || RE_LOCAL_PROPIO.test(t) || RE_SOLO_ZONA.test(t);
+}
+const TXT_SIN_LOCAL = "No tenemos locales propios: Orbital se vende solo en ópticas autorizadas de todo el país 🙌";
+// Zonas del GBA y Capital: se buscan por sus localidades (las RPC matchean la localidad dentro del texto).
+const ZONAS_GBA: [RegExp, string][] = [
+  [/zona sur/i, "avellaneda lanus lomas de zamora banfield temperley adrogue burzaco monte grande quilmes bernal berazategui florencio varela ezeiza longchamps glew claypole wilde sarandi remedios de escalada llavallol turdera rafael calzada jose marmol san vicente canning"],
+  [/zona oeste/i, "moron haedo castelar ramos mejia ituzaingo merlo moreno san justo hurlingham villa luzuriaga isidro casanova ciudadela villa sarmiento el palomar padua paso del rey laferrere gonzalez catan marcos paz general rodriguez lujan caseros santos lugares tapiales"],
+  [/zona norte/i, "san isidro vicente lopez olivos martinez florida munro tigre san fernando pilar escobar beccar acassuso boulogne don torcuato del viso garin nordelta benavidez san miguel jose c. paz bella vista villa ballester san martin carapachay pacheco"],
+  [/(capital( federal)?|ciudad de buenos aires|ciudad aut[oó]noma|\bcaba\b|palermo|belgrano|n[uú][ñn]ez|recoleta|caballito|flores|almagro|villa urquiza|villa devoto|villa crespo|colegiales|saavedra|boedo|balvanera|\bonce\b|san telmo|barracas|la boca|mataderos|liniers|villa del parque|microcentro|puerto madero|floresta|parque patricios|chacarita|coghlan|villa ortuzar|villa lugano|pompeya|constituci[oó]n|monserrat|paternal|villa pueyrred[oó]n|agronom[ií]a|villa luro|monte castro)/i, "caba"],
+];
+function expandirZona(t: string): string {
+  const extra = ZONAS_GBA.filter(([re]) => re.test(t)).map(([, locs]) => locs);
+  return extra.length ? `${t} ${extra.join(" ")}` : t;
+}
+const RE_OTRO_COMERCIO = /(tengo|tenemos|soy (el |la )?due[ñn][oa] de|atiendo|trabajo en)\s+(un[ao]?\s+)?(local|negocio|comercio|tienda|kiosco|boutique|regaler[ií]a|marroquiner[ií]a|librer[ií]a|farmacia|perfumer[ií]a|bazar|polirrubro|zapater[ií]a|shop|showroom)/i;
+const RE_REVENDE = /(revend|reventa|emprendimiento|emprender|vendo (en (mi )?casa|por cat[aá]logo|online|por redes|por instagram|anteojos|lentes)|quiero vender|para vender|por mayor)/i;
 const RE_NO_DATO = /^\s*(no( lo)? tengo|no uso|no|despu[eé]s|luego|m[aá]s tarde|paso|prefiero no|ahora no|no s[eé])\b/i;
 const RE_EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const RE_CUIT = /\b(\d{2})[-\s.]?(\d{8})[-\s.]?(\d)\b/;
 
-const SPEECH_DEF = "¡Hola! 👋 En un mercado ultra competitivo, te proponemos un producto que no tiene nadie: nuestra colección lleva *Triple Protección* en el cristal — UV400 + Blue Cut + Infrarrojo, todo en uno. Únicos en el mercado argentino, y un valor diferenciador para tu óptica.\n\nTe consulto para confirmar: ¿tenés una óptica?";
+// Primer contacto: saludo en un mensaje y la propuesta en otro, para que se lea como una charla (2026-09-23).
+const SALUDO_DEF = "¡Muchas gracias por contactarte con Orbital! Voy a estar ayudándote en todo lo que necesites 🙌";
+function saludoHora(): string {
+  const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires", hour: "numeric", hour12: false })) % 24;
+  return h >= 5 && h < 13 ? "¡Hola, buen día! 👋" : h >= 13 && h < 20 ? "¡Hola, buenas tardes! 👋" : "¡Hola, buenas noches! 👋";
+}
+async function conSaludo(resto: string): Promise<{ texto: string; textos: string[] }> {
+  const saludo = saludoHora() + " " + await cfgTexto("iris_saludo_diferenciarte", SALUDO_DEF);
+  return { texto: saludo + "\n\n" + resto, textos: [saludo, resto] };
+}
+const SPEECH_DEF = "En un mercado ultra competitivo, te proponemos un producto que no tiene nadie: nuestra colección lleva *Triple Protección* en el cristal — UV400 + Blue Cut + Infrarrojo, todo en uno. Únicos en el mercado argentino, y un valor diferenciador para tu óptica.\n\nTe consulto para confirmar: ¿tenés una óptica?";
 const TXT_MINIMO = "No tenemos mínimos 🙌 A partir de *12 unidades* podés armar un pedido para tener una primera referencia de Orbital en tu negocio. Lo aconsejable es arrancar con *24 unidades por punto de venta*, para tener una buena representación de la marca.";
 const TXT_PAGO = "Trabajamos a *30, 60 y 90 días*. Con más de 24 unidades, este mes tenés *hasta 120 días*. Y si pagás por *transferencia o contado*, tenés un *15% de descuento extra* exclusivo.";
 const TXT_BONO = "Comprando por el catálogo tenés un *bono extra del 5%* sobre tu compra (sin IVA), en pedidos de más de $1.000.000 y *hasta $300.000*. Por ejemplo, en una compra de $6.000.000 el bono es de $300.000. Y se suma al 15% extra si pagás por transferencia o contado.";
@@ -130,7 +178,7 @@ interface Propuesta { ok: boolean; cod: string; label: string; tipo: "bienvenida
 
 const CAMPANA_FORM = "meta_form_b2b";
 const CAMPANAS = [CAMPANA, CAMPANA_FORM];
-const RE_PIDE_VENDEDOR = /(vendedor|vendedora|asesor|asesora|un comercial|hablar con (alguien|una persona|un humano)|persona real|que me llame|me (pueden|podr[ií]an) llamar|llam[aá]me|ll[aá]menme)/i;
+const RE_PIDE_VENDEDOR = /((?<!re)vendedor|(?<!re)vendedora|asesor|asesora|un comercial|hablar con (alguien|una persona|un humano)|persona real|que me llame|me (pueden|podr[ií]an) llamar|llam[aá]me|ll[aá]menme)/i;
 
 // Lead que dejó sus datos en el formulario de Meta (campaña B2B clientes potenciales).
 async function leadFormulario(tel: string | null): Promise<{ nombre: string | null; email: string | null; localidad: string | null; provincia: string | null; es_optica: boolean | null } | null> {
@@ -156,7 +204,7 @@ async function pideVendedor(f: FlujoDif, texto: string, tel: string | null, cont
     if (tr === "consumidor") {
       await guardarFlujo(conv, { campo_pedido: null, paso: "consumidor", tipo: "consumidor" });
       await supabase.from("contactos").update({ tipo_cliente: "minorista" }).eq("id", contactoId);
-      return { texto: `¡Perfecto! Nuestros vendedores atienden a ópticas, pero te ayudo yo 😎 Podés ver toda la colección y comprar online en ${TIENDA}. ¿Te gustó algún anteojo en particular?` };
+      return { texto: `¡Perfecto! Nuestros vendedores atienden a ópticas y comercios, pero te ayudo yo 😎 Podés ver toda la colección y comprar online en ${TIENDA}. ¿Te gustó algún anteojo en particular?` };
     }
     if (tr !== "optica") return { texto: "¿Tenés una óptica o sos consumidor final? 🙂", quickReplies: ["Sí, tengo óptica", "Soy consumidor final"] };
     f.tipo = "optica";
@@ -186,6 +234,7 @@ async function pideVendedor(f: FlujoDif, texto: string, tel: string | null, cont
     const { data: z } = await supabase.rpc("bot_vendedor_por_zona", { p_texto: f.localidad ?? "", p_provincia: f.provincia });
     vend = (z as { vendedor: string } | null)?.vendedor ?? "Gaston";
   }
+  vend = sinUlises(vend);
   const { data: vd } = await supabase.from("vendedores").select("nombre, telefono_remitente, activo").eq("codigo", vend).maybeSingle();
   const v = vd as { nombre: string | null; telefono_remitente: string | null; activo: boolean } | null;
   if (!v?.activo) vend = "Gaston";
@@ -273,6 +322,7 @@ async function cerrarConPropuesta(conversacionId: string, contactoId: string, co
   const { data } = await supabase.rpc("bot_propuesta_cliente", { p_cod: cod });
   const p = data as Propuesta | null;
   if (!p?.ok || !p.link) return null;
+  p.vendedor = sinUlises(p.vendedor);
   await supabase.from("contactos").update({ cod_cliente: p.cod, tipo_cliente: "mayorista" }).eq("id", contactoId);
   const tok = (p.link.match(/[?&][ck]=([^&]+)/) ?? [])[1];
   if (tok) await supabase.rpc("bot_bono_diferenciarte", { p_token: tok, p_cod: p.cod });
@@ -317,12 +367,32 @@ async function altaProspecto(f: FlujoDif, tel: string | null, contactoId: string
     `Tu vendedor es *Gastón* — WhatsApp ${telLeg(wspG)} (wa.me/${wspG}). Vas a poder estar en contacto con él en todo lo relacionado a tu pedido 🙌` };
 }
 
-async function avisarDistribuidor(f: FlujoDif, tel: string | null, dist: { nombre: string; telefono: string }): Promise<RespuestaBot> {
+interface Dist { nombre: string; telefono: string; marca?: string | null; contacto?: string | null; telefono_legible?: string | null }
+async function avisarDistribuidor(f: FlujoDif, tel: string | null, dist: Dist): Promise<RespuestaBot> {
   await supabase.rpc("bot_ingresar_prospecto", { p_tel: tel, p_nombre: f.nombre_optica, p_canal: "meta_b2b", p_temperatura: "tibia", p_conversacion: f.conversacion_id, p_vendedor: "Corporativo" });
   await supabase.from("prospeccion_social").update({ nota: `Zona de distribuidor (${dist.nombre}) — se le pasaron sus datos. Diferenciarte v2.`, zona: `${f.localidad ?? ""}, ${f.provincia ?? ""}` })
     .eq("conversacion_id", f.conversacion_id);
   await guardarFlujo(f.conversacion_id, { paso: "listo" });
-  return { texto: `¡Gracias${f.contacto_nombre ? ", " + f.contacto_nombre : ""}! 🙌 Tu zona la atiende nuestro distribuidor oficial *${dist.nombre}*. Escribiles al WhatsApp wa.me/${telNorm(dist.telefono)} y te asesoran con toda la colección Orbital, con Triple Protección.` };
+  // Texto pedido por Gastón (2026-09-23): "tu zona la maneja X, te paso el número de Alejandro…".
+  const t = telNorm(dist.telefono);
+  const quien = dist.contacto ? `el número de contacto de *${dist.contacto}*` : "su número de contacto";
+  return { texto: `¡Gracias${f.contacto_nombre ? ", " + f.contacto_nombre : ""}! 🙌 Tu zona la maneja *${dist.marca || dist.nombre}*. Te paso ${quien} para que te pongas en contacto con ellos: ${dist.telefono_legible || "+" + t} (wa.me/${t})` };
+}
+
+// Ficha encontrada por nombre: si es de otra provincia que la que dijo el lead, no es la misma óptica;
+// si está en zona de distribuidor y no compró desde 2025, la atiende el distribuidor.
+function provNorm(p: string | null): string {
+  const n = (p ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+  return /caba|capital federal|ciudad autonoma/.test(n) ? "buenos aires" : n;
+}
+async function validarFicha(f: FlujoDif, cod: string): Promise<"ok" | "otra" | { nombre: string; telefono: string }> {
+  const { data } = await supabase.from("clientes").select("provincia, localidad, ultima_compra_fecha").eq("cod", cod).maybeSingle();
+  const c = data as { provincia: string | null; localidad: string | null; ultima_compra_fecha: string | null } | null;
+  if (!c) return "ok";
+  if (f.provincia && c.provincia && provNorm(f.provincia) !== provNorm(c.provincia)) return "otra";
+  if (c.ultima_compra_fecha && c.ultima_compra_fecha >= "2025-01-01") return "ok";
+  const { data: d } = await supabase.rpc("bot_distribuidor_de", { p_provincia: c.provincia ?? f.provincia, p_texto: c.localidad ?? f.localidad ?? "" });
+  return d ? d as { nombre: string; telefono: string } : "ok";
 }
 
 // Sigue pidiendo datos o, si ya están todos, da el alta. Revisa distribuidor apenas hay provincia.
@@ -338,7 +408,8 @@ async function avanzarDatos(f: FlujoDif, tel: string | null, contactoId: string,
 }
 
 async function ubicar(localidadTexto: string): Promise<{ localidad: string; provincia: string | null; ambigua: boolean }> {
-  const localidad = localidadTexto.split(/[,(]/)[0].replace(/^\s*(estoy|estamos|somos|soy|queda|quedamos)?\s*(en|de)\s+/i, "").trim().slice(0, 80);
+  const localidad = localidadTexto.split(/[,(]/)[0].replace(/^\s*(estoy|estamos|somos|soy|queda|quedamos)?\s*(en|de)\s+/i, "")
+    .replace(/\s+(provincia|pcia\.?|prov\.?)\s+(de\s+)?.*$/i, "").trim().slice(0, 80);
   let provincia = provinciaEnTexto(localidadTexto);
   let ambigua = false;
   if (!provincia) {
@@ -373,15 +444,18 @@ async function faqDiferenciarte(f: FlujoDif, texto: string): Promise<string | nu
 // año (comprobantes Tango + pedidos de la Suite) · 3) la zona, para saber dónde se vende Orbital.
 // A las sucursales de consigna que le pasamos al cliente les queda la consulta en su panel.
 async function dondeConseguir(conversacionId: string, texto: string, tel: string | null, nombre: string | null, ingles = false): Promise<RespuestaBot | null> {
-  const modelos = (await cotizarFull(conversacionId, texto, 5)).map((m) => m.modelo).slice(0, 3);
-  const { data: sc } = await supabase.rpc("bot_sucursal_consigna_cercana", { p_texto: texto, p_modelos: modelos });
+  const modelos = (await cotizarFull(conversacionId, texto, 5, true)).map((m) => m.modelo).slice(0, 3);
+  const tz = expandirZona(texto);
+  const { data: sc } = await supabase.rpc("bot_sucursal_consigna_cercana", { p_texto: tz, p_modelos: modelos });
   const consigna = (sc ?? []) as { sucursal_id: number; nombre: string; direccion: string; localidad: string; modelos: string | null }[];
   const conStock = consigna.filter((s) => s.modelos);
-  const { data: om } = await supabase.rpc("bot_optica_con_modelo", { p_texto: texto, p_modelos: modelos });
+  const { data: om } = await supabase.rpc("bot_optica_con_modelo", { p_texto: tz, p_modelos: modelos });
   const compraron = (om ?? []) as { nombre: string; direccion: string; localidad: string; modelos: string }[];
-  const { data: op } = await supabase.rpc("bot_optica_cercana", { p_texto: texto });
+  const { data: op } = await supabase.rpc("bot_optica_cercana", { p_texto: tz });
   const zona = (op ?? []) as { nombre: string; direccion: string; localidad: string }[];
-  const lista = [...conStock, ...compraron, ...consigna.filter((s) => !s.modelos), ...zona].slice(0, 3);
+  const vistos = new Set<string>();
+  const lista = [...conStock, ...compraron, ...consigna.filter((s) => !s.modelos), ...zona]
+    .filter((o) => { const k = norm(o.nombre); if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, 3);
   if (!lista.length) return null;
   for (const s of consigna.filter((x) => lista.includes(x))) {
     const { error } = await supabase.rpc("consigna_consulta_registrar", {
@@ -424,6 +498,8 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
     f = { conversacion_id: conversacionId, paso: "pide_tipo", campana: CAMPANA, tipo: null, nombre_optica: null, contacto_nombre: null, localidad: null,
       provincia: null, email: null, cuit: null, campo_pedido: null, cod_cliente: null, zona_texto: null, creado_en: new Date().toISOString() };
     if (cod) {
+      const v = await validarFicha(f, cod);
+      if (typeof v === "object") return avisarDistribuidor(f, tel, v);
       const r = await cerrarConPropuesta(conversacionId, contactoId, cod);
       if (r) return r;
     }
@@ -431,9 +507,9 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
     if (RE_EX_VENDEDOR.test(texto) || detectarTipo(texto) === "mayorista") {
       await supabase.from("contactos").update({ tipo_cliente: "mayorista" }).eq("id", contactoId);
       await guardarFlujo(conversacionId, { paso: "pide_nombre", tipo: "optica" });
-      return { texto: "¡Qué bueno! 🙌 ¿Cómo se llama tu óptica? Así me fijo si ya trabajamos juntos." };
+      return await conSaludo("¿Cómo se llama tu óptica? Así me fijo si ya trabajamos juntos.");
     }
-    return { texto: await cfgTexto("iris_speech_diferenciarte", SPEECH_DEF), quickReplies: ["Sí, tengo óptica", "Soy consumidor final"] };
+    return { ...(await conSaludo(await cfgTexto("iris_speech_diferenciarte", SPEECH_DEF))), quickReplies: ["Sí, tengo óptica", "Soy consumidor final"] };
     }
   }
   if (!CAMPANAS.includes(f.campana ?? "") && f.paso !== "pide_cuit") return null;
@@ -479,6 +555,29 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
   // Si a "¿tenés una óptica?" no contestan sí/no y preguntan algo ("En blancos para mujer"), es un consumidor final
   // preguntando por lo que vio en el aviso: se lo manda a la tienda. Igual, por las dudas, siempre se le pregunta si
   // tiene una óptica; si dice que sí, pasa al circuito mayorista.
+  // Tiene otro rubro de comercio (marroquinería, regalería…): Orbital también vende ahí. Se pregunta si quiere
+  // incorporar productos o es info para él (2026-09-23).
+  // Revendedor / emprendimiento: ya dijo que quiere vender, se sigue directo como comercio.
+  if (f.paso === "pide_tipo" && RE_REVENDE.test(texto) && !/[oó]ptic/i.test(texto)) {
+    await guardarFlujo(conversacionId, { paso: "pide_nombre", tipo: "optica", campo_pedido: null });
+    await supabase.from("contactos").update({ tipo_cliente: "mayorista" }).eq("id", contactoId);
+    return { texto: "¡Buenísimo! 🙌 Orbital también trabaja con revendedores y comercios. ¿Cómo se llama tu negocio o emprendimiento? Si todavía no tiene nombre, pasame tu nombre y apellido." };
+  }
+  if (f.paso === "pide_tipo" && RE_OTRO_COMERCIO.test(texto) && !/[oó]ptic/i.test(texto)) {
+    await guardarFlujo(conversacionId, { campo_pedido: "pregunta_comercio" });
+    return { texto: "¡Qué bueno! 🙌 Además de ópticas, Orbital también está en otros comercios. ¿Lo que buscás es *incorporar nuestros productos en tu negocio*, o necesitás información para vos?",
+      quickReplies: ["Incorporar en mi negocio", "Info para mí"] };
+  }
+  if (f.paso === "pide_tipo" && f.campo_pedido === "pregunta_comercio") {
+    if (/incorpor|negocio|local|comercio|revend|vender|mayor|^\s*s[ií](?![a-záéíóúñ])|dale/i.test(texto) && !/para m[ií]|para vos|personal|info para/i.test(texto)) {
+      await guardarFlujo(conversacionId, { paso: "pide_nombre", tipo: "optica", campo_pedido: null });
+      await supabase.from("contactos").update({ tipo_cliente: "mayorista" }).eq("id", contactoId);
+      return { texto: "¡Genial! 🙌 ¿Cómo se llama tu negocio? Así me fijo si ya trabajamos juntos." };
+    }
+    await guardarFlujo(conversacionId, { paso: "consumidor", tipo: "consumidor", campo_pedido: null });
+    await supabase.from("contactos").update({ tipo_cliente: "minorista" }).eq("id", contactoId);
+    return { texto: "¡Perfecto! 😎 ¿Te gustó algún anteojo en particular?" };
+  }
   const trTipo = f.paso === "pide_tipo" ? tipoRespuesta(texto) : null;
   const consultaProducto = f.paso === "pide_tipo" && trTipo === null && !RE_SOLO_SALUDO.test(texto);
   if (f.paso === "consumidor" && f.tipo !== "consumidor" && RE_DICE_OPTICA.test(texto)) {
@@ -488,41 +587,58 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
   }
   if (f.paso === "consumidor" || trTipo === "consumidor" || consultaProducto) {
     // tipo 'consumidor' = lo dijo; paso consumidor con tipo null = lo inferimos y seguimos preguntando si es óptica.
-    const inferido = trTipo !== "consumidor" && f.tipo !== "consumidor";
+    // Se le pregunta una sola vez (al entrar al paso); repetirlo en cada respuesta marea al consumidor.
+    const inferido = trTipo !== "consumidor" && f.tipo !== "consumidor" && f.paso !== "consumidor";
     const yOptica = inferido ? "\n\nAh, y por las dudas: ¿tenés una óptica? Si es así, avisame y te paso la propuesta mayorista 🙌" : "";
     if (f.paso !== "consumidor") {
       await guardarFlujo(conversacionId, { paso: "consumidor", tipo: trTipo === "consumidor" ? "consumidor" : null });
       await supabase.from("contactos").update({ tipo_cliente: "minorista" }).eq("id", contactoId);
-      if (trTipo === "consumidor") return { texto: "¡Perfecto! 😎 ¿Te gustó algún anteojo en particular?" };
+      // "No" a secas → se le pregunta qué busca; "Nooo, quiero ver lentes de sol" → se sigue con la búsqueda.
+      if (trTipo === "consumidor" && texto.trim().split(/\s+/).length <= 4) return { texto: "¡Perfecto! 😎 ¿Te gustó algún anteojo en particular?" };
     }
     // "ofreci_optica": le ofrecimos una óptica tras consultar un modelo; si contesta corto con la localidad, se la pasamos.
-    const respondeLocalidad = f.campo_pedido === "ofreci_optica" && corto;
-    if (RE_DONDE_PROBAR.test(texto) || f.campo_pedido === "localidad_prueba" || respondeLocalidad) {
-      const { localidad } = await ubicar(texto);
+    const respondeLocalidad = corto && (f.campo_pedido === "ofreci_optica" || !!provinciaEnTexto(texto));
+    const pideDonde = esPreguntaDonde(texto);
+    const sinLocal = RE_LOCAL_PROPIO.test(texto) && !RE_NO_LOCAL.test(texto) ? TXT_SIN_LOCAL + "\n\n" : "";
+    if (pideDonde || f.campo_pedido === "localidad_prueba" || respondeLocalidad) {
+      const { localidad, provincia: provLoc } = await ubicar(texto);
       const donde = await dondeConseguir(conversacionId, texto, tel, f.contacto_nombre);
       if (donde) {
         await guardarFlujo(conversacionId, { campo_pedido: null, localidad });
-        return { texto: donde.texto + yOptica };
+        return { texto: sinLocal + donde.texto + yOptica };
       }
-      if (respondeLocalidad && !RE_DONDE_PROBAR.test(texto)) {
+      if (respondeLocalidad && !pideDonde && provLoc) {
+        await guardarFlujo(conversacionId, { campo_pedido: null, localidad });
+        return { texto: `Todavía no tengo una óptica cargada cerca de ${localidad} 🙏 Podés ver toda la colección y comprar online en ${TIENDA}, con envío a todo el país.` + yOptica };
+      } else if (respondeLocalidad && !pideDonde) {
         // no era una localidad con óptica: se sigue la charla normal
         await guardarFlujo(conversacionId, { campo_pedido: null });
       } else if (f.campo_pedido !== "localidad_prueba") {
         await guardarFlujo(conversacionId, { campo_pedido: "localidad_prueba" });
-        return { texto: "¡Dale! ¿En qué localidad estás? Así te paso una óptica cerca donde probarlos 🙂" };
+        return { texto: sinLocal ? sinLocal + "¿En qué localidad o barrio estás? Así te paso la óptica autorizada más cercana para probártelos 😎" : "¡Dale! ¿En qué localidad estás? Así te paso una óptica cerca donde probarlos 🙂" };
       } else {
         await guardarFlujo(conversacionId, { campo_pedido: null });
         return { texto: `Todavía no tengo una óptica cargada en tu zona 🙏 Podés ver toda la colección y comprar online en ${TIENDA}, con envío a todo el país.` + yOptica };
       }
     }
     const nombres = (await cotizarFull(conversacionId, texto, 5)).map((m) => m.modelo).slice(0, 3);
+    const { data: ub } = await supabase.from("at_mensajes").select("contenido").eq("conversacion_id", conversacionId).eq("emisor", "bot")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const yaOfrecidos = nombres.length > 0 && nombres.every((n) => ((ub as { contenido: string } | null)?.contenido ?? "").includes(`• ${n}:`));
+    if (yaOfrecidos) return { texto: `Podés ver toda la colección y comprar online en ${TIENDA} 🙌 Si querés probarlos antes, decime en qué localidad estás y te paso una óptica cerca.` };
     if (nombres.length) {
       await guardarFlujo(conversacionId, { campo_pedido: "ofreci_optica" });
       return { texto: `¡Buena elección! 😎 Lo encontrás acá:\n${nombres.map((n) => `• ${n}: ${TIENDA}/search?q=${encodeURIComponent(n.toLowerCase())}`).join("\n")}\n\nSi querés probarlo antes, decime en qué localidad estás y te paso una óptica cerca.` + yOptica };
     }
-    const q = palabrasBusqueda(texto);
-    if (q) return { texto: `¡Te ayudo! 😎 Mirá lo que tenemos:\n${TIENDA}/search?q=${encodeURIComponent(q)}\n\nSi te gusta alguno y querés probarlo antes, decime en qué localidad estás y te paso una óptica cerca.` + yOptica };
-    if (corto || consultaProducto) return { texto: `Podés ver toda la colección y comprar online en ${TIENDA} 🙌 Si querés probarlos antes, decime en qué localidad estás y te paso una óptica cerca.` + yOptica };
+    // Sin un modelo reconocido no se busca el texto literal en la tienda ("chau", una dirección, "orbital"…).
+    if (corto || consultaProducto || palabrasBusqueda(texto)) {
+      await guardarFlujo(conversacionId, { campo_pedido: "ofreci_optica" });
+      const generico = `Podés ver toda la colección y comprar online en ${TIENDA} 🙌 Si querés probarlos antes, decime en qué localidad estás y te paso una óptica cerca.`;
+      if (((ub as { contenido: string } | null)?.contenido ?? "").startsWith("Podés ver toda la colección")) {
+        return { texto: "¿Buscás algún modelo o estilo en particular? Decime el nombre del modelo y te paso el link directo, o tu localidad y te digo dónde probarlos 😎" };
+      }
+      return { texto: generico + yOptica };
+    }
     return null;
   }
 
@@ -547,6 +663,8 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
       await supabase.from("contactos").update({ tipo_cliente: "minorista" }).eq("id", contactoId);
       return { texto: `¡Perfecto! 😎 Podés ver toda la colección y comprar online en ${TIENDA}. Si querés probarlos antes, decime en qué localidad estás y te paso una óptica cerca.` };
     }
+    // "No, no tengo" (todavía sin nombre de negocio): no se busca ni se da de alta con ese texto como nombre.
+    if (/^\s*no+\b/i.test(texto) && texto.trim().split(/\s+/).length <= 5) return { texto: "¡No hay problema! Pasame tu nombre y apellido y te armo la propuesta a tu nombre 🙌" };
     // "Óptica Sol, Rafaela": nombre y zona en el mismo mensaje (la plantilla del formulario pide las dos cosas).
     const [nomParte, ...resto] = texto.split(/\s*[,\n]\s*|\s+-\s+/);
     const zonaParte = resto.join(", ").trim();
@@ -562,9 +680,14 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
       const { data: b1 } = await supabase.rpc("bot_buscar_optica", { p_nombre: nombre, p_zona: zonaParte || f.localidad });
       if ((b1 as { ok: boolean } | null)?.ok) r = b1 as { ok: boolean; cod?: string; motivo?: string };
     }
-    if (r?.ok && r.cod) { const p = await cerrarConPropuesta(conversacionId, contactoId, r.cod); if (p) return p; }
     f.nombre_optica = nombre;
-    if (r?.motivo === "ambiguo") {
+    if (r?.ok && r.cod) {
+      const v = await validarFicha(f, r.cod);
+      if (typeof v === "object") { await guardarFlujo(conversacionId, { nombre_optica: nombre }); return avisarDistribuidor(f, tel, v); }
+      if (v === "ok") { const p = await cerrarConPropuesta(conversacionId, contactoId, r.cod); if (p) return p; }
+      else r = { ok: false, motivo: "sin_match" };
+    }
+    if (r?.motivo === "ambiguo" && !f.localidad) {
       await guardarFlujo(conversacionId, { paso: "pide_zona", nombre_optica: nombre });
       return { texto: "Encontré varias ópticas con ese nombre 🔎 ¿En qué localidad está la tuya?" };
     }
@@ -577,9 +700,13 @@ async function flujoDiferenciarte(conversacionId: string, contactoId: string, te
   if (f.paso === "pide_zona") {
     const { data: b } = await supabase.rpc("bot_buscar_optica", { p_nombre: f.nombre_optica, p_zona: texto });
     const r = b as { ok: boolean; cod?: string } | null;
-    if (r?.ok && r.cod) { const p = await cerrarConPropuesta(conversacionId, contactoId, r.cod); if (p) return p; }
     const u = await ubicar(texto);
     f.localidad = u.localidad; f.provincia = u.provincia;
+    if (r?.ok && r.cod) {
+      const v = await validarFicha(f, r.cod);
+      if (typeof v === "object") return avisarDistribuidor(f, tel, v);
+      if (v === "ok") { const p = await cerrarConPropuesta(conversacionId, contactoId, r.cod); if (p) return p; }
+    }
     await guardarFlujo(conversacionId, { localidad: u.localidad, provincia: u.provincia });
     return avanzarDatos(f, tel, contactoId,
       "No la encuentro en el sistema, así que te preparo una propuesta nueva. Te voy a pedir un par de datos para pasarte el link exclusivo de tu propuesta y el catálogo 🙌\n\n");
@@ -664,7 +791,7 @@ async function vendedorDeCliente(cod: string | null): Promise<string> {
   if (!cod) return VENDEDOR_LEADS;
   const { data } = await supabase.from("clientes").select("vendedor_asignado").eq("cod", cod).maybeSingle();
   const v = (data as { vendedor_asignado: string | null } | null)?.vendedor_asignado;
-  return v && v.trim() ? v : VENDEDOR_LEADS;
+  return sinUlises(v && v.trim() ? v : VENDEDOR_LEADS);
 }
 
 function triSet(s: string): Set<string> {
@@ -853,11 +980,16 @@ async function chequearStockColores(texto: string, ingles: boolean): Promise<Res
   return { texto: partes.join("\n") + cierre };
 }
 
-async function cotizarFull(conversacionId: string, texto: string, lista: number): Promise<ItemCoti[]> {
+// Cotizador estricto (2026-09-23): solo modelos nombrados tal cual, como palabra completa. Por similitud
+// "temporada"→DENIA, "tipo aviador"→LENA; y con el historial un "Gracias" cotizaba el modelo de antes.
+// usarContexto: también vale un modelo nombrado en los últimos mensajes del cliente ("¿dónde lo pruebo?").
+async function cotizarFull(conversacionId: string, texto: string, lista: number, usarContexto = false): Promise<ItemCoti[]> {
   const { data: h } = await supabase.from("at_mensajes").select("contenido").eq("conversacion_id", conversacionId).eq("emisor", "cliente").order("created_at", { ascending: false }).limit(4);
   const ctx = (((h ?? []) as { contenido: string }[]).map((x) => x.contenido).join(" ") + " " + texto).slice(0, 700);
   const { data } = await supabase.rpc("cotizar_full", { p_texto: ctx, p_lista: lista });
-  const rows = (data ?? []) as { modelo: string; precio_lista: number; precio_publico: number | null; colores: string[] }[];
+  const donde = " " + norm(usarContexto ? ctx : texto) + " ";
+  const rows = ((data ?? []) as { modelo: string; precio_lista: number; precio_publico: number | null; colores: string[] }[])
+    .filter((r) => { const m = norm(r.modelo); return m.length >= 3 && m !== "outlet" && donde.includes(" " + m + " "); });
   const items: ItemCoti[] = rows.map((r) => ({ modelo: r.modelo, precio_lista: r.precio_lista, precio_publico: r.precio_publico, colores: (r.colores ?? []).slice(0, 12), objetivo: 1, alloc: [] }));
   asignarCantidades(items, texto);
   return items;
@@ -1008,6 +1140,8 @@ const RE_ESCALA: RegExp[] = [
 ];
 const RE_PRECIO = /\b(precio|cu[aá]nt[oa]s? (sale|salen|cuesta|cuestan|vale|valen|est[aá]|el|la|los|las|ser[ií]a|es|me sale|me cuesta)|cotiz|lista de precios|price|how much)\b/i;
 const RE_PAGOS = /\b(factura|facturaci[oó]n|cuenta corriente|cta\.? ?cte|cobranza|saldo|cu[aá]nto (debo|adeudo|te debo)|estado de cuenta|resumen de cuenta|comprobante de pago|transferenc|quiero pagar|pago pendiente|vencimiento|mi recibo)\b/i;
+// Cambios, roturas, repuestos y arreglos van a Postventa: se le pasa el WhatsApp directo (2026-09-23).
+const RE_POSTVENTA_TEC = /(cambi(ar|o|arme|arle)\s+(de\s+|los\s+|unos\s+|mis\s+|el\s+|la\s+|un\s+)?(lente|lentes|cristal|cristales|vidrio|vidrios|anteojo|anteojos|patilla|marco|armaz[oó]n)|repuesto|rotur|se (me |le )?(rompi|parti|quebr|sali[oó])|\broto\b|\brota\b|patilla|bisagra|tornillo|garant[ií]a|\barregl|\brepar|rayad)/i;
 // Entrega / despacho (lo resuelve Administración con el estado del pedido en la Suite).
 const RE_ENTREGA = /\b(cu[aá]ndo (me )?(llega|lo mandan|lo env[ií]an|sale)|demora|demorad|no me lleg[oó]|entrega|entregan|despach|env[ií]o pendiente|remito|reparto|retiro|retirar el pedido)\b/i;
 function esEscalamiento(t: string): boolean { return RE_ESCALA.some((re) => re.test(t)); }
@@ -1019,7 +1153,7 @@ function detectarTipo(texto: string): "mayorista" | "minorista" | null {
   if (B("no soy (un[ao]? )?(particular|consumidor final|cliente final)").test(texto)) return "mayorista";
   if (B("no soy (un[ao]? )?(comercio|[oó]ptica|negocio)").test(texto)) return "minorista";
   if (B("cons(umidor)?\\.? ?final|consumidor|particular|soy (un )?cliente|para m[ií] mism|para mi uso|un anteojo|un lente|para regalar|final consumer|end consumer|for myself|personal use|just one").test(texto)) return "minorista";
-  if (B("[oó]ptica|comercio|cuit|raz[oó]n social|precio por mayor|reventa|revend|para mi (local|negocio)|mayorista|wholesale|optical (shop|store)|resell|distribuidor|mi negocio").test(texto)) return "mayorista";
+  if (B("[oó]ptica|comercio|cuit|raz[oó]n social|precio por mayor|reventa|revend|para mi (local|negocio)|mayorista|wholesale|optical (shop|store)|resell|distribuidor|mi negocio|emprendimiento|vendo en (mi )?casa|vendo por cat[aá]logo|quiero vender").test(texto)) return "mayorista";
   if (/\d{2,}\s*(unidades|pares|piezas|units)/i.test(texto)) return "mayorista";
   return null;
 }
@@ -1036,7 +1170,8 @@ async function armarRAG(tipoCliente: string, segmentos: string[]): Promise<strin
   const piezas = ((pr ?? []) as Pieza[]).filter((p) => !excluir.includes(p.categoria));
   const prio = (p: Pieza) => { const t = (p.titulo || "").toLowerCase(), tm = (p.tema || "").toLowerCase(); if (t.includes("medida") || t.includes("caracter")) return 0; if (t.includes("objeci") || tm.includes("objeci")) return 1; if (p.categoria === "catalogo") return 2; if (p.categoria === "precios") return 3; if (tm.includes("cristal") || tm.includes("infrarrojo") || tm.includes("blue")) return 4; if (p.categoria === "guion") return 5; if (p.categoria === "copy") return 6; return 7; };
   piezas.sort((a, b) => prio(a) - prio(b));
-  let budget = 12000; const bloques: string[] = [];
+  // 7000 (antes 12000): con el contexto grande Groq cortaba por límite de tokens/minuto (429) y todo iba a llm_error.
+  let budget = 7000; const bloques: string[] = [];
   for (const p of piezas) {
     const lim = (p.categoria === "catalogo" || p.categoria === "precios") ? 4000 : 900;
     let cuerpo: string;
@@ -1062,11 +1197,13 @@ function sistemaIRIS(tipoCliente: string, canal: Canal, ingles: boolean, rag: st
     "Tenés el HISTORIAL de la charla: usálo. Si el cliente responde 'sí'/'dale'/'ok' a algo que vos ofreciste, CUMPLÍ con eso concretamente.",
     "NO REPREGUNTES lo que ya está en el historial. Si el cliente ya dijo su nombre, su zona, su rubro o qué necesita, NO se lo vuelvas a pedir — usalo. Si te dice que ya respondió algo, pedile disculpas y seguí adelante, nunca lo vuelvas a preguntar.",
     "PROHIBIDO PEDIR LA UBICACIÓN. Nunca preguntes zona, provincia, localidad ni ciudad: el vendedor ya está asignado y esos datos los carga él después. Tampoco pidas CUIT ni razón social.",
+    "SOS IRIS: nunca digas que sos un vendedor ni una persona del equipo. NO agendes visitas ni reuniones, NO prometas entregas, fechas ni que alguien lleva mercadería: eso lo coordina una persona.",
+    "FORMATO WHATSAPP: sin tablas ni títulos markdown; máximo 3 o 4 oraciones o una lista corta.",
     "Respuestas CORTAS y directas, estilo chat de WhatsApp real. Para lo comercial usá técnicas de venta orientadas a la conversión, con el gancho de la Triple Protección.",
     "USÁ TODO EL MATERIAL del CONTEXTO (catálogos, medidas, listas de precios, cristales, objeciones, copys): si el dato está ahí, respondelo concretamente. No mandes menús genéricos ni 'revisá la web' si la respuesta está en el material.",
     `TIPO DE CLIENTE: ${tipoCliente}.`,
     `VENDEDOR DE ZONA de este cliente: ${vendCod}. Si nombrás a alguien del equipo, nombrá SOLO a ${vendCod}. Nunca inventes otros nombres de vendedores.`,
-    "CATÁLOGO: casi toda la línea tiene Triple Protección. Los 4 modelos ASCARI/CIVIC CENTER/CASA BLANCA/5TH AVENUE son la PREVENTA (lanzamientos NUEVOS), NO todo el catálogo.",
+    "CATÁLOGO: la Triple Protección (UV400 + Blue Cut + Infrarrojo) la tienen SOLO los modelos/colores marcados con ese tratamiento — están en la lista MODELOS CON TRIPLE PROTECCIÓN del CONTEXTO. De un modelo que no está en esa lista NUNCA digas que tiene Triple Protección; si es de la lista, aclarar que depende del color (la tienda lo indica en cada color). Los 4 modelos ASCARI/CIVIC CENTER/CASA BLANCA/5TH AVENUE son la PREVENTA (lanzamientos NUEVOS), NO todo el catálogo.",
     "MEDIDAS Y TIPOS: hay un 'Catálogo de medidas y características por modelo'. Si preguntan medida/formato/tipo/si es polarizado, respondé con ese dato. NUNCA afirmes que un modelo no existe sin buscarlo primero (Silverstone, Roma, Le Mans, Eivissa, Zeta, etc. SÍ existen).",
     "PRECIOS: NO inventes precios NI listas. Si el cliente quiere precio de un modelo, el sistema tiene un cotizador propio; vos NO tirés números de precio de productos.",
     bloqueLinks,
@@ -1112,7 +1249,23 @@ function sacarPreguntaDeZona(txt: string, tipo: string, conFallback = true): str
 }
 // Todo lo que sale del LLM pasa por acá: links del canal correcto y sin pedir ubicación.
 function pulir(txt: string, tipo: string, token: string | null, conFallback = true): string {
-  return sacarPreguntaDeZona(limpiarLinksB2C(txt, tipo, token), tipo, conFallback);
+  return sacarPreguntaDeZona(limpiarLinksB2C(limpiarSalida(txt), tipo, token), tipo, conFallback);
+}
+// Filtro de salida del LLM (2026-09-23): sin tokens internos, sin tablas (WhatsApp no las muestra), sin
+// presentarse como un vendedor, sin links vacíos, y corto.
+const EQUIPO = "ulises|gast[oó]n|adri[aá]n|mart[ií]n|bruno|mauro|gus|luna|dami[aá]n";
+function limpiarSalida(txt: string): string {
+  let t = txt.replace(/⟦[^⟧\s]*⟧?/g, "").replace(/\[([^\]]*)\]\(#\)/g, "$1").replace(/\(#\)/g, "");
+  t = t.split("\n").filter((l) => !/^\s*\|?\s*:?-{3,}/.test(l))
+    .map((l) => /^\s*\|.*\|\s*$/.test(l) ? "• " + l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" — ") : l)
+    .join("\n");
+  t = t.replace(new RegExp(`(^|[.!?¡]\\s*)soy (${EQUIPO})\\b[^.!?\\n]*[.!?]?`, "gi"), "$1Soy IRIS, la asistente de Orbital.");
+  t = t.replace(/\*\*/g, "*").replace(/^#+\s*/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (t.length > 650) {
+    const corte = Math.max(t.lastIndexOf(". ", 600), t.lastIndexOf("\n", 600), t.lastIndexOf("! ", 600), t.lastIndexOf("? ", 600));
+    t = t.slice(0, corte > 200 ? corte + 1 : 600).trim();
+  }
+  return t;
 }
 
 function limpiarLinksB2C(txt: string, tipo: string, token: string | null): string {
@@ -1137,11 +1290,48 @@ async function derivar(motivo: string, conversacionId: string, resumen: string, 
   return { texto: `Te paso con ${quien} — ${cuando()}. ¡Gracias! 🙌`, derivar: { motivo, resumen } };
 }
 
+const conTilde = (s: string) => s.replace(/\bGaston\b/g, "Gastón").replace(/\bAdrian\b/g, "Adrián");
 async function responder(conversacionId: string, canal: Canal, resp: RespuestaBot, ultimasBot: string[] = []): Promise<Response> {
+  if (resp.texto) resp = { ...resp, texto: conTilde(resp.texto), textos: resp.textos?.map(conTilde) };
   if (resp.texto && repetida(resp.texto, ultimasBot)) {
     return new Response(JSON.stringify({ texto: "" }), { headers: { "content-type": "application/json" } });
   }
-  if (resp.texto) { try { await supabase.from("at_mensajes").insert({ conversacion_id: conversacionId, canal, emisor: "bot", contenido: resp.texto }); } catch { /* */ } }
+  // v69: al consumidor final, una vez por charla, se le ofrece la Triple Protección (no si la respuesta ya pregunta algo).
+  if (resp.texto && !resp.textos && !resp.derivar && !/\?|decime|pasame|contame|mandame/i.test(resp.texto)
+      && !/Triple Protecci/i.test(resp.texto) && !/\b(the|you|your)\b/i.test(resp.texto)) {
+    const { data: cv } = await supabase.from("at_conversaciones").select("contactos(tipo_cliente)").eq("id", conversacionId).maybeSingle();
+    if ((cv as { contactos: { tipo_cliente: string | null } | null } | null)?.contactos?.tipo_cliente === "minorista") {
+      const { count } = await supabase.from("at_mensajes").select("id", { count: "exact", head: true })
+        .eq("conversacion_id", conversacionId).eq("emisor", "bot").ilike("contenido", "%Triple Protecci%");
+      if (!count) resp = { ...resp, texto: `${resp.texto}\n\n${PITCH_TRIPLE}` };
+    }
+  }
+  // Varios mensajes (saludo + propuesta): en WhatsApp los primeros salen desde acá y wa-webhook manda el último,
+  // así llegan separados y en orden. En otros canales va todo junto en "texto".
+  if (canal === "whatsapp" && resp.textos && resp.textos.length > 1 && WA_TOKEN && WA_PHONE_ID) {
+    const { data: cv } = await supabase.from("at_conversaciones").select("contactos(telefono)").eq("id", conversacionId).maybeSingle();
+    const to = telNorm((cv as { contactos: { telefono: string | null } | null } | null)?.contactos?.telefono ?? "");
+    if (to) {
+      let ok = true;
+      for (const t of resp.textos.slice(0, -1)) {
+        const r = await fetch(`https://graph.facebook.com/v21.0/${WA_PHONE_ID}/messages`, {
+          method: "POST", headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: t } }),
+        }).catch(() => null);
+        if (!r?.ok) { ok = false; break; }
+      }
+      if (ok) {
+        try { await supabase.from("at_mensajes").insert(resp.textos.map((m) => ({ conversacion_id: conversacionId, canal, emisor: "bot", contenido: m }))); } catch { /* */ }
+        const ultimo = { ...resp, texto: resp.textos[resp.textos.length - 1] };
+        delete ultimo.textos;
+        return new Response(JSON.stringify(ultimo), { headers: { "content-type": "application/json" } });
+      }
+    }
+  }
+  if (resp.texto) {
+    const msgs = [resp.texto];
+    try { await supabase.from("at_mensajes").insert(msgs.map((m) => ({ conversacion_id: conversacionId, canal, emisor: "bot", contenido: m }))); } catch { /* */ }
+  }
   return new Response(JSON.stringify(resp), { headers: { "content-type": "application/json" } });
 }
 
@@ -1178,8 +1368,97 @@ async function llamarGroq(messages: unknown[]): Promise<string | null> {
   return null;
 }
 
+// Recordatorio a los leads del aviso que recibieron el speech y no contestaron (2026-09-23). Lo dispara el cron
+// iris-recordatorio-leads en horario comercial; sale dentro de la ventana de 24 h de WhatsApp (texto libre).
+const TXT_RECORDATORIO = "¡Hola de nuevo! 👋 ¿Pudiste ver mi mensaje? Contame si tenés una óptica o un comercio y te paso la propuesta. Y si buscás anteojos para vos, también te ayudo 🙌";
+async function recordarLeads(): Promise<{ enviados: number; revisados: number }> {
+  const desde = new Date(Date.now() - 22 * 36e5).toISOString(), hasta = new Date(Date.now() - 3 * 36e5).toISOString();
+  const { data } = await supabase.from("bot_lead_flujo").select("conversacion_id, telefono, creado_en")
+    .eq("paso", "pide_tipo").eq("campana", CAMPANA).is("recordado_en", null).gte("creado_en", desde).lte("creado_en", hasta).limit(50);
+  const filas = (data ?? []) as { conversacion_id: string; telefono: string | null; creado_en: string }[];
+  let enviados = 0;
+  for (const f of filas) {
+    await supabase.from("bot_lead_flujo").update({ recordado_en: new Date().toISOString() }).eq("conversacion_id", f.conversacion_id);
+    const { data: conv } = await supabase.from("at_conversaciones").select("estado").eq("id", f.conversacion_id).maybeSingle();
+    if ((conv as { estado: string } | null)?.estado !== "bot_activo") continue;
+    // solo si después del speech el cliente no escribió nada
+    const { count } = await supabase.from("at_mensajes").select("id", { count: "exact", head: true })
+      .eq("conversacion_id", f.conversacion_id).eq("emisor", "cliente").gt("created_at", new Date(new Date(f.creado_en).getTime() + 60e3).toISOString());
+    const to = telNorm(f.telefono);
+    if ((count ?? 0) > 0 || !to || !WA_TOKEN || !WA_PHONE_ID) continue;
+    const r = await fetch(`https://graph.facebook.com/v21.0/${WA_PHONE_ID}/messages`, {
+      method: "POST", headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: TXT_RECORDATORIO } }),
+    }).catch(() => null);
+    if (r?.ok) {
+      enviados++;
+      await supabase.from("at_mensajes").insert({ conversacion_id: f.conversacion_id, canal: "whatsapp", emisor: "bot", contenido: TXT_RECORDATORIO });
+    }
+  }
+  return { enviados, revisados: filas.length };
+}
+
+// Proveedores, agencias, medios e influencers: respuesta fija y a Gastón, sin preguntar si es óptica.
+const RE_PROPUESTA_EXTERNA = /(soy proveedor|somos proveedores|somos una (agencia|empresa|consultora)|ofrecemos (nuestros )?servicios|les ofrezco|te ofrezco|propuesta (comercial )?para (ustedes|la marca|orbital)|influencer|creador(a)? de contenido|ugc|colaboraci[oó]n con (la marca|ustedes)|canje (con|en) (mi|tu) (cuenta|perfil)|periodista|medio de comunicaci|nota para|entrevista)/i;
+// Preguntas de producto con respuesta definida por Gastón (2026-09-23).
+const RE_RECETA = /(receta|recetad|con aumento|graduad|multifocal|progresiv|bifocal|miop[ií]a|astigmat|presbic)/i;
+const RE_RAYBAN = /ray[\s-]?ban/i;
+const RE_CLIPON = /clip[\s-]?on/i;
+const RE_OUTLET = /outlet/i;
+function faqProducto(texto: string): string | null {
+  if (RE_RAYBAN.test(texto)) return `No trabajamos Ray-Ban 🙂 Te invito a conocer nuestros productos, con Triple Protección, en la página oficial: ${TIENDA}`;
+  if (RE_CLIPON.test(texto)) return `No tenemos clip-on 🙏 Podés ver toda la colección en ${TIENDA}`;
+  if (RE_RECETA.test(texto)) return "Vendemos los *marcos* para receta 🙌 Los cristales con aumento y los multifocales se hacen solo en ópticas autorizadas. ¿En qué localidad estás? Así te paso la óptica más cercana que trabaja con Orbital.";
+  if (RE_OUTLET.test(texto)) return "¡Sí! El outlet es oficial de Orbital 🙌 Lo encontrás en https://outletorbitaleyewear.shop";
+  return null;
+}
+// v69: preguntas frecuentes del consumidor final (relevadas en 2.773 charlas de Messenger).
+const TIENDA_INT = "https://orbitaleyewear.com";
+const RE_EXTERIOR = /(chile|per[uú]|uruguay|paraguay|bolivia|m[eé]xico|colombia|ecuador|venezuela|espa[ñn]a|europa|estados unidos|\beeuu\b|\bee\.? ?uu\b|brasil|italia|francia|alemania|canad[aá]|del exterior|al exterior|fuera del pa[ií]s|otro pa[ií]s|internacional)/i;
+const RE_ENVIO_FAQ = /((hacen|tienen|es|cobran|sale|cuesta|tiene costo|cu[aá]nto (sale|cuesta|es)|c[oó]mo es) (el )?env[ií]o|env[ií]an (a|al)|hacen env[ií]os|env[ií]os? (al interior|a todo|gratis|sin cargo|a domicilio)|llegan? (a|al) (mi|todo|interior)|mandan (a|al)|el env[ií]o es gratis|cu[aá]nto tarda|cu[aá]nto demora)/i;
+const RE_CUOTAS_FAQ = /(cuotas|sin inter[eé]s|medios? de pago|formas? de pago|c[oó]mo (se )?pag|puedo pagar|aceptan (tarjeta|mercado)|mercado ?pago|con tarjeta)/i;
+const RE_CAMBIO_FAQ = /(si no me (gusta|queda|convence|anda)|no me (gust[oó]|qued[oó]|convenci[oó]|quedan? bien)|tienen cambio|hay cambio|se (puede|pueden) (cambiar|devolver)|puedo (cambiarlo|cambiarlos|devolverlo|devolverlos|hacer (un|el) cambio)|pol[ií]tica de (cambio|devoluci)|arrepent|devoluci[oó]n)/i;
+const TXT_ENVIO = `El envío es *gratis a todo el país* 🚚 El plazo de entrega te aparece en la página al elegir el envío en ${TIENDA}.`;
+const TXT_CUOTAS = `Las cuotas y medios de pago vigentes los ves en ${TIENDA} al finalizar la compra 💳`;
+const TXT_CAMBIO = "Si no te convenció, podés cambiarlo 🙌 Tenés *30 días* desde que lo recibís, siempre que esté *sin uso*, con su estuche, paño y embalaje originales. Además, por ser compra online tenés el *derecho de arrepentimiento* (Ley 24.240 de Defensa del Consumidor): dentro de los *10 días corridos* desde que lo recibís podés devolverlo y te reintegramos el dinero, sin costo. Para gestionarlo escribinos por acá con tu número de pedido.";
+const TXT_EXTERIOR = `¡Sí! 🌎 Tenemos oficinas en Estados Unidos y desde ahí vendemos a toda América y Europa. Comprás directo en nuestra tienda internacional: ${TIENDA_INT}`;
+const TXT_EXTERIOR_EN = `Yes! 🌎 We have offices in the United States and ship from there to all of America and Europe. You can buy directly at our international store: ${TIENDA_INT}`;
+function faqConsumidor(texto: string, ingles: boolean): string | null {
+  if (RE_POSTVENTA_PROD.test(texto) || RE_RASTREO.test(texto) || RE_NRO_PEDIDO.test(texto) || RE_NO_LLEGO.test(texto)) return null;
+  if (RE_EXTERIOR.test(texto) || ingles) return RE_EXTERIOR.test(texto) ? (ingles ? TXT_EXTERIOR_EN : TXT_EXTERIOR) : null;
+  const r: string[] = [];
+  if (RE_ENVIO_FAQ.test(texto)) r.push(TXT_ENVIO);
+  if (RE_CUOTAS_FAQ.test(texto)) r.push(TXT_CUOTAS);
+  if (RE_CAMBIO_FAQ.test(texto)) r.push(TXT_CAMBIO);
+  return r.length ? r.join("\n\n") : null;
+}
+// v69: Triple Protección — solo la tienen los colores con tratamiento "Infrarrojo + Blue cut" (tabla stock).
+let cacheTriple: { t: number; modelos: string[] } | null = null;
+async function modelosTriple(): Promise<string[]> {
+  if (cacheTriple && Date.now() - cacheTriple.t < 6e5) return cacheTriple.modelos;
+  const { data } = await supabase.from("stock").select("modelo").ilike("tratamiento", "%infrarrojo%").gt("cantidad", 0);
+  const modelos = [...new Set(((data ?? []) as { modelo: string }[]).map((r) => (r.modelo ?? "").trim()).filter((m) => m && !/ - ZN$/i.test(m)))].sort();
+  cacheTriple = { t: Date.now(), modelos };
+  return modelos;
+}
+const PITCH_TRIPLE = "¿Sabías que tenemos anteojos con *Triple Protección*? ¿Querés que te cuente más? 😎";
+const RE_PITCH_TRIPLE = /Sab[ií]as que tenemos anteojos con \*?Triple Protecci[oó]n/i;
+async function explicarTriple(): Promise<string> {
+  const ms = (await modelosTriple()).slice(0, 8);
+  return "La *Triple Protección* es la tecnología Orbital que junta en un mismo cristal:\n" +
+    "• *UV400*: bloquea el 100% de los rayos UV\n• *Blue Cut 420 nm*: filtra la luz azul de las pantallas\n• *Filtro infrarrojo*: frena el calor del sol que llega al ojo\n\n" +
+    (ms.length ? `La tienen modelos como ${ms.join(", ")} (en la tienda cada color lo indica). ` : "") +
+    `Los ves en ${TIENDA} — ¿querés el link de alguno? 🙌`;
+}
+const RE_DISPOSITIVO = /(habilit\w*|este dispositivo|no me deja entrar|no puedo entrar|no me abre)/i;
+
 async function handler(req: Request): Promise<Response> {
-  const { conversacionId, contactoId, canal, texto, esLead } = (await req.json()) as MensajeEntrante;
+  const body = await req.json();
+  if (body?.tarea === "recordatorio") {
+    if (req.headers.get("x-internal-key") !== (await cfgTexto("meta_webhook_verify_token", "\u0000"))) return new Response("forbidden", { status: 403 });
+    return new Response(JSON.stringify(await recordarLeads()), { headers: { "content-type": "application/json" } });
+  }
+  const { conversacionId, contactoId, canal, texto, esLead } = body as MensajeEntrante;
 
   const { data: histRaw } = await supabase.from("at_mensajes").select("emisor, contenido, created_at")
     .eq("conversacion_id", conversacionId).order("created_at", { ascending: false }).limit(12);
@@ -1235,8 +1514,62 @@ async function handler(req: Request): Promise<Response> {
   }
 
   const acuseDerivada: RespuestaBot = { texto: ingles ? "Your query is already with an advisor — they'll reply shortly 🙌" : `Tu consulta ya está con ${vendCod} — ${cuando()} 🙌` };
+  const silencio = () => new Response(JSON.stringify({ texto: "" }), { headers: { "content-type": "application/json" } });
 
-  if (!modoDerivada && !ingles) {
+  // Si una persona del equipo ya respondió en esta charla (últimas 12 h), IRIS no se mete.
+  const humanoReciente = hist.some((m) => m.emisor === "agente" && Date.now() - new Date(m.created_at).getTime() < REABRIR_HORAS * 36e5);
+  if (humanoReciente && !prueba) return silencio();
+  // "Tu consulta ya está con…" una sola vez; después IRIS espera callada a la persona.
+  if (modoDerivada && ultimasBot[0] && /^(Tu consulta ya est[aá] con|Your query is already)/.test(ultimasBot[0]) && !RE_POSTVENTA_TEC.test(texto)) return silencio();
+
+  // v69: consumidor final (declarado, o sin segmento que no es óptica ni lead de campaña).
+  const tipoCont = contacto?.tipo_cliente ?? null;
+  const esConsumidor = tipoCont === "minorista" ||
+    ((!tipoCont || tipoCont === "desconocido") && !cod && !esLead && !RE_DICE_OPTICA.test(texto) && !RE_REVENDE.test(texto) && detectarTipo(texto) !== "mayorista");
+  if (!modoDerivada && esConsumidor) {
+    // Contestó que sí al "¿Sabías que tenemos anteojos con Triple Protección?".
+    if (ultimasBot[0] && RE_PITCH_TRIPLE.test(ultimasBot[0]) && (RE_SI.test(texto) || /^\s*(dale|contame|ok|okey|bueno|obvio|por favor|me interesa|quiero|claro)/i.test(texto))) {
+      return responder(conversacionId, canal, { texto: await explicarTriple() }, ultimasBot);
+    }
+    const fc = faqConsumidor(texto, ingles);
+    if (fc) return responder(conversacionId, canal, { texto: fc }, ultimasBot);
+  }
+
+  // v69: repuestos, cambios de cristal y arreglos → Postventa por el grupo de Telegram (🆘); lo que respondan ahí le llega
+  // al cliente por este mismo canal. Antes se le pasaba el WhatsApp de Postventa.
+  if (RE_POSTVENTA_TEC.test(texto) && !ultimasBot.slice(0, 3).some((m) => /Postventa|After-Sales/.test(m))) {
+    if (modoDerivada) return responder(conversacionId, canal, acuseDerivada, ultimasBot);
+    const txtPv = ingles
+      ? `I'll pass this to our After-Sales team and they'll reply right here — ${enHorario() ? "shortly" : "first thing tomorrow"}. If you can, send a photo of the glasses and the model or order number 🙌`
+      : `¡Te ayudo! 🛠️ Le paso tu consulta a *Postventa* y te responden por acá mismo — ${cuando().replace(" te escribe", "")}. Si podés, mandame una foto del anteojo y el modelo o número de pedido 🙌`;
+    if (!prueba) {
+      await supabase.from("derivaciones").insert({
+        conversacion_id: conversacionId, motivo: "postventa_repuesto", resumen: `Repuesto / arreglo: ${texto.slice(0, 440)}`,
+        estado: "pendiente", tipo_cliente: tipoCont === "mayorista" || tipoCont === "minorista" ? tipoCont : null, asignado_a: await vendedorId("Postventa"),
+      });
+      await supabase.from("at_conversaciones").update({ estado: "derivada" }).eq("id", conversacionId);
+    }
+    return responder(conversacionId, canal, { texto: txtPv, derivar: { motivo: "postventa_repuesto", resumen: texto } }, ultimasBot);
+  }
+
+  // Receta / Ray-Ban / clip-on / outlet: respuesta fija (a ópticas y comercios no se les manda a la tienda).
+  if (!modoDerivada && contacto?.tipo_cliente !== "mayorista") {
+    const fp = faqProducto(texto);
+    if (fp) {
+      // En la charla del aviso, la respuesta con la localidad se toma para buscar la óptica cercana.
+      if (RE_RECETA.test(texto)) await supabase.from("bot_lead_flujo").update({ campo_pedido: "localidad_prueba", actualizado_en: new Date().toISOString() }).eq("conversacion_id", conversacionId).eq("paso", "consumidor");
+      return responder(conversacionId, canal, { texto: fp }, ultimasBot);
+    }
+  }
+
+  if (RE_PROPUESTA_EXTERNA.test(texto) && !modoDerivada) {
+    return responder(conversacionId, canal, {
+      ...(await derivar("propuesta_externa", conversacionId, texto, undefined, "Gaston")),
+      texto: "¡Gracias por escribirnos! 🙌 Le paso tu mensaje a Gastón, que es quien ve estas propuestas, y si hay interés te contacta.",
+    }, ultimasBot);
+  }
+
+  if (!modoDerivada && !ingles && !RE_DISPOSITIVO.test(texto)) {
     const fx = await flujoDiferenciarte(conversacionId, contactoId, texto, contacto?.telefono ?? null, cod, !!esLead, ultimasBot.length > 0);
     if (fx) return responder(conversacionId, canal, fx, ultimasBot);
   }
@@ -1327,11 +1660,11 @@ async function handler(req: Request): Promise<Response> {
     const tipoActual = contacto?.tipo_cliente ?? (cod ? "mayorista" : "desconocido");
     const mostrarOutreach = !!esLead || prueba;
     if (mostrarOutreach) {
-      let outEs = "¡Hola! 👋 Soy Ulises, de Orbital. ¡Gracias por escribirnos! 🙌";
+      let outEs = "¡Hola! 👋 Soy IRIS, de Orbital. ¡Gracias por escribirnos! 🙌";
       const { data: sc } = await supabase.from("app_config").select("valor").eq("clave", "iris_saludo_lead").maybeSingle();
       if ((sc as { valor: string } | null)?.valor) outEs = (sc as { valor: string }).valor;
       const out = ingles
-        ? "Hi! 👋 I'm Ulises, from Orbital. Thanks for reaching out! We make sunglasses with Triple Protection (UV400 + Infrared + Blue Cut), unique in the market. To help you better — are you an optical shop/business, or an end consumer?"
+        ? "Hi! 👋 I'm IRIS, from Orbital. Thanks for reaching out! We make sunglasses with Triple Protection (UV400 + Infrared + Blue Cut), unique in the market. To help you better — are you an optical shop/business, or an end consumer?"
         : outEs;
       return responder(conversacionId, canal, { texto: out, quickReplies: ingles ? ["Optical / business", "End consumer"] : ["Soy óptica / comercio", "Soy consumidor final"] }, ultimasBot);
     }
@@ -1375,6 +1708,12 @@ async function handler(req: Request): Promise<Response> {
           p_temperatura: "caliente", p_conversacion: conversacionId, p_vendedor: vendCod,
         });
       }
+      // Si solo contestó qué es ("soy consumidor final", "tengo una óptica"), respuesta fija: no hace falta la IA.
+      if (texto.trim().split(/\s+/).length <= 5 && !RE_PRECIO.test(texto) && !RE_MINIMO.test(texto) && !RE_FORMA_PAGO.test(texto)) {
+        return responder(conversacionId, canal, { texto: det === "minorista"
+          ? `¡Perfecto! 😎 ¿Buscás algún modelo en particular? Podés ver toda la colección y comprar online en ${TIENDA}. Si me decís tu localidad, te paso una óptica cerca para probarlos.`
+          : "¡Genial! 🙌 Contame qué necesitás: el catálogo mayorista, las condiciones comerciales o algún modelo en particular." }, ultimasBot);
+      }
     }
     else if (yaPregunteSegmento >= 2) {
       return responder(conversacionId, canal, await derivar("sin_segmento", conversacionId, texto, undefined, vendCod), ultimasBot);
@@ -1384,20 +1723,45 @@ async function handler(req: Request): Promise<Response> {
     }
   }
 
+  if (tipoCliente === "mayorista") {
+    // Óptica/comercio sin cuenta en zona de distribuidor: se le pasa el contacto del distribuidor.
+    // Solo si nombra una provincia o contesta corto con una localidad (la lista de localidades matchea substrings).
+    const provTxt = provinciaEnTexto(texto);
+    if (!cod && (provTxt || texto.trim().split(/\s+/).length <= 4)) {
+      const { data: dz } = await supabase.rpc("bot_distribuidor_de", { p_provincia: provTxt, p_texto: texto });
+      if (dz) {
+        const d = dz as Dist; const t = telNorm(d.telefono);
+        return responder(conversacionId, canal, { texto: `¡Gracias! 🙌 Tu zona la maneja *${d.marca || d.nombre}*. Te paso el número de contacto de *${d.contacto ?? "ellos"}* para que te pongas en contacto con ellos: ${d.telefono_legible || "+" + t} (wa.me/${t})` }, ultimasBot);
+      }
+    }
+    // Preguntas mayoristas frecuentes: respuesta fija y corta.
+    const faqs: string[] = [];
+    if (RE_MINIMO.test(texto)) faqs.push(TXT_MINIMO);
+    if (RE_FORMA_PAGO.test(texto) && !RE_PAGOS.test(texto)) faqs.push(TXT_PAGO);
+    if (/cat[aá]logo|lista de precios/i.test(texto) && !RE_DISPOSITIVO.test(texto)) {
+      faqs.push(token ? `Acá tenés tu catálogo con precios de óptica y stock al día:\n${CATALOGO_URL}?k=${token}` : `Te habilito el catálogo mayorista con precios de óptica: ${vendCod} ${cuando()} con tu link 🙌`);
+      if (!token && !prueba) await derivar("acceso_catalogo", conversacionId, `Pide el catálogo mayorista y no tiene link. ${texto.slice(0, 300)}`, "mayorista", vendCod);
+    }
+    if (faqs.length) return responder(conversacionId, canal, { texto: faqs.join("\n\n") }, ultimasBot);
+  }
+
   // ¿Dónde consigo este modelo? En CUALQUIER charla (no solo la campaña) y en todos los canales.
   // Si ya le preguntamos la localidad, el mensaje corto siguiente se toma como la localidad.
   const pidioLocalidad = ultimasBot.slice(0, 2).some((m) => /en qu[eé] localidad/i.test(m));
   const cortoLoc = texto.trim().split(/\s+/).length <= 8 && !texto.includes("?");
-  if (tipoCliente !== "mayorista" && !cod && (RE_DONDE_PROBAR.test(texto) || (pidioLocalidad && cortoLoc))) {
+  const pideDonde = esPreguntaDonde(texto);
+  if (tipoCliente !== "mayorista" && !cod && (pideDonde || (pidioLocalidad && cortoLoc))) {
+    const sinLocal = !ingles && RE_LOCAL_PROPIO.test(texto) && !RE_NO_LOCAL.test(texto) ? TXT_SIN_LOCAL + "\n\n" : "";
     const donde = await dondeConseguir(conversacionId, texto, contacto?.telefono ?? null, extraerNombre(texto), ingles);
-    if (donde) return responder(conversacionId, canal, donde, ultimasBot);
+    if (donde) return responder(conversacionId, canal, { ...donde, texto: sinLocal + donde.texto }, ultimasBot);
     if (!pidioLocalidad) {
       return responder(conversacionId, canal, {
         texto: ingles ? "Sure! Which city are you in? I'll point you to a nearby optical shop 🙂"
-                      : "¡Dale! ¿En qué localidad estás? Así te paso una óptica cerca donde probarlos 🙂",
+             : sinLocal ? sinLocal + "¿En qué localidad o barrio estás? Así te paso la óptica autorizada más cercana para probártelos 😎"
+             : "¡Dale! ¿En qué localidad estás? Así te paso una óptica cerca donde probarlos 🙂",
       }, ultimasBot);
     }
-    if (RE_DONDE_PROBAR.test(texto)) {
+    if (pideDonde) {
       return responder(conversacionId, canal, {
         texto: ingles ? `I don't have a shop loaded in your area yet 🙏 You can see everything and buy online at ${TIENDA}.`
                       : `Todavía no tengo una óptica cargada en tu zona 🙏 Podés ver toda la colección y comprar online en ${TIENDA}, con envío a todo el país.`,
@@ -1429,7 +1793,8 @@ async function handler(req: Request): Promise<Response> {
   }
 
   const segmentos = tipoCliente === "mayorista" ? ["b2b_activo", "b2b_inactivo"] : ["b2c"];
-  const rag = await armarRAG(tipoCliente, segmentos);
+  const rag = (await armarRAG(tipoCliente, segmentos)) +
+    `\n\n=== MODELOS CON TRIPLE PROTECCIÓN (al menos un color) ===\n${(await modelosTriple()).join(", ") || "(s/d)"}`;
 
   if (!GROQ_KEY) return responder(conversacionId, canal, await derivar("sin_llm", conversacionId, texto, tipoCliente, vendCod), ultimasBot);
   const historial = hist.slice(0, 8).reverse().map((m) => ({ role: m.emisor === "bot" ? "assistant" : "user", content: m.contenido }));
@@ -1441,10 +1806,14 @@ async function handler(req: Request): Promise<Response> {
   const messages = [{ role: "system", content: sistemaIRIS(tipoCliente, canal, ingles, rag, token, vendCod) + reglaCampana }, ...historial];
 
   const salida = await llamarGroq(messages);
+  // Sin IA (Groq sin cupo): al consumidor se le da la tienda en vez de derivarlo; lo mayorista sí va a una persona.
+  if (!salida && tipoCliente === "minorista") {
+    return responder(conversacionId, canal, { texto: `Podés ver toda la colección y comprar online en ${TIENDA} 🙌 Si buscás un modelo puntual, decime el nombre y te paso el link directo.` }, ultimasBot);
+  }
   if (!salida) return responder(conversacionId, canal, await derivar("llm_error", conversacionId, texto, tipoCliente, vendCod), ultimasBot);
 
-  if (salida.includes("⟦DERIVAR⟧")) {
-    const limpio = pulir(salida.replace(/⟦DERIVAR⟧/g, "").trim(), tipoCliente, token, false);
+  if (/⟦\s*DERIVAR/i.test(salida)) {
+    const limpio = pulir(salida.replace(/⟦\s*DERIVAR[^\s]*/gi, "").trim(), tipoCliente, token, false);
     if (prueba) return responder(conversacionId, canal, { texto: limpio || acuseDerivada.texto }, ultimasBot);
     await supabase.from("derivaciones").insert({ conversacion_id: conversacionId, motivo: "iris_deriva", resumen: texto.slice(0, 480), estado: "pendiente", tipo_cliente: tipoCliente !== "desconocido" ? tipoCliente : null, asignado_a: await vendedorId(vendCod) });
     await supabase.from("at_conversaciones").update({ estado: "derivada" }).eq("id", conversacionId);
