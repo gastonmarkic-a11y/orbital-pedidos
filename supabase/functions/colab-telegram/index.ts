@@ -642,44 +642,51 @@ async function referencias(): Promise<Ref[]> {
   return refs.filter((r) => r.imgs.length);
 }
 
-// Una llamada a Claude: ¿la FOTO es el mismo modelo que alguna de estas referencias?
-async function compararTanda(b64: string, mime: string, refs: Ref[]): Promise<string | null> {
+// Una llamada a Claude con la FOTO y las referencias numeradas.
+//  final=false → los hasta 3 modelos más parecidos (filtro amplio, para no perder el bueno)
+//  final=true  → cuál es, o ninguno
+async function compararTanda(b64: string, mime: string, refs: Ref[], final: boolean): Promise<string[]> {
   const content: unknown[] = [
-    { type: "text", text: "FOTO (sacada por una persona):" },
+    { type: "text", text: "FOTO (sacada por una persona con el celular, puede estar en ángulo, con reflejos o con otras cosas alrededor):" },
     { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
   ];
   refs.forEach((r, i) => {
     content.push({ type: "text", text: `Referencia ${i + 1}:` });
     for (const d of r.imgs) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: d } });
   });
-  content.push({ type: "text", text:
-    `Decidí si el anteojo de la FOTO es el mismo MODELO de armazón que alguna de las ${refs.length} referencias. ` +
-    "Ignorá el color del armazón y de las lentes: las referencias pueden estar en otro color. Compará la forma del frente y de las lentes, " +
-    "el puente, el grosor, las bisagras, las patillas y los detalles. Si no hay un anteojo o no coincide claramente con ninguna, la referencia es null. " +
-    'Respondé SOLO con JSON: {"referencia": <número o null>}' });
+  const criterio =
+    "Importa el MODELO de armazón, no el color: ignorá el color del armazón y de las lentes (las referencias pueden estar en otro color o con otras lentes). " +
+    "Compará la silueta del frente, la forma de las lentes, el puente, el grosor del acetato, la barra superior y las patillas. ";
+  content.push({ type: "text", text: final
+    ? criterio + `¿Cuál de las ${refs.length} referencias es el mismo modelo que el anteojo de la FOTO? Elegí la que coincida en forma; ` +
+      'si ninguna tiene la misma forma, o en la FOTO no hay un anteojo, lista vacía. Si dudás, agregá hasta 2 más parecidas después de la elegida. Respondé SOLO con JSON: {"referencias": [números]}'
+    : criterio + `De las ${refs.length} referencias, ¿cuáles son las más parecidas en forma al anteojo de la FOTO? ` +
+      'Dá hasta 3 números, de la más parecida a la menos; si en la FOTO no hay un anteojo, lista vacía. Respondé SOLO con JSON: {"referencias": [números]}' });
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 60, messages: [{ role: "user", content }] }),
+    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 2000, messages: [{ role: "user", content }] }),
   });
   const data = await res.json();
   if (data?.error) throw new Error("anthropic " + JSON.stringify(data.error));
   const txt = data?.content?.find((c: { type: string }) => c.type === "text")?.text ?? "";
-  const n = Number(txt.match(/"referencia"s*:s*(d+)/)?.[1]);
-  return Number.isInteger(n) && n >= 1 && n <= refs.length ? refs[n - 1].modelo : null;
+  console.log("reconocerFoto claude", final ? "final" : "tanda", data?.stop_reason, JSON.stringify(txt).slice(0, 300));
+  const nums = (txt.match(/"referencias"\s*:\s*\[([^\]]*)\]/)?.[1] ?? "").split(",").map((x: string) => Number(x.trim()));
+  return nums.filter((n) => Number.isInteger(n) && n >= 1 && n <= refs.length).slice(0, 3).map((n) => refs[n - 1].modelo);
 }
 
-// Busca en TODO el catálogo: tandas de 34 modelos (1 foto c/u) en paralelo y,
-// si hay varios finalistas, un desempate con las 2 fotos de cada uno.
-async function modeloDeFoto(b64: string, mime: string): Promise<string | null> {
-  if (!ANTHROPIC_API_KEY) return null;
+// Busca en TODO el catálogo: tandas de 34 modelos (1 foto c/u) en paralelo, cada una propone sus 3
+// más parecidos, y la final decide entre esos finalistas con las 2 fotos de cada uno.
+async function modeloDeFoto(b64: string, mime: string): Promise<string[]> {
+  if (!ANTHROPIC_API_KEY) return [];
   const todos = await referencias();
-  if (!todos.length) return null;
+  if (!todos.length) return [];
   const tandas: Ref[][] = [];
   for (let i = 0; i < todos.length; i += 34) tandas.push(todos.slice(i, i + 34).map((r) => ({ modelo: r.modelo, imgs: r.imgs.slice(0, 1) })));
-  const finalistas = [...new Set((await Promise.all(tandas.map((t) => compararTanda(b64, mime, t)))).filter((m): m is string => !!m))];
-  if (finalistas.length <= 1) return finalistas[0] ?? null;
-  return await compararTanda(b64, mime, todos.filter((r) => finalistas.includes(r.modelo)));
+  const finalistas = [...new Set((await Promise.all(tandas.map((t) => compararTanda(b64, mime, t, false)))).flat())];
+  console.log("reconocerFoto finalistas", JSON.stringify(finalistas));
+  if (!finalistas.length) return [];
+  return await compararTanda(b64, mime, todos.filter((r) => finalistas.includes(r.modelo)), true);
 }
 
 async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: string) {
@@ -687,17 +694,17 @@ async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: strin
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chat, action: "typing" }),
   });
-  let modeloStock: string | null = null;
+  let candidatos: string[] = [];
   try {
     const b64 = await bajarFotoTelegram(fileId);
     if (!b64) throw new Error("no bajó la foto");
-    modeloStock = await modeloDeFoto(b64, mime);
+    candidatos = await modeloDeFoto(b64, mime);
   } catch (e) {
     console.error("reconocerFoto", String(e));
     await enviar(chat, "No pude mirar la foto ahora 😕 Probá de nuevo en un rato o escribime el nombre del modelo.");
     return;
   }
-  if (!modeloStock) {
+  if (!candidatos.length) {
     await enviar(chat,
       "No lo encontré en el catálogo 🤔\n\n" +
       "Probá con otra foto: el anteojo de frente, con buena luz y ocupando casi toda la foto. " +
@@ -705,8 +712,20 @@ async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: strin
     await espejo(`<b>${esc(q.nombre)}</b> mandó una foto y no encontré el anteojo`, q.influencer_id);
     return;
   }
+  const [modeloStock, ...otros] = candidatos;
+  await mostrarModeloDeFoto(chat, q, modeloStock);
+  // Modelos parecidos se confunden (BUENOS AIRES I / ATLANTIC CITY): los otros candidatos a un toque
+  if (otros.length) {
+    await enviar(chat, "¿No era ese? Tocá el correcto:",
+      [otros.map((o) => ({ text: o, callback_data: `f|${o}`.slice(0, 64) }))]);
+  }
+  await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${esc(modeloStock)}</b>` +
+    (otros.length ? ` (también parecido: ${esc(otros.join(", "))})` : ""), q.influencer_id);
+}
 
-  // ¿Está entre SUS anteojos de la tienda? (el nombre de stock y el de la tienda pueden diferir: CASA BLANCA / CASABLANCA)
+// Modelo de stock reconocido → si está en SU tienda, colores disponibles → link + ficha; si no, la ficha.
+async function mostrarModeloDeFoto(chat: number, q: Quien, modeloStock: string) {
+  // El nombre de stock y el de la tienda pueden diferir: CASA BLANCA / CASABLANCA
   const cat = await catalogo(q.clave);
   const mapa = await rpc<{ modelo_stock: string; modelo: string }[]>("colab_modelos_stock", { p_clave: q.clave });
   const nombreTienda = mapa?.find((x) => x.modelo_stock === modeloStock)?.modelo ??
@@ -715,15 +734,13 @@ async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: strin
 
   if (m) {
     await enviar(chat, `📷 Es el <b>${m.modelo}</b>`);
-    await pantallaModelo(chat, q, m); // colores disponibles de ese modelo → link + ficha
-    await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${m.modelo}</b>`, q.influencer_id);
+    await pantallaModelo(chat, q, m);
     return;
   }
   await enviar(chat,
     `📷 Es el <b>${esc(modeloStock)}</b>\n\n` +
     "Ese modelo no está en tu tienda online, así que no te puedo armar un link con comisión. " +
     `Acá tenés su ficha con los colores disponibles:\n${BASE}/modelo/${encodeURIComponent(modeloStock)}`);
-  await espejo(`<b>${esc(q.nombre)}</b> mandó una foto: era <b>${esc(modeloStock)}</b> (no está en su tienda)`, q.influencer_id);
 }
 
 // ————— webhook —————
@@ -996,6 +1013,8 @@ async function manejarCallback(cb: Record<string, any>) {
   }
   if (op === "q") return void (await pantallaLiquidacion(chat, lector, resto[0]));
 
+  if (op === "f") return void (await mostrarModeloDeFoto(chat, q, resto.join("|")));
+
   if (op === "m") {
     const cat = await catalogo(q.clave);
     const m = buscarModelo(cat, resto.join("|"));
@@ -1069,6 +1088,14 @@ Deno.serve(async (req) => {
     }
     const r = await correrAvisos();
     return Response.json(r);
+  }
+
+  // Prueba del reconocimiento sin Telegram: POST ?tarea=probarfoto  {b64, mime}  (con x-cron-key)
+  if (url.searchParams.get("tarea") === "probarfoto") {
+    const cronKey = await cfg("cron_key", "CRON_KEY");
+    if (!cronKey || req.headers.get("x-cron-key") !== cronKey) return new Response("unauthorized", { status: 401 });
+    const { b64, mime } = await req.json();
+    return Response.json({ candidatos: await modeloDeFoto(b64, mime ?? "image/jpeg") });
   }
 
   if (req.method !== "POST") return new Response("ok");
