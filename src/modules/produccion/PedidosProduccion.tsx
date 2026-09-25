@@ -511,6 +511,9 @@ export default function PedidosProduccion() {
                           <p className="font-medium truncate">
                             <span className="text-faint mr-1">{abierto ? '▾' : '▸'}</span>
                             {SEMAFORO[av.color]} {p.familia_armazon} <span className="text-faint text-[11px]">#{p.id}</span>
+                            {[...new Set([...(p.observacion ?? '').matchAll(/PEDIDO ESPECIAL #(\d+)/gi)].map((m) => m[1]))].map((n) => (
+                              <span key={n} className="text-[10px] bg-violet-50 text-violet-700 rounded-full px-2 py-0.5 ml-2">✨ pedido especial #{n}</span>
+                            ))}
                           </p>
                           <p className="text-[11px] text-faint">
                             {its.length} SKUs · {ent.format(av.hechas)}/{ent.format(av.total)} u. · entrega {p.fecha_entrega_estimada ?? '—'}
@@ -531,6 +534,7 @@ export default function PedidosProduccion() {
                       </div>
                       {abierto && (
                         <div className="mt-2 pl-4">
+                          {p.observacion && <p className="text-[11px] text-amber-700 mb-1">📝 {p.observacion}</p>}
                           <div className="overflow-x-auto">
                             <table className="w-full text-[11px] min-w-[460px]">
                               <thead>
