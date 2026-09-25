@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
+import { FotoProd } from './FotoProd'
 import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
@@ -26,7 +27,8 @@ interface Variante {
   caliente: boolean; imagen: string | null; stock: number; proyectado?: boolean
 }
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean }
-interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean }
+// o = la foto es del propio color (false = genérica del modelo, heredada por un color sin foto)
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
@@ -154,8 +156,12 @@ function Placeholder({ label }: { label?: string }) {
 }
 
 // Carrusel de fotos en la tarjeta: permite ojear los colores sin abrir el detalle
-function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt: string; onOpen: () => void; initial?: number }) {
-  const n = fotos?.length ?? 0
+function CardCarousel({ fotos: todas, alt, onOpen, initial: ini = 0 }: { fotos: Foto[]; alt: string; onOpen: () => void; initial?: number }) {
+  // Solo colores con foto propia: si no, se repetía la genérica con el nombre de otro color
+  const propias = (todas ?? []).filter((f) => f.o !== false)
+  const fotos = propias.length ? propias : (todas ?? [])
+  const initial = Math.max(0, fotos.indexOf(todas?.[ini] as Foto))
+  const n = fotos.length
   const [i, setI] = useState(Math.min(initial, Math.max(0, n - 1)))
   useEffect(() => { setI(Math.min(initial, Math.max(0, n - 1))) }, [initial, n])
   const tX = useRef<number | null>(null)
@@ -172,9 +178,9 @@ function CardCarousel({ fotos, alt, onOpen, initial = 0 }: { fotos: Foto[]; alt:
   const cur = fotos[Math.min(i, n - 1)]
   const color = colorLegible(cur.c)
   return (
-    <div className="group aspect-square bg-white relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div className="group aspect-square relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <button onClick={onOpen} className="w-full h-full block">
-        {cur.u ? <img src={cur.u} alt={alt} className="w-full h-full object-contain" /> : <Placeholder />}
+        {cur.u ? <FotoProd src={cur.u} alt={alt} className="w-full h-full" /> : <Placeholder />}
       </button>
       {color && (
         <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[9px] font-medium rounded-full px-2 py-0.5 max-w-[90%] truncate flex items-center gap-1">
@@ -221,7 +227,7 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
     else setErr('Clave o código incorrecto')
   }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 orb-tienda">
       <form onSubmit={probar} className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8">
         <Logo />
         <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
@@ -291,7 +297,7 @@ function BloqueoGate({ label, vendedorTel, codigo }: {
   }, [pedido, codigo])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4 font-mono">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 orb-tienda">
       <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl shadow-sm p-8 text-center">
         <Logo />
         <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
@@ -406,7 +412,7 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
   const info = GRUPO_INFO[grupoKey]
   if (!g || !info) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center font-mono">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center orb-tienda">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[88vh] overflow-y-auto">
         <div className={`px-5 py-5 relative ${ACCENT[g.accent]} sm:rounded-t-2xl`}>
@@ -1044,7 +1050,7 @@ export default function CatalogoPublico() {
   }
   function abrirModelo(nombre: string) { const m = todos.find((x) => x.modelo === nombre); if (m) setSel(m) }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white font-mono">Cargando catálogo…</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white orb-tienda">Cargando catálogo…</div>
   if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} codigo={clave} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
@@ -1083,7 +1089,7 @@ export default function CatalogoPublico() {
 
   return (
     <SinPreciosCtx.Provider value={sinPrecios}>
-    <div className="min-h-screen bg-white text-[#0a0a0a] font-mono">
+    <div className="min-h-screen bg-white text-[#0a0a0a] orb-tienda">
       {/* Banner chico estilo tienda */}
       <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
         {sinPrecios ? 'Orbital® · Disponibilidad en vivo sobre stock real' : 'Orbital® · Catálogo mayorista — pedido online sobre stock real'}
@@ -1276,8 +1282,8 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                 const q = cart[v.codigo]?.cantidad ?? 0
                 return (
                   <div key={v.codigo} className={`shrink-0 w-32 rounded-xl border overflow-hidden ${q > 0 ? 'border-[#0004FF]' : 'border-black/10'}`}>
-                    <div className="aspect-square relative" style={{ background: v.imagen ? '#fff' : colorSwatch(v.descripcion) }}>
-                      {v.imagen && <img src={v.imagen} alt={v.descripcion ?? ''} className="w-full h-full object-contain" />}
+                    <div className="aspect-square relative" style={v.imagen ? undefined : { background: colorSwatch(v.descripcion) }}>
+                      {v.imagen && <FotoProd src={v.imagen} alt={v.descripcion ?? ''} className="absolute inset-0" />}
                       <span className="absolute bottom-1 left-1 w-4 h-4 rounded-full border border-white shadow" style={{ background: colorSwatch(v.descripcion) }} />
                       {v.tiene_preventa && <span className="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-bold rounded-full px-1.5 py-0.5">PV</span>}
                       {v.proyectado && <span className="absolute top-1 left-1 bg-[#b45309] text-white text-[8px] font-bold rounded-full px-1.5 py-0.5">📅</span>}
@@ -1373,9 +1379,7 @@ function ContenidoBuscar({ modelos, clave, esOptica, solapaInicial, onElegir, on
         {solapa === 'crear' && <div className="overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
           {lista.map((m) => (
             <button key={m.modelo} onClick={() => onElegir(m)} className="rounded-xl border border-black/10 p-1.5 text-left hover:border-fuchsia-400">
-              <div className="aspect-square bg-white rounded-lg overflow-hidden">
-                {m.imagenes?.[0] ? <img src={m.imagenes[0]} alt={m.modelo} className="w-full h-full object-contain" loading="lazy" /> : null}
-              </div>
+              <FotoProd src={m.imagenes?.[0]} alt={m.modelo} className="aspect-square rounded-lg" />
               <p className="text-[10px] font-bold mt-1 truncate">{m.modelo}</p>
             </button>
           ))}
@@ -1399,7 +1403,9 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
   const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
-      setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
+      // Los colores con foto propia primero: la ficha abre en uno que se ve (orden estable)
+      const vs = error ? [] : ((data as Variante[]) ?? [])
+      setVars([...vs.filter((x) => x.imagen), ...vs.filter((x) => !x.imagen)]); setLoading(false)
     })
     supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))
     supabase.rpc('catalogo_ficha_tienda', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setFicha((data as typeof ficha) ?? null))
@@ -1483,8 +1489,14 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
         ) : (
           <div className="p-4">
             {/* Imagen grande */}
-            <div className="aspect-square bg-white rounded-xl border border-black/5 relative overflow-hidden">
-              {(v.imagen || modelo.imagenes?.[0]) ? <img src={v.imagen || modelo.imagenes[0]} alt={v.descripcion ?? ''} className="w-full h-full object-contain" /> : <Placeholder label="Sin foto aún" />}
+            {/* Sin foto propia del color no mostramos la de otro color (confunde): swatch + aviso */}
+            <FotoProd src={v.imagen} alt={v.descripcion ?? ''} lazy={false} className="aspect-square rounded-xl">
+              {!v.imagen && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-500">
+                  <span className="w-14 h-14 rounded-full border border-black/10 shadow-sm" style={{ background: colorSwatch(v.descripcion) }} />
+                  <span className="text-[10px] tracking-wide uppercase">Foto de este color próximamente</span>
+                </div>
+              )}
               {vars.length > 1 && (
                 <>
                   <button onClick={() => setI((i - 1 + vars.length) % vars.length)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5 shadow"><ChevronLeft size={18} /></button>
@@ -1493,7 +1505,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
               )}
               {v.tiene_preventa && <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">PREVENTA</span>}
               {v.proyectado && <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[10px] font-bold rounded-full px-2 py-0.5">📅 PROYECTADO</span>}
-            </div>
+            </FotoProd>
 
             {/* Tira de colores */}
             {vars.length > 1 && (
@@ -1501,8 +1513,8 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
                 {vars.map((vv, idx) => (
                   <button key={vv.codigo} onClick={() => setI(idx)}
                     className={`shrink-0 w-14 h-14 rounded-lg border-2 overflow-hidden relative ${idx === i ? 'border-[#0004FF]' : 'border-black/10'}`}
-                    style={{ background: vv.imagen ? '#fff' : colorSwatch(vv.descripcion) }}>
-                    {vv.imagen && <img src={vv.imagen} alt="" className="w-full h-full object-contain" />}
+                    style={vv.imagen ? undefined : { background: colorSwatch(vv.descripcion) }}>
+                    {vv.imagen && <FotoProd src={vv.imagen} className="absolute inset-0" />}
                     <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full border border-white shadow-sm" style={{ background: colorSwatch(vv.descripcion) }} />
                   </button>
                 ))}
@@ -1742,9 +1754,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
             <div className="p-3 space-y-2">
               {items.map((c) => (
                 <div key={c.codigo} className="flex items-center gap-3 bg-[#F5F5F7] rounded-xl p-2">
-                  <div className="w-14 h-14 rounded-lg bg-white border border-black/5 overflow-hidden shrink-0">
-                    {c.imagen ? <img src={c.imagen} alt="" className="w-full h-full object-contain" /> : <Placeholder />}
-                  </div>
+                  <FotoProd src={c.imagen} className="w-14 h-14 rounded-lg border border-black/5 shrink-0">{!c.imagen && <Placeholder />}</FotoProd>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{c.modelo}</p>
                     <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>

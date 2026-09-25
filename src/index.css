@@ -72,3 +72,12 @@ input[type='number']::-webkit-inner-spin-button {
   filter: invert(1);
   opacity: 0.45;
 }
+
+/* ─── Catálogo B2B con el estilo de orbitaleyewear.com.ar ───
+   Space Grotesk para textos y nombres (mayúscula, como la tienda), IBM Plex Mono
+   para etiquetas chicas, esquinas casi rectas (2px). Solo dentro de .orb-tienda. */
+.orb-tienda { font-family: 'Space Grotesk', Helvetica, Arial, sans-serif; }
+.orb-tienda .font-mono { font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; }
+.orb-tienda h1, .orb-tienda h2, .orb-tienda h3 { text-transform: uppercase; letter-spacing: -0.01em; }
+.orb-tienda .rounded-md, .orb-tienda .rounded-lg, .orb-tienda .rounded-xl,
+.orb-tienda .rounded-2xl, .orb-tienda .rounded-3xl { border-radius: 2px; }
