@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import { Cliente } from '../../lib/types'
+import { useDestinos } from '../../lib/destinos'
 
 // Cliente + su cohorte (cartera) que devuelve la búsqueda global.
 type ClienteBusq = Cliente & { cohorte?: string }
@@ -20,10 +21,12 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [detalle, setDetalle] = useState<ClienteBusq | null>(null)
-  const [nuevoAbierto, setNuevoAbierto] = useState(false)
-  const [nuevo, setNuevo] = useState({
-    cod: '', razon: '', nomcomerc: '', cuit: '', direccion: '', localidad: '', telefono: '', email: '', contacto: '', nro_lista: '5', nota: '',
-  })
+  const destinos = useDestinos()
+  // Alta desde Administración: cliente con código definitivo o prospecto (TMP-, código pendiente).
+  // En los dos casos queda sumado a la cartera de quien corresponde (vendedor_asignado).
+  const [nuevoAbierto, setNuevoAbierto] = useState<null | 'cliente' | 'prospecto'>(null)
+  const NUEVO_VACIO = { cod: '', razon: '', nomcomerc: '', cuit: '', direccion: '', localidad: '', telefono: '', email: '', contacto: '', nro_lista: '5', nota: '', asignado: '' }
+  const [nuevo, setNuevo] = useState(NUEVO_VACIO)
   const [pendientes, setPendientes] = useState<Cliente[]>([])
   const [recargaPend, setRecargaPend] = useState(0)
   // Unificar duplicados (Administración)
@@ -112,31 +115,47 @@ export default function Clientes() {
   }, [busqueda])
 
   async function guardarNuevo() {
-    if (!nuevo.cod.trim() || !nuevo.razon.trim() || !nuevo.cuit.trim()) {
+    const esProspecto = nuevoAbierto === 'prospecto'
+    if (esProspecto) {
+      if (!nuevo.razon.trim() && !nuevo.nomcomerc.trim()) { toast('Poné la razón social o el nombre comercial', 'error'); return }
+    } else if (!nuevo.cod.trim() || !nuevo.razon.trim() || !nuevo.cuit.trim()) {
       toast('Código, Razón Social y CUIT son obligatorios', 'error')
       return
     }
+    if (!nuevo.asignado) { toast('Elegí a quién se le suma', 'error'); return }
+    const cod = esProspecto ? 'TMP-' + Date.now().toString().slice(-8) : nuevo.cod.trim()
+    const razon = nuevo.razon.trim() || nuevo.nomcomerc.trim()
     const { error } = await supabase.from('clientes').insert({
-      cod: nuevo.cod.trim(),
-      razon: nuevo.razon.trim(),
+      cod,
+      razon,
       nomcomerc: nuevo.nomcomerc.trim() || null,
-      cuit: nuevo.cuit.trim(),
+      cuit: nuevo.cuit.trim() || null,
       direccion: nuevo.direccion.trim() || null,
       localidad: nuevo.localidad.trim() || null,
       telefono: nuevo.telefono.trim() || null,
       email: nuevo.email.trim() || null,
       contacto: nuevo.contacto.trim() || null,
       nro_lista: parseInt(nuevo.nro_lista) || 5,
-      nota: nuevo.nota.trim() || null,
+      vendedor_asignado: nuevo.asignado,
+      ...(esProspecto
+        ? {
+            whatsapp: nuevo.telefono.trim() || null,
+            origen: 'propio',
+            clasificacion_recupero: 'sin_historial',
+            nota: ('⏳ Código de cliente pendiente de validación por Administración. ' + nuevo.nota.trim()).trim(),
+          }
+        : { nota: nuevo.nota.trim() || null }),
     })
     if (error) {
-      toast(error.code === '23505' ? 'Ese código de cliente ya existe' : 'Error al guardar el cliente', 'error')
+      toast(error.code === '23505' ? 'Ese código de cliente ya existe' : 'Error al guardar: ' + error.message, 'error')
       return
     }
-    toast(`✓ Cliente "${nuevo.razon}" agregado`, 'success')
-    setNuevoAbierto(false)
-    setNuevo({ cod: '', razon: '', nomcomerc: '', cuit: '', direccion: '', localidad: '', telefono: '', email: '', contacto: '', nro_lista: '5', nota: '' })
-    setBusqueda(nuevo.razon)
+    const quien = destinos.find((d) => d.codigo === nuevo.asignado)?.label ?? nuevo.asignado
+    toast(`✓ ${esProspecto ? 'Prospecto' : 'Cliente'} "${razon}" sumado a ${quien}`, 'success')
+    setNuevoAbierto(null)
+    setNuevo(NUEVO_VACIO)
+    if (esProspecto) setRecargaPend((r) => r + 1)
+    setBusqueda(razon)
   }
 
   return (
@@ -145,7 +164,10 @@ export default function Clientes() {
         <h2 className="text-base font-semibold">👥 Clientes</h2>
         <div className="flex items-center gap-2">
           <button onClick={() => setUnifOpen(true)} className="text-xs font-medium border border-black/15 text-brandDark rounded-lg px-3 py-1.5">🔗 Unificar duplicados</button>
-          <button onClick={() => setNuevoAbierto(true)} className="text-xs font-medium bg-emerald-600 text-white rounded-lg px-3 py-1.5">
+          <button onClick={() => setNuevoAbierto('prospecto')} className="text-xs font-medium bg-amber-500 text-white rounded-lg px-3 py-1.5">
+            + Nuevo prospecto
+          </button>
+          <button onClick={() => setNuevoAbierto('cliente')} className="text-xs font-medium bg-emerald-600 text-white rounded-lg px-3 py-1.5">
             + Nuevo cliente
           </button>
         </div>
@@ -257,19 +279,41 @@ export default function Clientes() {
       )}
 
       {nuevoAbierto && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setNuevoAbierto(false)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setNuevoAbierto(null)}>
           <div
             className="bg-white rounded-2xl border border-black/10 w-full max-w-lg p-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-sm font-semibold mb-2">+ Nuevo cliente</p>
+            <p className="text-sm font-semibold mb-1">{nuevoAbierto === 'prospecto' ? '+ Nuevo prospecto' : '+ Nuevo cliente'}</p>
+            {nuevoAbierto === 'prospecto' && (
+              <p className="text-[11px] text-faint mb-2">Entra con código provisorio TMP- y queda en "Prospectos pendientes de código".</p>
+            )}
             <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs text-muted col-span-2">
+                Sumar a *
+                <select
+                  value={nuevo.asignado}
+                  onChange={(e) => setNuevo({ ...nuevo, asignado: e.target.value })}
+                  className="w-full mt-1 border border-black/10 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">— Elegí vendedor o prospección —</option>
+                  <optgroup label="Vendedores">
+                    {destinos.filter((d) => d.rol === 'vendedor').map((d) => <option key={d.codigo} value={d.codigo}>{d.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Revendedores">
+                    {destinos.filter((d) => d.rol === 'revendedor').map((d) => <option key={d.codigo} value={d.codigo}>{d.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Prospección">
+                    <option value="Marketing">Pool de prospección (Marketing)</option>
+                  </optgroup>
+                </select>
+              </label>
               {(
                 [
                   ['cod', 'Código *'],
-                  ['razon', 'Razón social *'],
+                  ['razon', nuevoAbierto === 'cliente' ? 'Razón social *' : 'Razón social'],
                   ['nomcomerc', 'Nombre comercial'],
-                  ['cuit', 'CUIT *'],
+                  ['cuit', nuevoAbierto === 'cliente' ? 'CUIT *' : 'CUIT'],
                   ['direccion', 'Dirección'],
                   ['localidad', 'Localidad'],
                   ['telefono', 'Teléfono'],
@@ -277,7 +321,7 @@ export default function Clientes() {
                   ['contacto', 'Contacto'],
                   ['nro_lista', 'Lista de precios'],
                 ] as const
-              ).map(([key, label]) => (
+              ).filter(([key]) => nuevoAbierto === 'cliente' || (key !== 'cod' && key !== 'nro_lista')).map(([key, label]) => (
                 <label key={key} className={`block text-xs text-muted ${key === 'direccion' ? 'col-span-2' : ''}`}>
                   {label}
                   <input
@@ -299,11 +343,11 @@ export default function Clientes() {
               </label>
             </div>
             <div className="flex gap-2 pt-3">
-              <button onClick={() => setNuevoAbierto(false)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
+              <button onClick={() => setNuevoAbierto(null)} className="flex-1 rounded-lg border border-black/10 py-2 text-sm text-muted">
                 Cancelar
               </button>
-              <button onClick={guardarNuevo} className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-sm font-semibold">
-                + Guardar Cliente
+              <button onClick={guardarNuevo} className={`flex-1 rounded-lg text-white py-2 text-sm font-semibold ${nuevoAbierto === 'prospecto' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                {nuevoAbierto === 'prospecto' ? '+ Guardar Prospecto' : '+ Guardar Cliente'}
               </button>
             </div>
           </div>
