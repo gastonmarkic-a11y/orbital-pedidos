@@ -618,11 +618,29 @@ async function bajarFotoTelegram(fileId: string): Promise<string | null> {
   return btoa(bin);
 }
 
-// Foto chica para comparar: Shopify redimensiona con ?width=, el storage de Supabase va tal cual
-const miniatura = (url: string) =>
-  url.includes("cdn.shopify.com") ? url + (url.includes("?") ? "&" : "?") + "width=400" : url;
+// Miniaturas de referencia (320×320 JPG, hasta 2 por modelo) precalculadas con scripts/ar-miniaturas.mjs
+// en el storage público: van adjuntas en base64 (traerlas por URL choca con el límite de Anthropic).
+const AR_REF = `${SUPABASE_URL}/storage/v1/object/public/catalogo/ar-ref`;
 
-type Ref = { modelo: string; urls: string[] };
+type Ref = { modelo: string; imgs: string[] };
+
+function aBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function referencias(): Promise<Ref[]> {
+  const idx = (await (await fetch(`${AR_REF}/index.json`)).json()) as Record<string, string[]>;
+  const refs = await Promise.all(Object.entries(idx).map(async ([modelo, archivos]) => {
+    const imgs = (await Promise.all(archivos.map(async (a) => {
+      const r = await fetch(`${AR_REF}/${a}`);
+      return r.ok ? aBase64(new Uint8Array(await r.arrayBuffer())) : null;
+    }))).filter((x): x is string => !!x);
+    return { modelo, imgs };
+  }));
+  return refs.filter((r) => r.imgs.length);
+}
 
 // Una llamada a Claude: ¿la FOTO es el mismo modelo que alguna de estas referencias?
 async function compararTanda(b64: string, mime: string, refs: Ref[]): Promise<string | null> {
@@ -632,7 +650,7 @@ async function compararTanda(b64: string, mime: string, refs: Ref[]): Promise<st
   ];
   refs.forEach((r, i) => {
     content.push({ type: "text", text: `Referencia ${i + 1}:` });
-    for (const u of r.urls) content.push({ type: "image", source: { type: "url", url: miniatura(u) } });
+    for (const d of r.imgs) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: d } });
   });
   content.push({ type: "text", text:
     `Decidí si el anteojo de la FOTO es el mismo MODELO de armazón que alguna de las ${refs.length} referencias. ` +
@@ -647,29 +665,21 @@ async function compararTanda(b64: string, mime: string, refs: Ref[]): Promise<st
   const data = await res.json();
   if (data?.error) throw new Error("anthropic " + JSON.stringify(data.error));
   const txt = data?.content?.find((c: { type: string }) => c.type === "text")?.text ?? "";
-  const n = Number(txt.match(/"referencia"\s*:\s*(\d+)/)?.[1]);
+  const n = Number(txt.match(/"referencia"s*:s*(d+)/)?.[1]);
   return Number.isInteger(n) && n >= 1 && n <= refs.length ? refs[n - 1].modelo : null;
 }
 
-// Busca en TODO el catálogo (fotos de producto_imagenes, igual que /reconocer):
-// tandas de 34 modelos en paralelo y, si hay varios finalistas, un desempate con 2 fotos de cada uno.
+// Busca en TODO el catálogo: tandas de 34 modelos (1 foto c/u) en paralelo y,
+// si hay varios finalistas, un desempate con las 2 fotos de cada uno.
 async function modeloDeFoto(b64: string, mime: string): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) return null;
-  const filas = await rpc<{ modelo: string; url: string; lifestyle: boolean }[]>("ar_imagenes");
-  const porModelo = new Map<string, string[]>();
-  for (const f of filas ?? []) {
-    if (f.lifestyle || !f.url) continue;
-    const l = porModelo.get(f.modelo) ?? [];
-    if (l.length < 2) l.push(f.url);
-    porModelo.set(f.modelo, l);
-  }
-  const todos = [...porModelo.entries()].map(([modelo, urls]) => ({ modelo, urls }));
+  const todos = await referencias();
   if (!todos.length) return null;
   const tandas: Ref[][] = [];
-  for (let i = 0; i < todos.length; i += 34) tandas.push(todos.slice(i, i + 34).map((r) => ({ modelo: r.modelo, urls: r.urls.slice(0, 1) })));
+  for (let i = 0; i < todos.length; i += 34) tandas.push(todos.slice(i, i + 34).map((r) => ({ modelo: r.modelo, imgs: r.imgs.slice(0, 1) })));
   const finalistas = [...new Set((await Promise.all(tandas.map((t) => compararTanda(b64, mime, t)))).filter((m): m is string => !!m))];
   if (finalistas.length <= 1) return finalistas[0] ?? null;
-  return await compararTanda(b64, mime, finalistas.map((m) => ({ modelo: m, urls: porModelo.get(m) ?? [] })));
+  return await compararTanda(b64, mime, todos.filter((r) => finalistas.includes(r.modelo)));
 }
 
 async function reconocerFoto(chat: number, q: Quien, fileId: string, mime: string) {
