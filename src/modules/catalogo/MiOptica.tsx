@@ -345,3 +345,144 @@ function SolapaPublicaciones({ clave, modelos, pubs, onCargado }: {
     </div>
   )
 }
+
+// ── Mis compras: lo que la óptica nos compró ────────────────────────────────
+// Pedidos de la Suite (ago-2026 en adelante, con detalle y estado) + historial por año/mes
+// que viene de Tango (hasta jul-2026). RPC catalogo_mis_compras, gated por el token de óptica.
+type Compra = {
+  id: number; fecha: string; estado: string; unidades: number | null; importe: number | null
+  factura: string | null; guia: string | null; transporte: string | null
+  items: { modelo: string; descripcion: string | null; cantidad: number }[]
+}
+type Compras = {
+  pedidos: Compra[]
+  historial: { mes: string; unidades: number; importe: number | null }[]
+  modelos: { anio: number; modelo: string; unidades: number }[]
+}
+
+const ESTADO_PEDIDO: Record<string, [string, string]> = {
+  pendiente: ['Recibido', 'bg-amber-100 text-amber-800'],
+  en_preparacion: ['En preparación', 'bg-sky-100 text-sky-800'],
+  listo: ['Preparado', 'bg-sky-100 text-sky-800'],
+  listo_despachar: ['Listo para despachar', 'bg-indigo-100 text-indigo-800'],
+  despachado: ['Despachado', 'bg-emerald-100 text-emerald-800'],
+  facturado: ['Facturado', 'bg-emerald-100 text-emerald-800'],
+  consignacion: ['Consignación', 'bg-violet-100 text-violet-800'],
+}
+const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+const pesos = (n: number | null) => (n ? '$' + Math.round(Number(n)).toLocaleString('es-AR') : null)
+
+export function MisCompras({ clave, onClose }: { clave: string; onClose: () => void }) {
+  const [c, setC] = useState<Compras | null>(null)
+  const [abierto, setAbierto] = useState<number | null>(null)
+  const [anio, setAnio] = useState<number | null>(null)
+  useEffect(() => {
+    supabase.rpc('catalogo_mis_compras', { p_clave: clave })
+      .then(({ data }) => setC((data as Compras) ?? { pedidos: [], historial: [], modelos: [] }))
+  }, [clave])
+
+  const anios = c ? [...new Set(c.historial.map((h) => +h.mes.slice(0, 4)))] : []
+  const vacio = c && !c.pedidos.length && !c.historial.length
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 z-10 flex items-center justify-between">
+          <h2 className="text-base font-bold">Mis compras</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
+        </div>
+        <div className="p-4 space-y-5">
+          {c === null ? <p className="text-sm text-neutral-400">Cargando…</p> : vacio ? (
+            <p className="text-sm text-neutral-400 font-sans">Todavía no encontramos compras a tu nombre.</p>
+          ) : (
+            <>
+              {c.pedidos.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Pedidos</p>
+                  <ul className="space-y-2">
+                    {c.pedidos.map((p) => {
+                      const est = ESTADO_PEDIDO[p.estado] ?? [p.estado, 'bg-neutral-100 text-neutral-700']
+                      const open = abierto === p.id
+                      const u = p.unidades ?? p.items.reduce((s, i) => s + i.cantidad, 0)
+                      return (
+                        <li key={p.id} className="rounded-lg border border-black/10 font-sans">
+                          <button onClick={() => setAbierto(open ? null : p.id)} className="w-full text-left px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[12px] font-semibold">#{p.id} · {new Date(p.fecha).toLocaleDateString('es-AR')}</span>
+                              <span className={`text-[10px] rounded-full px-2 py-0.5 font-semibold ${est[1]}`}>{est[0]}</span>
+                            </div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5 flex items-center justify-between gap-2">
+                              <span>{u} u.{pesos(p.importe) ? ` · ${pesos(p.importe)} + IVA` : ''}</span>
+                              <span className="text-[#0004FF]">{open ? 'Ocultar' : 'Ver detalle'}</span>
+                            </div>
+                          </button>
+                          {open && (
+                            <div className="px-3 pb-2 border-t border-black/5">
+                              <ul className="text-[12px] py-1.5 space-y-0.5">
+                                {p.items.map((i, k) => (
+                                  <li key={k} className="flex justify-between gap-2">
+                                    <span><b>{i.modelo}</b>{i.descripcion ? <span className="text-neutral-500"> · {i.descripcion}</span> : null}</span>
+                                    <span className="shrink-0">× {i.cantidad}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {(p.factura || p.guia) && (
+                                <p className="text-[10px] text-neutral-500">
+                                  {p.factura ? `Factura ${p.factura}` : ''}{p.factura && p.guia ? ' · ' : ''}{p.guia ? `${p.transporte ? p.transporte + ' · ' : ''}guía ${p.guia}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+              {anios.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-500 mb-2">Compras anteriores</p>
+                  <ul className="space-y-2">
+                    {anios.map((a) => {
+                      const meses = c.historial.filter((h) => +h.mes.slice(0, 4) === a)
+                      const u = meses.reduce((s, h) => s + Number(h.unidades), 0)
+                      const imp = meses.reduce((s, h) => s + Number(h.importe || 0), 0)
+                      const mods = c.modelos.filter((m) => m.anio === a)
+                      const open = anio === a
+                      return (
+                        <li key={a} className="rounded-lg border border-black/10 font-sans">
+                          <button onClick={() => setAnio(open ? null : a)} className="w-full text-left px-3 py-2 flex items-center justify-between gap-2">
+                            <span className="text-[12px] font-semibold">{a}</span>
+                            <span className="text-[11px] text-neutral-500">{u} u.{imp ? ` · ${pesos(imp)}` : ''}<span className="text-[#0004FF] ml-2">{open ? 'Ocultar' : 'Ver'}</span></span>
+                          </button>
+                          {open && (
+                            <div className="px-3 pb-2 border-t border-black/5 text-[12px]">
+                              <ul className="py-1.5 space-y-0.5">
+                                {meses.map((h) => (
+                                  <li key={h.mes} className="flex justify-between gap-2">
+                                    <span>{MESES[+h.mes.slice(5, 7) - 1]}</span>
+                                    <span>{Number(h.unidades)} u.{pesos(h.importe) ? ` · ${pesos(h.importe)}` : ''}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {mods.length > 0 && (
+                                <p className="text-[11px] text-neutral-500 pt-1.5 border-t border-black/5">
+                                  <b className="text-neutral-700">Modelos:</b> {mods.map((m) => `${m.modelo} (${m.unidades})`).join(' · ')}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -10,7 +10,7 @@ import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from '../colab/ColabInspiracion'
 import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
-import PostventaOptica, { MisAnteojos, MisPublicaciones, PublicarLink } from './MiOptica'
+import PostventaOptica, { MisAnteojos, MisPublicaciones, MisCompras, PublicarLink } from './MiOptica'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -822,6 +822,7 @@ export default function CatalogoPublico() {
   // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
   const [conoce, setConoce] = useState(false)
   const [postventa, setPostventa] = useState(false)
+  const [compras, setCompras] = useState(false)
   // Crear contenido: buscador de modelos que abre la ficha sin precio ni carrito
   const [contenido, setContenido] = useState(false)
   const [selContenido, setSelContenido] = useState<Modelo | null>(null)
@@ -957,6 +958,7 @@ export default function CatalogoPublico() {
     if (ver === 'inspiracion' || ver === 'triple') { setConoce(true); setGrupoActivo(null) }
     else if (ver === 'contenido' || ver === 'publicaciones') { setContenidoSolapa(ver === 'publicaciones' ? 'publicaciones' : 'crear'); setContenido(true) }
     else if (ver === 'postventa') setPostventa(true)
+    else if (ver === 'compras') setCompras(true)
   }, [claveOk, clave])
 
   // Link del WhatsApp de carrito sin cerrar (?carrito=1): puede abrirlo en otro equipo, así que
@@ -1066,6 +1068,12 @@ export default function CatalogoPublico() {
         <button onClick={() => setPostventa(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Postventa
+        </button>
+      )}
+      {esOptica && !sinPrecios && (
+        <button onClick={() => setCompras(true)}
+          className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
+          Mis compras
         </button>
       )}
     </>
@@ -1193,6 +1201,7 @@ export default function CatalogoPublico() {
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
       {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
+      {compras && esOptica && <MisCompras clave={clave} onClose={() => setCompras(false)} />}
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
