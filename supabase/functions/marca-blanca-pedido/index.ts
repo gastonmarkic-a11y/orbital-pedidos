@@ -17,12 +17,23 @@ const CORS = {
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const FRAME = 10;
-const KIT = 2; // estuche + franela por armazón
-const LENS_PRICE: Record<string, number> = { b: 1.5, s: 3, e: 3, p: 5, f: 5 };
+// Marco con logo; el cristal lo aporta el cliente y el calibrado va incluido. Precio por terminación.
+const TIERS = [
+  { n: "básico negro", p: 11.5 },
+  { n: "compacto color (incluye negro brillo)", p: 12.5 },
+  { n: "color clear mate", p: 13.5 },
+  { n: "clear brillo / brillo / degradé / vetas", p: 14.5 },
+];
+const isClear = (c: string) => /clear/i.test(c) || c === "Cristal";
+const isCustom = (c: string) => c.startsWith("A medida"); // "A medida (mate|clear|brillo)" + descripción del cliente
+const tierOf = (c: string, fin: string) =>
+  isClear(c) ? (fin === "brillo" ? 3 : 2) : c === "Negro mate" ? 0 : c === "Negro brillo" ? 1 : /brillo|degradé|vetas|veteado/i.test(c) ? 3 : 1;
+// Packaging, cotizado aparte: estuche estándar y caja de alta calidad (secundario, por tramo sobre el total de cajas).
+const EST = 0.7, CAJA_MIN = 100;
+const cajaP = (n: number) => (n >= 1000 ? 0.45 : 1.3);
 const LOGO_OK = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "application/pdf", "application/postscript", "application/illustrator"];
 
-type Item = { m: number; col: string; lens: string; logo: string; q: number };
+type Item = { m: number; col: string; fin?: string; desc?: string; logo: string; q: number; est?: boolean; caja?: boolean };
 
 async function dolarHoy(): Promise<{ venta: number; fecha: string } | null> {
   try {
@@ -31,6 +42,46 @@ async function dolarHoy(): Promise<{ venta: number; fecha: string } | null> {
     const fecha = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
     return j?.venta > 0 ? { venta: Number(j.venta), fecha } : null;
   } catch { return null; }
+}
+
+// Link privado de pago: el cliente vuelve con ?pago=<id>.<token> para ver su pedido y subir comprobantes.
+async function pedidoPorToken(b: Record<string, unknown>) {
+  const id = Math.round(Number(b.id)), token = String(b.token ?? "");
+  if (!(id > 0) || !/^[0-9a-f]{24}$/.test(token)) return null;
+  const { data } = await sb.from("marca_blanca_pedidos")
+    .select("id, estado, marca, cuenta, unidades, total_usd, adelanto_comp_at, saldo_comp_at, doc_tipo, doc_path")
+    .eq("id", id).eq("pago_token", token).maybeSingle();
+  return data;
+}
+
+async function subirComprobante(b: Record<string, unknown>) {
+  const p = await pedidoPorToken(b);
+  if (!p) return json({ ok: false, error: "No encontramos el pedido. Revisá el link." }, 404);
+  if (p.estado === "anulado") return json({ ok: false, error: "Este pedido está anulado." }, 400);
+  const tipo = b.tipo === "saldo" ? "saldo" : "adelanto";
+  if (tipo === "saldo" && !p.adelanto_comp_at) return json({ ok: false, error: "Primero subí el comprobante del adelanto." }, 400);
+  const f = b.archivo as { name?: string; type?: string; b64?: string } | undefined;
+  const type = String(f?.type ?? "");
+  if (!f?.b64 || !/^(image\/(png|jpeg|webp|heic|heif)|application\/pdf)$/.test(type)) return json({ ok: false, error: "El comprobante tiene que ser foto (JPG/PNG) o PDF." }, 400);
+  const bytes = Uint8Array.from(atob(f.b64), (c) => c.charCodeAt(0));
+  if (bytes.length > 8 * 1024 * 1024) return json({ ok: false, error: "El archivo pesa más de 8 MB." }, 400);
+  const nombre = String(f.name ?? "comprobante").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+  const path = `comprobantes/${p.id}/${tipo}-${Date.now()}-${nombre}`;
+  const up = await sb.storage.from("marca-blanca-logos").upload(path, bytes, { contentType: type });
+  if (up.error) { console.error("upload comp", up.error); return json({ ok: false, error: "No pudimos subir el comprobante. Probá de nuevo." }, 500); }
+  const at = new Date().toISOString();
+  await sb.from("marca_blanca_pedidos").update(tipo === "saldo" ? { saldo_comp_path: path, saldo_comp_at: at } : { adelanto_comp_path: path, adelanto_comp_at: at }).eq("id", p.id);
+  try {
+    const dol = await dolarHoy();
+    const mitad = Number(p.total_usd) / 2;
+    const fd = new FormData();
+    fd.append("chat_id", String(await grupo()));
+    fd.append("caption", `💸 Comprobante de ${tipo === "saldo" ? "SALDO (contra entrega)" : "ADELANTO 50 %"} · marca blanca #${p.id} ${p.marca}\nUSD ${mitad.toFixed(2)}${dol ? ` ≈ $ ${Math.round(mitad * dol.venta).toLocaleString("es-AR")} (dólar ${dol.venta})` : ""} · ${p.cuenta === "plenorius" ? "Plenorius" : "Brubank"}\nVerificar el ingreso y pasar el pedido en la Suite: Marca blanca`);
+    fd.append("document", new Blob([bytes], { type }), nombre);
+    const r = await fetch(`${TG}/sendDocument`, { method: "POST", body: fd });
+    if (!r.ok) console.error("sendDocument comp", r.status, await r.text());
+  } catch (e) { console.error("aviso comp", e); }
+  return json({ ok: true, tipo, at });
 }
 
 async function grupo(): Promise<number> {
@@ -43,6 +94,16 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "método no permitido" }, 405);
   let b: Record<string, unknown>;
   try { b = await req.json(); } catch { return json({ ok: false, error: "datos inválidos" }, 400); }
+  if (b.accion === "ver") {
+    const p = await pedidoPorToken(b);
+    if (!p) return json({ ok: false, error: "No encontramos el pedido. Revisá el link." }, 404);
+    const dol = await dolarHoy();
+    let doc_url: string | null = null;
+    if (p.doc_path) doc_url = (await sb.storage.from("marca-blanca-logos").createSignedUrl(p.doc_path, 3600)).data?.signedUrl ?? null;
+    const { doc_path: _dp, ...pub } = p;
+    return json({ ok: true, pedido: { ...pub, doc_url }, dolar: dol });
+  }
+  if (b.accion === "comprobante") return await subirComprobante(b);
 
   const str = (k: string, max = 200) => String(b[k] ?? "").trim().slice(0, max);
   const marca = str("marca"), razon = str("razon_social"), email = str("email").toLowerCase(), tel = str("telefono", 40), obs = str("obs", 1000);
@@ -52,19 +113,29 @@ Deno.serve(async (req) => {
   if (tel.replace(/\D/g, "").length < 8) return json({ ok: false, error: "Revisá el teléfono." }, 400);
 
   const raw = Array.isArray(b.items) ? (b.items as Item[]).slice(0, 60) : [];
-  const items = raw.map((it) => {
-    const m = Math.round(Number(it.m)), q = Math.round(Number(it.q));
-    const lens = String(it.lens ?? "").slice(0, 80), pre = lens.split("-")[0];
-    if (!(m >= 1 && m <= 7) || !(q >= 1 && q <= 100000) || !(pre in LENS_PRICE)) return null;
-    const unit = FRAME + KIT + LENS_PRICE[pre];
+  const valid = raw.map((it) => {
+    const m = Math.round(Number(it.m)), q = Math.round(Number(it.q)), col = String(it.col ?? "").trim().slice(0, 60);
+    const desc = String(it.desc ?? "").trim().slice(0, 80);
+    if (!(m >= 1 && m <= 7) || !(q >= 1 && q <= 100000) || !col || (isCustom(col) && !desc)) return null;
+    return { m, q, col, desc, fin: it.fin === "brillo" ? "brillo" : "mate", logo: it.logo === "laser" ? "láser" : "tampografía", est: it.est === true, caja: it.caja === true };
+  });
+  if (!valid.length || valid.some((x) => !x)) return json({ ok: false, error: "El pedido no tiene líneas válidas." }, 400);
+  const its = valid as NonNullable<(typeof valid)[number]>[];
+  const cajas = its.reduce((a, l) => a + (l.caja ? l.q : 0), 0);
+  if (cajas > 0 && cajas < CAJA_MIN) return json({ ok: false, error: `La caja de alta calidad tiene mínimo ${CAJA_MIN} unidades.` }, 400);
+
+  const lines = its.map((l) => {
+    const t = tierOf(l.col, l.fin), marco = TIERS[t].p, est = l.est ? EST : 0, caja = l.caja ? cajaP(cajas) : 0;
+    const unit = +(marco + est + caja).toFixed(2);
+    const color = (isCustom(l.col) ? `Color a medida ${l.col.slice(10, -1)}` : l.col) + (isClear(l.col) ? ` ${l.fin}` : "") + (isCustom(l.col) ? `: ${l.desc}` : "");
+    const pack = [l.est ? "estuche" : "", l.caja ? "caja alta calidad" : ""].filter(Boolean).join(" + ") || "sin packaging";
     return {
-      modelo: `Modelo 0${m}`, ref: `BR 00${m}`, color: String(it.col ?? "").slice(0, 60),
-      cristal: lens.slice(pre.length + 1), logo: it.logo === "laser" ? "láser" : "tampografía",
-      cantidad: q, marco_usd: FRAME, kit_usd: KIT, cristal_usd: LENS_PRICE[pre], unit_usd: unit, total_usd: +(unit * q).toFixed(2),
+      modelo: `Modelo 0${l.m}`, ref: `BR 00${l.m}`, color, terminacion: TIERS[t].n,
+      cristal: "aporta el cliente (calibrado incluido)", logo: l.logo, estuche: l.est, caja: l.caja,
+      detalle: `cristal del cliente · logo ${l.logo} · ${pack}`,
+      cantidad: l.q, marco_usd: marco, estuche_usd: est, caja_usd: caja, unit_usd: unit, total_usd: +(unit * l.q).toFixed(2),
     };
   });
-  if (!items.length || items.some((x) => !x)) return json({ ok: false, error: "El pedido no tiene líneas válidas." }, 400);
-  const lines = items as NonNullable<(typeof items)[number]>[];
 
   // Freno simple: hasta 5 pedidos por mail por hora.
   const { count } = await sb.from("marca_blanca_pedidos").select("id", { count: "exact", head: true })
@@ -95,7 +166,7 @@ Deno.serve(async (req) => {
   const { data: ins, error } = await sb.from("marca_blanca_pedidos").insert({
     marca, razon_social: razon, email, telefono: tel, logo_path, logo_nombre, cuenta, items: lines, unidades,
     subtotal_usd: subtotal, iva_usd: iva, total_usd: total, dolar: dol?.venta ?? null, dolar_fecha: dol?.fecha ?? null, total_ars, obs: obs || null,
-  }).select("id").single();
+  }).select("id, pago_token").single();
   if (error) { console.error("insert", error); return json({ ok: false, error: "No pudimos guardar el pedido. Probá de nuevo." }, 500); }
 
   // Aviso al grupo Ojo
@@ -108,7 +179,7 @@ Deno.serve(async (req) => {
       `<b>${esc(marca)}</b> · ${esc(razon)}`,
       `✉️ ${esc(email)} · 📞 ${esc(tel)}`,
       "",
-      ...lines.map((l) => `• ${l.cantidad} × ${l.modelo} (${l.ref}) ${esc(l.color)} · ${esc(l.cristal)} · logo ${l.logo} — ${usd(l.total_usd)}`),
+      ...lines.map((l) => `• ${l.cantidad} × ${l.modelo} (${l.ref}) ${esc(l.color)} · ${esc(l.detalle)} — ${usd(l.unit_usd)} c/u = ${usd(l.total_usd)}`),
       "",
       `${unidades} u · ${usd(subtotal)}${iva ? ` + IVA ${usd(iva)} = ${usd(total)}` : ""}`,
       dol && total_ars ? `Dólar vendedor ${dol.fecha.split("-").reverse().join("/")}: ${ars(dol.venta)} → <b>${ars(total_ars)}</b>` : "Dólar del día: no disponible",
@@ -135,5 +206,5 @@ Deno.serve(async (req) => {
     }
   } catch (e) { console.error("aviso", e); }
 
-  return json({ ok: true, id: ins.id, total_usd: total, dolar: dol?.venta ?? null, total_ars });
+  return json({ ok: true, id: ins.id, token: ins.pago_token, total_usd: total, dolar: dol?.venta ?? null, total_ars });
 });

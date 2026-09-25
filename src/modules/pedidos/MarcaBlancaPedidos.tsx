@@ -19,6 +19,10 @@ interface Pedido {
   subtotal_usd: number; iva_usd: number; total_usd: number
   dolar: number | null; dolar_fecha: string | null; total_ars: number | null
   obs: string | null; nota_interna: string | null
+  // Administración: link privado de pago del cliente, comprobantes que sube y factura/remito que sube Orbital
+  pago_token: string; adelanto_comp_path: string | null; adelanto_comp_at: string | null
+  saldo_comp_path: string | null; saldo_comp_at: string | null
+  doc_tipo: 'factura' | 'remito' | null; doc_path: string | null; doc_at: string | null
 }
 
 const ESTADOS = [
@@ -87,6 +91,27 @@ export default function MarcaBlancaPedidos() {
     setPedidos((ps) => ps.map((x) => (x.id === p.id ? { ...x, ...cambios } : x)))
   }
 
+  // Abre un archivo privado del bucket con URL firmada (la ventana se abre antes para que no la bloquee el navegador).
+  async function verArchivo(path: string) {
+    const w = window.open('', '_blank')
+    const { data } = await supabase.storage.from('marca-blanca-logos').createSignedUrl(path, 3600)
+    if (data?.signedUrl && w) w.location.href = data.signedUrl
+    else { w?.close(); toast('No se pudo abrir el archivo', 'error') }
+  }
+
+  // Factura si paga a Plenorius; remito solo si es en negro (Brubank).
+  async function subirDoc(p: Pedido, file: File) {
+    const tipo = p.cuenta === 'plenorius' ? 'factura' : 'remito'
+    setGuardando(p.id)
+    const path = `documentos/${p.id}/${tipo}-${Date.now()}-${file.name.replace(/[^\w.\-]+/g, '_')}`
+    const { error } = await supabase.storage.from('marca-blanca-logos').upload(path, file, { contentType: file.type || undefined })
+    setGuardando(null)
+    if (error) { toast('No se pudo subir: ' + error.message, 'error'); return }
+    await actualizar(p, { doc_tipo: tipo, doc_path: path, doc_at: new Date().toISOString() }, `${tipo === 'factura' ? 'Factura' : 'Remito'} cargado · el cliente lo ve en su link`)
+  }
+
+  const linkPago = (p: Pedido) => `https://ver.orbitaleyewear.com.ar/marca-blanca?pago=${p.id}.${p.pago_token}`
+
   function whatsapp(tel: string) {
     let d = tel.replace(/\D/g, '')
     if (d.startsWith('0')) d = d.slice(1)
@@ -136,6 +161,7 @@ export default function MarcaBlancaPedidos() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {!p.logo_path && <span title="No adjuntó logo" className="text-[10px]">⚠️</span>}
+                    {p.adelanto_comp_at && <span title="Comprobante de adelanto" className="text-[10px] rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-700 font-semibold">💸 adelanto{p.saldo_comp_at ? ' + saldo' : ''}</span>}
                     <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${info.cls}`}>{info.label}</span>
                     <span className="text-muted text-xs">{open ? '▾' : '▸'}</span>
                   </div>
@@ -192,6 +218,33 @@ export default function MarcaBlancaPedidos() {
                           <p className="flex justify-between font-semibold"><span>Hoy ({ars(dolarHoy)})</span><span>{ars(arsHoy)}</span></p>
                         )}
                         {arsHoy != null && <p className="flex justify-between text-xs text-muted"><span>50 % adelanto hoy</span><span>{ars(arsHoy / 2)}</span></p>}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-black/10 px-3 py-2 space-y-2 text-sm">
+                      <p className="text-xs font-semibold text-muted uppercase tracking-wide">Administración</p>
+                      {([['Adelanto 50 %', p.adelanto_comp_path, p.adelanto_comp_at], ['Saldo contra entrega', p.saldo_comp_path, p.saldo_comp_at]] as const).map(([tit, path, at]) => (
+                        <div key={tit} className="flex items-center justify-between gap-2">
+                          <span>{tit} <span className="text-muted">· {usd(p.total_usd / 2)}{dolarHoy ? ` ≈ ${ars((p.total_usd / 2) * dolarHoy)} hoy` : ''}</span></span>
+                          {path
+                            ? <button onClick={() => verArchivo(path)} className="text-xs font-semibold text-emerald-700">✓ Comprobante {at ? fecha(at) : ''} · ver ↗</button>
+                            : <span className="text-xs text-amber-700 font-semibold">Pendiente</span>}
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{p.cuenta === 'plenorius' ? 'Factura (Plenorius)' : 'Remito (Brubank, en negro)'}</span>
+                        <span className="flex items-center gap-3">
+                          {p.doc_path && <button onClick={() => verArchivo(p.doc_path!)} className="text-xs font-semibold text-emerald-700">✓ {p.doc_at ? fecha(p.doc_at) : ''} · ver ↗</button>}
+                          <label className="text-xs font-semibold text-brandDark cursor-pointer">
+                            {p.doc_path ? 'Reemplazar' : `Subir ${p.cuenta === 'plenorius' ? 'factura' : 'remito'}`}
+                            <input type="file" accept="application/pdf,image/*" className="hidden" disabled={guardando === p.id}
+                              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) subirDoc(p, f) }} />
+                          </label>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted text-xs">Link de pago del cliente (ve datos, sube comprobantes y descarga {p.cuenta === 'plenorius' ? 'la factura' : 'el remito'})</span>
+                        <button onClick={() => navigator.clipboard.writeText(linkPago(p)).then(() => toast('Link copiado', 'success'))} className="text-xs font-semibold text-brandDark shrink-0">Copiar link</button>
                       </div>
                     </div>
 

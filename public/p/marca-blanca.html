@@ -222,6 +222,16 @@ const S={tab:"marco",m:1,col:"Negro mate",fin:"mate",logo:"tampo",est:true,caja:
 try{const s=JSON.parse(localStorage.getItem("mb-app")||"null");if(s){for(const k of ["m","col","fin","logo","est","caja","cdesc","acct","lines","datos"])if(s[k]!=null)S[k]=s[k]}}catch(e){}
 S.lines=(S.lines||[]).filter(l=>typeof l.est==="boolean"&&MODELS[l.m-1]&&COL[l.col]);if(!COL[S.col])S.col="Negro mate";if(S.fin!=="brillo")S.fin="mate";
 let logoFile=null,sending=false,okId=null;
+// Pago: adelanto 50 % + saldo contra entrega, con comprobante. Link privado ?pago=<id>.<token>.
+let PGL=null,PG=null,PGD=null,PGERR="",pgFile={adelanto:null,saldo:null},pgSending=null;
+try{PGL=JSON.parse(localStorage.getItem("mb-pago")||"null")}catch(e){}
+{const q=new URLSearchParams(location.search).get("pago");const m=q&&q.match(/^(\d+)\.([0-9a-f]{24})$/);if(m){PGL={id:+m[1],token:m[2]};try{localStorage.setItem("mb-pago",JSON.stringify(PGL))}catch(e){}S.tab="ok"}}
+const pagoLink=()=>PGL?`${location.origin}/marca-blanca?pago=${PGL.id}.${PGL.token}`:"";
+async function cargarPago(){PGERR="";try{const r=await fetch(FN,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+ANON,apikey:ANON},body:JSON.stringify({accion:"ver",...PGL})});const j=await r.json();if(!j.ok)throw new Error(j.error);PG=j.pedido;PGD=j.dolar}catch(e){PGERR=e.message||"No pudimos cargar el pedido."}if(S.tab==="ok")render()}
+async function subirComp(tipo){const f=pgFile[tipo];if(!f){toast("Elegí la foto o el PDF del comprobante");return}if(f.size>8*1024*1024){toast("El archivo pesa más de 8 MB");return}
+  pgSending=tipo;render();
+  try{const r=await fetch(FN,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+ANON,apikey:ANON},body:JSON.stringify({accion:"comprobante",...PGL,tipo,archivo:{name:f.name,type:typeOf(f),b64:await b64(f)}})});const j=await r.json().catch(()=>({}));if(!j.ok)throw new Error(j.error||"No pudimos subir el comprobante.");pgFile[tipo]=null;toast("Comprobante enviado");await cargarPago()}
+  catch(e){toast(e.message)}pgSending=null;render()}
 const $=id=>document.getElementById(id);
 const usd=v=>"USD "+v.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const ars=v=>"$ "+Math.round(v).toLocaleString("es-AR");
@@ -293,7 +303,7 @@ const SCREENS={
    <div class="tot"><div class="muted"><span>Subtotal</span><span>${usd(x.sub)}</span></div>${x.iva?`<div class="muted"><span>IVA 21 %</span><span>${usd(x.iva)}</span></div>`:""}<div class="big"><span>Total</span><span>${usd(x.tot)}</span></div></div>
    ${cajaFalta()?`<p class="err">La caja de alta calidad tiene mínimo ${CAJA_MIN} unidades (llevás ${cajaUnits()}). Sumá unidades con caja o quitala.</p>`:""}
    <p class="legend">Cristal aportado por el cliente, calibrado incluido. El monto en pesos se calcula al cerrar el pedido, con el dólar oficial vendedor del día.</p>
-  </div>`:`<div class="card empty">Todavía no agregaste armazones.<br><br><button class="btn" type="button" data-tab="marco">Empezar por el marco</button></div>`}`},
+  </div>`:`<div class="card empty">Todavía no agregaste armazones.<br><br><button class="btn" type="button" data-tab="marco">Empezar por el marco</button>${PGL?`<br><br><button class="btn ghost" type="button" id="verPago">Ver el pago de mi pedido #${PGL.id}</button>`:""}</div>`}`},
  datos(){const x=sums(),p=x.tot*DOLAR.venta,d=S.datos;return `${head("Cerrar pedido","Tus datos","Con esto precargamos el pedido y te contactamos para confirmarlo.")}
   <form id="form" class="card" style="display:grid;gap:12px" novalidate>
    ${field("marca","Marca","Cómo se llama tu marca",d.marca,"text","organization")}
@@ -312,11 +322,26 @@ const SCREENS={
    ${S.acct==="ple"?plenBox():""}
    <p class="legend"><b>Cómo sacamos el tipo de cambio:</b> usamos el dólar oficial del Banco de la Nación Argentina, cotización vendedor (venta) del día. El importe en pesos vale para transferencias hechas hoy; el saldo contra entrega se recalcula al dólar vendedor del día en que se paga.</p>
   </div>`},
- ok(){return `<div class="card" style="display:grid;gap:12px;text-align:center;padding:28px 18px">
-   <div style="font-size:40px">✓</div><h1 style="font-family:var(--disp);font-size:28px;font-stretch:115%">Pedido recibido</h1>
-   <p style="margin:0;color:var(--ink2)">Quedó precargado con el número <b style="color:var(--ink)">#${okId}</b>. ${S.acct==="ple"?"Te escribimos al mail o WhatsApp para confirmar el diseño del logo. El adelanto del 50 % lo podés transferir a esta cuenta:":"Te escribimos al mail o WhatsApp para confirmar el diseño del logo y enviarte los datos de la transferencia del adelanto."}</p>
-   ${S.acct==="ple"?`<div style="text-align:left">${plenBox()}</div>`:""}
-   <button class="btn" type="button" id="nuevo">Hacer otro pedido</button></div>`}
+ ok(){
+  const top=okId?`<div class="card" style="display:grid;gap:8px;text-align:center;padding:22px 18px"><div style="font-size:36px">✓</div><h1 style="font-family:var(--disp);font-size:26px;font-stretch:115%">Pedido recibido</h1><p style="margin:0;color:var(--ink2)">Quedó precargado con el número <b style="color:var(--ink)">#${okId}</b>. Te escribimos para confirmar el diseño del logo.</p></div>`:"";
+  if(PGERR)return top+`<div class="card empty">${esc(PGERR)}<br><br><button class="btn" type="button" id="nuevo">Hacer un pedido</button></div>`;
+  if(!PG)return top+`<div class="card empty">Cargando tu pedido…</div>`;
+  const half=Number(PG.total_usd)/2,dv=PGD?.venta||DOLAR.venta,ple=PG.cuenta==="plenorius",fd=s=>new Date(s).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});
+  const paso=(tipo,tit,sub,at,hab)=>`<div class="card" style="display:grid;gap:10px">
+   <div class="tone-h" style="margin:0"><div><b>${tit}</b><small>${sub}</small></div><div class="tone-p">${usd(half)}<small>≈ ${ars(half*dv)} hoy</small></div></div>
+   ${at?`<div class="condbox"><b>✓ Comprobante enviado el ${fd(at)}</b><span>Lo verificamos y te avisamos.</span></div>`
+   :hab?`${ple?plenBox():`<div class="condbox"><b>Transferencia a Brubank (cuenta en pesos)</b><span>Te pasamos los datos por WhatsApp.</span></div>`}
+    <label class="drop" for="f-${tipo}">${pgFile[tipo]?`<b>${esc(pgFile[tipo].name)}</b><span>tocá para cambiarlo</span>`:`<b>Subí el comprobante</b><span>Foto o PDF · hasta 8 MB</span>`}</label><input id="f-${tipo}" type="file" accept="image/*,application/pdf" hidden>
+    <button class="btn block" type="button" data-comp="${tipo}" ${pgSending?"disabled":""}>${pgSending===tipo?"Enviando…":"Enviar comprobante"}</button>`
+   :`<p class="legend" style="margin:0">Primero el adelanto. El saldo se paga al recibir el pedido y el comprobante se sube acá mismo.</p>`}
+  </div>`;
+  return top+`${head("Pago",`Pedido #${PG.id} · ${esc(PG.marca)}`,`${PG.unidades} armazones · total ${usd(Number(PG.total_usd))}${ple?" con IVA":""}`)}
+  ${PG.estado==="anulado"?`<div class="card empty">Este pedido está anulado.</div>`:
+   paso("adelanto","1 · Adelanto 50 %","al confirmar el pedido",PG.adelanto_comp_at,true)+paso("saldo","2 · Saldo contra entrega","al recibir el pedido",PG.saldo_comp_at,!!PG.adelanto_comp_at)}
+  ${PG.doc_url?`<a class="btn ghost block" href="${PG.doc_url}" target="_blank" rel="noopener">Descargar ${PG.doc_tipo==="factura"?"factura":"remito"}</a>`:""}
+  <div class="card" style="display:grid;gap:10px"><div class="sec-l" style="margin:0">Tu link de pago</div><p class="legend" style="margin:0">Guardalo para volver a esta pantalla y subir el comprobante del saldo cuando recibas el pedido.</p><button class="btn ghost block" type="button" data-copy="${pagoLink()}">Copiar link</button></div>
+  <p class="legend">Los pesos se calculan con el dólar oficial vendedor BNA del día en que pagás (hoy ${ars(dv)}).</p>
+  <button class="btn ghost block" type="button" id="nuevo">Hacer otro pedido</button>`}
 };
 function extras(){return `${isCustom(S.col)?`<div class="fld" style="margin-top:12px"><label for="cdesc">¿Qué color querés? <span>(Pantone, referencia o descripción)</span></label><input id="cdesc" type="text" maxlength="80" placeholder="Ej.: Pantone 7621 C, verde de mi logo" value="${esc(S.cdesc)}"></div>`:""}${isClear(S.col)?`<div style="margin-top:12px"><div class="sec-l">Terminación del transparente</div><div class="seg"><button type="button" data-fin="mate" aria-pressed="${S.fin==="mate"}">Mate<small>${usd(TIERS[2].p)}</small></button><button type="button" data-fin="brillo" aria-pressed="${S.fin==="brillo"}">Brillo<small>${usd(TIERS[3].p)}</small></button></div></div>`:""}`}
 const PLEN=[["Titular","Plenorius S.A."],["CUIT","30-71453247-9"],["Banco","Credicoop"],["Cuenta corriente $","191-003-004580/0"],["CBU","1910003255000300458000"],["Alias","RELOJ.TAPIA.ENERO"]];
@@ -342,6 +367,7 @@ function render(){
     $("logo").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;if(f.size>8*1024*1024){toast("El logo pesa más de 8 MB");return}logoFile=f;render()});
   }
   if(S.tab==="marco"&&$("cdesc"))$("cdesc").addEventListener("input",e=>{S.cdesc=e.target.value;save()});
+  if(S.tab==="ok")["adelanto","saldo"].forEach(t=>$("f-"+t)?.addEventListener("change",e=>{const f=e.target.files[0];if(f){pgFile[t]=f;render()}}));
   if(S.tab==="estuche")$("qty").addEventListener("input",e=>{S.q=Math.max(1,Math.round(+e.target.value||1));renderBar()});
 }
 function go(t){S.tab=t;render();window.scrollTo({top:0})}
@@ -363,7 +389,7 @@ async function enviar(){
     const r=await fetch(FN,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+ANON,apikey:ANON},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok||!j.ok)throw new Error(j.error||"No pudimos enviar el pedido. Probá de nuevo en un momento.");
-    okId=j.id;S.lines=[];logoFile=null;sending=false;go("ok");
+    okId=j.id;PGL={id:j.id,token:j.token};try{localStorage.setItem("mb-pago",JSON.stringify(PGL))}catch(e){}PG=null;S.lines=[];logoFile=null;sending=false;go("ok");cargarPago();
   }catch(e){sending=false;renderBar();bad(e.message)}
 }
 document.addEventListener("click",e=>{
@@ -371,7 +397,8 @@ document.addEventListener("click",e=>{
   const d=t.dataset;
   if(t.id==="abBtn"){if(S.tab==="marco"){if(isCustom(S.col)&&!S.cdesc.trim()){toast("Contanos qué color querés");$("cdesc").focus();return}go("estuche")}else if(S.tab==="estuche")addLine();else if(S.tab==="pedido")go("datos");else if(S.tab==="datos")enviar();return}
   if(t.id==="cartTop")return go("pedido");
-  if(t.id==="nuevo")return go("marco");
+  if(t.id==="nuevo"){okId=null;return go("marco")}
+  if(t.id==="verPago"){okId=null;go("ok");return cargarPago()}
   if(d.tab)return go(d.tab);
   if(d.m){S.m=+d.m;render()}
   else if(d.c){S.col=d.c;render()}
@@ -382,9 +409,10 @@ document.addEventListener("click",e=>{
   else if(d.qs){S.q=+d.qs;render()}
   else if(d.del!=null){S.lines.splice(+d.del,1);render()}
   else if(d.acct){S.acct=d.acct;render()}
+  else if(d.comp){subirComp(d.comp)}
   else if(d.copy){navigator.clipboard?.writeText(d.copy).then(()=>toast("Copiado"),()=>toast(d.copy))}
 });
-render();
+render();if(S.tab==="ok"&&PGL)cargarPago();
 </script>
 
 </html>
