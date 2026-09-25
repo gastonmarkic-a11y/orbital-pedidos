@@ -6,6 +6,8 @@
 // Confirmado → landing del modelo (/modelo/<nombre>). Sin match o sin stock → "No lo encontré en el catálogo".
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { linkFicha } from '../colab/colabUtil'
+import { BotonCopiar } from '../colab/ColabAnteojos'
 
 const SB = 'https://towcgvphxeqilpdnboki.supabase.co'
 const INTERVALO = 350          // ms mínimos entre lecturas
@@ -15,7 +17,10 @@ const MAX_INTENTOS = 3         // consultas a la IA sin match antes de decir "no
 const TIEMPO_MAX = 20000       // ms leyendo sin ningún candidato firme
 
 interface Huellas { model: string; dim: number; items: { m: string; u: string; l: number }[]; data: string }
-type Estado = 'cargando' | 'leyendo' | 'verificando' | 'elegir' | 'no-encontrado' | 'error'
+type Estado = 'cargando' | 'leyendo' | 'verificando' | 'elegir' | 'no-encontrado' | 'ficha' | 'error'
+// ?colab=<clave>: abierto desde el panel del influencer. Solo reconoce SUS anteojos y, en vez de
+// abrir la ficha, le arma su link (ficha con su código) para copiar y publicar.
+type Suyo = { modelo_stock: string; modelo: string; handle: string; sku: string }
 
 // Mismo preprocesado que scripts/ar-embeddings.mjs: gris + centrado en cuadrado blanco
 function prep(rgba: Uint8ClampedArray, w: number, h: number) {
@@ -65,11 +70,20 @@ export default function Reconocer() {
   const [opciones, setOpciones] = useState<{ m: string; u: string }[]>([])
   const [ronda, setRonda] = useState(0)
   const enCatalogo = useRef<Set<string>>(new Set())
+  const colab = new URLSearchParams(window.location.search).get('colab')
+  const suyos = useRef<Record<string, Suyo>>({})
+  const [ficha, setFicha] = useState<{ modelo: string; link: string } | null>(null)
 
   const irA = (modelo: string) => { window.location.href = `/modelo/${encodeURIComponent(modelo)}?desde=reconocer` }
-  const elegido = (modelo: string) => {
-    if (enCatalogo.current.has(modelo)) irA(modelo)
-    else setEstado('no-encontrado')
+  const elegido = async (modelo: string) => {
+    if (!enCatalogo.current.has(modelo)) { setEstado('no-encontrado'); return }
+    if (!colab) { irA(modelo); return }
+    const s = suyos.current[modelo]
+    setEstado('verificando'); setAviso(`Es ${s.modelo}. Armando tu link…`)
+    const { data, error } = await supabase.rpc('colab_crear_link', { p_clave: colab, p_handle: s.handle, p_red: 'otra', p_formato: 'otro' })
+    if (error) { setEstado('error'); setAviso('No pude crear tu link. Probá de nuevo.'); return }
+    setFicha({ modelo: s.modelo, link: linkFicha(s.modelo, s.sku, (data as { codigo: string }).codigo) })
+    setEstado('ficha')
   }
 
   useEffect(() => {
@@ -95,9 +109,13 @@ export default function Reconocer() {
         const [tf, huellas, cat] = await Promise.all([
           import('@huggingface/transformers'),
           fetch('/ar/embeddings.json').then((r) => r.json() as Promise<Huellas>),
-          supabase.rpc('ar_modelos_catalogo'),
+          colab ? supabase.rpc('colab_modelos_stock', { p_clave: colab }) : supabase.rpc('ar_modelos_catalogo'),
         ])
-        enCatalogo.current = new Set((cat.data as string[] | null) ?? [])
+        if (colab) {
+          const filas = (cat.data as Suyo[] | null) ?? []
+          suyos.current = Object.fromEntries(filas.map((f) => [f.modelo_stock, f]))
+          enCatalogo.current = new Set(Object.keys(suyos.current))
+        } else enCatalogo.current = new Set((cat.data as string[] | null) ?? [])
         const proc = await tf.AutoProcessor.from_pretrained(huellas.model)
         // igual que al generar las huellas: sin recorte central, 224x224
         const ip = (proc as unknown as { image_processor: { do_center_crop: boolean; size: unknown } }).image_processor
@@ -134,6 +152,7 @@ export default function Reconocer() {
 
             const mejor: Record<string, number> = {}, mejorU: Record<string, string> = {}
             huellas.items.forEach((it, k) => {
+              if (colab && !enCatalogo.current.has(it.m)) return   // influencer: solo sus anteojos
               let s = 0; for (let j = 0; j < D; j++) s += Q[k * D + j] * vec[j]
               s /= normas[k] * nv
               if (!(it.m in mejor) || s > mejor[it.m]) { mejor[it.m] = s; if (!it.l) mejorU[it.m] = it.u }
@@ -210,7 +229,7 @@ export default function Reconocer() {
               {opciones.map((o) => (
                 <button key={o.m} onClick={() => elegido(o.m)} className="rounded-xl border border-neutral-200 p-2 hover:border-neutral-900">
                   <img src={o.u} alt={o.m} className="w-full aspect-[3/2] object-contain" />
-                  <span className="block text-xs font-semibold mt-1 truncate">{o.m}</span>
+                  <span className="block text-xs font-semibold mt-1 truncate">{suyos.current[o.m]?.modelo ?? o.m}</span>
                 </button>
               ))}
             </div>
@@ -218,9 +237,25 @@ export default function Reconocer() {
           </div>
         )}
 
+        {estado === 'ficha' && ficha && (
+          <div className="bg-white text-neutral-900 rounded-3xl p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">✓ Lo encontré</p>
+            <p className="text-2xl font-black mt-1">{ficha.modelo}</p>
+            <p className="text-sm text-neutral-500 mt-1">Tu link de la ficha, listo para publicar:</p>
+            <div className="mt-2 flex items-center gap-2 rounded-xl bg-neutral-100 px-3 py-2">
+              <span className="flex-1 truncate font-mono text-xs font-bold">{ficha.link.replace('https://', '')}</span>
+              <BotonCopiar texto={ficha.link} label="Copiar" grande />
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <a href={ficha.link} target="_blank" rel="noreferrer" className="rounded-xl border border-neutral-300 font-semibold py-3 text-center text-sm">Ver la ficha</a>
+              <button onClick={() => { setFicha(null); reintentar() }} className="rounded-xl bg-neutral-900 text-white font-bold py-3 text-sm">📷 Otro anteojo</button>
+            </div>
+          </div>
+        )}
+
         {estado === 'no-encontrado' && (
           <div className="bg-white text-neutral-900 rounded-3xl p-5 text-center">
-            <p className="text-lg font-bold">No lo encontré en el catálogo</p>
+            <p className="text-lg font-bold">{colab ? 'No está entre tus anteojos' : 'No lo encontré en el catálogo'}</p>
             <p className="text-sm text-neutral-500 mt-1">Probá con el anteojo de frente, con buena luz y ocupando el recuadro.</p>
             <button onClick={reintentar} className="w-full mt-4 rounded-xl bg-neutral-900 text-white font-bold py-3">Intentar de nuevo</button>
           </div>

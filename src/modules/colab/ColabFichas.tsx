@@ -40,6 +40,11 @@ export default function ColabFichas({ clave, onLink }: { clave: string; onLink?:
           La página de cada anteojo para tu comunidad: fotos, colores, dónde probárselo cerca y compra online.
           Es la misma que se abre al reconocer el anteojo con la cámara. Al comprar, pasan por tu link.
         </p>
+        <a href={`/reconocer?colab=${encodeURIComponent(clave)}`}
+          className="mt-3 flex items-center justify-center gap-2 w-full rounded-xl text-white font-bold py-3.5 text-[14px]" style={{ background: ACENTO }}>
+          📷 Reconocer con la cámara
+        </a>
+        <p className="text-[11px] text-neutral-400 mt-1.5 text-center">Apuntás a uno de tus anteojos y te da el link listo para copiar.</p>
       </div>
       {modelos.length === 0 && <p className="text-[12px] text-neutral-400 py-10 text-center">Todavía no tenés anteojos.</p>}
       <div className="grid sm:grid-cols-2 gap-3">
