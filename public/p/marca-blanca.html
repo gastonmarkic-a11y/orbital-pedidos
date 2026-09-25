@@ -81,7 +81,14 @@ main{flex:1;padding:16px 16px calc(var(--tabh) + 110px + env(safe-area-inset-bot
 .sw[aria-pressed="true"]{color:var(--ink);font-weight:600}
 .sw.flash i::after{content:"";position:absolute;inset:0;border-radius:50%;background:linear-gradient(135deg,rgba(255,255,255,.75),rgba(255,255,255,0) 55%)}
 .sw.polar i::after{content:"";position:absolute;inset:0;border-radius:50%;background:repeating-linear-gradient(90deg,rgba(255,255,255,.22) 0 2px,transparent 2px 5px)}
-.groups{display:grid;gap:14px}
+.groups{display:grid;gap:12px}
+.tone{border:1.5px solid var(--line);border-radius:14px;padding:12px;background:var(--app)}
+.tone.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tone-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+.tone-h b{display:block;font-size:16px;font-weight:700}
+.tone-h small{display:block;font-size:12px;color:var(--ink2);margin-top:2px}
+.tone-p{font-family:var(--mono);font-weight:700;font-size:17px;color:var(--accent);white-space:nowrap;text-align:right}
+.tone-p small{display:block;font-size:10.5px;font-weight:500;color:var(--ink2);margin:0}
 .groups .gt{font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:8px}
 
 .kit{display:grid;gap:10px}
@@ -188,15 +195,16 @@ const clr=c=>`linear-gradient(${c},${c}),${CHK}`;
 const car=(a,b)=>`radial-gradient(circle at 30% 35%,${b} 0 18%,transparent 19%),radial-gradient(circle at 70% 65%,${b} 0 14%,transparent 15%),radial-gradient(circle at 62% 25%,${b} 0 9%,transparent 10%),${a}`;
 const vet=(a,b)=>`repeating-linear-gradient(115deg,${a} 0 5px,${b} 5px 7px,${a} 7px 11px)`;
 const gloss=c=>`radial-gradient(circle at 32% 28%,rgba(255,255,255,.55) 0 12%,transparent 34%),${c}`;
+// Colores agrupados por precio (pr = texto del precio del grupo): 6 por grupo + uno a medida.
+// Los nombres "A medida (…)" caen en el tramo del grupo por tierOf; la descripción del cliente va aparte.
+const RAINBOW="conic-gradient(#e53935,#fdd835,#43a047,#1e88e5,#8e24aa,#e53935)";
 const COLGROUPS=[
- {g:"Negros y grises",items:[["Negro brillo",gloss("#111214")],["Negro mate","#232426"],["Gris oscuro mate","#4a4e52"],["Peltre mate","#6f7277"],["Gris brillo",gloss("#7c8085")],["Gris mate","#8d9195"],["Gris claro","#c3c6c9"]]},
- {g:"Blancos y neutros",items:[["Blanco brillo",gloss("#f7f7f4")],["Blanco marfil","#f1ead9"],["Hueso","#e6dcc6"],["Crudo","#e8dfc9"],["Beige mate","#d9c6a8"],["Arena mate","#cdbb97"]]},
- {g:"Habano y marrones",items:[["Habano","#6b3a1e"],["Habano oscuro","#3f2414"],["Caramelo","#b8742a"],["Cobre mate","#a15a32"],["Marrón brillo",gloss("#5e3b22")],["Marrón mate","#5a3b27"],["Cherry",gloss("#7a1f24")]]},
- {g:"Colores",items:[["Bordó mate","#5c1a26"],["Rojo mate","#b3262b"],["Rojo vetas",vet("#b3262b","#e0736b")],["Naranja mate","#e2701f"],["Amarillo mate","#f0c21c"],["Verde mate","#5f7f55"],["Verde brillo",gloss("#3f7a45")],["Verde oscuro","#2f4a33"],["Verde militar","#56603a"],["Verde petróleo","#1f4f55"],["Verde veteado",vet("#2f4a33","#6f9a63")],["Turquesa mate","#2aa5a0"],["Celeste mate","#8cc3e3"],["Azul brillo",gloss("#1f45a0")],["Azul mate","#22407e"],["Azul oscuro mate","#1a2747"],["Azul veteado",vet("#22407e","#6f8fd0")],["Violeta mate","#6a4b9a"],["Rosa mate","#e3a2b3"],["Rosa perla","#ecd0d6"]]},
- {g:"Transparentes",items:[["Cristal",clr("rgba(235,238,240,.35)")],["Gris clear",clr("rgba(90,95,100,.55)")],["Humo clear",clr("rgba(40,42,45,.7)")],["Habano clear",clr("rgba(120,70,30,.6)")],["Bordó clear",clr("rgba(110,25,40,.6)")],["Rojo clear",clr("rgba(200,40,40,.5)")],["Rosa clear",clr("rgba(235,140,165,.5)")],["Naranja clear",clr("rgba(240,130,40,.55)")],["Amarillo clear",clr("rgba(240,200,40,.55)")],["Verde clear",clr("rgba(60,130,70,.5)")],["Celeste clear",clr("rgba(120,190,230,.5)")],["Azul claro clear",clr("rgba(100,150,220,.5)")],["Azul clear",clr("rgba(35,70,155,.55)")],["Azul oscuro clear",clr("rgba(25,35,80,.65)")]]},
- {g:"Pasteles",items:[["Rosa pastel","#f2c6cf"],["Celeste pastel","#c9e3f2"],["Azul claro pastel","#b9cdea"],["Verde pastel","#c9dcc0"],["Amarillo pastel","#f4e3a1"],["Beige pastel","#e3d3bb"],["Gris pastel","#d5d8da"]]},
- {g:"Degradé",items:[["Negro degradé",dg("#111214","#b9bcbf")],["Gris degradé",dg("#4e5256","#d7d9db")],["Caramelo degradé",dg("#8a4d18","#e9c38f")],["Bordó degradé",dg("#5c1a26","#e3b8c0")],["Azul degradé",dg("#1f45a0","#c8d6f0")]]}
+ {g:"Negro básico",sub:"mate o brillo",pr:"11,50",items:[["Negro mate","#232426"],["Negro brillo",gloss("#111214")]]},
+ {g:"Compacto mate",sub:"color lleno, terminación mate",pr:"12,50",items:[["Gris mate","#8d9195"],["Blanco marfil","#f1ead9"],["Habano","#6b3a1e"],["Bordó mate","#5c1a26"],["Verde militar","#56603a"],["Azul mate","#22407e"],["A medida (mate)",RAINBOW]]},
+ {g:"Clear",sub:"transparente · mate 13,50 · brillo 14,50",pr:"13,50",items:[["Cristal",clr("rgba(235,238,240,.35)")],["Gris clear",clr("rgba(90,95,100,.55)")],["Habano clear",clr("rgba(120,70,30,.6)")],["Rosa clear",clr("rgba(235,140,165,.5)")],["Verde clear",clr("rgba(60,130,70,.5)")],["Azul clear",clr("rgba(35,70,155,.55)")],["A medida (clear)",clr("rgba(255,255,255,.25)")+","+RAINBOW]]},
+ {g:"Brillo · degradé · vetas",sub:"terminación brillante o con efecto",pr:"14,50",items:[["Gris brillo",gloss("#7c8085")],["Blanco brillo",gloss("#f7f7f4")],["Azul brillo",gloss("#1f45a0")],["Negro degradé",dg("#111214","#b9bcbf")],["Azul degradé",dg("#1f45a0","#c8d6f0")],["Rojo vetas",vet("#b3262b","#e0736b")],["A medida (brillo)",gloss(RAINBOW)]]}
 ];
+const isCustom=c=>c.startsWith("A medida");
 const COL=Object.fromEntries(COLGROUPS.flatMap(g=>g.items.map(([n,c])=>[n,[n,c]])));
 const NCOL=Object.keys(COL).length;
 const MODELS=[1,2,3,4,5,6,7].map(n=>({id:n,name:"Modelo 0"+n,ref:"00"+n}));
@@ -210,8 +218,8 @@ const EST=0.7,CAJA_MIN=100,cajaP=n=>n>=1000?0.45:1.3;
 const IMG="/p/mb/";
 const FN="https://towcgvphxeqilpdnboki.supabase.co/functions/v1/marca-blanca-pedido";
 const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2NndnBoeGVxaWxwZG5ib2tpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Nzc1OTAsImV4cCI6MjA5ODA1MzU5MH0.KdghSYaU3D_cbmZ7E_TsvIwU9Bu0GB97Nz51Bck_WNU";
-const S={tab:"marco",m:1,col:"Negro mate",fin:"mate",logo:"tampo",est:true,caja:false,view:"f",q:50,acct:"bru",lines:[],datos:{marca:"",razon_social:"",email:"",telefono:"",obs:""}};
-try{const s=JSON.parse(localStorage.getItem("mb-app")||"null");if(s){for(const k of ["m","col","fin","logo","est","caja","acct","lines","datos"])if(s[k]!=null)S[k]=s[k]}}catch(e){}
+const S={tab:"marco",m:1,col:"Negro mate",fin:"mate",logo:"tampo",est:true,caja:false,cdesc:"",view:"f",q:50,acct:"bru",lines:[],datos:{marca:"",razon_social:"",email:"",telefono:"",obs:""}};
+try{const s=JSON.parse(localStorage.getItem("mb-app")||"null");if(s){for(const k of ["m","col","fin","logo","est","caja","cdesc","acct","lines","datos"])if(s[k]!=null)S[k]=s[k]}}catch(e){}
 S.lines=(S.lines||[]).filter(l=>typeof l.est==="boolean"&&MODELS[l.m-1]&&COL[l.col]);if(!COL[S.col])S.col="Negro mate";if(S.fin!=="brillo")S.fin="mate";
 let logoFile=null,sending=false,okId=null;
 const $=id=>document.getElementById(id);
@@ -221,11 +229,11 @@ const fdate=f=>{const [y,m,d]=f.split("-");return `${d}/${m}/${y}`};
 const frameP=l=>TIERS[tierOf(l.col,l.fin)].p;
 const cajaUnits=(extra=0)=>S.lines.reduce((a,l)=>a+(l.caja?l.q:0),0)+extra;
 const unit=(l,cu=cajaUnits())=>frameP(l)+(l.est?EST:0)+(l.caja?cajaP(cu):0);
-const colTxt=l=>l.col+(isClear(l.col)?" "+l.fin:"");
+const colTxt=l=>(isCustom(l.col)?"Color a medida "+l.col.slice(10,-1):l.col)+(isClear(l.col)?" "+l.fin:"")+(isCustom(l.col)&&l.desc?": "+l.desc:"");
 const packTxt=l=>[l.est?"estuche":"",l.caja?"caja alta calidad":""].filter(Boolean).join(" + ")||"sin packaging";
 const cajaFalta=()=>{const c=cajaUnits();return c>0&&c<CAJA_MIN};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-function save(){try{localStorage.setItem("mb-app",JSON.stringify({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja,acct:S.acct,lines:S.lines,datos:S.datos}))}catch(e){}}
+function save(){try{localStorage.setItem("mb-app",JSON.stringify({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja,cdesc:S.cdesc,acct:S.acct,lines:S.lines,datos:S.datos}))}catch(e){}}
 function sums(){const units=S.lines.reduce((a,l)=>a+l.q,0),sub=S.lines.reduce((a,l)=>a+unit(l)*l.q,0),iva=S.acct==="ple"?sub*.21:0;return {units,sub,iva,tot:sub+iva}}
 function toast(t){const e=$("toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,1600)}
 // Dólar en vivo (BNA oficial vendedor); si falla queda el último publicado.
@@ -246,7 +254,7 @@ function renderTabs(){
 }
 function head(eb,t,p){return `<div class="screen-h"><div class="eb">${eb}</div><h1>${t}</h1>${p?`<p>${p}</p>`:""}</div>`}
 function selTxt(l){const m=MODELS[l.m-1],lg=LOGOS.find(x=>x.k===l.logo);return {t:`${m.name} · ${colTxt(l)}`,s:`logo ${lg.n.toLowerCase()} · ${packTxt(l)}`}}
-const cur=()=>({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja});
+const cur=()=>({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja,desc:isCustom(S.col)?S.cdesc.trim():""});
 
 const SCREENS={
  marco(){const m=MODELS[S.m-1];return `${head("Paso 1 de 2","Elegí el marco","Siete modelos en acetato. Tu logo va grabado en la patilla. El cristal lo aportás vos: el calibrado está incluido.")}
@@ -254,11 +262,10 @@ const SCREENS={
    <div class="cap"><b>${m.name}</b><span>Frente y patilla · foto en negro</span></div></div>
   <div class="carousel" id="car">${MODELS.map(x=>`<button class="mc" type="button" data-m="${x.id}" aria-pressed="${x.id===S.m}"><img src="${IMG}BR${x.id}_frente.webp" alt=""><img class="lat" src="${IMG}BR${x.id}_lateral.webp" alt=""><b>${x.name}</b></button>`).join("")}</div>
   <div><div class="sec-l">Logo en la patilla</div><div class="seg">${LOGOS.map(l=>`<button type="button" data-l="${l.k}" aria-pressed="${l.k===S.logo}">${l.n}<small>${l.d}</small></button>`).join("")}</div></div>
-  <div class="card"><div class="sec-l">Color del marco <em>${esc(S.col)}</em></div>
-   <div class="groups">${COLGROUPS.map(g=>`<div><div class="gt">${g.g}</div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${n}</button>`).join("")}</div></div>`).join("")}</div>
-   ${isClear(S.col)?`<div style="margin-top:12px"><div class="sec-l">Terminación del transparente</div><div class="seg"><button type="button" data-fin="mate" aria-pressed="${S.fin==="mate"}">Mate<small>${usd(TIERS[2].p)}</small></button><button type="button" data-fin="brillo" aria-pressed="${S.fin==="brillo"}">Brillo<small>${usd(TIERS[3].p)}</small></button></div></div>`:""}
-   <p class="legend" style="margin-top:12px">Cualquier modelo en cualquiera de los ${NCOL} colores de las colecciones Orbital y BR.</p></div>
-  <div class="card summary"><div class="sec-l" style="margin:0">Marco con logo · cristal del cliente, calibrado incluido</div>${TIERS.map((t,i)=>{const on=i===tierOf(S.col,S.fin);return `<div class="row"><span>${on?"<b>"+t.n+"</b>":t.n}</span><span style="font-family:var(--mono)">${on?"<b>"+usd(t.p)+"</b>":usd(t.p)}</span></div>`}).join("")}</div>`},
+  <div class="card"><div class="sec-l">Color del marco <em>${esc(colTxt(cur()))}</em></div>
+   <p class="legend" style="margin:0 0 12px">El precio lo marca el tono: negro, compacto, clear o brillo.</p>
+   <div class="groups">${COLGROUPS.map((g,gi)=>`<div class="tone${g.items.some(([n])=>n===S.col)?" on":""}"><div class="tone-h"><div><b>${g.g}</b><small>${g.sub}</small></div><div class="tone-p">${gi===2?"<small>desde</small>":""}USD ${g.pr}</div></div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${isCustom(n)?"A medida":n}</button>`).join("")}</div>${g.items.some(([n])=>n===S.col)?extras():""}</div>`).join("")}</div>
+   <p class="legend" style="margin-top:12px">Cualquier modelo en cualquier color. ¿No está el tuyo? Elegí «A medida» en el tono que quieras.</p></div>`},
  estuche(){const l=cur(),t=selTxt(l),cu=cajaUnits(S.caja?S.q:0),chk=v=>`<b style="font-size:22px;line-height:1">${v?"☑":"☐"}</b>`;return `${head("Paso 2 de 2","Packaging","Se cotiza aparte del marco. Elegí qué sumás a cada armazón.")}
   <div class="card kit">
    <button class="it" type="button" data-pk="est" aria-pressed="${S.est}" style="cursor:pointer;background:none;border:0;padding:6px 0;text-align:left;color:inherit;font:inherit;width:100%"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="3" y="10" width="58" height="26" rx="13" fill="var(--ink)"/><rect x="3" y="21" width="58" height="2" fill="var(--panel)" opacity=".35"/><text x="32" y="18.5" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--panel)">LOGO</text></svg><div style="flex:1"><b>Estuche estándar</b><small>+ ${usd(EST)} por armazón</small></div>${chk(S.est)}</button>
@@ -309,6 +316,7 @@ const SCREENS={
    <p style="margin:0;color:var(--ink2)">Quedó precargado con el número <b style="color:var(--ink)">#${okId}</b>. Te escribimos al mail o WhatsApp para confirmar el diseño del logo y enviarte los datos de la transferencia del adelanto.</p>
    <button class="btn" type="button" id="nuevo">Hacer otro pedido</button></div>`}
 };
+function extras(){return `${isCustom(S.col)?`<div class="fld" style="margin-top:12px"><label for="cdesc">¿Qué color querés? <span>(Pantone, referencia o descripción)</span></label><input id="cdesc" type="text" maxlength="80" placeholder="Ej.: Pantone 7621 C, verde de mi logo" value="${esc(S.cdesc)}"></div>`:""}${isClear(S.col)?`<div style="margin-top:12px"><div class="sec-l">Terminación del transparente</div><div class="seg"><button type="button" data-fin="mate" aria-pressed="${S.fin==="mate"}">Mate<small>${usd(TIERS[2].p)}</small></button><button type="button" data-fin="brillo" aria-pressed="${S.fin==="brillo"}">Brillo<small>${usd(TIERS[3].p)}</small></button></div></div>`:""}`}
 function field(id,lab,ph,val,type,ac){return `<div class="fld"><label for="${id}">${lab}</label><input id="${id}" type="${type}" autocomplete="${ac}" placeholder="${ph}" value="${esc(val)}" required></div>`}
 
 function renderBar(){
@@ -329,10 +337,11 @@ function render(){
     ["marca","razon_social","email","telefono","obs"].forEach(k=>$(k).addEventListener("input",e=>{S.datos[k]=e.target.value;save()}));
     $("logo").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;if(f.size>8*1024*1024){toast("El logo pesa más de 8 MB");return}logoFile=f;render()});
   }
+  if(S.tab==="marco"&&$("cdesc"))$("cdesc").addEventListener("input",e=>{S.cdesc=e.target.value;save()});
   if(S.tab==="estuche")$("qty").addEventListener("input",e=>{S.q=Math.max(1,Math.round(+e.target.value||1));renderBar()});
 }
 function go(t){S.tab=t;render();window.scrollTo({top:0})}
-function addLine(){const c=cur(),ex=S.lines.find(l=>["m","col","fin","logo","est","caja"].every(k=>l[k]===c[k]));
+function addLine(){const c=cur(),ex=S.lines.find(l=>["m","col","fin","logo","est","caja","desc"].every(k=>(l[k]??"")===(c[k]??"")));
   if(ex)ex.q+=S.q;else S.lines.push({...cur(),q:S.q});toast("Agregado al pedido");go("pedido")}
 const typeOf=f=>f.type||({ai:"application/illustrator",svg:"image/svg+xml",pdf:"application/pdf",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",webp:"image/webp"}[(f.name.split(".").pop()||"").toLowerCase()]||"");
 function b64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(f)})}
@@ -356,7 +365,7 @@ async function enviar(){
 document.addEventListener("click",e=>{
   const t=e.target.closest("button");if(!t)return;
   const d=t.dataset;
-  if(t.id==="abBtn"){if(S.tab==="marco")go("estuche");else if(S.tab==="estuche")addLine();else if(S.tab==="pedido")go("datos");else if(S.tab==="datos")enviar();return}
+  if(t.id==="abBtn"){if(S.tab==="marco"){if(isCustom(S.col)&&!S.cdesc.trim()){toast("Contanos qué color querés");$("cdesc").focus();return}go("estuche")}else if(S.tab==="estuche")addLine();else if(S.tab==="pedido")go("datos");else if(S.tab==="datos")enviar();return}
   if(t.id==="cartTop")return go("pedido");
   if(t.id==="nuevo")return go("marco");
   if(d.tab)return go(d.tab);
