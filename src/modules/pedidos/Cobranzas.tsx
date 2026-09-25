@@ -6,6 +6,9 @@ import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
 import { esMovimientoConsigna, estadoLabel, importeDe } from './calc'
+import FichaCobranza, { ETAPAS_COBRO, accionDe, faltanteDe } from './FichaCobranza'
+
+const claveCliente = (p: Pedido) => p.cod_cliente || (p.cliente || '').replace(/^\d+ - /, '').toLowerCase()
 
 export default function Cobranzas() {
   const { rolEfectivo, codigoEfectivo } = useAuth()
@@ -18,6 +21,8 @@ export default function Cobranzas() {
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('')
   const [tipo, setTipo] = useState('') // '' todos · 'b2c' consumidor final (Tienda) · 'b2b' mayorista
+  const [etapa, setEtapa] = useState('') // filtra por estado del pedido para apurar esa etapa
+  const [clienteSel, setClienteSel] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
     let q = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
@@ -49,6 +54,28 @@ export default function Cobranzas() {
     if (q) logs = logs.filter((l) => (l.cliente || '').toLowerCase().includes(q))
     return logs
   }, [pedidos, filtro, tipo, busqueda])
+
+  // Lo pendiente de cobro repartido por etapa: dónde está trabada la plata y quién la tiene que mover.
+  const porEtapa = useMemo(() => {
+    const pend = filas.filter((l) => !l.cobrado)
+    return ETAPAS_COBRO.map((e) => {
+      const fs = pend.filter((l) => (l.estado ?? 'pendiente') === e.id)
+      return { ...e, n: fs.length, monto: fs.reduce((a, l) => a + importeDe(l, stock), 0) }
+    })
+  }, [filas, stock])
+
+  const visibles = etapa ? filas.filter((l) => (l.estado ?? 'pendiente') === etapa) : filas
+
+  // Ficha: el cliente tocado, o solo el que queda si la búsqueda apunta a uno.
+  const claveFicha = useMemo(() => {
+    if (clienteSel) return clienteSel
+    if (!busqueda.trim()) return null
+    const claves = new Set(filas.map(claveCliente))
+    return claves.size === 1 ? [...claves][0] : null
+  }, [clienteSel, busqueda, filas])
+  const pedidosFicha = claveFicha
+    ? pedidos.filter((p) => !esMovimientoConsigna(p) && claveCliente(p) === claveFicha)
+    : []
 
   const totalCobrado = filas.filter((l) => l.cobrado).reduce((a, l) => a + importeDe(l, stock), 0)
   const totalPendiente = filas.filter((l) => !l.cobrado).reduce((a, l) => a + importeDe(l, stock), 0)
@@ -84,7 +111,10 @@ export default function Cobranzas() {
         <input
           placeholder="Buscar cliente..."
           value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+          onChange={(e) => {
+            setBusqueda(e.target.value)
+            setClienteSel(null)
+          }}
           className="flex-1 bg-white border border-black/10 rounded-lg px-3 py-2 text-sm placeholder:text-faint"
         />
         <select
@@ -108,19 +138,54 @@ export default function Cobranzas() {
         </select>
       </div>
 
-      {filas.length === 0 ? (
+      <div className="bg-white border border-black/10 rounded-xl p-2">
+        <p className="text-[11px] uppercase tracking-wide text-faint font-semibold px-1 pb-1">
+          Pendiente de cobro por etapa · tocá una para ver esos pedidos
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+          {porEtapa.map((e) => (
+            <button
+              key={e.id}
+              onClick={() => setEtapa(etapa === e.id ? '' : e.id)}
+              className={`text-left rounded-lg border px-2 py-1.5 ${
+                etapa === e.id ? 'border-orange-400 bg-orange-50' : 'border-black/10'
+              } ${e.n ? '' : 'opacity-40'}`}
+            >
+              <p className="text-[11px] font-semibold">{estadoLabel(e.id)}</p>
+              <p className="text-sm font-bold">{formatPrecio(e.monto) || '$ 0'}</p>
+              <p className="text-[10px] text-muted">
+                {e.n} pedido{e.n === 1 ? '' : 's'} · {e.accion}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {pedidosFicha.length > 0 && (
+        <FichaCobranza
+          pedidos={pedidosFicha}
+          stock={stock}
+          onCerrar={() => {
+            setClienteSel(null)
+            setBusqueda('')
+          }}
+        />
+      )}
+
+      {visibles.length === 0 ? (
         <div className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">
           Sin pedidos para gestionar.
         </div>
       ) : (
         <div className="space-y-1.5">
-          {filas.map((l) => {
+          {visibles.map((l) => {
             const n = importeDe(l, stock)
             const nombre = (l.cliente || '').replace(/^\d+ - /, '')
+            const falt = l.cobrado ? null : faltanteDe(l, stock)
             return (
-              <label
+              <div
                 key={l.id}
-                className={`flex items-center gap-3 bg-white border rounded-xl px-3 py-2.5 cursor-pointer ${
+                className={`flex items-center gap-3 bg-white border rounded-xl px-3 py-2.5 ${
                   l.cobrado ? 'border-emerald-200 opacity-70' : 'border-black/10'
                 }`}
               >
@@ -128,17 +193,31 @@ export default function Cobranzas() {
                   type="checkbox"
                   checked={!!l.cobrado}
                   onChange={(e) => toggleCobrado(l, e.target.checked)}
-                  className="w-4 h-4"
+                  className="w-4 h-4 cursor-pointer"
+                  title="Marcar cobrado"
                 />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${l.cobrado ? 'line-through text-muted' : ''}`}>{nombre}</p>
+                <button
+                  type="button"
+                  onClick={() => setClienteSel(claveCliente(l))}
+                  className="flex-1 min-w-0 text-left"
+                  title="Ver todos los pedidos de este cliente"
+                >
+                  <p className={`text-sm font-medium truncate ${l.cobrado ? 'line-through text-muted' : ''}`}>
+                    {nombre} <span className="text-faint font-normal">#{l.id}</span>
+                  </p>
                   <p className="text-xs text-faint">
                     {l.vendedor || ''} · {l.fecha || ''} · {estadoLabel(l.estado)}
                     {l.nro_factura ? ` · Fact. ${l.nro_factura}` : ''}
                   </p>
-                </div>
+                  {!l.cobrado && (
+                    <p className="text-xs text-orange-700">
+                      → {accionDe(l)}
+                      {falt && falt.uds > 0 ? ` · faltan ${falt.uds} u (${formatPrecio(falt.importe)})` : ''}
+                    </p>
+                  )}
+                </button>
                 <p className="text-sm font-bold shrink-0">{formatPrecio(n)}</p>
-              </label>
+              </div>
             )
           })}
         </div>
