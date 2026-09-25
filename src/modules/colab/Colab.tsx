@@ -12,6 +12,7 @@ import {
   kAr, nAr, labelRed, labelFormato, linkPanel, linkPublico,
 } from './colabUtil'
 import ColabAnteojos, { BotonCopiar } from './ColabAnteojos'
+import ColabFichas from './ColabFichas'
 import ColabDashboard, { Liquidacion } from './ColabDashboard'
 import ColabAgregar from './ColabAgregar'
 import ColabPropuestas from './ColabPropuestas'
@@ -92,12 +93,12 @@ export default function Colab() {
   return <Panel clave={clave} ent={ent} salir={() => { localStorage.removeItem(CLAVE_KEY); setClave(null); setEnt(null) }} />
 }
 
-type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' | 'inspiracion' | 'links' | 'dashboard' | 'liquidacion'
+type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' | 'inspiracion' | 'links' | 'fichas' | 'dashboard' | 'liquidacion'
 // Inspiración y Links son internos: el promotor ve solo sus anteojos y su dashboard.
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
   orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['influencers', 'Influencers'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   admin: [['promotores', 'Promotores'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  influencer: [['anteojos', 'Anteojos'], ['dashboard', 'Dashboard']],
+  influencer: [['anteojos', 'Anteojos'], ['fichas', 'Fichas'], ['dashboard', 'Dashboard']],
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {
@@ -182,6 +183,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
             <ColabAnteojos clave={clave} pct={ent.pct_descuento ?? 15} puedeLink onLink={() => setVersion((v) => v + 1)} oscuro={oscuro} coleccion={ent.coleccion} />
           </>
         )}
+        {tab === 'fichas' && <ColabFichas clave={clave} onLink={() => setVersion((v) => v + 1)} />}
         {tab === 'links' && <LinksTodos key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} />}
         {tab === 'dashboard' && (
           <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}
