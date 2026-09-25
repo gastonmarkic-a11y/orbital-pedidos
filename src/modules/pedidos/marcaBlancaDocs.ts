@@ -1,6 +1,6 @@
 // Documentos automáticos de marca blanca.
 // Con IVA (Plenorius): fila(s) en formato "Novedades para pedidos" de Tango → se factura en Tango.
-// Sin IVA (Brubank): remito PDF generado acá, se sube al bucket y el cliente lo baja desde su link.
+// Sin IVA (efectivo): remito PDF generado acá, se sube al bucket y el cliente lo baja desde su link.
 
 interface ItemMB { modelo: string; ref?: string; color: string; terminacion?: string; detalle?: string; cantidad: number; unit_usd: number; total_usd: number }
 interface PedidoMB {

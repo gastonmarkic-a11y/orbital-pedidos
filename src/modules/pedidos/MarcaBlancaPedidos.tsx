@@ -18,7 +18,8 @@ interface Item {
 interface Pedido {
   id: number; created_at: string; estado: string; marca: string; razon_social: string
   email: string; telefono: string; logo_path: string | null; logo_nombre: string | null
-  cuenta: 'brubank' | 'plenorius'; items: Item[]; unidades: number
+  cuenta: 'brubank' | 'plenorius' // 'brubank' = valor interno de efectivo / sin IVA
+  items: Item[]; unidades: number
   subtotal_usd: number; iva_usd: number; total_usd: number
   dolar: number | null; dolar_fecha: string | null; total_ars: number | null
   obs: string | null; nota_interna: string | null
@@ -109,7 +110,7 @@ export default function MarcaBlancaPedidos() {
     else { w?.close(); toast('No se pudo abrir el archivo', 'error') }
   }
 
-  // Factura si paga a Plenorius; remito solo si es en negro (Brubank).
+  // Factura si paga a Plenorius; remito si es efectivo / sin IVA.
   async function subirDoc(p: Pedido, file: Blob, nombre: string) {
     const tipo = p.cuenta === 'plenorius' ? 'factura' : 'remito'
     setGuardando(p.id)
@@ -120,7 +121,7 @@ export default function MarcaBlancaPedidos() {
     await actualizar(p, { doc_tipo: tipo, doc_path: path, doc_at: new Date().toISOString() }, `${tipo === 'factura' ? 'Factura' : 'Remito'} cargado · el cliente lo ve en su link`)
   }
 
-  // Sin IVA (Brubank): remito PDF armado acá con los datos del pedido.
+  // Sin IVA (efectivo): remito PDF armado acá con los datos del pedido.
   async function generarRemito(p: Pedido) {
     try {
       const blob = await remitoPdfMB(p)
@@ -217,7 +218,7 @@ Se genera sola la orden de producción (pendiente en Producción → Órdenes).`
                       <div className="space-y-1 text-sm">
                         <p><span className="text-muted">Mail:</span> <a className="text-brandDark" href={`mailto:${p.email}`}>{p.email}</a></p>
                         <p><span className="text-muted">Teléfono:</span> {p.telefono} · <a className="text-brandDark" href={whatsapp(p.telefono)} target="_blank" rel="noreferrer">WhatsApp ↗</a></p>
-                        <p><span className="text-muted">Pago:</span> directo por transferencia a {p.cuenta === 'plenorius' ? 'Plenorius S.A. (+IVA)' : 'Brubank ($)'} · 50 % adelanto / 50 % contra entrega</p>
+                        <p><span className="text-muted">Pago:</span> {p.cuenta === 'plenorius' ? 'transferencia a Plenorius S.A. (+IVA)' : 'efectivo / sin IVA (si transfiere, se define la cuenta)'} · 50 % adelanto / 50 % contra entrega</p>
                         {p.obs && <p className="text-xs bg-neutral-50 rounded-lg px-3 py-2">📝 {p.obs}</p>}
                       </div>
                       <div className="rounded-lg border border-black/10 bg-neutral-50 p-2 flex flex-col items-center justify-center gap-1 min-h-[100px]">
@@ -276,7 +277,7 @@ Se genera sola la orden de producción (pendiente en Producción → Órdenes).`
                         </div>
                       ))}
                       <div className="flex items-center justify-between gap-2">
-                        <span>{p.cuenta === 'plenorius' ? 'Factura (Plenorius)' : 'Remito (Brubank, en negro)'}</span>
+                        <span>{p.cuenta === 'plenorius' ? 'Factura (Plenorius)' : 'Remito (efectivo, sin IVA)'}</span>
                         <span className="flex items-center gap-3">
                           {p.cuenta === 'plenorius' && (
                             <button disabled={guardando === p.id} onClick={() => exportarTango(p)} className="text-xs font-semibold text-brandDark disabled:opacity-40"

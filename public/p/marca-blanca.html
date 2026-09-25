@@ -297,9 +297,9 @@ const SCREENS={
   ${S.lines.length?`<div class="lines">${S.lines.map((l,i)=>{const t=selTxt(l);return `<div class="line"><div class="th"><img src="${IMG}BR${l.m}_frente.webp" alt=""><i style="background:${COL[l.col][1]}"></i></div><div class="d"><b>${l.q} × ${esc(t.t)}</b><span>${esc(t.s)} · ${usd(unit(l))} c/u</span></div><div class="r"><b>${usd(unit(l)*l.q)}</b><button type="button" data-del="${i}">Quitar</button></div></div>`}).join("")}</div>
   <button class="btn ghost block" type="button" data-tab="marco">+ Sumar otro modelo</button>
   <div class="card" style="display:grid;gap:12px">
-   <div class="condbox"><b>Pago directo por transferencia</b><span>50 % de adelanto al confirmar · 50 % contra entrega</span></div>
+   <div class="condbox"><b>Pago directo</b><span>50 % de adelanto al confirmar · 50 % contra entrega</span></div>
    <div class="sec-l" style="margin:0">Cuenta de pago</div>
-   <div class="seg"><button type="button" data-acct="bru" aria-pressed="${S.acct==="bru"}">Brubank<small>cuenta en $</small></button><button type="button" data-acct="ple" aria-pressed="${S.acct==="ple"}">Plenorius S.A.<small>con factura + IVA</small></button></div>
+   <div class="seg"><button type="button" data-acct="bru" aria-pressed="${S.acct==="bru"}">Efectivo<small>sin factura</small></button><button type="button" data-acct="ple" aria-pressed="${S.acct==="ple"}">Plenorius S.A.<small>con factura + IVA</small></button></div>
    <div class="tot"><div class="muted"><span>Subtotal</span><span>${usd(x.sub)}</span></div>${x.iva?`<div class="muted"><span>IVA 21 %</span><span>${usd(x.iva)}</span></div>`:""}<div class="big"><span>Total</span><span>${usd(x.tot)}</span></div></div>
    ${cajaFalta()?`<p class="err">La caja de alta calidad tiene mínimo ${CAJA_MIN} unidades (llevás ${cajaUnits()}). Sumá unidades con caja o quitala.</p>`:""}
    <p class="legend">Cristal aportado por el cliente, calibrado incluido. El monto en pesos se calcula al cerrar el pedido, con el dólar oficial vendedor del día.</p>
@@ -318,7 +318,7 @@ const SCREENS={
    <div class="sec-l" style="margin:0">Pedido en pesos</div>
    <div class="tot"><div class="muted"><span>${x.units} armazones · total en dólares</span><span>${usd(x.tot)}</span></div><div class="muted"><span>Dólar oficial vendedor ${fdate(DOLAR.fecha)}</span><span>${ars(DOLAR.venta)}</span></div><div class="big"><span>Total en pesos</span><span>${ars(p)}</span></div></div>
    <div class="split"><div><small>50 % adelanto</small><b>${ars(p/2)}</b></div><div><small>50 % contra entrega</small><b>${ars(p/2)}</b></div></div>
-   <ul class="cond"><li>Pago directo por transferencia.</li><li>${S.acct==="bru"?"A la cuenta en pesos de Brubank. Te pasamos los datos al confirmar.":"A Plenorius S.A., con factura, más IVA."}</li></ul>
+   <ul class="cond"><li>${S.acct==="bru"?"En efectivo, sin factura. Si preferís transferir, te pasamos los datos al confirmar.":"Por transferencia a Plenorius S.A., con factura, más IVA."}</li></ul>
    ${S.acct==="ple"?plenBox():""}
    <p class="legend"><b>Cómo sacamos el tipo de cambio:</b> usamos el dólar oficial del Banco de la Nación Argentina, cotización vendedor (venta) del día. El importe en pesos vale para transferencias hechas hoy; el saldo contra entrega se recalcula al dólar vendedor del día en que se paga.</p>
   </div>`},
@@ -330,7 +330,7 @@ const SCREENS={
   const paso=(tipo,tit,sub,at,hab)=>`<div class="card" style="display:grid;gap:10px">
    <div class="tone-h" style="margin:0"><div><b>${tit}</b><small>${sub}</small></div><div class="tone-p">${usd(half)}<small>≈ ${ars(half*dv)} hoy</small></div></div>
    ${at?`<div class="condbox"><b>✓ Comprobante enviado el ${fd(at)}</b><span>Lo verificamos y te avisamos.</span></div>`
-   :hab?`${ple?plenBox():`<div class="condbox"><b>Transferencia a Brubank (cuenta en pesos)</b><span>Te pasamos los datos por WhatsApp.</span></div>`}
+   :hab?`${ple?plenBox():`<div class="condbox"><b>Pago en efectivo</b><span>Coordinamos con vos por WhatsApp. Si preferís transferir, te pasamos los datos.</span></div>`}
     <label class="drop" for="f-${tipo}">${pgFile[tipo]?`<b>${esc(pgFile[tipo].name)}</b><span>tocá para cambiarlo</span>`:`<b>Subí el comprobante</b><span>Foto o PDF · hasta 8 MB</span>`}</label><input id="f-${tipo}" type="file" accept="image/*,application/pdf" hidden>
     <button class="btn block" type="button" data-comp="${tipo}" ${pgSending?"disabled":""}>${pgSending===tipo?"Enviando…":"Enviar comprobante"}</button>`
    :`<p class="legend" style="margin:0">Primero el adelanto. El saldo se paga al recibir el pedido y el comprobante se sube acá mismo.</p>`}
