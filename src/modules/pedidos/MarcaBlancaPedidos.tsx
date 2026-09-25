@@ -10,6 +10,7 @@ import { useToast } from '../../lib/toast'
 interface Item {
   modelo: string; ref: string; color: string; cristal: string; logo: string
   cantidad: number; unit_usd: number; total_usd: number
+  detalle?: string // desde v3: cristal del cliente + logo + packaging elegido
 }
 interface Pedido {
   id: number; created_at: string; estado: string; marca: string; razon_social: string
@@ -166,7 +167,7 @@ export default function MarcaBlancaPedidos() {
                         <div key={i} className="flex items-center justify-between gap-2 py-1.5 text-sm">
                           <div className="min-w-0">
                             <p className="truncate"><b>{it.modelo}</b> <span className="text-[10px] text-faint font-mono">{it.ref}</span> · {it.color}</p>
-                            <p className="text-xs text-muted truncate">{it.cristal} · logo {it.logo} · estuche + franela</p>
+                            <p className="text-xs text-muted truncate">{it.detalle ?? `${it.cristal} · logo ${it.logo} · estuche + franela`}</p>
                           </div>
                           <div className="flex items-center gap-3 shrink-0 text-xs">
                             <span className="font-semibold">×{it.cantidad}</span>

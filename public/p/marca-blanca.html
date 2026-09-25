@@ -33,7 +33,7 @@ h1,h2,h3{font-family:var(--disp);margin:0;text-wrap:balance}
 .cartbtn svg{width:22px;height:22px}
 .badge{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:600 11px/20px var(--mono);text-align:center}
 
-.progress{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 16px 0}
+.progress{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px 16px 0}
 .progress i{height:4px;border-radius:4px;background:var(--line)}
 .progress i.on{background:var(--accent)}
 
@@ -168,7 +168,7 @@ button:focus-visible,.mc:focus-visible,.sw:focus-visible{outline:2px solid var(-
       <span class="badge" id="badgeTop" hidden></span>
     </button>
   </div>
-  <div class="progress" id="progress"><i></i><i></i><i></i><i></i></div>
+  <div class="progress" id="progress"><i></i><i></i><i></i></div>
   <main id="main"></main>
 </div>
 
@@ -201,32 +201,31 @@ const COL=Object.fromEntries(COLGROUPS.flatMap(g=>g.items.map(([n,c])=>[n,[n,c]]
 const NCOL=Object.keys(COL).length;
 const MODELS=[1,2,3,4,5,6,7].map(n=>({id:n,name:"Modelo 0"+n,ref:"00"+n}));
 
-const mk=(pre,p,x)=>([n,c])=>({k:pre+n,n,c,p,x});
-const LENSES=[
- {g:"Receta · blue cut antirreflex",p:1.5,items:[["Incoloro blue cut","#dfe9f3"]].map(mk("b-",1.5))},
- {g:"Sol UV400",p:3,items:[["Gris","#5d6166"],["Gris claro","#a8acb0"],["Gris degradé",dg("#4e5256","#d7d9db")],["Negro","#202124"],["Negro degradé",dg("#202124","#cfd1d3")],["Habano","#7a4a24"],["Habano degradé",dg("#6d4120","#e4cdb4")],["Verde","#3f5a3a"],["Rosa","#e39aa8"],["Rosa claro","#f3c7d0"],["Naranja","#ee8a2e"],["Ocre","#c49a3a"],["Amarillo","#f1cf3a"],["Rojo","#c73a3a"],["Bordó","#6e1f2c"],["Bordó degradé",dg("#6e1f2c","#e8c9cf")],["Celeste","#86c3e2"],["Azul claro","#6f9fd6"],["Azul degradé",dg("#23479a","#cfdcf2")]].map(mk("s-",3))},
- {g:"Sol espejado",p:3,items:[["Espejo plata",mir("#f3f4f6","#8f959b")],["Espejo gris",mir("#c9ccd0","#4e5256")],["Espejo oro",mir("#fbe7a1","#b8862b")],["Espejo rojo",mir("#ff9b8a","#b3261e")],["Espejo rosa",mir("#ffd0e0","#d0578a")],["Espejo naranja",mir("#ffd3a1","#e0691b")],["Espejo verde",mir("#d2f5c9","#3d8d4a")],["Espejo celeste",mir("#d6f1ff","#3f9bd1")],["Espejo azul",mir("#b9ccf5","#23479a")],["Espejo violeta",mir("#e2d0ff","#6a3fb3")]].map(mk("e-",3))},
- {g:"Polarizado",p:5,items:[["Gris polarizado","#3f4347"],["Negro polarizado","#1b1c1e"],["Habano polarizado","#6a4222"],["Espejo plata polarizado",mir("#f3f4f6","#8f959b")],["Espejo celeste polarizado",mir("#d6f1ff","#3f9bd1")],["Espejo rojo polarizado",mir("#ff9b8a","#b3261e")]].map(mk("p-",5,"polar"))},
- {g:"Flash · infrarrojo + blue cut",p:5,items:[["Gris flash","#6b7075"],["Gris degradé flash",dg("#4b4f53","#d5d8da")],["Habano flash","#8a5a30"],["Habano degradé flash",dg("#7a4a24","#e8d3bc")],["Ocre flash","#c89a3c"],["Ocre degradé flash",dg("#b8862b","#f1e2bd")],["Champagne flash","#d9c29a"],["Rosa flash","#ec9fb4"],["Celeste flash","#7cc1e6"],["Celeste degradé flash",dg("#4fa6d6","#dcf0fa")],["Azul claro flash","#79a6dc"],["Verde degradé flash",dg("#35583a","#cfe3c6")],["Celeste espejado flash",mir("#e2f5ff","#3f9bd1")],["Celeste espejado sutil",mir("#eef8ff","#8ecae6")],["Verde espejado flash",mir("#d2f5c9","#3d8d4a")],["Verde espejado degradé flash",mir("#e8f7e2","#5f9a62")],["Amarillo espejado flash",mir("#fff4b8","#d4a514")],["Habano espejado flash",mir("#f0d9bf","#7a4a24")],["Habano espejado degradé flash",mir("#f6e8d8","#9a6a3c")]].map(mk("f-",5,"flash"))}
-];
-const LENS=Object.fromEntries(LENSES.flatMap(g=>g.items.map(i=>[i.k,{...i,g:g.g}])));
 const LOGOS=[{k:"tampo",n:"Tampografía",d:"tinta, 1 color"},{k:"laser",n:"Grabado láser",d:"en bajo relieve"}];
-const FRAME=10,KIT=2;
+// Marco con logo; el cristal lo aporta el cliente y el calibrado va incluido. Precio por terminación.
+const TIERS=[{n:"Básico negro",p:11.5},{n:"Color mate compacto",p:12.5},{n:"Color clear mate",p:13.5},{n:"Clear brillo · brillo · degradé · vetas",p:14.5}];
+const isClear=c=>/clear/i.test(c)||c==="Cristal";
+const tierOf=(c,fin)=>isClear(c)?(fin==="brillo"?3:2):/^Negro (mate|brillo)$/.test(c)?0:/brillo|degradé|vetas|veteado/i.test(c)?3:1;
+const EST=0.7,CAJA_MIN=100,cajaP=n=>n>=1000?0.45:1.3;
 const IMG="/p/mb/";
 const FN="https://towcgvphxeqilpdnboki.supabase.co/functions/v1/marca-blanca-pedido";
 const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2NndnBoeGVxaWxwZG5ib2tpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Nzc1OTAsImV4cCI6MjA5ODA1MzU5MH0.KdghSYaU3D_cbmZ7E_TsvIwU9Bu0GB97Nz51Bck_WNU";
-const S={tab:"marco",m:1,col:"Negro mate",lens:"b-Incoloro blue cut",logo:"tampo",lensG:0,view:"f",q:50,acct:"bru",lines:[],datos:{marca:"",razon_social:"",email:"",telefono:"",obs:""}};
-try{const s=JSON.parse(localStorage.getItem("mb-app")||"null");if(s){for(const k of ["m","col","lens","logo","acct","lines","datos"])if(s[k]!=null)S[k]=s[k]}}catch(e){}
-S.lines=(S.lines||[]).filter(l=>LENS[l.lens]&&MODELS[l.m-1]&&COL[l.col]);if(!COL[S.col])S.col="Negro mate";if(!LENS[S.lens])S.lens="b-Incoloro blue cut";
-S.lensG=Math.max(0,LENSES.findIndex(g=>g.items.some(i=>i.k===S.lens)));
+const S={tab:"marco",m:1,col:"Negro mate",fin:"mate",logo:"tampo",est:true,caja:false,view:"f",q:50,acct:"bru",lines:[],datos:{marca:"",razon_social:"",email:"",telefono:"",obs:""}};
+try{const s=JSON.parse(localStorage.getItem("mb-app")||"null");if(s){for(const k of ["m","col","fin","logo","est","caja","acct","lines","datos"])if(s[k]!=null)S[k]=s[k]}}catch(e){}
+S.lines=(S.lines||[]).filter(l=>typeof l.est==="boolean"&&MODELS[l.m-1]&&COL[l.col]);if(!COL[S.col])S.col="Negro mate";if(S.fin!=="brillo")S.fin="mate";
 let logoFile=null,sending=false,okId=null;
 const $=id=>document.getElementById(id);
 const usd=v=>"USD "+v.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const ars=v=>"$ "+Math.round(v).toLocaleString("es-AR");
 const fdate=f=>{const [y,m,d]=f.split("-");return `${d}/${m}/${y}`};
-const unit=l=>FRAME+KIT+LENS[l.lens].p;
+const frameP=l=>TIERS[tierOf(l.col,l.fin)].p;
+const cajaUnits=(extra=0)=>S.lines.reduce((a,l)=>a+(l.caja?l.q:0),0)+extra;
+const unit=(l,cu=cajaUnits())=>frameP(l)+(l.est?EST:0)+(l.caja?cajaP(cu):0);
+const colTxt=l=>l.col+(isClear(l.col)?" "+l.fin:"");
+const packTxt=l=>[l.est?"estuche":"",l.caja?"caja alta calidad":""].filter(Boolean).join(" + ")||"sin packaging";
+const cajaFalta=()=>{const c=cajaUnits();return c>0&&c<CAJA_MIN};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-function save(){try{localStorage.setItem("mb-app",JSON.stringify({m:S.m,col:S.col,lens:S.lens,logo:S.logo,acct:S.acct,lines:S.lines,datos:S.datos}))}catch(e){}}
+function save(){try{localStorage.setItem("mb-app",JSON.stringify({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja,acct:S.acct,lines:S.lines,datos:S.datos}))}catch(e){}}
 function sums(){const units=S.lines.reduce((a,l)=>a+l.q,0),sub=S.lines.reduce((a,l)=>a+unit(l)*l.q,0),iva=S.acct==="ple"?sub*.21:0;return {units,sub,iva,tot:sub+iva}}
 function toast(t){const e=$("toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,1600)}
 // Dólar en vivo (BNA oficial vendedor); si falla queda el último publicado.
@@ -234,8 +233,7 @@ fetch("https://dolarapi.com/v1/dolares/oficial").then(r=>r.json()).then(j=>{if(j
 
 const TABS=[
  {k:"marco",n:"Marco",i:'<path d="M3 11c0-1.5 1-2.5 2.5-2.5h3.5c1.5 0 2.5 1 2.5 2.5v.5a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><path d="M13 11c0-1.5 1-2.5 2.5-2.5H19c1.5 0 2 1 2 2.5v.5a3 3 0 0 1-3 3h-2a3 3 0 0 1-3-3z"/><path d="M11 11h2"/>'},
- {k:"cristal",n:"Cristal",i:'<circle cx="12" cy="12" r="8"/><path d="M8.5 9.5a4 4 0 0 1 4-2"/>'},
- {k:"estuche",n:"Estuche",i:'<rect x="3" y="8" width="18" height="9" rx="4.5"/><path d="M3 12.5h18"/>'},
+ {k:"estuche",n:"Pack",i:'<rect x="3" y="8" width="18" height="9" rx="4.5"/><path d="M3 12.5h18"/>'},
  {k:"pedido",n:"Pedido",i:'<path d="M5 7h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 7V6a3 3 0 0 1 6 0v1"/>'}];
 const tabOf=t=>t==="datos"||t==="ok"?"pedido":t;
 
@@ -243,39 +241,40 @@ function renderTabs(){
   const u=sums().units;
   $("tabs").innerHTML=TABS.map(t=>`<button class="tab" type="button" data-tab="${t.k}" ${tabOf(S.tab)===t.k?'aria-current="page"':""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${t.i}</svg>${t.n}${t.k==="pedido"&&u?`<span class="badge">${u}</span>`:""}</button>`).join("");
   $("badgeTop").hidden=!u;$("badgeTop").textContent=u;
-  const idx=["marco","cristal","estuche","pedido","datos","ok"].indexOf(S.tab);
-  [...$("progress").children].forEach((e,i)=>e.classList.toggle("on",i<=Math.min(3,idx)));
+  const idx=["marco","estuche","pedido","datos","ok"].indexOf(S.tab);
+  [...$("progress").children].forEach((e,i)=>e.classList.toggle("on",i<=Math.min(2,idx)));
 }
 function head(eb,t,p){return `<div class="screen-h"><div class="eb">${eb}</div><h1>${t}</h1>${p?`<p>${p}</p>`:""}</div>`}
-function selTxt(l){const m=MODELS[l.m-1],L=LENS[l.lens],lg=LOGOS.find(x=>x.k===l.logo);return {t:`${m.name} · ${l.col}`,s:`${L.n} · logo ${lg.n.toLowerCase()}`}}
-const cur=()=>({m:S.m,col:S.col,lens:S.lens,logo:S.logo});
+function selTxt(l){const m=MODELS[l.m-1],lg=LOGOS.find(x=>x.k===l.logo);return {t:`${m.name} · ${colTxt(l)}`,s:`logo ${lg.n.toLowerCase()} · ${packTxt(l)}`}}
+const cur=()=>({m:S.m,col:S.col,fin:S.fin,logo:S.logo,est:S.est,caja:S.caja});
 
 const SCREENS={
- marco(){const m=MODELS[S.m-1];return `${head("Paso 1 de 3","Elegí el marco","Siete modelos en acetato. Tu logo va grabado en la patilla.")}
+ marco(){const m=MODELS[S.m-1];return `${head("Paso 1 de 2","Elegí el marco","Siete modelos en acetato. Tu logo va grabado en la patilla. El cristal lo aportás vos: el calibrado está incluido.")}
   <div class="hero"><img src="${IMG}BR${m.id}_frente.webp" alt="${m.name} de frente"><img class="lat" src="${IMG}BR${m.id}_lateral.webp" alt="${m.name}, patilla con LOGO">
    <div class="cap"><b>${m.name}</b><span>Frente y patilla · foto en negro</span></div></div>
   <div class="carousel" id="car">${MODELS.map(x=>`<button class="mc" type="button" data-m="${x.id}" aria-pressed="${x.id===S.m}"><img src="${IMG}BR${x.id}_frente.webp" alt=""><img class="lat" src="${IMG}BR${x.id}_lateral.webp" alt=""><b>${x.name}</b></button>`).join("")}</div>
   <div><div class="sec-l">Logo en la patilla</div><div class="seg">${LOGOS.map(l=>`<button type="button" data-l="${l.k}" aria-pressed="${l.k===S.logo}">${l.n}<small>${l.d}</small></button>`).join("")}</div></div>
   <div class="card"><div class="sec-l">Color del marco <em>${esc(S.col)}</em></div>
    <div class="groups">${COLGROUPS.map(g=>`<div><div class="gt">${g.g}</div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${n}</button>`).join("")}</div></div>`).join("")}</div>
-   <p class="legend" style="margin-top:12px">Cualquier modelo en cualquiera de los ${NCOL} colores de las colecciones Orbital y BR.</p></div>`},
- cristal(){const g=LENSES[S.lensG];return `${head("Paso 2 de 3","Elegí el cristal",`${Object.keys(LENS).length} opciones. El precio se suma al marco.`)}
-  <div class="pills">${LENSES.map((x,i)=>`<button class="pill" type="button" data-g="${i}" aria-pressed="${i===S.lensG}">${x.g.split(" · ")[0]}<small>+${String(x.p).replace(".",",")}</small></button>`).join("")}</div>
-  <div class="card"><div class="sec-l">${g.g} <em>+ USD ${String(g.p).replace(".",",")}</em></div>
-   <div class="grid-sw">${g.items.map(i=>`<button class="sw ${i.x||""}" type="button" data-k="${esc(i.k)}" aria-pressed="${i.k===S.lens}"><i style="background:${i.c}"></i>${i.n}</button>`).join("")}</div></div>
-  <div class="card summary"><div class="row"><span>Elegido</span><b>${esc(LENS[S.lens].n)}</b></div><div class="row"><span>Tipo</span><span>${esc(LENS[S.lens].g)}</span></div></div>`},
- estuche(){const l=cur(),t=selTxt(l);return `${head("Paso 3 de 3","Estuche y franela","Uno de cada uno por armazón, USD 2 el par.")}
+   ${isClear(S.col)?`<div style="margin-top:12px"><div class="sec-l">Terminación del transparente</div><div class="seg"><button type="button" data-fin="mate" aria-pressed="${S.fin==="mate"}">Mate<small>${usd(TIERS[2].p)}</small></button><button type="button" data-fin="brillo" aria-pressed="${S.fin==="brillo"}">Brillo<small>${usd(TIERS[3].p)}</small></button></div></div>`:""}
+   <p class="legend" style="margin-top:12px">Cualquier modelo en cualquiera de los ${NCOL} colores de las colecciones Orbital y BR.</p></div>
+  <div class="card summary"><div class="sec-l" style="margin:0">Marco con logo · cristal del cliente, calibrado incluido</div>${TIERS.map((t,i)=>{const on=i===tierOf(S.col,S.fin);return `<div class="row"><span>${on?"<b>"+t.n+"</b>":t.n}</span><span style="font-family:var(--mono)">${on?"<b>"+usd(t.p)+"</b>":usd(t.p)}</span></div>`}).join("")}</div>`},
+ estuche(){const l=cur(),t=selTxt(l),cu=cajaUnits(S.caja?S.q:0),chk=v=>`<b style="font-size:22px;line-height:1">${v?"☑":"☐"}</b>`;return `${head("Paso 2 de 2","Packaging","Se cotiza aparte del marco. Elegí qué sumás a cada armazón.")}
   <div class="card kit">
-   <div class="sec-l" style="margin:0">Se suma a cada armazón <em>+ USD 2</em></div>
-   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="3" y="10" width="58" height="26" rx="13" fill="var(--ink)"/><rect x="3" y="21" width="58" height="2" fill="var(--panel)" opacity=".35"/><text x="32" y="18.5" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--panel)">LOGO</text></svg><div><b>Estuche rígido</b><small>Uno por armazón</small></div></div>
-   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="10" y="6" width="44" height="32" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/><path d="M10 14h44M10 22h44M10 30h44" stroke="var(--accent)" stroke-width=".6" opacity=".5"/><text x="32" y="35" text-anchor="middle" font-size="5" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--accent)">LOGO</text></svg><div><b>Franela de microfibra</b><small>Una por armazón</small></div></div>
+   <button class="it" type="button" data-pk="est" aria-pressed="${S.est}" style="cursor:pointer;background:none;border:0;padding:6px 0;text-align:left;color:inherit;font:inherit;width:100%"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="3" y="10" width="58" height="26" rx="13" fill="var(--ink)"/><rect x="3" y="21" width="58" height="2" fill="var(--panel)" opacity=".35"/><text x="32" y="18.5" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--panel)">LOGO</text></svg><div style="flex:1"><b>Estuche estándar</b><small>+ ${usd(EST)} por armazón</small></div>${chk(S.est)}</button>
+   <button class="it" type="button" data-pk="caja" aria-pressed="${S.caja}" style="cursor:pointer;background:none;border:0;padding:6px 0;text-align:left;color:inherit;font:inherit;width:100%"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="12" y="6" width="40" height="32" rx="2" fill="var(--accent-soft)" stroke="var(--accent)"/><path d="M12 14h40" stroke="var(--accent)"/><text x="32" y="29" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--accent)">LOGO</text></svg><div style="flex:1"><b>Caja de alta calidad</b><small>Packaging secundario · ${usd(cajaP(CAJA_MIN))} de 100 a 999 u · ${usd(cajaP(1000))} desde 1.000 u</small></div>${chk(S.caja)}</button>
+   <p class="legend" style="margin:0">Caja: mínimo ${CAJA_MIN} unidades por pedido; el tramo se toma sobre el total de cajas.</p>
   </div>
   <div class="card summary">
    <div class="row"><span>Marco</span><b>${esc(t.t)}</b></div>
-   <div class="row"><span>Cristal y logo</span><span>${esc(t.s)}</span></div>
-   <div class="row"><span>Marco con logo</span><span style="font-family:var(--mono)">${usd(FRAME)}</span></div><div class="row"><span>Cristal</span><span style="font-family:var(--mono)">${usd(LENS[S.lens].p)}</span></div><div class="row"><span>Estuche + franela</span><span style="font-family:var(--mono)">${usd(KIT)}</span></div><div class="row"><span>Precio por unidad</span><b style="font-family:var(--mono)">${usd(unit(l))}</b></div>
+   <div class="row"><span>Logo y pack</span><span>${esc(t.s)}</span></div>
+   <div class="row"><span>Marco con logo</span><span style="font-family:var(--mono)">${usd(frameP(l))}</span></div>
+   <div class="row"><span>Cristal</span><span>lo aportás vos · calibrado incluido</span></div>
+   ${S.est?`<div class="row"><span>Estuche estándar</span><span style="font-family:var(--mono)">${usd(EST)}</span></div>`:""}
+   ${S.caja?`<div class="row"><span>Caja alta calidad</span><span style="font-family:var(--mono)">${usd(cajaP(cu))}</span></div>`:""}
+   <div class="row"><span>Precio por unidad</span><b style="font-family:var(--mono)">${usd(unit(l,cu))}</b></div>
    <div class="qtyrow"><span style="font-weight:600">Cantidad</span><div class="qty"><button type="button" data-qd="-10" aria-label="Restar 10">−</button><input id="qty" type="number" min="1" step="1" value="${S.q}" aria-label="Unidades"><button type="button" data-qd="10" aria-label="Sumar 10">+</button></div></div>
-   <div class="quick">${[24,50,100,200,500].map(n=>`<button type="button" data-qs="${n}">${n} u</button>`).join("")}</div>
+   <div class="quick">${[24,50,100,200,500,1000].map(n=>`<button type="button" data-qs="${n}">${n} u</button>`).join("")}</div>
   </div>`},
  pedido(){const x=sums();return `${head("Tu pedido",S.lines.length?`${x.units} armazones`:"Pedido vacío",S.lines.length?"Revisá las líneas, elegí la cuenta y cerrá el pedido.":"")}
   ${S.lines.length?`<div class="lines">${S.lines.map((l,i)=>{const t=selTxt(l);return `<div class="line"><div class="th"><img src="${IMG}BR${l.m}_frente.webp" alt=""><i style="background:${COL[l.col][1]}"></i></div><div class="d"><b>${l.q} × ${esc(t.t)}</b><span>${esc(t.s)} · ${usd(unit(l))} c/u</span></div><div class="r"><b>${usd(unit(l)*l.q)}</b><button type="button" data-del="${i}">Quitar</button></div></div>`}).join("")}</div>
@@ -285,7 +284,8 @@ const SCREENS={
    <div class="sec-l" style="margin:0">Cuenta de pago</div>
    <div class="seg"><button type="button" data-acct="bru" aria-pressed="${S.acct==="bru"}">Brubank<small>cuenta en $</small></button><button type="button" data-acct="ple" aria-pressed="${S.acct==="ple"}">Plenorius S.A.<small>con factura + IVA</small></button></div>
    <div class="tot"><div class="muted"><span>Subtotal</span><span>${usd(x.sub)}</span></div>${x.iva?`<div class="muted"><span>IVA 21 %</span><span>${usd(x.iva)}</span></div>`:""}<div class="big"><span>Total</span><span>${usd(x.tot)}</span></div></div>
-   <p class="legend">El monto en pesos se calcula al cerrar el pedido, con el dólar oficial vendedor del día.</p>
+   ${cajaFalta()?`<p class="err">La caja de alta calidad tiene mínimo ${CAJA_MIN} unidades (llevás ${cajaUnits()}). Sumá unidades con caja o quitala.</p>`:""}
+   <p class="legend">Cristal aportado por el cliente, calibrado incluido. El monto en pesos se calcula al cerrar el pedido, con el dólar oficial vendedor del día.</p>
   </div>`:`<div class="card empty">Todavía no agregaste armazones.<br><br><button class="btn" type="button" data-tab="marco">Empezar por el marco</button></div>`}`},
  datos(){const x=sums(),p=x.tot*DOLAR.venta,d=S.datos;return `${head("Cerrar pedido","Tus datos","Con esto precargamos el pedido y te contactamos para confirmarlo.")}
   <form id="form" class="card" style="display:grid;gap:12px" novalidate>
@@ -314,10 +314,10 @@ function field(id,lab,ph,val,type,ac){return `<div class="fld"><label for="${id}
 function renderBar(){
   const ab=$("actionbar"),l=cur(),x=sums();
   const set=(price,txt,btn,dis)=>{ab.hidden=false;$("abPrice").textContent=price;$("abTxt").textContent=txt;$("abBtn").textContent=btn;$("abBtn").style.opacity=dis?.45:1;$("abBtn").disabled=!!dis};
-  if(S.tab==="marco")set(usd(unit(l))+" c/u",`${MODELS[S.m-1].name} · ${S.col}`,"Siguiente");
-  else if(S.tab==="cristal")set(usd(unit(l))+" c/u",LENS[S.lens].n,"Siguiente");
-  else if(S.tab==="estuche")set(usd(unit(l)*S.q),`${S.q} u × ${usd(unit(l))}`,"Agregar al pedido");
-  else if(S.tab==="pedido")set(usd(x.tot),`${x.units} armazones`,"Cerrar pedido",!S.lines.length);
+  const cu=cajaUnits(S.caja?S.q:0);
+  if(S.tab==="marco")set(usd(frameP(l))+" c/u",`${MODELS[S.m-1].name} · ${colTxt(l)}`,"Siguiente");
+  else if(S.tab==="estuche")set(usd(unit(l,cu)*S.q),`${S.q} u × ${usd(unit(l,cu))}`,"Agregar al pedido");
+  else if(S.tab==="pedido")set(usd(x.tot),`${x.units} armazones`,"Cerrar pedido",!S.lines.length||cajaFalta());
   else if(S.tab==="datos")set(ars(x.tot*DOLAR.venta),`${usd(x.tot)} al dólar ${ars(DOLAR.venta)}`,sending?"Enviando…":"Enviar pedido",sending);
   else ab.hidden=true;
 }
@@ -332,7 +332,7 @@ function render(){
   if(S.tab==="estuche")$("qty").addEventListener("input",e=>{S.q=Math.max(1,Math.round(+e.target.value||1));renderBar()});
 }
 function go(t){S.tab=t;render();window.scrollTo({top:0})}
-function addLine(){const ex=S.lines.find(l=>l.m===S.m&&l.col===S.col&&l.lens===S.lens&&l.logo===S.logo);
+function addLine(){const c=cur(),ex=S.lines.find(l=>["m","col","fin","logo","est","caja"].every(k=>l[k]===c[k]));
   if(ex)ex.q+=S.q;else S.lines.push({...cur(),q:S.q});toast("Agregado al pedido");go("pedido")}
 const typeOf=f=>f.type||({ai:"application/illustrator",svg:"image/svg+xml",pdf:"application/pdf",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",webp:"image/webp"}[(f.name.split(".").pop()||"").toLowerCase()]||"");
 function b64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(f)})}
@@ -356,15 +356,15 @@ async function enviar(){
 document.addEventListener("click",e=>{
   const t=e.target.closest("button");if(!t)return;
   const d=t.dataset;
-  if(t.id==="abBtn"){if(S.tab==="marco")go("cristal");else if(S.tab==="cristal")go("estuche");else if(S.tab==="estuche")addLine();else if(S.tab==="pedido")go("datos");else if(S.tab==="datos")enviar();return}
+  if(t.id==="abBtn"){if(S.tab==="marco")go("estuche");else if(S.tab==="estuche")addLine();else if(S.tab==="pedido")go("datos");else if(S.tab==="datos")enviar();return}
   if(t.id==="cartTop")return go("pedido");
   if(t.id==="nuevo")return go("marco");
   if(d.tab)return go(d.tab);
   if(d.m){S.m=+d.m;render()}
   else if(d.c){S.col=d.c;render()}
   else if(d.l){S.logo=d.l;render()}
-  else if(d.g!=null){S.lensG=+d.g;render()}
-  else if(d.k){S.lens=d.k;render()}
+  else if(d.fin){S.fin=d.fin;render()}
+  else if(d.pk){S[d.pk]=!S[d.pk];render()}
   else if(d.qd){S.q=Math.max(1,S.q+(+d.qd));render()}
   else if(d.qs){S.q=+d.qs;render()}
   else if(d.del!=null){S.lines.splice(+d.del,1);render()}
