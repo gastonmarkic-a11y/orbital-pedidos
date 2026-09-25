@@ -1,4 +1,11 @@
 // bot-central — IRIS, asistente de atención de Orbital (multicanal).
+// v73 (2026-09-25): tamaño/medidas de un modelo → SIEMPRE desde producto_medidas de la Suite (ancho, alto, largo de
+//      patilla, formato, material); si el modelo no está cargado no se inventa: link a la ficha. Consumidor final que
+//      nombra un modelo → link directo al producto en la tienda (sin cotización ni lista de colores). ¿Es polarizado? →
+//      desde los nombres de color reales.
+// v72 (2026-09-25): "medidas" (plural) ya no cae en la lista de colores; colores solo si preguntan color/stock o mandan el
+//      modelo solo · consumidor que pregunta por un modelo → respuesta + link + óptica cercana · óptica en el chat de la
+//      tienda → datos (pide WhatsApp si falta) + prospecto en la Suite (canal web_tienda) + 🆘 al grupo.
 // v71 (2026-09-25): chat de la tienda (web anónimo) = canal minorista: óptica/comercio → sin precios, se le piden
 //      nombre, localidad y WhatsApp y pasa a ventas (derivación optica_tienda). "Palermo" como respuesta a "tu localidad"
 //      es el barrio, no el modelo (dondeConseguir esLugar).
@@ -848,7 +855,12 @@ function toAlloc(map: Map<number, number>, it: ItemCoti): Alloc[] {
 
 const RE_RASTREO = /\b(rastre|seguimiento|segu[ií]|d[oó]nde est[aá]|donde esta|mi (pedido|env[ií]o|envio|paquete|compra|orden)|estado (de|del) (mi )?pedido|cu[aá]ndo (llega|me llega)|tracking|n[uú]mero de seguimiento|estado de mi|track|where is my)/i;
 const RE_ATRIB = /\b(cu[aá]les|qu[eé] modelos|modelos (con|que|tienen|de|hay|son)|list[aá] de modelos|todos los modelos|mostrame los modelos)\b/i;
-const RE_MEDIDA = /\b(medida|mide|tama[ñn]o|cm|formato|forma|ancho|alto|largo|calibre|varilla|puente|protecci[oó]n|infrarrojo|blue|uv|cristal|filtro|pesa|peso|material|polariz)\b/i;
+// v70: plurales/sufijos — antes "medidas" no matcheaba y la pregunta caía en la lista de colores.
+const RE_MEDIDA = /\b(medidas?|miden?|medir|tama[ñn]os?|cm|mm|mil[ií]metros?|cent[ií]metros?|formatos?|forma|ancho|alto|largo|calibres?|varillas?|puentes?|protecci[oó]n|infrarrojo|blue|uv\d*|cristal(es)?|filtros?|pesa|peso|materiales?|polariz\w*|dimensi[oó]n\w*|grande|chico)\b/i;
+// La lista de colores solo sale si preguntan por color/stock, o si mandan el modelo casi solo ("zeta 8").
+// v73: pregunta de tamaño (se contesta con producto_medidas, nunca con la IA).
+const RE_TAMANO = /\b(medidas?|miden?|medir|tama[ñn]os?|cm|mm|mil[ií]metros?|cent[ií]metros?|ancho|alto|largo|calibres?|dimensi[oó]n\w*|grande|chico|talle)\b/i;
+const RE_STOCK_COLOR = /\b(colou?re?s?|stock|disponib\w*|ten[eé]s|tienen|hay|queda\w*|vienen?|available)\b/i;
 const RE_COMPRA = /\b(quiero|quer[ií]a|comprar|me llevo|llevo|pedir|pedido|cotiz|arm[aá](me)?|dame|pasame|mand[aá]me|necesito|ten[eé]s|tienen|hay)\b/i;
 
 const RE_NRO_PEDIDO = /#\s*(\d{2,8})|\b(?:pedido|orden|order|remito)\s*(?:n[°ºro.]*\s*)?(\d{2,8})\b|\bes\s+(?:el\s+)?(\d{4,6})\b/i;
@@ -1459,7 +1471,9 @@ async function explicarTriple(): Promise<string> {
 }
 const RE_DISPOSITIVO = /(habilit\w*|este dispositivo|no me deja entrar|no puedo entrar|no me abre)/i;
 const TXT_PIDE_DATOS_OPTICA = "¡Qué bueno! 🙌 A las ópticas y comercios los atiende nuestro equipo comercial, con condiciones especiales (los precios de esta tienda son de venta al público). Pasame en un mensaje el *nombre de tu óptica*, la *localidad* y un *WhatsApp* de contacto, y un vendedor te escribe.";
-const RE_PIDE_DATOS_OPTICA = /nombre de tu [oó]ptica\*?, la \*?localidad/i;
+const TXT_PIDE_WSP_OPTICA = "¡Gracias! Me falta un *WhatsApp* de contacto así el vendedor te escribe 🙌";
+const RE_PIDE_WSP_OPTICA = /falta un \*?WhatsApp\*? de contacto/i;
+const RE_PIDE_DATOS_OPTICA = /nombre de tu [oó]ptica\*?, la \*?localidad|falta un \*?WhatsApp\*? de contacto/i;
 
 async function handler(req: Request): Promise<Response> {
   const body = await req.json();
@@ -1536,10 +1550,23 @@ async function handler(req: Request): Promise<Response> {
   const chatTienda = canal === "web" && !cod && (contacto?.email ?? "").startsWith("anon:");
   if (chatTienda && !modoDerivada) {
     if (ultimasBot[0] && RE_PIDE_DATOS_OPTICA.test(ultimasBot[0])) {
+      // v72: los datos pueden venir en 2 mensajes (se pide el WhatsApp si falta). Se junta lo último que escribió.
+      const { data: hc } = await supabase.from("at_mensajes").select("contenido").eq("conversacion_id", conversacionId).eq("emisor", "cliente").order("created_at", { ascending: false }).limit(3);
+      const previos = ((hc ?? []) as { contenido: string }[]).map((x) => x.contenido).filter((x) => x !== texto);
+      const datos = (RE_PIDE_WSP_OPTICA.test(ultimasBot[0]) && previos[0] ? previos[0] + " · " : "") + texto;
+      const telOpt = (datos.match(/(\+?\d[\d\s\-().]{7,}\d)/) ?? [])[1] ?? null;
+      if (!telOpt && !RE_PIDE_WSP_OPTICA.test(ultimasBot[0])) {
+        return responder(conversacionId, canal, { texto: TXT_PIDE_WSP_OPTICA }, ultimasBot);
+      }
       if (!prueba) {
+        // Prospecto en la Suite (Prospección) + 🆘 en el grupo de Telegram.
+        const nomOpt = datos.split(/[,\n·]/)[0].replace(/^\s*(es |se llama |la [oó]ptica (es |se llama )?|[oó]ptica )/i, "").trim().slice(0, 80);
+        const { data: ps } = await supabase.rpc("bot_ingresar_prospecto", { p_tel: telOpt ?? `web-${conversacionId.slice(0, 8)}`, p_nombre: nomOpt ? `Óptica ${nomOpt}` : null, p_canal: "web_tienda", p_temperatura: "caliente", p_conversacion: conversacionId, p_vendedor: VENDEDOR_LEADS });
+        const psId = (ps as { id?: number } | null)?.id;
+        if (psId) await supabase.from("prospeccion_social").update({ zona: datos.slice(0, 200), nota: `Escribió en el chat de la tienda online. Datos: ${datos.slice(0, 300)}` }).eq("id", psId);
         await supabase.from("derivaciones").insert({
           conversacion_id: conversacionId, motivo: "optica_tienda",
-          resumen: `Óptica/comercio que escribió en el chat de la tienda online. Datos: ${texto.slice(0, 400)}`,
+          resumen: `Óptica/comercio que escribió en el chat de la tienda online${psId ? ` (prospecto #${psId} cargado en la Suite)` : ""}. Datos: ${datos.slice(0, 380)}`,
           estado: "pendiente", tipo_cliente: "mayorista", asignado_a: await vendedorId(VENDEDOR_LEADS),
         });
         await supabase.from("at_conversaciones").update({ estado: "derivada" }).eq("id", conversacionId);
@@ -1725,6 +1752,15 @@ async function handler(req: Request): Promise<Response> {
 
   if (RE_ATRIB.test(texto)) { const cat = await catalogoPorAtributo(texto); if (cat) return responder(conversacionId, canal, cat, ultimasBot); }
 
+  if (RE_TAMANO.test(texto) && !ingles) {
+    const med = await medidasModelo(texto, tipoCliente === "minorista");
+    if (med) return responder(conversacionId, canal, med, ultimasBot);
+  }
+  if (/polariz/i.test(texto) && !ingles) {
+    const pol = await polarizadoModelo(texto, tipoCliente === "minorista");
+    if (pol) return responder(conversacionId, canal, pol, ultimasBot);
+  }
+
   const yaPregunteSegmento = ultimasBot.slice(0, 5).filter((m) => /[oó]ptica\/comercio o consumidor|optical shop\/business/i.test(m)).length;
   if (tipoCliente === "desconocido") {
     const det = detectarTipo(texto);
@@ -1800,6 +1836,12 @@ async function handler(req: Request): Promise<Response> {
     }
   }
 
+  // v73: consumidor final que nombra un modelo → link al producto en la tienda, no cotización ni colores.
+  if (tipoCliente === "minorista" && !ingles && !RE_NEGATIVA.test(texto) && !RE_ATRIB.test(texto) && !RE_MEDIDA.test(texto)) {
+    const lk = await linkModeloConsumidor(texto, ultimasBot);
+    if (lk) return responder(conversacionId, canal, lk, ultimasBot);
+  }
+
   const intencionCompra = (RE_PRECIO.test(texto) || RE_COMPRA.test(texto)) && !RE_NEGATIVA.test(texto);
   const cortoModelos = texto.trim().split(/\s+/).length <= 6 && !RE_NEGATIVA.test(texto);
   const wantQuote = (intencionCompra || cortoModelos) && !RE_MEDIDA.test(texto) && !RE_ATRIB.test(texto) && !hayCotActiva;
@@ -1816,7 +1858,12 @@ async function handler(req: Request): Promise<Response> {
     }
   }
 
-  if (!RE_MEDIDA.test(texto)) { const st = await chequearStockColores(texto, ingles); if (st) return responder(conversacionId, canal, st, ultimasBot); }
+  const soloModelo = texto.trim().split(/\s+/).length <= 4 && !/\b(qu[eé]|c[oó]mo|cu[aá]nto|cu[aá]l|d[oó]nde|me dec[ií]s|decime)\b/i.test(texto);
+  if (!RE_MEDIDA.test(texto) && (RE_STOCK_COLOR.test(texto) || soloModelo)) {
+    const st = await chequearStockColores(texto, ingles);
+    if (st && tipoCliente === "minorista" && !ingles) st.texto = await extraProductoConsumidor(texto, st.texto.replace(/ ¿Querés que un asesor te arme el pedido\? 🙌$/, ""), ultimasBot);
+    if (st) return responder(conversacionId, canal, st, ultimasBot);
+  }
 
   if (tipoCliente === "desconocido") {
     if (yaPregunteSegmento >= 1) return responder(conversacionId, canal, await derivar("sin_segmento", conversacionId, texto, undefined, vendCod), ultimasBot);
@@ -1850,7 +1897,80 @@ async function handler(req: Request): Promise<Response> {
     await supabase.from("at_conversaciones").update({ estado: "derivada" }).eq("id", conversacionId);
     return responder(conversacionId, canal, { texto: limpio || (ingles ? "An advisor will continue shortly 🙌" : `${vendCod} sigue con esto — ${cuando()} 🙌`), derivar: { motivo: "iris_deriva", resumen: texto } }, ultimasBot);
   }
-  return responder(conversacionId, canal, { texto: pulir(salida, tipoCliente, token) }, ultimasBot);
+  let final = pulir(salida, tipoCliente, token);
+  if (tipoCliente === "minorista" && !ingles) final = await extraProductoConsumidor(texto, final, ultimasBot);
+  return responder(conversacionId, canal, { texto: final }, ultimasBot);
+}
+
+async function modeloEnTexto(texto: string): Promise<string | null> {
+  const { data } = await supabase.rpc("stock_colores_en_mensaje", { p_texto: texto });
+  return ((data ?? []) as { modelo: string }[])[0]?.modelo ?? null;
+}
+// Link a la ficha del modelo en Shopify: primero un color disponible; si no hay, cualquiera; si no, la búsqueda.
+async function urlModeloTienda(modelo: string): Promise<{ url: string; precio: number | null }> {
+  const { data } = await supabase.from("colab_producto").select("handle, price, disponible").eq("modelo", modelo).order("disponible", { ascending: false }).limit(1);
+  const r = ((data ?? []) as { handle: string; price: string | null }[])[0];
+  if (r?.handle) return { url: `${TIENDA}/products/${r.handle}`, precio: r.price ? Number(r.price) : null };
+  return { url: `${TIENDA}/search?q=${encodeURIComponent(modelo).replace(/%20/g, "+")}`, precio: null };
+}
+const cm = (n: number | null) => n == null ? null : `${String(n).replace(".", ",")} cm`;
+async function medidasModelo(texto: string, conLink: boolean): Promise<RespuestaBot | null> {
+  const modelo = await modeloEnTexto(texto);
+  if (!modelo) return null;
+  const { data } = await supabase.from("producto_medidas").select("ancho, alto, largo, formato, frente, patilla, para").eq("modelo", modelo).maybeSingle();
+  const m = data as { ancho: number | null; alto: number | null; largo: number | null; formato: string | null; frente: string | null; patilla: string | null; para: string | null } | null;
+  const { url } = await urlModeloTienda(modelo);
+  if (!m) return { texto: `Las medidas del ${modelo} no las tengo cargadas todavía 🙏 Lo ves en detalle acá: ${url}` };
+  const lin = [
+    m.ancho != null ? `• Ancho del frente: ${cm(m.ancho)}` : "",
+    m.alto != null ? `• Alto: ${cm(m.alto)}` : "",
+    m.largo != null ? `• Largo de patilla: ${cm(m.largo)}` : "",
+    m.formato ? `• Formato: ${m.formato}` : "",
+    m.frente || m.patilla ? `• Material: frente ${(m.frente || "-").toLowerCase()}, patilla ${(m.patilla || "-").toLowerCase()}` : "",
+    m.para ? `• Para: ${m.para}` : "",
+  ].filter(Boolean);
+  let t = `📏 Medidas del ${modelo}:\n${lin.join("\n")}`;
+  if (conLink) t += `\n\nLo ves y lo comprás acá: ${url}`;
+  return { texto: t };
+}
+// ¿Es polarizado? Sale de los nombres de color reales del stock, nunca de la IA.
+async function polarizadoModelo(texto: string, conLink: boolean): Promise<RespuestaBot | null> {
+  const modelo = await modeloEnTexto(texto);
+  if (!modelo) return null;
+  const { data } = await supabase.from("stock").select("descripcion, cantidad").eq("modelo", modelo);
+  const cols = ((data ?? []) as { descripcion: string | null; cantidad: number | null }[]).filter((c) => c.descripcion);
+  if (!cols.length) return null;
+  const limpio = (d: string) => d.replace(/\s+/g, " ").replace(/\s*\/\s*/g, " / ").trim();
+  const pol = cols.filter((c) => /polariz/i.test(c.descripcion!));
+  const conStock = [...new Set(pol.filter((c) => (c.cantidad ?? 0) > 0).map((c) => limpio(c.descripcion!)))];
+  const sinStock = [...new Set(pol.filter((c) => (c.cantidad ?? 0) <= 0).map((c) => limpio(c.descripcion!)))];
+  const { url } = await urlModeloTienda(modelo);
+  let t = conStock.length
+    ? `Sí 😎 El ${modelo} viene polarizado en: ${conStock.join(", ")}. Los demás colores no son polarizados.`
+    : sinStock.length
+      ? `El ${modelo} tiene versión polarizada (${sinStock.join(", ")}), pero hoy está sin stock 😕`
+      : `El ${modelo} no tiene versión polarizada.`;
+  if (conLink) t += `\n\nLo ves y lo comprás acá: ${url}`;
+  return { texto: t };
+}
+async function linkModeloConsumidor(texto: string, ultimasBot: string[]): Promise<RespuestaBot | null> {
+  const modelo = await modeloEnTexto(texto);
+  if (!modelo) return null;
+  const { url, precio } = await urlModeloTienda(modelo);
+  let t = `🕶️ ${modelo}${precio ? ` — $${precio.toLocaleString("es-AR")}` : ""}\nLo ves con todos sus colores y lo comprás acá: ${url}`;
+  if (!ultimasBot.slice(0, 4).some((m) => /localidad/i.test(m))) t += "\n\n¿Querés probártelo? Decime en qué localidad estás y te paso la óptica autorizada más cercana 😎";
+  return { texto: t };
+}
+
+// v72: consumidor que pregunta por un modelo (medidas, colores, material, polarizado…): además de la respuesta, link a ese
+// modelo en la tienda + ofrecer la óptica autorizada más cercana (la localidad que conteste la toma dondeConseguir).
+async function extraProductoConsumidor(texto: string, resp: string, ultimasBot: string[]): Promise<string> {
+  const { data: mods } = await supabase.rpc("stock_colores_en_mensaje", { p_texto: texto });
+  const modelo = ((mods ?? []) as { modelo: string }[])[0]?.modelo;
+  if (!modelo) return resp;
+  if (!/orbitaleyewear\.com\.ar/i.test(resp)) resp += `\n\nLo ves y lo comprás acá: ${(await urlModeloTienda(modelo)).url}`;
+  if (!ultimasBot.slice(0, 4).some((m) => /localidad/i.test(m))) resp += "\n\n¿Querés probártelo? Decime en qué localidad estás y te paso la óptica autorizada más cercana 😎";
+  return resp;
 }
 
 Deno.serve(handler);
