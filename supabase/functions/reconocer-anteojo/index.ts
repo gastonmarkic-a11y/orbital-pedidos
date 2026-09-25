@@ -55,7 +55,7 @@ async function claude(b64: string, texto: string): Promise<string | null> {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 60, temperature: 0, messages: [{ role: 'user', content: [
+    body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 60, messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: texto }] }] }),
   })
   const data = await r.json()
