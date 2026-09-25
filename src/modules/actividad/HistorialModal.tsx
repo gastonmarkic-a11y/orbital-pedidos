@@ -15,6 +15,103 @@ function iconoDe(desarrollo: string | null): { icono: string; label: string } {
   return { icono: '📝', label: 'Nota' }
 }
 
+type Compras = {
+  anios: { anio: number; unidades: number; importe: number; compras: number }[]
+  ultima: string | null
+  modelos: { modelo: string; unidades: number; ultimo: number }[]
+  suite: { id: number; fecha: string; unidades: number; importe: number; estado: string }[]
+}
+
+const pesos = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+const mesLabel = (am: string) =>
+  new Date(am + '-01T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' })
+
+function HistorialCompras({ cod }: { cod: string }) {
+  const [data, setData] = useState<Compras | null>(null)
+  const [verTodos, setVerTodos] = useState(false)
+
+  useEffect(() => {
+    supabase.rpc('cliente_historial_compras', { p_cod: cod }).then(({ data }) => setData((data as Compras) ?? null))
+  }, [cod])
+
+  if (!data) return null
+  if (data.anios.length === 0 && data.suite.length === 0)
+    return (
+      <div className="border-b border-black/10 px-4 py-3">
+        <p className="text-[10px] uppercase text-faint font-semibold mb-1">🛒 Historial de compras</p>
+        <p className="text-xs text-faint">Sin compras registradas con este código.</p>
+      </div>
+    )
+
+  const totU = data.anios.reduce((a, r) => a + Number(r.unidades), 0)
+  const totI = data.anios.reduce((a, r) => a + Number(r.importe), 0)
+  const modelos = verTodos ? data.modelos : data.modelos.slice(0, 10)
+
+  return (
+    <div className="border-b border-black/10 px-4 py-3 space-y-3">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] uppercase text-faint font-semibold">🛒 Historial de compras</p>
+        <p className="text-xs text-muted">
+          {totU} u. · {pesos(totI)}
+          {data.ultima && <> · última {mesLabel(data.ultima)}</>}
+        </p>
+      </div>
+
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-faint text-left">
+            <th className="font-normal">Año</th>
+            <th className="font-normal text-right">Unid.</th>
+            <th className="font-normal text-right">Neto</th>
+            <th className="font-normal text-right">Compras</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.anios.map((r) => (
+            <tr key={r.anio} className="border-t border-black/5">
+              <td className="py-1 text-ink font-semibold">{r.anio}</td>
+              <td className="py-1 text-right">{r.unidades}</td>
+              <td className="py-1 text-right">{pesos(r.importe)}</td>
+              <td className="py-1 text-right">{r.compras}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {data.modelos.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase text-faint font-semibold mb-1">Modelos que compró</p>
+          <div className="flex flex-wrap gap-1">
+            {modelos.map((m) => (
+              <span key={m.modelo} className="text-[11px] bg-[#F7F5F0] border border-black/10 rounded-full px-2 py-0.5" title={`Último: ${m.ultimo}`}>
+                {m.modelo} <span className="text-faint">×{m.unidades} · {m.ultimo}</span>
+              </span>
+            ))}
+            {data.modelos.length > 10 && (
+              <button onClick={() => setVerTodos(!verTodos)} className="text-[11px] text-brandDark underline px-1">
+                {verTodos ? 'ver menos' : `+${data.modelos.length - 10} más`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {data.suite.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase text-faint font-semibold mb-1">Pedidos en la Suite</p>
+          {data.suite.map((p) => (
+            <p key={p.id} className="text-xs text-ink">
+              #{p.id} · {new Date(p.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })} ·{' '}
+              {p.unidades} u. {p.importe ? `· ${pesos(p.importe)}` : ''} <span className="text-faint">({p.estado})</span>
+            </p>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-faint">Tango hasta jul-26 + Suite desde ago-26. Importes netos en pesos de cada momento.</p>
+    </div>
+  )
+}
+
 export default function HistorialModal({
   cliente,
   propuestas,
@@ -48,12 +145,13 @@ export default function HistorialModal({
         <div className="sticky top-0 bg-white border-b border-black/10 px-4 py-3 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-ink">{cliente.nomcomerc || cliente.razon}</p>
-            <p className="text-xs text-faint">Historial de contactos</p>
+            <p className="text-xs text-faint">Historial de compras y contactos</p>
           </div>
           <button onClick={onClose} className="text-sm text-muted">
             Cerrar ✕
           </button>
         </div>
+        <HistorialCompras cod={cliente.cod} />
         {/* Gráfico de secuencia de contactos (viejo → nuevo) */}
         {!loading && rows.length > 0 && (
           <div className="border-b border-black/10 px-4 py-3 bg-[#F7F5F0]">
