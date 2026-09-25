@@ -98,7 +98,7 @@ type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' |
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
   orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['influencers', 'Influencers'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
   admin: [['promotores', 'Promotores'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  influencer: [['anteojos', 'Anteojos'], ['fichas', 'Fichas'], ['dashboard', 'Dashboard']],
+  influencer: [['anteojos', 'Anteojos'], ['fichas', 'Cámara'], ['dashboard', 'Dashboard']],
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {

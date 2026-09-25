@@ -35,7 +35,7 @@ export default function ColabFichas({ clave, onLink }: { clave: string; onLink?:
   return (
     <div>
       <div className="rounded-xl bg-white border border-black/10 p-4 mb-4">
-        <h1 className="text-[15px] font-bold tracking-wide uppercase">📷 Fichas de tus anteojos</h1>
+        <h1 className="text-[15px] font-bold tracking-wide uppercase">📷 Cámara</h1>
         <p className="text-[12px] text-neutral-500 mt-1">
           La página de cada anteojo para tu comunidad: fotos, colores, dónde probárselo cerca y compra online.
           Es la misma que se abre al reconocer el anteojo con la cámara. Al comprar, pasan por tu link.
