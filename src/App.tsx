@@ -251,9 +251,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
   if (rol === 'admin') {
-    secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' })
+    secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' }, { to: '/marca-blanca-pedidos', label: 'Marca blanca' })
     menu.push(
-      { to: '/marca-blanca-pedidos', label: 'Pedidos de marca blanca' },
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
       { to: '/influencers', label: 'Influencers de Instagram' },
