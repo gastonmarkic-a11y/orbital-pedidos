@@ -215,6 +215,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/red-opticas', label: 'Red de ópticas' },
         { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
+        { to: '/prospeccion-social', label: 'Cola de prospección' },
       ],
       menu: [],
     }
