@@ -18,6 +18,7 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 const FRAME = 10;
+const KIT = 2; // estuche + franela por armazón
 const LENS_PRICE: Record<string, number> = { b: 1.5, s: 3, e: 3, p: 5, f: 5 };
 const LOGO_OK = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "application/pdf", "application/postscript", "application/illustrator"];
 
@@ -55,11 +56,11 @@ Deno.serve(async (req) => {
     const m = Math.round(Number(it.m)), q = Math.round(Number(it.q));
     const lens = String(it.lens ?? "").slice(0, 80), pre = lens.split("-")[0];
     if (!(m >= 1 && m <= 7) || !(q >= 1 && q <= 100000) || !(pre in LENS_PRICE)) return null;
-    const unit = FRAME + LENS_PRICE[pre];
+    const unit = FRAME + KIT + LENS_PRICE[pre];
     return {
       modelo: `Modelo 0${m}`, ref: `BR 00${m}`, color: String(it.col ?? "").slice(0, 60),
       cristal: lens.slice(pre.length + 1), logo: it.logo === "laser" ? "láser" : "tampografía",
-      cantidad: q, unit_usd: unit, total_usd: +(unit * q).toFixed(2),
+      cantidad: q, marco_usd: FRAME, kit_usd: KIT, cristal_usd: LENS_PRICE[pre], unit_usd: unit, total_usd: +(unit * q).toFixed(2),
     };
   });
   if (!items.length || items.some((x) => !x)) return json({ ok: false, error: "El pedido no tiene líneas válidas." }, 400);
@@ -112,6 +113,7 @@ Deno.serve(async (req) => {
       `${unidades} u · ${usd(subtotal)}${iva ? ` + IVA ${usd(iva)} = ${usd(total)}` : ""}`,
       dol && total_ars ? `Dólar vendedor ${dol.fecha.split("-").reverse().join("/")}: ${ars(dol.venta)} → <b>${ars(total_ars)}</b>` : "Dólar del día: no disponible",
       `Pago directo por transferencia a ${cuenta === "plenorius" ? "Plenorius S.A. (+IVA)" : "Brubank ($)"} · 50 % adelanto / 50 % contra entrega`,
+      "Ver en la Suite: Marca blanca",
       obs ? `\n📝 ${esc(obs)}` : "",
       logo_path ? "" : "\n⚠️ No adjuntó logo",
     ].filter((x) => x !== "").join("\n");

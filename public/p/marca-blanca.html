@@ -211,7 +211,7 @@ const LENSES=[
 ];
 const LENS=Object.fromEntries(LENSES.flatMap(g=>g.items.map(i=>[i.k,{...i,g:g.g}])));
 const LOGOS=[{k:"tampo",n:"Tampografía",d:"tinta, 1 color"},{k:"laser",n:"Grabado láser",d:"en bajo relieve"}];
-const FRAME=10;
+const FRAME=10,KIT=2;
 const IMG="/p/mb/";
 const FN="https://towcgvphxeqilpdnboki.supabase.co/functions/v1/marca-blanca-pedido";
 const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2NndnBoeGVxaWxwZG5ib2tpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Nzc1OTAsImV4cCI6MjA5ODA1MzU5MH0.KdghSYaU3D_cbmZ7E_TsvIwU9Bu0GB97Nz51Bck_WNU";
@@ -224,7 +224,7 @@ const $=id=>document.getElementById(id);
 const usd=v=>"USD "+v.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const ars=v=>"$ "+Math.round(v).toLocaleString("es-AR");
 const fdate=f=>{const [y,m,d]=f.split("-");return `${d}/${m}/${y}`};
-const unit=l=>FRAME+LENS[l.lens].p;
+const unit=l=>FRAME+KIT+LENS[l.lens].p;
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function save(){try{localStorage.setItem("mb-app",JSON.stringify({m:S.m,col:S.col,lens:S.lens,logo:S.logo,acct:S.acct,lines:S.lines,datos:S.datos}))}catch(e){}}
 function sums(){const units=S.lines.reduce((a,l)=>a+l.q,0),sub=S.lines.reduce((a,l)=>a+unit(l)*l.q,0),iva=S.acct==="ple"?sub*.21:0;return {units,sub,iva,tot:sub+iva}}
@@ -264,15 +264,16 @@ const SCREENS={
   <div class="card"><div class="sec-l">${g.g} <em>+ USD ${String(g.p).replace(".",",")}</em></div>
    <div class="grid-sw">${g.items.map(i=>`<button class="sw ${i.x||""}" type="button" data-k="${esc(i.k)}" aria-pressed="${i.k===S.lens}"><i style="background:${i.c}"></i>${i.n}</button>`).join("")}</div></div>
   <div class="card summary"><div class="row"><span>Elegido</span><b>${esc(LENS[S.lens].n)}</b></div><div class="row"><span>Tipo</span><span>${esc(LENS[S.lens].g)}</span></div></div>`},
- estuche(){const l=cur(),t=selTxt(l);return `${head("Paso 3 de 3","Estuche y franela","Van incluidos, uno de cada uno por armazón.")}
+ estuche(){const l=cur(),t=selTxt(l);return `${head("Paso 3 de 3","Estuche y franela","Uno de cada uno por armazón, USD 2 el par.")}
   <div class="card kit">
-   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="3" y="10" width="58" height="26" rx="13" fill="var(--ink)"/><rect x="3" y="21" width="58" height="2" fill="var(--panel)" opacity=".35"/><text x="32" y="18.5" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--panel)">LOGO</text></svg><div><b>Estuche rígido</b><small>Uno por armazón</small></div><span class="ok">Incluido</span></div>
-   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="10" y="6" width="44" height="32" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/><path d="M10 14h44M10 22h44M10 30h44" stroke="var(--accent)" stroke-width=".6" opacity=".5"/><text x="32" y="35" text-anchor="middle" font-size="5" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--accent)">LOGO</text></svg><div><b>Franela de microfibra</b><small>Una por armazón</small></div><span class="ok">Incluida</span></div>
+   <div class="sec-l" style="margin:0">Se suma a cada armazón <em>+ USD 2</em></div>
+   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="3" y="10" width="58" height="26" rx="13" fill="var(--ink)"/><rect x="3" y="21" width="58" height="2" fill="var(--panel)" opacity=".35"/><text x="32" y="18.5" text-anchor="middle" font-size="6" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--panel)">LOGO</text></svg><div><b>Estuche rígido</b><small>Uno por armazón</small></div></div>
+   <div class="it"><svg viewBox="0 0 64 44" aria-hidden="true"><rect x="10" y="6" width="44" height="32" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/><path d="M10 14h44M10 22h44M10 30h44" stroke="var(--accent)" stroke-width=".6" opacity=".5"/><text x="32" y="35" text-anchor="middle" font-size="5" font-family="Arial" font-weight="700" letter-spacing="1" fill="var(--accent)">LOGO</text></svg><div><b>Franela de microfibra</b><small>Una por armazón</small></div></div>
   </div>
   <div class="card summary">
    <div class="row"><span>Marco</span><b>${esc(t.t)}</b></div>
    <div class="row"><span>Cristal y logo</span><span>${esc(t.s)}</span></div>
-   <div class="row"><span>Precio por unidad</span><b style="font-family:var(--mono)">${usd(FRAME)} + ${usd(LENS[S.lens].p)} = ${usd(unit(l))}</b></div>
+   <div class="row"><span>Marco con logo</span><span style="font-family:var(--mono)">${usd(FRAME)}</span></div><div class="row"><span>Cristal</span><span style="font-family:var(--mono)">${usd(LENS[S.lens].p)}</span></div><div class="row"><span>Estuche + franela</span><span style="font-family:var(--mono)">${usd(KIT)}</span></div><div class="row"><span>Precio por unidad</span><b style="font-family:var(--mono)">${usd(unit(l))}</b></div>
    <div class="qtyrow"><span style="font-weight:600">Cantidad</span><div class="qty"><button type="button" data-qd="-10" aria-label="Restar 10">−</button><input id="qty" type="number" min="1" step="1" value="${S.q}" aria-label="Unidades"><button type="button" data-qd="10" aria-label="Sumar 10">+</button></div></div>
    <div class="quick">${[24,50,100,200,500].map(n=>`<button type="button" data-qs="${n}">${n} u</button>`).join("")}</div>
   </div>`},

@@ -70,6 +70,7 @@ import ColabRedireccion from './modules/colab/ColabRedireccion'
 import MiCatalogo from './modules/catalogo/MiCatalogo'
 import Postventa from './modules/postventa/Postventa'
 import PedidosUSAAdmin from './modules/usa/PedidosUSAAdmin'
+import MarcaBlancaPedidos from './modules/pedidos/MarcaBlancaPedidos'
 import StockUSAAdmin from './modules/usa/StockUSAAdmin'
 import ProteccionPublica from './modules/catalogo/ProteccionPublica'
 import LandingProximamente from './modules/landings/LandingProximamente'
@@ -112,6 +113,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/finanzas': Landmark,
   '/consignas': Package,
   '/red-opticas': Store,
+  '/marca-blanca-pedidos': Tag,
 }
 
 function iconoDe(to: string, label: string) {
@@ -209,6 +211,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
         { to: '/consignas', label: 'Consignas' },
+        { to: '/marca-blanca-pedidos', label: 'Marca blanca' },
         { to: '/red-opticas', label: 'Red de ópticas' },
         { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
@@ -249,6 +252,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' })
     menu.push(
+      { to: '/marca-blanca-pedidos', label: 'Pedidos de marca blanca' },
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
       { to: '/influencers', label: 'Influencers de Instagram' },
@@ -639,6 +643,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/accesos" element={<Usuarios />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/consignas" element={<Consignas />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/marca-blanca-pedidos" element={<MarcaBlancaPedidos />} />}
           {['admin', 'administracion', 'postventa', 'vendedor'].includes(rol) && <Route path="/red-opticas" element={<RedOpticas />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
