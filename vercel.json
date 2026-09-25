@@ -21,6 +21,10 @@
       "destination": "/p/opticalworld.html"
     },
     {
+      "source": "/marca-blanca",
+      "destination": "/p/marca-blanca.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
