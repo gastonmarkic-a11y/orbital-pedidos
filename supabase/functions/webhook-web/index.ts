@@ -1,5 +1,10 @@
 // webhook-web — adaptador del widget publico (ChatWidget). Self-contained + CORS.
 //
+// v27 (2026-09-25): el visitante de la tienda ya NO queda como consumidor final de entrada: IRIS le pregunta
+//    igual "¿sos óptica o consumidor final?" por las dudas (pedido de Gastón). Y si alguien del equipo ya le
+//    escribió (desde Telegram), lo que conteste el cliente de la tienda va al grupo colgado de ese hilo, igual
+//    que el chat del catálogo.
+//
 // v26 (2026-09-25): chat de IRIS embebido en la tienda Shopify (public/iris-tienda.js).
 //  • identidad.origen = 'shopify' → el contacto anónimo queda como consumidor final
 //    (tipo_cliente 'minorista'): IRIS no pregunta "¿sos óptica o consumidor?" y cotiza
@@ -47,12 +52,10 @@ type Identidad = { cod_cliente?: string | null; label?: string | null; vendedor?
 async function obtenerOCrearContacto(email: string, tienda = false) {
   const { data: ex } = await supabase.from("contactos").select("id, tipo_cliente").eq("email", email).maybeSingle();
   if (ex) {
-    // Quien chatea desde la tienda es consumidor final, aunque antes haya usado otro widget.
-    if (tienda && !ex.tipo_cliente) await supabase.from("contactos").update({ tipo_cliente: "minorista" }).eq("id", ex.id);
     return ex;
   }
   const nuevo: Record<string, unknown> = { email };
-  if (tienda) { nuevo.tipo_cliente = "minorista"; nuevo.nombre = "Visitante tienda online"; }
+  if (tienda) nuevo.nombre = "Visitante tienda online";
   const { data, error } = await supabase.from("contactos").insert(nuevo).select("id").single();
   if (error) throw error;
   return data;
@@ -175,7 +178,7 @@ async function quienEs(contactoId: string): Promise<string> {
   return ct?.nombre || "Cliente del catálogo";
 }
 
-async function pasarAlVendedor(convId: string, contactoId: string, vendedor: string, texto: string) {
+async function pasarAlVendedor(convId: string, contactoId: string, vendedor: string, texto: string, tienda = false) {
   const { data: grupos } = await supabase.from("ojo_grupos")
     .select("telegram_chat_id").eq("activo", true).eq("recibe_avisos", true).limit(1);
   const chatId = grupos?.[0]?.telegram_chat_id as number | undefined;
@@ -188,9 +191,9 @@ async function pasarAlVendedor(convId: string, contactoId: string, vendedor: str
 
   const quien = await quienEs(contactoId);
   const enviado = await tgSend(chatId,
-    `💬 <b>${escapar(quien)}</b> te contestó en el catálogo · Para: <b>${escapar(marca(vendedor))}</b>\n` +
+    `💬 <b>${escapar(quien)}</b> te contestó en ${tienda ? "el chat de la tienda online" : "el catálogo"} · Para: <b>${escapar(marca(vendedor))}</b>\n` +
     `«${escapar(texto.slice(0, 1500))}»\n\n` +
-    `<i>Respondé este mensaje y le aparece en el chat del catálogo.</i>`,
+    `<i>Respondé este mensaje y le aparece en el chat ${tienda ? "de la tienda" : "del catálogo"}.</i>`,
     ancla?.telegram_message_id);
 
   if (enviado) {
@@ -222,8 +225,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const conversacion = await conversacionDelContacto(contacto.id, conversacionId ?? null);
 
-    // Solo el chat identificado del catálogo: el widget público anónimo sigue con IRIS.
-    const vendedor = ident?.cod_cliente ? await vendedorEnCharla(conversacion.id) : null;
+    // Chat identificado del catálogo o chat de la tienda: si el equipo ya le escribió, sigue la persona.
+    const tienda = !ident?.cod_cliente && ident?.origen === "shopify";
+    const vendedor = ident?.cod_cliente || tienda ? await vendedorEnCharla(conversacion.id) : null;
     if (vendedor) {
       // ¿Ya le contestó algo al vendedor en esta charla? Entonces sin acuse (no repetir).
       const { data: vendMsg } = await supabase.from("at_mensajes").select("created_at")
@@ -237,7 +241,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
       if (errIns) console.error("no se pudo registrar el mensaje del cliente", errIns.message);
 
-      try { await pasarAlVendedor(conversacion.id, contacto.id, vendedor, texto); }
+      try { await pasarAlVendedor(conversacion.id, contacto.id, vendedor, texto, tienda); }
       catch (e) { console.error("pasar al vendedor", (e as Error).message); }
 
       const acuse = yaContesto ? "" : `Le pasé tu mensaje a ${vendedor}, te contesta por acá 🙌`;
