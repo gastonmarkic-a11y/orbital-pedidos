@@ -362,6 +362,12 @@ async function crearLink(chat: number, q: Quien, handle: string, red: string, fo
     const col = mod?.colores.find((c) => c.handle === handle);
     const link = `${BASE}/r/${r.codigo}`;
     let t = `<b>Listo, tu link:</b>\n${link}\n\n`;
+    // Ficha del anteojo (la misma del reconocimiento por cámara): fotos, colores, ópticas cerca.
+    // "Comprar" pasa por el link de arriba. Solo si el modelo tiene stock (si no, diría "no lo encontré").
+    if (mod && col && await rpc("modelo_landing", { p_modelo: mod.modelo, p_sku: col.sku }).catch(() => null)) {
+      t += `📷 <b>Ficha del anteojo</b> (fotos, colores y ópticas cerca):\n` +
+        `${BASE}/modelo/${encodeURIComponent(mod.modelo)}?sku=${encodeURIComponent(col.sku)}&r=${r.codigo}\n\n`;
+    }
     if (mod && col) {
       const { promo, tachado, off } = textoPrecio(col.price, col.compare_at, q.pct_descuento);
       t += `<b>${mod.modelo}</b> ${esc(col.color)} · ${red} ${formato}\n`;
