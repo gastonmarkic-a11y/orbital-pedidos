@@ -37,7 +37,9 @@ async function recortarAnteojo(url: string): Promise<HTMLCanvasElement | null> {
   // el borde del armazón es un salto brusco y ahí corta.
   const suave = (i: number, j: number) => {
     const r = p[i], g = p[i + 1], b = p[i + 2]
-    return Math.max(r, g, b) - Math.min(r, g, b) < 24 && r + g + b > 330 &&
+    // gris neutro (no beige/hueso pastel) y no tan lejos del fondo
+    return Math.max(r, g, b) - Math.min(r, g, b) < 10 && r + g + b > 450 &&
+      Math.abs(r - fr) + Math.abs(g - fg) + Math.abs(b - fb) < 110 &&
       Math.abs(r - p[j]) + Math.abs(g - p[j + 1]) + Math.abs(b - p[j + 2]) < 10
   }
   const visto = new Uint8Array(W * H)
