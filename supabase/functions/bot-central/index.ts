@@ -1471,7 +1471,7 @@ async function explicarTriple(): Promise<string> {
     `Los ves en ${TIENDA} — ¿querés el link de alguno? 🙌`;
 }
 const RE_DISPOSITIVO = /(habilit\w*|este dispositivo|no me deja entrar|no puedo entrar|no me abre)/i;
-const TXT_PIDE_DATOS_OPTICA = "¡Qué bueno! 🙌 A las ópticas y comercios los atiende nuestro equipo comercial, con condiciones especiales (los precios de esta tienda son de venta al público). Pasame en un mensaje el *nombre de tu óptica*, la *localidad* y un *WhatsApp* de contacto, y un vendedor te escribe.";
+const TXT_PIDE_DATOS_OPTICA = "¡Qué bueno! 🙌 A las ópticas y comercios los atiende nuestro equipo comercial, con condiciones especiales. Pasame en un mensaje el *nombre de tu óptica*, la *localidad* y un *WhatsApp* de contacto, y un vendedor te escribe.";
 const TXT_PIDE_WSP_OPTICA = "¡Gracias! Me falta un *WhatsApp* de contacto así el vendedor te escribe 🙌";
 const RE_PIDE_WSP_OPTICA = /falta un \*?WhatsApp\*? de contacto/i;
 const RE_PIDE_DATOS_OPTICA = /nombre de tu [oó]ptica\*?, la \*?localidad|falta un \*?WhatsApp\*? de contacto/i;
