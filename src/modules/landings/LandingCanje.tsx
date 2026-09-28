@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
+import CondicionesVolumen from './CondicionesVolumen'
 
 const AZUL = '#1e50ff'
 // El CTA no puede ser azul: el azul es el acento de toda la página y el botón
@@ -279,6 +280,9 @@ export default function LandingCanje() {
             ))}
           </ul>
         </div>
+
+        <CondicionesVolumen kicker="Tu pedido nuevo" titulo="Además del canje, bonificación por volumen."
+          bajada="El pedido nuevo suma bonificación según las unidades, aparte del canje." />
 
         {/* Activación + CTA */}
         <div className="mt-14 rounded-2xl border border-black/10 p-6 sm:p-8">

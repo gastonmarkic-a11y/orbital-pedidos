@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRegistrarVisita, tokenDeLaUrl } from '../../lib/visita'
+import CondicionesVolumen from './CondicionesVolumen'
 
 const AZUL = '#1e50ff'
 // El CTA no puede ser azul: el azul es el color de acento de TODA la página
@@ -268,6 +269,9 @@ export default function LandingBienvenida() {
           </div>
           <BotonPack className="mt-6" />
         </div>
+
+        <CondicionesVolumen kicker="Después del pack" titulo="En cada reposición, más volumen, mejor precio."
+          bajada="El pack de bienvenida es para tu primera compra. Desde ahí, cada pedido suma bonificación según las unidades." />
 
         {/* Tecnología */}
         <div className="mt-14">

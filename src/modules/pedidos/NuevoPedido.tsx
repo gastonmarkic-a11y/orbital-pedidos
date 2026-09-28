@@ -270,7 +270,19 @@ export default function NuevoPedido() {
     setPrecargaWebId(w.id)
     setPrecargaFotoId(null)
     setWebs((prev) => prev.filter((x) => x.id !== w.id))
-    toast(`🛒 Pedido web cargado${w.cod_cliente ? '' : ' · sin cliente identificado, elegilo a mano'}. Poné lista y condiciones y confirmá.`, 'success')
+    // Condiciones que la óptica eligió en el carrito (escalera por volumen / compra digital): se precargan.
+    const o = w.obs || ''
+    const esc = o.match(/📊 ESCALERA .*?comercial (\d+)%/)
+    const vol = o.match(/📊 VOLUMEN (\d+)% comercial/)
+    const plazo = o.match(/plazo (\d+(?:\/\d+)*)/)
+    const pagaContado = /PAGA CONTADO\/TRANSFERENCIA (\d+)%/.exec(o)
+    if (esc && Number(esc[1]) > 0) setDtoComercial(esc[1])
+    if (pagaContado) { setDtoFinanciero(pagaContado[1]); setCuotas([{ dias: 0, pct: 100 }]) }
+    else if (plazo) setCuotas(repartirCuotas(plazo[1].split('/').map(Number)))
+    const precargo = esc || vol || plazo || pagaContado
+    toast(`🛒 Pedido web cargado${w.cod_cliente ? '' : ' · sin cliente identificado, elegilo a mano'}.` +
+      (precargo ? ' Condiciones del carrito precargadas' + (vol ? ` (volumen ${vol[1]}% + bono: revisá el comercial)` : '') + '.' : ' Poné lista y condiciones') +
+      ' Revisá y confirmá.', 'success')
   }
   async function descartarWeb(w: PrecargaWeb) {
     await supabase.from('catalogo_precarga').update({ estado: 'descartado' }).eq('id', w.id)

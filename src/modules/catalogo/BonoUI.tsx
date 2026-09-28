@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Gift, Clock, ChevronRight } from 'lucide-react'
 import type { BonoCalc, BonoEstado } from './bono'
+import type { EscaleraCalc } from './escalera'
 import { cuentaRegresiva } from './bono'
 
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
@@ -107,13 +108,13 @@ const telLegible = (tel: string) => {
 }
 
 /** Resumen de compra digital (bono en %): detalle, bonificaciones, total, forma de pago y vendedor. */
-export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoUnidades, sinCargoImporte, contado, onContado }: {
+export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoUnidades, sinCargoImporte, contado, onContado, escalera }: {
   bono: BonoEstado; calc: BonoCalc; subtotal: number; unidades: number
   sinCargoUnidades: number; sinCargoImporte: number
   contado: boolean | null; onContado: (v: boolean) => void
+  escalera: EscaleraCalc   // escalera por volumen: % lo aplica el vendedor; plazo con premio del checkout
 }) {
   const cpct = bono.contado_pct ?? bono.financiero_pct ?? 0
-  const faltan120 = Math.max(0, 25 - unidades)
   return (
     <div className="rounded-xl border border-[#0004FF]/25 bg-[#0004FF]/[0.04] p-3 mb-3 space-y-1.5">
       <p className="text-[10px] tracking-[0.18em] uppercase text-[#0004FF] font-bold">Tu compra digital</p>
@@ -148,11 +149,16 @@ export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoU
 
       <div className="pt-2 mt-1 border-t border-[#0004FF]/15 space-y-1.5">
         <p className="text-[12px] text-neutral-700 leading-snug">
-          <b>Forma de pago:</b> 30, 60 y 90 días.{' '}
-          {unidades > 24
-            ? <span className="text-emerald-700 font-semibold">Con más de 24 unidades tenés hasta 120 días.</span>
-            : <span>Con más de 24 unidades llegás hasta 120 días (te faltan {faltan120}).</span>}
+          <b>Forma de pago:</b> {escalera.plazo.replace(/\//g, ', ')} días.{' '}
+          {escalera.premio
+            ? <span className="text-emerald-700 font-semibold">🎁 Completaste el escalón: ganaste 30 días más.</span>
+            : escalera.proximo && <span>Sumá {escalera.faltan} y pasás a {escalera.proximo.pct}% por volumen + 🎁 30 días más.</span>}
         </p>
+        {escalera.actual.pct > 0 && (
+          <p className="text-[12px] text-neutral-700">
+            <b>Por volumen:</b> {escalera.actual.pct}% de bonificación ({kAr(escalera.descuento)}), la aplica tu vendedor al confirmar.
+          </p>
+        )}
         {cpct > 0 && (
           <>
             <p className="text-[12px] font-semibold">¿Vas a pagar por transferencia o contado? Tenés {cpct}% extra.</p>

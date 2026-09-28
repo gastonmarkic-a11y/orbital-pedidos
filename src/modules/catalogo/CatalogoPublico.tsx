@@ -1677,6 +1677,8 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   // unidades al abrir el carrito: si desde acá completa un escalón, gana el premio de +30 días
   const [unidadesAlAbrir] = useState(unidades)
   const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir) : null
+  // Compra digital (Diferenciarte): el bono sigue igual; plazo con premio y % por volumen que aplica el vendedor
+  const escDigital = digital ? calcularEscalera(unidades, total, unidadesAlAbrir) : null
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
@@ -1707,12 +1709,14 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
     // Compra digital con bono en %: condiciones estructuradas (el servidor revalida el bono).
     const condiciones = digital ? {
       sin_cargo_unidades: sinCargoUnidades, sin_cargo_importe: sinCargoImp, contado: contado === true,
-      plazo: unidades > 24 ? '30/60/90/120' : '30/60/90', unidades,
+      plazo: escDigital!.plazo, unidades, volumen_pct: escDigital!.actual.pct,
     } : null
     const obsDigital = digital
       ? [`💻 COMPRA DIGITAL (${digital.bono.campana ?? 'bono'}) — bono ${kAr(digital.calc.bonificacion)}` +
          (sinCargoUnidades ? ` · ${sinCargoUnidades} sin cargo (${kAr(sinCargoImp)})` : '') +
          ` · neto ${kAr(digital.calc.neto)} + IVA · plazo ${condiciones!.plazo}` +
+         (escDigital!.actual.pct ? ` · 📊 VOLUMEN ${escDigital!.actual.pct}% comercial` : '') +
+         (escDigital!.premio ? ' (🎁 +30 días por completar escalón en el checkout)' : '') +
          (contado ? ` · PAGA CONTADO/TRANSFERENCIA ${digital.bono.contado_pct ?? 0}% extra → ${kAr(digital.calc.pagaEfectivo)} + IVA` : ''),
          obsFinal].filter(Boolean).join(' · ')
       : obsFinal
@@ -1810,7 +1814,8 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
               )}
               {digital && (
                 <ResumenCompraDigital bono={digital.bono} calc={digital.calc} subtotal={total} unidades={unidades}
-                  sinCargoUnidades={sinCargoUnidades} sinCargoImporte={sinCargoImp} contado={contado} onContado={setContado} />
+                  sinCargoUnidades={sinCargoUnidades} sinCargoImporte={sinCargoImp} contado={contado} onContado={setContado}
+                  escalera={escDigital!} />
               )}
               {!packCalc && !bonoPct && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
               {/* Óptica identificada por el link: se envía de un toque, sin formulario */}

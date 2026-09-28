@@ -175,12 +175,12 @@ async function conSaludo(resto: string): Promise<{ texto: string; textos: string
 }
 const SPEECH_DEF = "En un mercado ultra competitivo, te proponemos un producto que no tiene nadie: nuestra colección lleva *Triple Protección* en el cristal — UV400 + Blue Cut + Infrarrojo, todo en uno. Únicos en el mercado argentino, y un valor diferenciador para tu óptica.\n\nTe consulto para confirmar: ¿tenés una óptica?";
 const TXT_MINIMO = "No tenemos mínimos 🙌 A partir de *12 unidades* podés armar un pedido para tener una primera referencia de Orbital en tu negocio. Lo aconsejable es arrancar con *24 unidades por punto de venta*, para tener una buena representación de la marca.";
-const TXT_PAGO = "Trabajamos a *30, 60 y 90 días*. Con más de 24 unidades, este mes tenés *hasta 120 días*. Y si pagás por *transferencia o contado*, tenés un *15% de descuento extra* exclusivo.";
+const TXT_PAGO = "Trabajamos a *30, 60 y 90 días*. Si en el carrito del catálogo completás el siguiente escalón de volumen, te regalamos *30 días más* (30/60/90/120). Por volumen tenés bonificación: 24 u. *5%* · 40 u. *7%* · 60 u. *9%* · 100 u. *12%* · 200 u. *15%*. Y pagando por *transferencia o contado*, *15% extra* sobre el neto.";
 const TXT_BONO = "Comprando por el catálogo tenés un *bono extra del 5%* sobre tu compra (sin IVA), en pedidos de más de $1.000.000 y *hasta $300.000*. Por ejemplo, en una compra de $6.000.000 el bono es de $300.000. Y se suma al 15% extra si pagás por transferencia o contado.";
 // Cierre de TODO mensaje que lleva el token del cliente (catálogo o propuesta).
 // Copia de src/lib/mensajes.ts — son runtimes distintos, si se cambia va en los dos.
 const TXT_APP = "📲 *Bajate el catálogo como app*: te queda con ícono en el celular o la compu y entrás cuando quieras, sin volver a pedirnos el link. Vas a ver toda la colección en línea, el stock al día, las promos relámpago y las novedades apenas salen. El catálogo es tuyo 🙌";
-const TXT_BENEFICIOS = "*Tus beneficios:*\n🎁 *Pack de Bienvenida:* desde 12 piezas de línea, 1 sin cargo cada 4, a elección de Oportunidades.\n💻 *Bono por comprar en el catálogo:* 5% extra sobre tu compra, hasta $300.000 (en pedidos de más de $1.000.000). Vale 72 h.\n📅 *Pago:* 30, 60 y 90 días; con más de 24 unidades, hasta 120 días.\n💵 *15% extra* pagando por transferencia o contado.\n\nNo hay mínimos: desde 12 unidades armás tu pedido, y lo aconsejable es arrancar con 24 por punto de venta.";
+const TXT_BENEFICIOS = "*Tus beneficios:*\n🎁 *Pack de Bienvenida:* desde 12 piezas de línea, 1 sin cargo cada 4, a elección de Oportunidades.\n💻 *Bono por comprar en el catálogo:* 5% extra sobre tu compra, hasta $300.000 (en pedidos de más de $1.000.000). Vale 72 h.\n📦 *Por volumen:* 5% desde 24 unidades, hasta 15% desde 200.\n📅 *Pago:* 30, 60 y 90 días; si completás el siguiente escalón en el carrito, 30 días más de regalo.\n💵 *15% extra* pagando por transferencia o contado.\n\nNo hay mínimos: desde 12 unidades armás tu pedido, y lo aconsejable es arrancar con 24 por punto de venta.";
 
 interface FlujoDif {
   conversacion_id: string; paso: string; campana: string | null; tipo: string | null; nombre_optica: string | null;
@@ -324,7 +324,7 @@ async function linksDeToken(cod: string): Promise<{ propuesta: string; catalogo:
 function textoPropuesta(p: Propuesta, vendTel: string | null): string {
   const ini = `¡Te encontré! 🙌 *${p.label}* la atiende ${p.vendedor}.\n\n`;
   const contacto = vendTel ? `\n\nTu vendedor es *${p.vendedor}* — wa.me/${telNorm(vendTel)}` : "";
-  const extras = `\n\n💻 Además, comprando por el catálogo tenés un *bono extra del 5%* (hasta $300.000, en pedidos de más de $1.000.000) y *15% extra* pagando por transferencia o contado. Pago a 30, 60 y 90 días; con más de 24 unidades, hasta 120 días.`;
+  const extras = `\n\n💻 Además, comprando por el catálogo tenés un *bono extra del 5%* (hasta $300.000, en pedidos de más de $1.000.000) y *15% extra* pagando por transferencia o contado. Bonificación por volumen desde 24 unidades (5%) hasta 200 (15%). Pago a 30, 60 y 90 días, con 30 días más de regalo si completás el siguiente escalón en el carrito del catálogo.`;
   if (p.tipo === "bienvenida") return ini + `Como todavía no hiciste tu primera compra con Orbital, tenés el *Pack de Bienvenida* armado para tu óptica:\n${p.link}` + extras + contacto;
   if (p.tipo === "canje") return ini + `Tenés una *propuesta de canje* pensada para tu óptica: renovás lo que no rotó por la colección nueva.\n${p.link}` + extras + `\n\n${p.vendedor} te va a llamar para verla juntos 📞`;
   if (p.tipo === "recuperar") return ini + `Te dejo tu catálogo con la colección nueva, stock al día y precios de óptica:\n${p.link}` + extras + `\n\n${p.vendedor} te va a llamar para ponerse al día con vos 📞`;
@@ -1883,7 +1883,7 @@ async function handler(req: Request): Promise<Response> {
   historial.push({ role: "user", content: texto });
   const { data: flc } = await supabase.from("bot_lead_flujo").select("campana").eq("conversacion_id", conversacionId).maybeSingle();
   const reglaCampana = CAMPANAS.includes((flc as { campana: string | null } | null)?.campana ?? "")
-    ? "\n\nREGLA DE ESTA CHARLA (campaña Diferenciarte v2): respondé SOLO lo que te preguntan, directo y en 1 a 3 oraciones. NO recomiendes modelos, ni la Preventa, ni lanzamientos nuevos salvo que te pidan una recomendación explícitamente. Condiciones vigentes: sin mínimos (desde 12 unidades; aconsejable 24 por punto de venta); pago 30/60/90 días, con más de 24 unidades hasta 120 días; 15% extra pagando por transferencia o contado; bono 5% comprando por catálogo en pedidos de más de $1.000.000, hasta $300.000."
+    ? "\n\nREGLA DE ESTA CHARLA (campaña Diferenciarte v2): respondé SOLO lo que te preguntan, directo y en 1 a 3 oraciones. NO recomiendes modelos, ni la Preventa, ni lanzamientos nuevos salvo que te pidan una recomendación explícitamente. Condiciones vigentes: sin mínimos (desde 12 unidades; aconsejable 24 por punto de venta); pago 30/60/90 días, +30 días (30/60/90/120) solo si completa el siguiente escalón en el carrito del catálogo; bonificación por volumen 24 u. 5%, 40 u. 7%, 60 u. 9%, 100 u. 12%, 200 u. 15%; 15% extra pagando por transferencia o contado, sobre el neto; bono 5% comprando por catálogo en pedidos de más de $1.000.000, hasta $300.000."
     : "";
   const messages = [{ role: "system", content: sistemaIRIS(tipoCliente, canal, ingles, rag, token, vendCod) + reglaCampana }, ...historial];
 
