@@ -7,6 +7,7 @@
 //     en IRIS (al consumidor solo le llega nombre y dirección: nada de precios ni catálogo).
 //     Mis publicaciones = link y/o fotos de lo que publicó, para que Orbital lo comparta.
 // Las fotos van al bucket optica-fotos bajo <clave>/ (la política exige un token de óptica válido).
+import { BotonPagarPedido } from '../cobros/MediosPagoCatalogo'
 import { useEffect, useRef, useState } from 'react'
 import { X, Wrench, ExternalLink, Camera } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -432,6 +433,7 @@ export function MisCompras({ clave, onClose }: { clave: string; onClose: () => v
                                   {p.factura ? `Factura ${p.factura}` : ''}{p.factura && p.guia ? ' · ' : ''}{p.guia ? `${p.transporte ? p.transporte + ' · ' : ''}guía ${p.guia}` : ''}
                                 </p>
                               )}
+                              {p.estado !== 'consignacion' && <BotonPagarPedido clave={clave} pedido={p.id} />}
                             </div>
                           )}
                         </li>

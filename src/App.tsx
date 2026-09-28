@@ -59,6 +59,8 @@ import ActualizarBanner from './modules/ActualizarBanner'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
+import CobroPublico from './modules/cobros/CobroPublico'
+import PanelCobros from './modules/cobros/PanelCobros'
 import CatalogoUSA from './modules/catalogo/CatalogoUSA'
 import CentralConsigna from './modules/consigna/CentralConsigna'
 import AyudaConsigna from './modules/consigna/AyudaConsigna'
@@ -111,6 +113,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion/pedidos': Factory,
   '/ventas-historico': TrendingUp,
   '/finanzas': Landmark,
+  '/cobros': Banknote,
   '/consignas': Package,
   '/red-opticas': Store,
   '/marca-blanca-pedidos': Tag,
@@ -194,13 +197,14 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     }
 
   if (rol === 'financiero')
-    return { principales: [{ to: '/finanzas', label: 'Finanzas' }], secundarios: [], menu: [] }
+    return { principales: [{ to: '/finanzas', label: 'Finanzas' }, { to: '/cobros', label: 'Cobros' }], secundarios: [], menu: [] }
   if (rol === 'administracion')
     return {
       principales: [
         { to: '/mi-tanda', label: 'Mi tanda' },
         { to: '/pedidos', label: 'Facturación' },
         { to: '/pedidos/cobranzas', label: 'Cobranzas' },
+        { to: '/cobros', label: 'Cobros' },
       ],
       secundarios: [
         { to: '/cartera', label: 'Cartera' },
@@ -244,7 +248,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     principales.unshift({ to: '/mi-tanda', label: 'Mi tanda' }, { to: '/seguimiento', label: 'Seguimiento' })
   // El vendedor cobra sus propios pedidos: ve la misma solapa que administración,
   // pero acotada a su cartera.
-  if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/ventas-historico', label: 'Ventas' })
+  if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/cobros', label: 'Cobros' }, { to: '/ventas-historico', label: 'Ventas' })
   // Cada vendedor abre su catálogo personal (su token): lo que arme ahí queda a su nombre.
   if (rol === 'vendedor') principales.push({ to: '/mi-catalogo', label: 'Catálogo' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
@@ -254,6 +258,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' }, { to: '/marca-blanca-pedidos', label: 'Marca blanca' })
     menu.push(
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
+      { to: '/cobros', label: 'Cobros (alias / QR propio)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
       { to: '/influencers', label: 'Influencers de Instagram' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
@@ -647,6 +652,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'administracion') && <Route path="/marca-blanca-pedidos" element={<MarcaBlancaPedidos />} />}
           {['admin', 'administracion', 'postventa', 'vendedor'].includes(rol) && <Route path="/red-opticas" element={<RedOpticas />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'financiero') && <Route path="/finanzas" element={<FinanzasHub />} />}
+          {['admin', 'administracion', 'financiero', 'vendedor'].includes(rol) && <Route path="/cobros" element={<PanelCobros />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
@@ -802,6 +808,10 @@ export default function App() {
   // Link público de un promotor: genera el código de descuento único y manda a la tienda.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/r/')) {
     return <ColabRedireccion />
+  }
+  // Página de cobro pública: datos para transferir sin recargo (link / QR propio que manda el vendedor).
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/cobro/')) {
+    return <CobroPublico />
   }
   // Catálogo B2B público: ruta independiente del login por mail (acceso con clave propia).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/catalogo')) {

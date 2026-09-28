@@ -5,8 +5,9 @@ import { useToast } from '../../lib/toast'
 import { Pedido, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { esMovimientoConsigna, estadoLabel, importeDe } from './calc'
+import { calcImporteConIVA, esMovimientoConsigna, estadoLabel, importeDe } from './calc'
 import FichaCobranza, { ETAPAS_COBRO, accionDe, faltanteDe } from './FichaCobranza'
+import CobroPedido from '../cobros/CobroPedido'
 
 const claveCliente = (p: Pedido) => p.cod_cliente || (p.cliente || '').replace(/^\d+ - /, '').toLowerCase()
 
@@ -23,6 +24,7 @@ export default function Cobranzas() {
   const [tipo, setTipo] = useState('') // '' todos · 'b2c' consumidor final (Tienda) · 'b2b' mayorista
   const [etapa, setEtapa] = useState('') // filtra por estado del pedido para apurar esa etapa
   const [clienteSel, setClienteSel] = useState<string | null>(null)
+  const [cobrar, setCobrar] = useState<Pedido | null>(null)
 
   const cargar = useCallback(async () => {
     let q = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
@@ -237,10 +239,26 @@ export default function Cobranzas() {
                   )}
                 </button>
                 <p className="text-sm font-bold shrink-0">{formatPrecio(n)}</p>
+                {!l.cobrado && (
+                  <button
+                    onClick={() => setCobrar(l)}
+                    className="shrink-0 rounded-lg border border-gold/60 text-brandDark px-2 py-1 text-[11px] font-semibold"
+                    title="Datos para transferir + QR + WhatsApp"
+                  >
+                    Cobrar
+                  </button>
+                )}
               </div>
             )
           })}
         </div>
+      )}
+      {cobrar && (
+        <CobroPedido
+          pedido={cobrar}
+          monto={calcImporteConIVA(importeDe(cobrar, stock), cobrar.blanco_pct).conIVA}
+          onClose={() => setCobrar(null)}
+        />
       )}
     </div>
   )

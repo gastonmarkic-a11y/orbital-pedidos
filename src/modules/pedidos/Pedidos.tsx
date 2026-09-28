@@ -6,11 +6,12 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario, esPedidoShopify } from './calc'
+import { importeDe, calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario, esPedidoShopify } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
 import PickeoEscaner from './PickeoEscaner'
+import CobroPedido from '../cobros/CobroPedido'
 
 // Consumidor final = clientes 8888xx (Tienda online / cons. final); el resto es B2B (ópticas, distribuidores).
 const esConsFinal = (p: { cod_cliente: string | null; cliente: string | null }) =>
@@ -40,6 +41,7 @@ export default function Pedidos() {
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
+  const [cobrar, setCobrar] = useState<Pedido | null>(null)
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtroVendedor, setFiltroVendedor] = useState('')
@@ -870,6 +872,14 @@ export default function Pedidos() {
                         </div>
                       )}
 
+                      {(esVendedor || esAdmin || esAdministracion) && !l.cobrado && (
+                        <button
+                          onClick={() => setCobrar(l)}
+                          className="w-full rounded-lg border border-gold/60 text-brandDark py-2 text-xs font-bold"
+                        >
+                          💸 Cobrar · alias / QR / WhatsApp
+                        </button>
+                      )}
                       {(esDeposito || esAdmin) && estado === 'pendiente' && (
                         <button
                           onClick={() => cambiarEstado(l.id, 'en_preparacion').then((ok) => ok && toast('🔧 En preparación', 'success'))}
@@ -1297,6 +1307,13 @@ export default function Pedidos() {
             toast('✓ Listo — se pasa a Tango y Administración factura con el remito', 'success')
           })}
           onCerrar={() => setPickeo(null)}
+        />
+      )}
+      {cobrar && (
+        <CobroPedido
+          pedido={cobrar}
+          monto={calcImporteConIVA(importeDe(cobrar, stock), cobrar.blanco_pct).conIVA}
+          onClose={() => setCobrar(null)}
         />
       )}
     </div>

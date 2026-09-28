@@ -12,6 +12,7 @@ import ColabInspiracion from '../colab/ColabInspiracion'
 import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
 import PostventaOptica, { MisAnteojos, MisPublicaciones, MisCompras, PublicarLink } from './MiOptica'
+import { MediosPagoCatalogo } from '../cobros/MediosPagoCatalogo'
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -828,6 +829,7 @@ export default function CatalogoPublico() {
   // Pestaña "Conocé más": virales, Triple Protección y lentes de color (lo mismo que ven los colaboradores)
   const [conoce, setConoce] = useState(false)
   const [postventa, setPostventa] = useState(false)
+  const [comoPagar, setComoPagar] = useState(false)
   const [compras, setCompras] = useState(false)
   // Crear contenido: buscador de modelos que abre la ficha sin precio ni carrito
   const [contenido, setContenido] = useState(false)
@@ -1082,6 +1084,12 @@ export default function CatalogoPublico() {
           Mis compras
         </button>
       )}
+      {!sinPrecios && acceso?.tipo !== 'campana' && (
+        <button onClick={() => setComoPagar(true)}
+          className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
+          Cómo pagar
+        </button>
+      )}
     </>
   )
   const navPill = (active: boolean, accent: Grupo['accent']) =>
@@ -1205,6 +1213,7 @@ export default function CatalogoPublico() {
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
+      {comoPagar && <MediosPagoCatalogo onClose={() => setComoPagar(false)} />}
       {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
       {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
       {compras && esOptica && <MisCompras clave={clave} onClose={() => setCompras(false)} />}
