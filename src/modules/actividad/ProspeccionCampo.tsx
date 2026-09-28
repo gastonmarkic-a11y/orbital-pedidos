@@ -46,7 +46,7 @@ function diasHabilesRestantes(): number {
   return Math.max(1, c)
 }
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-const INICIO_AGENDA: [number, number, number] = [2026, 7, 11] // 11/8/2026 (fijo, igual que AgendaCampo)
+const INICIO_AGENDA: [number, number, number] = [2026, 8, 28] // 28/9/2026 (fijo, igual que AgendaCampo; agenda regenerada ese día)
 function sumarHabiles(base: Date, k: number): Date {
   const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   const paso = k >= 0 ? 1 : -1

@@ -49,7 +49,7 @@ const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
 // --- Fechas: la agenda corre a partir del 11/8 (fijo); etiqueta relativa a hoy (Hoy/Mañana/DíaSem) ---
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-const INICIO_AGENDA: [number, number, number] = [2026, 7, 11]
+const INICIO_AGENDA: [number, number, number] = [2026, 8, 28] // 28/9/2026
 function sumarHabiles(base: Date, k: number): Date {
   const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   const paso = k >= 0 ? 1 : -1; let rem = Math.abs(k)

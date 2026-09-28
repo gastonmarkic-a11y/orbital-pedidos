@@ -39,10 +39,10 @@ function FuegosMini({ rojo, naranja, azul }: { rojo: number; naranja: number; az
   ))}</>
 }
 
-// La agenda corre a partir de una fecha FIJA (11/8/2026). El día N es el N-ésimo día hábil
+// La agenda corre a partir de una fecha FIJA (28/9/2026, cuando se regeneró por zonas). El día N es el N-ésimo día hábil
 // desde ese inicio; la etiqueta se calcula relativa a HOY real (Hoy / Mañana / DíaSem d/m).
 const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-const INICIO_AGENDA: [number, number, number] = [2026, 7, 11] // 11/8/2026
+const INICIO_AGENDA: [number, number, number] = [2026, 8, 28] // 28/9/2026: agenda regenerada ese día
 function sumarHabiles(base: Date, k: number): Date {
   const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   const paso = k >= 0 ? 1 : -1
