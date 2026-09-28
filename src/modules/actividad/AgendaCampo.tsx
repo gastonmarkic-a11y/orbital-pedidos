@@ -69,8 +69,8 @@ interface Turno { id: number; vendedor: string; dia_num: number; cliente: string
 interface Bienv { cod: string; nombre: string | null; direccion: string | null; telefono: string | null; zona: string | null; dist: number | null }
 interface Evento { id: number; dia_num: number; hora: string | null; lugar: string | null; cliente: string | null; nota: string | null }
 
-// Los que hacen recorrido de campo. Martín salió del equipo; Bruno tomó CABA/norte/oeste.
-const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }]
+// Los que hacen recorrido de campo. Martín salió del equipo; Bruno CABA/oeste, Lola CABA norte + GBA norte.
+const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }, { cod: 'Lola', label: 'Lola' }]
 const META_DIA = 12 // visitas objetivo por día (propios + prospección)
 // Feriados nacionales AR (editar según calendario oficial).
 const FERIADOS_AR = ['2026-08-17', '2026-10-12', '2026-11-20', '2026-12-08', '2026-12-25']
@@ -244,7 +244,7 @@ function HistorialModal({ r, onClose }: { r: Row; onClose: () => void }) {
     </div>
   )
 }
-const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Bruno: 'Bruno', Martin: 'Martín', Corporativo: 'Corporativo' }
+const NOMBRE_OP: Record<string, string> = { Marketing: 'Luna', ProspeccionVenta: 'Damián', Damian: 'Damián', Adrian: 'Adrián', Bruno: 'Bruno', Lola: 'Lola', Martin: 'Martín', Corporativo: 'Corporativo' }
 
 // Asistente IA: reacomoda la agenda del vendedor por un pedido en lenguaje natural.
 function AjusteIAAgenda({ ven, onAplicado }: { ven: string; onAplicado: () => void }) {

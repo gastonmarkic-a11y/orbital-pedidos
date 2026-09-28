@@ -392,7 +392,8 @@ const VIEW_OPTIONS = [
   { value: 'admin', label: 'Admin (todo)' },
   { value: 'vendedor:Adrian', label: 'Adrián' },
   { value: 'vendedor:Ulises', label: 'Ulises (prospección CABA)' },
-  { value: 'vendedor:Bruno', label: 'Bruno (CABA/norte/oeste)' },
+  { value: 'vendedor:Bruno', label: 'Bruno (CABA/oeste)' },
+  { value: 'vendedor:Lola', label: 'Lola (CABA norte/GBA norte)' },
   { value: 'vendedor:Corporativo', label: 'Corporativo' },
   { value: 'revendedor', label: 'Revendedor Cuyo/SF' },
   { value: 'social', label: 'Prospección social (piloto)' },
@@ -571,7 +572,7 @@ function Layout() {
           {esVendedorOAdmin && (
             <>
               <Route path="/hoy" element={
-                codigoEfectivo === 'Adrian' || codigoEfectivo === 'Bruno' ? <AgendaCampo />
+                codigoEfectivo === 'Adrian' || codigoEfectivo === 'Bruno' || codigoEfectivo === 'Lola' ? <AgendaCampo />
                 : codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian' ? <ProspeccionCampo />
                 : rol === 'admin' ? <AgendaEquipo />
                 : <AgendaDelDia />

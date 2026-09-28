@@ -16,6 +16,7 @@ interface PJ { prospector: string; cerrado: boolean; nombre: string | null; codi
 const ACTORES = [
   { code: 'Adrian', label: 'Adrián', rol: 'Vendedor · campo' },
   { code: 'Bruno', label: 'Bruno', rol: 'Vendedor · campo' },
+  { code: 'Lola', label: 'Lola', rol: 'Vendedora · campo' },
 ]
 // Feriados nacionales AR (editar si cambia el calendario oficial / feriados con fines turísticos).
 const FERIADOS: string[] = [
@@ -41,8 +42,8 @@ function diasHabilesRestantes(): number {
 }
 const META_CAMPO_DIA = 12 // visitas de campo por día (agenda diaria del vendedor)
 
-// Los que hacen recorrido de campo. Martín salió del equipo; Bruno tomó CABA/norte/oeste.
-const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }]
+// Los que hacen recorrido de campo. Martín salió del equipo; Bruno CABA/oeste, Lola CABA norte + GBA norte.
+const VEND = [{ cod: 'Adrian', label: 'Adrián' }, { cod: 'Bruno', label: 'Bruno' }, { cod: 'Lola', label: 'Lola' }]
 const RES = { vendio: '🟢 Vendió', visito: '🔵 Visité', no_estaba: '🟠 No estaba', reagendar: '🟣 Reagendar' } as const
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
@@ -116,16 +117,17 @@ export default function AgendaEquipo() {
     async function cargar() {
       setLoading(true)
       const hoy = new Date().toISOString().slice(0, 10)
-      const [a, b, t, ah, th] = await Promise.all([
+      const [a, b, l, t, ah, th] = await Promise.all([
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Adrian' }),
         supabase.rpc('agenda_campo_plan', { p_vendedor: 'Bruno' }),
+        supabase.rpc('agenda_campo_plan', { p_vendedor: 'Lola' }),
         supabase.from('agenda_turnos').select('vendedor,dia_num,cargado_por,cliente,localidad'),
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas').eq('origen', 'agenda_campo').eq('fecha', hoy),
         // TODAS las actividades del día (cualquier origen y persona): contactos, ventas y propuestas por persona
         supabase.from('actividad_diaria').select('vendedor,cod_cliente,resultado_contacto,monto_vendido,unidades_vendidas,origen,propuesta_enviada_id').eq('fecha', hoy),
       ])
       const pj = await supabase.from('prospectos_julio').select('prospector,cerrado,nombre,codigo,localidad')
-      setPlanes({ Adrian: (a.data as Row[]) ?? [], Bruno: (b.data as Row[]) ?? [] })
+      setPlanes({ Adrian: (a.data as Row[]) ?? [], Bruno: (b.data as Row[]) ?? [], Lola: (l.data as Row[]) ?? [] })
       setTurnos((t.data as Turno[]) ?? [])
       setActHoy((ah.data as Act[]) ?? [])
       setTodoHoy((th.data as Act[]) ?? [])
@@ -149,7 +151,7 @@ export default function AgendaEquipo() {
       </div>
 
       {(() => {
-        const allBa = [...(planes.Adrian ?? []), ...(planes.Bruno ?? [])].filter((r) => r.bloque === 'ba_gba')
+        const allBa = VEND.flatMap((v) => planes[v.cod] ?? []).filter((r) => r.bloque === 'ba_gba')
         const total = allBa.length, visit = allBa.filter((r) => r.visitado).length
         const vh = actHoy.length, ventas = actHoy.filter((a) => a.resultado_contacto === 'vendio')
         const monto = ventas.reduce((s, a) => s + (a.monto_vendido ?? 0), 0)
