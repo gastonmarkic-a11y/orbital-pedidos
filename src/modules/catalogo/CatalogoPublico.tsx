@@ -7,6 +7,8 @@ import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bon
 import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
+import { calcularEscalera, escaleraObs } from './escalera'
+import { EscaleraResumen, EscaleraSugerencias } from './EscaleraUI'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from '../colab/ColabInspiracion'
 import { copiesDe, partesColor } from '../colab/colabUtil'
@@ -1220,7 +1222,8 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
+      {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
+        topModelos={todos.filter((m) => m.caliente).map((m) => m.modelo)} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
       {/* Bono: cartel de escalón desbloqueado + barra de progreso fija */}
       {celebra && (!packCalc || bonoPct) && <BonoCelebra texto={celebra} onClose={() => setCelebra(null)} />}
@@ -1649,9 +1652,10 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
 }
 
 // ── Carrito + checkout ──
-function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, onDone }: {
+function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, topModelos, onClose, onDone }: {
   cart: Record<string, CartItem>; clave: string; acceso: Acceso | null; bono?: BonoEstado | null; modoPack?: boolean
-  onSetQty: (codigo: string, n: number) => void; onClose: () => void; onDone: () => void
+  onSetQty: (codigo: string, n: number) => void; onAdd: (v: Variante, modelo: string) => void; topModelos: string[]
+  onClose: () => void; onDone: () => void
 }) {
   const items = Object.values(cart)
   const total = items.reduce((a, c) => a + c.cantidad * c.precio, 0)
@@ -1669,6 +1673,10 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
   const sinPrecios = useSinPrecios()
+  // Escalera por volumen: solo ópticas con precios, sin pack ni bono de campaña (esos traen sus condiciones)
+  // unidades al abrir el carrito: si desde acá completa un escalón, gana el premio de +30 días
+  const [unidadesAlAbrir] = useState(unidades)
+  const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir) : null
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
@@ -1693,7 +1701,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
       : packCalc
         // Pack de bienvenida: el vendedor ve en el pedido qué corresponde sin cargo.
         ? [packObs(packCalc), obs.trim()].filter(Boolean).join(' · ')
-        : obs.trim()
+        : escalera
+          ? [escaleraObs(escalera, contado === true), obs.trim()].filter(Boolean).join(' · ')
+          : obs.trim()
     // Compra digital con bono en %: condiciones estructuradas (el servidor revalida el bono).
     const condiciones = digital ? {
       sin_cargo_unidades: sinCargoUnidades, sin_cargo_importe: sinCargoImp, contado: contado === true,
@@ -1785,11 +1795,19 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onClose, 
                 </div>
               ))}
             </div>
-            <div className="sticky bottom-0 bg-white border-t border-black/10 p-4">
+            {/* Con escalera el pie es alto: deja de ser fijo para que en el celular se vea entero al bajar */}
+            <div className={`${escalera ? '' : 'sticky bottom-0 '}bg-white border-t border-black/10 p-4`}>
               {sinPrecios
                 ? <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">Total del pedido</span><span className="font-bold text-lg">{unidades} unidades</span></div>
                 : <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>}
               {packCalc && <PackResumen calc={packCalc} />}
+              {escalera && (
+                <EscaleraResumen calc={escalera} subtotal={total} contado={contado} onContado={setContado}>
+                  <EscaleraSugerencias clave={clave} modelosCarrito={[...new Set(items.map((c) => c.modelo))]} modelosTop={topModelos}
+                    enCarrito={Object.fromEntries(items.map((c) => [c.codigo, c.cantidad]))} faltan={escalera.faltan}
+                    onAdd={(v, m) => onAdd(v as Variante, m)} />
+                </EscaleraResumen>
+              )}
               {digital && (
                 <ResumenCompraDigital bono={digital.bono} calc={digital.calc} subtotal={total} unidades={unidades}
                   sinCargoUnidades={sinCargoUnidades} sinCargoImporte={sinCargoImp} contado={contado} onContado={setContado} />
