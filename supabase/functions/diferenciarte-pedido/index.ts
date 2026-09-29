@@ -72,7 +72,8 @@ async function detalle(precargaId: number) {
   const lineas = (p.items ?? []).map((it) => `• ${it.modelo}${it.descripcion ? " " + it.descripcion : ""} × ${it.cantidad}`).join("\n");
   const sc = Number(c.sin_cargo_importe || 0), scU = Number(c.sin_cargo_unidades || 0);
   const contado = c.contado === true;
-  const plazo = String(c.plazo || "30/60/90") === "30/60/90/120" ? "30, 60, 90 y 120 días" : "30, 60 y 90 días";
+  const pl = String(c.plazo || "30/60/90").split("/");
+  const plazo = pl.slice(0, -1).join(", ") + " y " + pl[pl.length - 1] + " días";
   const vend = String(c.vendedor_contacto || "Gastón");
   const vwsp = dig(String(c.vendedor_wsp || ""));
   const msg = [

@@ -31,7 +31,7 @@ function mensajeMetaLead(nombre: string | null, operador: string): string {
 const RESPUESTAS_META: { tema: string; label: string; build: (n: string) => string }[] = [
   { tema: 'visita', label: '📅 Coordinar visita', build: (n) => `¡Genial${n ? ', ' + n : ''}! 🙌 Me encantaría pasar a mostrarte la línea en persona y que veas los cristales. ¿Qué día y horario te queda cómodo esta semana? Coordinamos y te llevo el muestrario.` },
   { tema: 'catalogo', label: '📖 Enviar catálogo', build: () => `Te paso el catálogo online 👉 https://ver.orbitaleyewear.com.ar/catalogo\nAhí ves toda la colección con fotos y medidas, y podés armar el pedido directo. Cualquier modelo que te guste te paso disponibilidad y condiciones 🙌` },
-  { tema: 'precio', label: '💲 Cotización / precios', build: () => `¡Dale! Te armo la cotización 🙌 ¿Qué modelos te interesan y qué cantidades manejás? Trabajamos con lista para óptica y condiciones de pago a 30/60/90 días.` },
+  { tema: 'precio', label: '💲 Cotización / precios', build: () => `¡Dale! Te armo la cotización 🙌 ¿Qué modelos te interesan y qué cantidades manejás? Trabajamos con lista para óptica y condiciones de pago a 30/60/90 días (desde 40 u., 30/60/90/120).` },
   { tema: 'triple', label: '🕶️ Triple Protección', build: () => `Nuestro diferencial es la Triple Protección (UV400 + Infrarrojo + Blue Cut) en un solo cristal, única en el país. Mirá el detalle acá 👉 https://ver.orbitaleyewear.com.ar/tripleproteccion` },
   { tema: 'recontacto', label: '🔄 Re-contacto (sin respuesta)', build: (n) => `¡Hola${n ? ' ' + n : ''}! 👋 Te escribí hace unos días por la línea de Orbital. ¿Llegaste a verla? Si te copa, coordinamos una visita corta o te paso el catálogo. Quedo atento 🙌` },
 ]

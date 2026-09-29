@@ -1,8 +1,8 @@
 // ── Escalera por volumen: descuento comercial + plazo según unidades del pedido ──
 // Propuesta 2026-09-28 (a validar con costos). Aplica al catálogo de ópticas sin pack ni bono.
 // El volumen da SOLO descuento comercial; las piezas sin cargo son del Pack (pack.ts).
-// Plazo base siempre 30/60/90 (también desde 24 u.).
-// Premio del checkout: si en el carrito completa un escalón, +30 días → 30/60/90/120.
+// Plazo base: hasta 39 u. 30/60/90; desde 40 u. 30/60/90/120 (actualizado 2026-09-29).
+// Premio del checkout: si en el carrito completa un escalón, +30 días (tope 150) → 24 u. 30/60/90/120 · 40+ 30/60/90/120/150.
 // Contado/transferencia: financiero en cascada sobre el neto comercial (NC al cobrar).
 
 export interface Escalon { desde: number; pct: number; plazo: string }
@@ -10,17 +10,17 @@ export interface Escalon { desde: number; pct: number; plazo: string }
 export const ESCALERA: Escalon[] = [
   { desde: 1,   pct: 0,  plazo: '30/60/90' },
   { desde: 24,  pct: 5,  plazo: '30/60/90' },
-  { desde: 40,  pct: 7,  plazo: '30/60/90' },
-  { desde: 60,  pct: 9,  plazo: '30/60/90' },
-  { desde: 100, pct: 12, plazo: '30/60/90' },
-  { desde: 200, pct: 15, plazo: '30/60/90' },
+  { desde: 40,  pct: 7,  plazo: '30/60/90/120' },
+  { desde: 60,  pct: 9,  plazo: '30/60/90/120' },
+  { desde: 100, pct: 12, plazo: '30/60/90/120' },
+  { desde: 200, pct: 15, plazo: '30/60/90/120' },
 ]
 export const CONTADO_PCT = 15
 export const PREMIO_DIAS = 30
 export const PLAZO_TOPE = 150
 
 const diasMax = (plazo: string) => Number(plazo.split('/').pop())
-const estirar = (plazo: string) => {
+export const estirar = (plazo: string) => {
   const d = diasMax(plazo)
   return d + PREMIO_DIAS > PLAZO_TOPE ? plazo : `${plazo}/${d + PREMIO_DIAS}`
 }

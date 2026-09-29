@@ -20,8 +20,8 @@ export default function CondicionesVolumen({ kicker, titulo, bajada }: { kicker:
         ))}
       </div>
       <ul className="mt-5 space-y-2 text-[13px] text-black/75">
-        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>Pago a 30, 60 y 90 días.</li>
-        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>🎁 Si en el carrito del catálogo completás el siguiente escalón, te regalamos {PREMIO_DIAS} días más (30/60/90/120).</li>
+        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>Pago a 30, 60 y 90 días; desde 40 unidades, a 30, 60, 90 y 120.</li>
+        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>🎁 Si en el carrito del catálogo completás el siguiente escalón, te regalamos {PREMIO_DIAS} días más (hasta 150).</li>
         <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>{CONTADO_PCT}% extra pagando por transferencia o contado.</li>
       </ul>
     </div>
