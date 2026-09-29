@@ -240,7 +240,7 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
         <div className="h-px bg-gradient-to-r from-[#0004FF]/60 to-transparent my-4" />
         <p className="text-sm text-neutral-600 mb-5">Catálogo mayorista para ópticas. Ingresá la clave que te compartió Orbital.</p>
         <input autoFocus type="password" placeholder="Clave de acceso" value={v} onChange={(e) => setV(e.target.value)}
-          className="w-full rounded-lg bg-white border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/40" />
+          className="w-full rounded-lg bg-white border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/40" />
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
         <button disabled={loading} className="w-full mt-4 rounded-lg bg-[#0004FF] text-white py-2.5 text-sm font-medium disabled:opacity-50">
           {loading ? 'Verificando…' : 'Entrar al catálogo'}
@@ -1138,7 +1138,8 @@ export default function CatalogoPublico() {
           </div>
         </div>
         {/* En el celu, Inspiración / Postventa van en su propia fila */}
-        <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2">{accesosHeader}</div>
+        {/* Fila deslizable: si no entra, no ensancha la página (en el celu todo se corría de costado) */}
+        <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&>button]:shrink-0">{accesosHeader}</div>
         {/* Buscador */}
         <div className="max-w-6xl mx-auto px-4 pb-2">
           <div className="relative">
@@ -1282,7 +1283,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto">
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
           <div>
             <h2 className="text-base font-bold">{modelo.modelo}</h2>
@@ -1500,7 +1501,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
           <div>
             <h2 className="text-base font-bold">{modelo.modelo}</h2>
@@ -1515,7 +1516,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
           <div className="p-4">
             {/* Imagen grande */}
             {/* Sin foto propia del color no mostramos la de otro color (confunde): swatch + aviso */}
-            <FotoProd src={v.imagen} alt={v.descripcion ?? ''} lazy={false} className="aspect-square rounded-xl">
+            <FotoProd src={v.imagen} alt={v.descripcion ?? ''} lazy={false} className="aspect-[4/3] sm:aspect-square rounded-xl">
               {!v.imagen && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-500">
                   <span className="w-14 h-14 rounded-full border border-black/10 shadow-sm" style={{ background: colorSwatch(v.descripcion) }} />
@@ -1531,13 +1532,6 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
               {v.tiene_preventa && <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">PREVENTA</span>}
               {v.proyectado && <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[10px] font-bold rounded-full px-2 py-0.5">📅 PROYECTADO</span>}
             </FotoProd>
-
-            {colores3D.length > 0 && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <button onClick={() => setModo3D('visor')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">📦 Ver en 3D / en la mesa</button>
-                <button onClick={() => setModo3D('cara')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">🪞 Probar en la cara</button>
-              </div>
-            )}
 
             {/* Tira de colores */}
             {vars.length > 1 && (
@@ -1577,6 +1571,31 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
                 </div>
               )}
             </div>
+
+            {/* Agregar pegado a las fotos: en el celu no hay que bajar toda la ficha (en modo contenido no hay carrito) */}
+            {!soloContenido && <div className="mt-3">
+              {enCarrito === 0 ? (
+                <button onClick={() => onAdd(v, modelo.modelo)} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
+                  <Plus size={16} /> Agregar al pedido
+                </button>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between bg-[#EEEEF0] rounded-xl p-1.5">
+                    <button onClick={() => onSetQty(v.codigo, enCarrito - 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Minus size={16} /></button>
+                    <span className="text-base font-bold">{enCarrito} en el pedido</span>
+                    <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} disabled={enCarrito >= v.stock} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center disabled:opacity-30"><Plus size={16} /></button>
+                  </div>
+                  {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">{v.proyectado ? 'Llegaste al máximo en proyectado' : 'Llegaste al stock disponible'}</p>}
+                </div>
+              )}
+            </div>}
+
+            {colores3D.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <button onClick={() => setModo3D('visor')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">📦 Ver en 3D / en la mesa</button>
+                <button onClick={() => setModo3D('cara')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">🪞 Probar en la cara</button>
+              </div>
+            )}
 
             {/* Medidas del modelo (ficha técnica) */}
             {medidas && (medidas.ancho || medidas.alto || medidas.largo || medidas.formato) && (
@@ -1647,23 +1666,6 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
               </div>
             )}
 
-            {/* Agregar (en modo contenido no hay carrito: no se cruza con el pedido) */}
-            {!soloContenido && <div className="mt-4">
-              {enCarrito === 0 ? (
-                <button onClick={() => onAdd(v, modelo.modelo)} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
-                  <Plus size={16} /> Agregar al pedido
-                </button>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between bg-[#EEEEF0] rounded-xl p-1.5">
-                    <button onClick={() => onSetQty(v.codigo, enCarrito - 1)} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center"><Minus size={16} /></button>
-                    <span className="text-base font-bold">{enCarrito} en el pedido</span>
-                    <button onClick={() => onSetQty(v.codigo, enCarrito + 1)} disabled={enCarrito >= v.stock} className="w-11 h-11 rounded-lg bg-white flex items-center justify-center disabled:opacity-30"><Plus size={16} /></button>
-                  </div>
-                  {enCarrito >= v.stock && <p className="text-[11px] text-neutral-400 text-center mt-1.5">{v.proyectado ? 'Llegaste al máximo en proyectado' : 'Llegaste al stock disponible'}</p>}
-                </div>
-              )}
-            </div>}
           </div>
         )}
       </div>
@@ -1769,14 +1771,15 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
+      {/* dvh: en el celu 92vh queda debajo de la barra del navegador y tapaba el botón de enviar */}
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92dvh] flex flex-col overflow-hidden">
+        <div className="shrink-0 bg-white border-b border-black/5 px-4 py-3 flex items-center justify-between z-10">
           <h2 className="text-base font-bold">{fase === 'ok' ? 'Pedido enviado' : 'Tu pedido'}</h2>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5"><X size={20} /></button>
         </div>
 
         {fase === 'ok' && result ? (
-          <div className="p-6 text-center">
+          <div className="p-6 text-center overflow-y-auto">
             <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><Check size={28} /></div>
             <p className="text-sm font-semibold">¡Recibimos tu pedido!</p>
             <p className="text-sm text-neutral-500 mt-1">{result.cliente}</p>
@@ -1801,33 +1804,38 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
           <p className="text-sm text-neutral-400 p-10 text-center">Tu pedido está vacío.</p>
         ) : fase === 'carrito' ? (
           <>
+            {/* Lista + condiciones deslizan; el botón de enviar queda siempre fijo abajo */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             <div className="p-3 space-y-2">
               {items.map((c) => (
-                <div key={c.codigo} className="flex items-center gap-3 bg-[#F5F5F7] rounded-xl p-2">
-                  <FotoProd src={c.imagen} className="w-14 h-14 rounded-lg border border-black/5 shrink-0">{!c.imagen && <Placeholder />}</FotoProd>
+                <div key={c.codigo} className="flex gap-3 bg-[#F5F5F7] rounded-xl p-2">
+                  <FotoProd src={c.imagen} className="w-16 h-16 rounded-lg border border-black/5 shrink-0 self-center">{!c.imagen && <Placeholder />}</FotoProd>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{c.modelo}</p>
-                    <p className="text-[11px] text-neutral-500 truncate">{colorLegible(c.descripcion)}</p>
-                    <div className="flex items-center gap-1.5">
-                      {!sinPrecios && <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>}
-                      {packCalc && (
-                        <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${c.oportunidad ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0004FF]/10 text-[#0004FF]'}`}>
-                          {c.oportunidad ? 'Oportunidad' : 'Línea'}
-                        </span>
-                      )}
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold leading-tight">{c.modelo}</p>
+                      <button onClick={() => onSetQty(c.codigo, 0)} aria-label="Quitar" className="-mt-1 -mr-1 w-7 h-7 rounded-lg text-red-500 flex items-center justify-center shrink-0"><Trash2 size={14} /></button>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => onSetQty(c.codigo, c.cantidad - 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
-                    <span className="w-6 text-center text-sm font-bold">{c.cantidad}</span>
-                    <button onClick={() => onSetQty(c.codigo, c.cantidad + 1)} disabled={!!c.stock && c.cantidad >= c.stock} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
-                    <button onClick={() => onSetQty(c.codigo, 0)} className="w-8 h-8 rounded-lg text-red-500 flex items-center justify-center"><Trash2 size={14} /></button>
+                    <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">{colorLegible(c.descripcion)}</p>
+                    <div className="flex items-center justify-between gap-2 mt-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {!sinPrecios && <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>}
+                        {packCalc && (
+                          <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${c.oportunidad ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0004FF]/10 text-[#0004FF]'}`}>
+                            {c.oportunidad ? 'Oportunidad' : 'Línea'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => onSetQty(c.codigo, c.cantidad - 1)} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center"><Minus size={14} /></button>
+                        <span className="w-7 text-center text-sm font-bold">{c.cantidad}</span>
+                        <button onClick={() => onSetQty(c.codigo, c.cantidad + 1)} disabled={!!c.stock && c.cantidad >= c.stock} className="w-8 h-8 rounded-lg bg-white border border-black/10 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            {/* Con escalera el pie es alto: deja de ser fijo para que en el celular se vea entero al bajar */}
-            <div className={`${escalera ? '' : 'sticky bottom-0 '}bg-white border-t border-black/10 p-4`}>
+            <div className="border-t border-black/10 px-4 pt-4 pb-1">
               {sinPrecios
                 ? <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">Total del pedido</span><span className="font-bold text-lg">{unidades} unidades</span></div>
                 : <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>}
@@ -1845,23 +1853,28 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
                   escalera={escDigital!} />
               )}
               {!packCalc && !bonoPct && bonoCalc && !bonoCalc.vencido && <BonoResumen calc={bonoCalc} financieroPct={bono?.financiero_pct ?? 0} />}
+            </div>
+            </div>
+            <div className="shrink-0 bg-white border-t border-black/10 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(0,0,0,0.06)]">
               {/* Óptica identificada por el link: se envía de un toque, sin formulario */}
               {identFijo ? (
                 <>
-                  <p className="text-[11px] text-neutral-500 mb-2">Pedido para <b className="text-neutral-800">{sinPrecios ? empresaDe(acceso?.label) || identFijo : acceso?.label || identFijo}</b></p>
+                  <p className="text-[11px] text-neutral-500 mb-2 truncate">Pedido para <b className="text-neutral-800">{sinPrecios ? empresaDe(acceso?.label) || identFijo : acceso?.label || identFijo}</b></p>
                   {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
                   <button onClick={enviar} disabled={enviando} className="w-full bg-[#0004FF] text-white rounded-xl py-3.5 text-sm font-bold disabled:opacity-50">
                     {enviando ? 'Enviando…' : `Enviar pedido (${unidades} u.)`}
                   </button>
-                  <button onClick={() => setFase('datos')} className="w-full text-[12px] text-neutral-500 underline mt-2">Agregar una observación</button>
+                  <button onClick={() => setFase('datos')} className="w-full text-[12px] text-neutral-500 underline mt-1.5">Agregar una observación</button>
                 </>
               ) : (
-                <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium">Continuar</button>
+                <button onClick={() => setFase('datos')} className="w-full bg-[#0004FF] text-white rounded-xl py-3.5 text-sm font-bold">
+                  Continuar · {unidades} u.{sinPrecios ? '' : ` · ${kAr(total)} + IVA`}
+                </button>
               )}
             </div>
           </>
         ) : (
-          <div className="p-4 space-y-3">
+          <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 overflow-y-auto">
             {identFijo ? (
               <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5">
                 <p className="text-[11px] font-medium text-[#0004FF]">{esRev ? 'Tu cuenta revendedor' : sinPrecios ? 'Pedido a nombre de' : 'Pedido para tu óptica'}</p>
@@ -1871,40 +1884,40 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Código de cliente, CUIT o email *</label>
                 <input value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="Ej: 030554 · 30-12345678-9 · optica@mail.com"
-                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             )}
             {pedirRazon && (
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Razón social / nombre de la óptica *</label>
                 <input value={razon} onChange={(e) => setRazon(e.target.value)} placeholder="Nombre de tu óptica"
-                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">WhatsApp</label>
-                <input value={wsp} onChange={(e) => setWsp(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                <input value={wsp} onChange={(e) => setWsp(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Email</label>
-                <input value={mail} onChange={(e) => setMail(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                <input value={mail} onChange={(e) => setMail(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             </div>
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Contacto / nombre</label>
-              <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+              <input value={contacto} onChange={(e) => setContacto(e.target.value)} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             {esRev && (
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">¿Para qué cliente es? <span className="text-neutral-400">(opcional · informativo)</span></label>
                 <input value={paraQuien} onChange={(e) => setParaQuien(e.target.value)} placeholder="Óptica / cliente al que se lo vas a revender"
-                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
               </div>
             )}
             <div>
               <label className="text-[11px] font-medium text-neutral-500">Observaciones</label>
-              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
             </div>
             {err && <p className="text-sm text-red-600">{err}</p>}
             {digital ? (
