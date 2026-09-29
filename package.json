@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/model-viewer": "^4.3.1",
     "@huggingface/transformers": "^3.8.1",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@supabase/supabase-js": "^2.110.1",
@@ -21,11 +22,13 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.0",
     "recharts": "^3.10.0",
+    "three": "^0.183.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",

@@ -4,9 +4,14 @@
 // y las ópticas más cercanas que trabajan el modelo (donde_probar, respeta bajas).
 // Si el modelo no está en el catálogo: "No lo encontré en el catálogo".
 // Probador virtual (Probador.tsx): la cámara frontal con el anteojo del color elegido sobre la cara.
-import { useEffect, useMemo, useState } from 'react'
+// Destacados con 3D (public/ar/3d): "Ver en 3D y en tu mesa" (Visor3D) y probador 3D (Probador3D).
+// ?v=3d abre el visor directo (QR del exhibidor, /ar-qr).
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Probador from './Probador'
+const Probador3D = lazy(() => import('./Probador3D')) // three.js solo si se abre
+const Visor3D = lazy(() => import('./Visor3D'))
+import { indice3D, type Indice3D } from './ar3d'
 
 interface Color { codigo: string; color: string; tratamiento: string | null; tipo: string | null; precio: number | null; fotos: string[] }
 interface Modelo { modelo: string; tratamientos: string[] | null; tipos: string[] | null; precio_desde: number | null; colores: Color[]; lifestyle: string[] }
@@ -32,6 +37,9 @@ export default function LandingModelo() {
   const [opticas, setOpticas] = useState<Optica[] | null>(null)
   const [geo, setGeo] = useState<'' | 'buscando' | 'sin-permiso'>('')
   const [probando, setProbando] = useState(false)
+  const [viendo3D, setViendo3D] = useState(qs.get('v') === '3d')
+  const [idx3D, setIdx3D] = useState<Indice3D>({})
+  useEffect(() => { indice3D().then(setIdx3D) }, [])
 
   useEffect(() => {
     document.title = `${nombre} · Orbital Eyewear`
@@ -69,6 +77,9 @@ export default function LandingModelo() {
     </div>
   )
 
+  const glb = idx3D[m.modelo] ?? {}
+  const colores3D = m.colores.filter((c) => glb[c.codigo]).map((c) => ({ codigo: c.codigo, color: c.color, foto: c.fotos[0], archivo: glb[c.codigo] }))
+  const i3D = Math.max(0, colores3D.findIndex((c) => c.codigo === color?.codigo))
   const precio = color?.precio ?? m.precio_desde
   const trat = color?.tratamiento ?? m.tratamientos?.[0] ?? null
 
@@ -150,8 +161,14 @@ export default function LandingModelo() {
               </div>
             )}
 
+            {colores3D.length > 0 && (
+              <button onClick={() => setViendo3D(true)} className="mt-6 w-full rounded-2xl bg-neutral-50 p-4 flex items-center gap-3 text-left hover:bg-neutral-100">
+                <span className="text-2xl">📦</span>
+                <span className="text-sm"><b>Ver en 3D y en tu mesa</b><span className="block text-neutral-500">Giralo y apoyalo donde estés con la cámara del celular.</span></span>
+              </button>
+            )}
             {m.colores.some((c) => c.fotos.length) && (
-              <button onClick={() => setProbando(true)} className="mt-6 w-full rounded-2xl bg-neutral-50 p-4 flex items-center gap-3 text-left hover:bg-neutral-100">
+              <button onClick={() => setProbando(true)} className="mt-2 w-full rounded-2xl bg-neutral-50 p-4 flex items-center gap-3 text-left hover:bg-neutral-100">
                 <span className="text-2xl">🪞</span>
                 <span className="text-sm"><b>Probátelo con la cámara</b><span className="block text-neutral-500">Probador virtual: mirá cómo te queda cada color.</span></span>
               </button>
@@ -168,7 +185,15 @@ export default function LandingModelo() {
           </section>
         )}
       </main>
-      {probando && <Probador modelo={m.modelo} colores={m.colores} inicial={sel} onCerrar={() => setProbando(false)} />}
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-black/80 grid place-items-center text-white text-sm">Cargando 3D…</div>}>
+      {probando && (colores3D.length
+        ? <Probador3D modelo={m.modelo} colores={colores3D} inicial={i3D} onCerrar={() => setProbando(false)} />
+        : <Probador modelo={m.modelo} colores={m.colores} inicial={sel} onCerrar={() => setProbando(false)} />)}
+      {viendo3D && colores3D.length > 0 && !probando && (
+        <Visor3D modelo={m.modelo} colores={colores3D} inicial={i3D} onCerrar={() => setViendo3D(false)}
+          onProbar={(codigo) => { const i = m.colores.findIndex((c) => c.codigo === codigo); if (i >= 0) setSel(i); setViendo3D(false); setProbando(true) }} />
+      )}
+      </Suspense>
     </div>
   )
 }

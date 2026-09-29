@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
@@ -15,6 +15,10 @@ import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
 import PostventaOptica, { MisAnteojos, MisPublicaciones, MisCompras, PublicarLink } from './MiOptica'
 import { MediosPagoCatalogo } from '../cobros/MediosPagoCatalogo'
+import { indice3D, type Indice3D } from '../landings/ar3d'
+// Destacados con 3D: visor (girar / ver en la mesa) y probador en la cara; three.js solo si se abren
+const Visor3D = lazy(() => import('../landings/Visor3D'))
+const Probador3D = lazy(() => import('../landings/Probador3D'))
 
 // ── Catálogo B2B público (acceso con clave, independiente del login de la app) ──
 // La óptica navega modelos → colores con stock (sin ver cantidades) → arma el pedido.
@@ -1483,6 +1487,15 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
   }, [ficha, v, modelo.modelo, medidas])
   const [tabCopy, setTabCopy] = useState<'historia' | 'posteo' | 'guion'>('historia')
   const enCarrito = v ? cart[v.codigo]?.cantidad ?? 0 : 0
+  // 3D de los destacados (public/ar/3d): solo los colores que tienen GLB
+  const [idx3D, setIdx3D] = useState<Indice3D>({})
+  const [modo3D, setModo3D] = useState<'' | 'visor' | 'cara'>('')
+  useEffect(() => { indice3D().then(setIdx3D) }, [])
+  const colores3D = useMemo(() => {
+    const glb = idx3D[modelo.modelo] ?? {}
+    return vars.filter((x) => glb[x.codigo]).map((x) => ({ codigo: x.codigo, color: colorLegible(x.descripcion) || x.codigo, foto: x.imagen ?? undefined, archivo: glb[x.codigo] }))
+  }, [idx3D, vars, modelo.modelo])
+  const i3D = Math.max(0, colores3D.findIndex((c) => c.codigo === v?.codigo))
 
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
@@ -1518,6 +1531,13 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
               {v.tiene_preventa && <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">PREVENTA</span>}
               {v.proyectado && <span className="absolute top-2 left-2 bg-[#b45309] text-white text-[10px] font-bold rounded-full px-2 py-0.5">📅 PROYECTADO</span>}
             </FotoProd>
+
+            {colores3D.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button onClick={() => setModo3D('visor')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">📦 Ver en 3D / en la mesa</button>
+                <button onClick={() => setModo3D('cara')} className="rounded-xl border border-black/10 py-2 text-xs font-semibold hover:border-[#0004FF]">🪞 Probar en la cara</button>
+              </div>
+            )}
 
             {/* Tira de colores */}
             {vars.length > 1 && (
@@ -1647,6 +1667,13 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
           </div>
         )}
       </div>
+      {modo3D && colores3D.length > 0 && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-black/80 grid place-items-center text-white text-sm">Cargando 3D…</div>}>
+          {modo3D === 'visor'
+            ? <Visor3D modelo={modelo.modelo} colores={colores3D} inicial={i3D} onCerrar={() => setModo3D('')} onProbar={() => setModo3D('cara')} />
+            : <Probador3D modelo={modelo.modelo} colores={colores3D} inicial={i3D} onCerrar={() => setModo3D('')} />}
+        </Suspense>
+      )}
     </div>
   )
 }
