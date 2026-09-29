@@ -299,10 +299,18 @@ export default function MiTanda() {
     } else setUltima(null)
   }, [toast])
 
-  // Quién firma el mensaje: el que está trabajando la tanda, no siempre el que mira.
+  // Quién firma el mensaje: el que está trabajando la tanda, no siempre el que mira
+  // (con "Ver como" el logueado es el admin, pero firma el vendedor elegido).
+  const [nombreQuien, setNombreQuien] = useState<string | null>(null)
+  useEffect(() => {
+    setNombreQuien(null)
+    if (!quien || quien === vendedor?.codigo) return
+    supabase.from('vendedores').select('nombre').eq('codigo', quien).maybeSingle()
+      .then(({ data }) => setNombreQuien((data as { nombre: string } | null)?.nombre ?? null))
+  }, [quien, vendedor?.codigo])
   const deParte = useMemo(
-    () => equipo.find((v) => v.codigo === quien)?.nombre ?? vendedor?.nombre ?? quien,
-    [equipo, quien, vendedor],
+    () => equipo.find((v) => v.codigo === quien)?.nombre ?? nombreQuien ?? vendedor?.nombre ?? quien,
+    [equipo, quien, vendedor, nombreQuien],
   )
 
   // Un solo gesto: abre WhatsApp con el mensaje y lo da por enviado. Si se equivocó, deshace.
