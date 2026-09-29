@@ -38,6 +38,7 @@ export default function Escanear() {
   const [sinStock, setSinStock] = useState<{ item: Art | null; leido: string; alternativas: Art[] } | null>(null)
   // Código que no existe (o modelo escrito a mano): colores de ese modelo para elegir.
   const [opciones, setOpciones] = useState<Art[] | null>(null)
+  const [noLeido, setNoLeido] = useState('')
   const [obs, setObs] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [hecha, setHecha] = useState<{ id: number; unidades: number; importe: number; faltantes: { modelo: string; descripcion: string; pedido: number; libre: number }[] } | null>(null)
@@ -81,8 +82,8 @@ export default function Escanear() {
       const r = data as { ok: boolean; error?: string; item?: Art; alternativas?: Art[]; opciones?: Art[] }
       if (!r.ok) {
         pitido(false)
-        // Modelo con colores en stock → elegir color. Si no, reemplazos parecidos con stock.
-        if (r.opciones?.some((o) => o.libre > 0)) { setOpciones(r.opciones!); setSinStock(null) }
+        // Código desconocido → colores de ese modelo. Si ninguno tiene stock, reemplazos parecidos.
+        if (r.opciones?.some((o) => o.libre > 0)) { setOpciones(r.opciones!); setNoLeido(cod); setSinStock(null) }
         else if (r.alternativas?.length) { setOpciones(null); setSinStock({ item: null, leido: cod, alternativas: r.alternativas }) }
         else toast(`❓ "${cod}" no está en el stock. Probá de nuevo o escribí el modelo.`, 'error')
         return
@@ -282,7 +283,11 @@ export default function Escanear() {
           {/* Código desconocido / modelo escrito → colores */}
           {opciones && (
             <div className="rounded-xl border border-black/10 bg-[#F8F6F0] p-3 space-y-2">
-              <div className="flex justify-between"><p className="text-xs text-muted">Elegí el color:</p><button onClick={() => setOpciones(null)} className="text-xs text-muted">✕</button></div>
+              <div className="flex justify-between gap-2"><p className="text-xs text-muted">
+                {opciones[0] && noLeido.toUpperCase() !== opciones[0].modelo.trim().toUpperCase()
+                  ? <>No encontré <b>{noLeido}</b>. Colores de <b>{opciones[0].modelo}</b>:</>
+                  : 'Elegí el color:'}
+              </p><button onClick={() => setOpciones(null)} className="text-xs text-muted">✕</button></div>
               {opciones.map((a) => (
                 <button key={a.codigo} disabled={a.libre <= 0}
                   onClick={() => { if (agregar(a)) { pitido(true); setOpciones(null) } }}
