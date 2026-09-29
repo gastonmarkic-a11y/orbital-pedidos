@@ -81,7 +81,9 @@ export default function Escanear() {
       const r = data as { ok: boolean; error?: string; item?: Art; alternativas?: Art[]; opciones?: Art[] }
       if (!r.ok) {
         pitido(false)
-        if (r.opciones?.length) { setOpciones(r.opciones); setSinStock(null) }
+        // Modelo con colores en stock → elegir color. Si no, reemplazos parecidos con stock.
+        if (r.opciones?.some((o) => o.libre > 0)) { setOpciones(r.opciones!); setSinStock(null) }
+        else if (r.alternativas?.length) { setOpciones(null); setSinStock({ item: null, leido: cod, alternativas: r.alternativas }) }
         else toast(`❓ "${cod}" no está en el stock. Probá de nuevo o escribí el modelo.`, 'error')
         return
       }
@@ -258,7 +260,7 @@ export default function Escanear() {
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm">
                   ❌ <b>{sinStock.item ? `${sinStock.item.modelo} ${sinStock.item.descripcion ?? ''}` : sinStock.leido}</b>
-                  {sinStock.item && (sinStock.item.libre > 0 ? ` · solo hay ${sinStock.item.libre} y ya los sumaste` : ' · sin stock')}
+                  {sinStock.item ? (sinStock.item.libre > 0 ? ` · solo hay ${sinStock.item.libre} y ya los sumaste` : ' · sin stock') : ' · no está en el stock'}
                 </p>
                 <button onClick={() => setSinStock(null)} className="text-xs text-muted">✕</button>
               </div>
