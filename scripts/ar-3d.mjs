@@ -82,8 +82,10 @@ async function frente(url) {
     const i = (Y * W + X) * 4; if (p[i + 3] < 200) continue
     cr += p[i]; cg += p[i + 1]; cb += p[i + 2]; cn++
   }
-  let mejor = y0, max = -1
-  for (let Y = y0; Y <= y1; Y++) { let c = 0; for (let X = x0; X < x0 + banda; X++) if (p[(Y * W + X) * 4 + 3]) c++; if (c > max) { max = c; mejor = Y } }
+  // Altura de la bisagra: centro de la parte maciza del costado del armazón (franja externa izquierda), donde se engancha la patilla
+  let bt = -1, bb = -1
+  for (let Y = y0; Y <= y1; Y++) { let c = 0; for (let X = x0; X < x0 + banda; X++) if (p[(Y * W + X) * 4 + 3] > 200) c++; if (c > banda * 0.5) { if (bt < 0) bt = Y; bb = Y } }
+  const mejor = bt < 0 ? y0 + h * 0.35 : (bt + bb) / 2
   return {
     png: await png(p, W, H, { left: x0, top: y0, width: w, height: h }, 900),
     aspecto: h / w, bisagra: (mejor - y0) / h, color: [lin(cr / cn), lin(cg / cn), lin(cb / cn)],
@@ -117,6 +119,7 @@ async function lateral(url) {
   let ty0 = H, ty1 = 0, tx0 = W, tx1 = 0
   const paso = izq ? 1 : -1, minTramo = Math.max(3, Math.round(fh * 0.05))
   let prev = null
+  const recorrido = [] // tramo de cada columna, del frente a la punta
   const desde = izq ? x0 + colsFrente[colsFrente.length - 1] + 1 : x0 + colsFrente[0] - 1 // la patilla, sin el frente
   for (let X = desde; izq ? X <= x1 : X >= x0; X += paso) {
     const tramos = []
@@ -132,7 +135,7 @@ async function lateral(url) {
       for (const q of tramos) { const ov = Math.min(q[1], prev[1]) - Math.max(q[0], prev[0]); if (ov > mejor) { mejor = ov; t = q } }
       if (mejor <= 0) break // se cortó la patilla
     }
-    prev = t
+    prev = t; recorrido.push(t)
     for (let yy = t[0]; yy <= t[1]; yy++) { const i = (yy * W + X) * 4; out.set(p.subarray(i, i + 4), i) }
     if (t[0] < ty0) ty0 = t[0]; if (t[1] > ty1) ty1 = t[1]; if (X < tx0) tx0 = X; if (X > tx1) tx1 = X
   }
@@ -143,8 +146,10 @@ async function lateral(url) {
   if (!izq) img = img.flop() // siempre frente a la izquierda
   const buf = await img.resize({ width: Math.min(tw, 1000) }).png({ compressionLevel: 9, palette: true, quality: 90 }).toBuffer()
   // En unidades del alto del frente: inicio (distancia desde la cara del frente), largo, alto y techo respecto del frente
-  const inicio = (izq ? tx0 - cara : cara - tx1) / fh
-  return { png: buf, inicio, largo: tw / fh, alto: th / fh, techo: (ty0 - fy0) / fh }
+  // Proporción de la patilla y dónde queda el centro de su arranque dentro de su alto (tomado al 8% del largo:
+  // pegado al frente todavía se mezcla el borde del cristal)
+  const primero = recorrido[Math.floor(recorrido.length * 0.08)]
+  return { png: buf, aspecto: th / tw, bisagra: ((primero[0] + primero[1]) / 2 - ty0) / th }
 }
 
 // ---- GLB a mano (sin three en Node) ----
@@ -164,8 +169,8 @@ function glb(f, lat) {
     prims.push({ pos, nor, uv, idx, material: 0 })
   }
   // Escala real del frente en la foto lateral: si da un largo absurdo, se normaliza a 14,5 cm
-  let s = ALTO
-  if (lat && (lat.largo * s < 0.11 || lat.largo * s > 0.175)) s = 0.145 / lat.largo
+  // Patilla de 14 cm, alto según su proporción, anclada con su arranque a la altura de la bisagra del frente
+  const LP = 0.14, yB = (0.5 - f.bisagra) * ALTO
   if (lat) {
     // Patilla con la foto: plano vertical en cada costado, abierto apenas hacia afuera
     const pos = [], nor = [], uv = [], idx = [], N = 8
@@ -173,9 +178,9 @@ function glb(f, lat) {
       const base = pos.length / 3
       for (let i = 0; i <= N; i++) for (let j = 0; j <= 1; j++) {
         const t = i / N
-        const z = -CURVA * 0.9 - lat.largo * t * s
+        const z = -CURVA * 0.9 - LP * t, HT = LP * lat.aspecto
         const x = lado * (ANCHO / 2 - 0.004 + 0.006 * t)
-        const y = ALTO / 2 - (lat.techo + lat.alto * j) * s
+        const y = yB + HT * lat.bisagra - HT * j
         pos.push(x, y, z); nor.push(lado, 0, 0); uv.push(t, j)
       }
       for (let i = 0; i < N; i++) { const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3; idx.push(a, b, c, c, b, d) }
