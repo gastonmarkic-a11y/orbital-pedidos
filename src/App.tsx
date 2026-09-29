@@ -22,6 +22,7 @@ import CoachFlotante from './modules/actividad/CoachFlotante'
 import Marketing from './modules/actividad/Marketing'
 import EnvioCatalogo from './modules/actividad/EnvioCatalogo'
 import GuionesContacto from './modules/actividad/GuionesContacto'
+import CondicionesComerciales from './modules/actividad/CondicionesComerciales'
 import ProspeccionSocial from './modules/actividad/ProspeccionSocial'
 import MiTanda from './modules/actividad/MiTanda'
 import Seguimiento from './modules/actividad/Seguimiento'
@@ -177,7 +178,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     return { principales: [{ to: '/marketing', label: 'Contenido' }], secundarios: [], menu: [] }
   // Prospección social (piloto): solo la Cola de prospección + Guiones + Marketing (material). Nada más.
   if (rol === 'social')
-    return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }], secundarios: [], menu: [] }
+    return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }, { to: '/condiciones', label: 'Condiciones' }], secundarios: [], menu: [] }
   // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
     return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
@@ -222,6 +223,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/finanzas', label: 'Finanzas' },
         { to: '/envios-ecom', label: 'Envíos' },
         { to: '/prospeccion-social', label: 'Cola de prospección' },
+        { to: '/condiciones', label: 'Condiciones' },
       ],
       menu: [],
     }
@@ -239,6 +241,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
     { to: '/guiones', label: 'Guiones' },
+    { to: '/condiciones', label: 'Condiciones' },
     { to: '/conversaciones', label: 'Conversaciones' },
     { to: '/red-opticas', label: 'Red de ópticas' },
   ]
@@ -645,6 +648,7 @@ function Layout() {
           <Route path="/conversaciones" element={<Conversaciones />} />
           <Route path="/derivaciones" element={<Conversaciones />} />
           <Route path="/guiones" element={<GuionesContacto />} />
+          {['vendedor', 'admin', 'social', 'administracion'].includes(rol) && <Route path="/condiciones" element={<CondicionesComerciales />} />}
           <Route path="/envio-catalogo" element={<EnvioCatalogo />} />
           {rol !== 'revendedor' && <Route path="/prospeccion-social" element={<ProspeccionSocial />} />}
           {rol !== 'revendedor' && <Route path="/mi-tanda" element={<MiTanda />} />}
