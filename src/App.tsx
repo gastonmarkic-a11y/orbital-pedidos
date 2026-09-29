@@ -56,6 +56,7 @@ import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
 import PedidosProduccion from './modules/produccion/PedidosProduccion'
 import DashboardVentas from './modules/pedidos/DashboardVentas'
 import ActualizarBanner from './modules/ActualizarBanner'
+import InstalarApp from './components/InstalarApp'
 import ProduccionHub from './modules/produccion/ProduccionHub'
 import DashboardHub from './modules/pedidos/DashboardHub'
 import CatalogoPublico from './modules/catalogo/CatalogoPublico'
@@ -564,6 +565,8 @@ function Layout() {
               ))}
             </select>
           )}
+          <InstalarApp nombre="Orbital Suite" que="la Suite"
+            bajada="Queda con el ícono de Orbital en el celular o la compu y abre la Suite directo, sin navegador." />
           <ThemeToggle />
           <MiClave />
           <button onClick={signOut} className="text-xs text-muted underline">
