@@ -2,7 +2,19 @@
 // El manifest propio (con la clave/token) lo arma index.html; acá solo el botón y la ayuda.
 // Lo usan el catálogo B2B (/catalogo) y el panel de colaboradores (/colab).
 import { useEffect, useState } from 'react'
-import { Download, X, ExternalLink, Copy, Check } from 'lucide-react'
+import { Download, X, ExternalLink, Copy, Check, Share, SquarePlus, ArrowDown, ArrowUp } from 'lucide-react'
+
+// Flecha que rebota señalando el botón Compartir del navegador.
+function FlechaCompartir({ arriba }: { arriba?: boolean }) {
+  const Icono = arriba ? ArrowUp : ArrowDown
+  return (
+    <div className={`fixed ${arriba ? 'top-3 right-4' : 'bottom-4 left-1/2 -translate-x-1/2'} text-white flex flex-col items-center pointer-events-none`}>
+      {!arriba && <span className="text-xs font-semibold mb-1">Compartir</span>}
+      <Icono size={40} strokeWidth={2.5} className="animate-bounce" />
+      {arriba && <span className="text-xs font-semibold mt-1">Compartir</span>}
+    </div>
+  )
+}
 
 function esStandalone(): boolean {
   try { return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true } catch { return false }
@@ -85,6 +97,9 @@ export default function InstalarApp({ nombre, que, bajada, urlParaInstalar, mono
   }
 
   const saliendo = enOtraApp && (android || ios)
+  // Dónde queda Compartir: Safari de iPhone lo tiene abajo; iPad y Chrome (CriOS), arriba.
+  const ipad = /ipad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const abajo = ios && !ipad && !/CriOS|FxiOS|EdgiOS/i.test(ua)
 
   return (
     <>
@@ -95,7 +110,34 @@ export default function InstalarApp({ nombre, que, bajada, urlParaInstalar, mono
         {saliendo ? <ExternalLink size={15} /> : <Download size={15} />}
         <span className="hidden sm:inline">{saliendo ? (android ? 'Abrir en Chrome' : 'Abrir en Safari') : 'Instalar'}</span>
       </button>
-      {ayuda && (
+      {ayuda && ios && !enOtraApp && (
+        // iPhone/iPad: Apple no deja instalar con un botón. Se marca con una flecha dónde
+        // está Compartir: abajo al centro en Safari de iPhone, arriba a la derecha en iPad y Chrome.
+        <div className={`fixed inset-0 z-50 bg-black/70 flex flex-col px-5 ${abajo ? 'justify-end pb-24' : 'justify-start pt-24'} ${mono ? 'font-mono' : ''}`}
+          onClick={() => setAyuda(false)}>
+          {!abajo && <FlechaCompartir arriba />}
+          <div className="bg-white rounded-2xl p-5 max-w-sm w-full mx-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <h3 className="text-sm font-bold uppercase tracking-wide">Instalá {que} en 2 toques</h3>
+              <button onClick={() => setAyuda(false)} className="p-1 rounded-full hover:bg-black/5"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-neutral-500 mb-3">{bajada}</p>
+            <ol className="text-sm space-y-2.5">
+              <li className="flex items-center gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-[#0004FF] text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
+                <span>Tocá <b>Compartir</b> <Share size={15} className="inline -mt-1 text-[#0004FF]" /> {abajo ? 'abajo' : 'arriba'}
+                  {abajo && <span className="text-neutral-500"> (si no lo ves, tocá <b>⋯</b>)</span>}</span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-[#0004FF] text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
+                <span>Bajá y elegí <b>“Agregar a inicio”</b> <SquarePlus size={15} className="inline -mt-1" />, después <b>Agregar</b>.</span>
+              </li>
+            </ol>
+          </div>
+          {abajo && <FlechaCompartir />}
+        </div>
+      )}
+      {ayuda && !(ios && !enOtraApp) && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={() => setAyuda(false)}>
           <div className={`bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 ${mono ? 'font-mono' : ''}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 mb-3">
