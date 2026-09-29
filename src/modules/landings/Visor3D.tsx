@@ -25,7 +25,7 @@ export default function Visor3D({ modelo, colores, inicial = 0, onCerrar, onProb
           key: c.codigo,
           src: url3D(c.archivo),
           alt: `${modelo} ${c.color}`,
-          ar: '', 'ar-modes': 'webxr scene-viewer quick-look', 'ar-scale': 'fixed', 'ar-placement': 'floor',
+          ar: '', 'ar-modes': 'webxr scene-viewer quick-look', 'ar-scale': 'auto', // en la mesa se agranda/achica con los dedos
           'camera-controls': '', 'auto-rotate': '', 'auto-rotate-delay': '0', 'rotation-per-second': '20deg',
           'camera-orbit': '25deg 80deg auto', 'shadow-intensity': '1', exposure: '1.1', 'environment-image': 'neutral',
           'interaction-prompt': 'none',

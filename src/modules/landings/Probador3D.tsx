@@ -44,7 +44,7 @@ export default function Probador3D({ modelo, colores, inicial = 0, onCerrar }: {
         m.renderOrder = 1
         // El frente es una foto: que se vea con su color real y no oscurecido por las luces
         const mat = m.material as THREE.MeshStandardMaterial
-        if (mat.map) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveMap = mat.map; mat.emissiveIntensity = 0.85; mat.color = new THREE.Color(0x262626) }
+        if (mat.map) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveMap = mat.map; mat.emissiveIntensity = 0.95; mat.color = new THREE.Color(0x141414) }
       })
       anteojo.current = g.scene
       colocar()
@@ -113,8 +113,9 @@ export default function Probador3D({ modelo, colores, inicial = 0, onCerrar }: {
             const z = new THREE.Vector3().crossVectors(x, y)
             const qObj = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
             const eObj = si.distanceTo(sd) / ANCHO_GLB
-            // el frente apoya un poco delante y debajo del puente de la nariz
-            const pObj = pu.clone().add(z.clone().multiplyScalar(0.012 * eObj)).add(y.clone().multiplyScalar(-0.004 * eObj))
+            // Centro del frente = centro de los ojos (promedio de los 4 lagrimales/comisuras), un poco delante del puente
+            const ojos = iz.clone().add(de).add(P(lm[133])).add(P(lm[362])).multiplyScalar(0.25)
+            const pObj = ojos.add(z.clone().multiplyScalar(pu.clone().sub(ojos).dot(z) + 0.012 * eObj)).add(y.clone().multiplyScalar(-0.002 * eObj))
             if (primero) { pos.copy(pObj); rot.copy(qObj); esc = eObj; primero = false }
             else { pos.lerp(pObj, 0.6); rot.slerp(qObj, 0.5); esc += (eObj - esc) * 0.5 }
             g.position.copy(pos); g.quaternion.copy(rot); g.scale.setScalar(esc); g.visible = true
