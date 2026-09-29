@@ -73,6 +73,10 @@ main{flex:1;padding:16px 16px calc(var(--tabh) + 110px + env(safe-area-inset-bot
 .pill[aria-pressed="true"]{background:var(--ink);color:var(--app);border-color:var(--ink)}
 .pill[aria-pressed="true"] small{color:var(--app);opacity:.75}
 
+/* Vista del anteojo que acompaña mientras se elige el color */
+.cprev{position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--toph,62px) + 6px);z-index:3;background:var(--photo);border:1px solid var(--line);border-radius:14px;padding:6px 10px 4px;margin:0 0 12px;box-shadow:0 6px 14px -10px rgba(0,0,0,.35);display:grid;justify-items:center}
+.cprev img{width:100%;max-width:340px;aspect-ratio:2.8/1;object-fit:contain;display:block}
+.cprev span{font-size:11.5px;color:#5a6067}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
 .grid-sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:12px 6px}
 .sw{all:unset;cursor:pointer;display:grid;justify-items:center;gap:5px;font-size:11px;color:var(--ink2);text-align:center;line-height:1.2}
@@ -229,7 +233,9 @@ S.lines=(S.lines||[]).filter(l=>typeof l.est==="boolean"&&MODELS[l.m-1]&&COL[l.c
 let logoFile=null,sending=false,okId=null;
 // Link de cliente ?c=<codigo>: precio del negro y mínimo por línea (la edge valida lo mismo).
 let CLI=null;{let c=new URLSearchParams(location.search).get("c");try{if(c)localStorage.setItem("mb-cli",c);else c=localStorage.getItem("mb-cli")}catch(e){}
- if(c&&CLIENTES[c.toLowerCase()]){CLI={k:c.toLowerCase(),...CLIENTES[c.toLowerCase()]};TIERS[0].p=CLI.negro;COLGROUPS[0].pr=CLI.negro.toFixed(2).replace(".",",")}}
+ if(c&&CLIENTES[c.toLowerCase()]){CLI={k:c.toLowerCase(),...CLIENTES[c.toLowerCase()]};TIERS[0].p=CLI.negro;COLGROUPS[0].pr=CLI.negro.toFixed(2).replace(".",",");
+  // Mismo precio que el compacto: el negro mate entra en ese bloque.
+  if(CLI.negro===TIERS[1].p){const g=COLGROUPS.shift();COLGROUPS[0].items.unshift(...g.items);COLGROUPS[0].sub="color lleno · incluye negro mate y brillo"}}}
 const MINQ=CLI?CLI.min:1;S.q=Math.max(S.q,MINQ);
 // Foto del marco teñida con el color elegido (canvas sobre la foto en negro; cache por foto+color).
 const TCACHE={},TIMG={};
@@ -295,9 +301,9 @@ const SCREENS={
    <div class="cap"><b>${m.name}</b><span>Frente y patilla · ${TINT[S.col]?"color aproximado":"foto en negro"}</span></div></div>
   <div class="carousel" id="car">${MODELS.map(x=>`<button class="mc" type="button" data-m="${x.id}" aria-pressed="${x.id===S.m}"><img src="${IMG}BR${x.id}_frente.webp" alt=""><img class="lat" src="${IMG}BR${x.id}_lateral.webp" alt=""><b>${x.name}</b></button>`).join("")}</div>
   <div><div class="sec-l">Logo en la patilla</div><div class="seg">${LOGOS.map(l=>`<button type="button" data-l="${l.k}" aria-pressed="${l.k===S.logo}">${l.n}<small>${l.d}</small></button>`).join("")}</div></div>
-  <div class="card"><div class="sec-l">Color del marco <em>${esc(colTxt(cur()))}</em></div>
+  <div class="card"><div class="cprev" aria-hidden="true">${(()=>{const src=`${IMG}BR${m.id}_frente.webp`;return `<img src="${tsrc(src,S.col)}" data-src="${src}" data-col="${esc(S.col)}" alt="">`})()}<span>${m.name} · ${esc(colTxt(cur()))}</span></div><div class="sec-l">Color del marco <em>${esc(colTxt(cur()))}</em></div>
    <p class="legend" style="margin:0 0 12px">El precio lo marca el tono: negro, compacto o clear.</p>${CLI?`<p class="legend" style="margin:-6px 0 12px"><b>Condiciones para ${esc(CLI.nombre)}:</b> negro mate a ${usd(CLI.negro)} · mínimo ${CLI.min} u por modelo y color.</p>`:""}
-   <div class="groups">${COLGROUPS.map((g,gi)=>`<div class="tone${g.items.some(([n])=>n===S.col)?" on":""}"><div class="tone-h"><div><b>${g.g}</b><small>${g.sub}</small></div><div class="tone-p">${gi===2?"<small>desde</small>":""}USD ${g.pr}</div></div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${isCustom(n)?"A medida":n}</button>`).join("")}</div>${g.items.some(([n])=>n===S.col)?extras():""}</div>`).join("")}</div>
+   <div class="groups">${COLGROUPS.map((g,gi)=>`<div class="tone${g.items.some(([n])=>n===S.col)?" on":""}"><div class="tone-h"><div><b>${g.g}</b><small>${g.sub}</small></div><div class="tone-p">${g.g==="Clear"?"<small>desde</small>":""}USD ${g.pr}</div></div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${isCustom(n)?"A medida":n}</button>`).join("")}</div>${g.items.some(([n])=>n===S.col)?extras():""}</div>`).join("")}</div>
    <p class="legend" style="margin-top:12px">Cualquier modelo en cualquier color. ¿No está el tuyo? Elegí «A medida» en el tono que quieras.</p></div>`},
  estuche(){const l=cur(),t=selTxt(l),cu=cajaUnits(S.caja?S.q:0),chk=v=>`<b style="font-size:22px;line-height:1">${v?"☑":"☐"}</b>`;return `${head("Paso 2 de 2","Packaging","Se cotiza aparte del marco. Elegí qué sumás a cada armazón.")}
   <div class="card kit">
@@ -386,7 +392,7 @@ function renderBar(){
 }
 function render(){
   $("main").innerHTML=`<section class="screen">${SCREENS[S.tab]()}</section>`;
-  renderTabs();renderBar();save();tintAll();
+  renderTabs();renderBar();save();tintAll();{const tb=document.querySelector(".topbar");tb&&document.documentElement.style.setProperty("--toph",tb.offsetHeight+"px")}
   if(S.tab==="marco"){const c=document.querySelector(`.mc[data-m="${S.m}"]`);c&&c.scrollIntoView({inline:"center",block:"nearest"})}
   if(S.tab==="datos"){
     ["marca","razon_social","email","telefono","obs"].forEach(k=>$(k).addEventListener("input",e=>{S.datos[k]=e.target.value;save()}));
