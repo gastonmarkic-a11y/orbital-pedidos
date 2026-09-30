@@ -40,8 +40,16 @@ const MSJ: Record<'prospecto' | 'cliente', { key: string; t: string; defecto: st
     key: 'opticas_ig_msj_prospecto', t: 'Ópticas que no son clientes',
     defecto:
       'Hola {nombre}! Te escribimos de Orbital Eyewear 👋\n' +
-      'Estamos sumando ópticas como punto de venta de la marca. Trabajamos con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina, y un catálogo online donde ves el stock y hacés el pedido directo.\n' +
-      '¿Te paso el catálogo para que lo veas?',
+      'Estamos sumando ópticas como punto de venta de la marca. Trabajamos con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina.\n\n' +
+      'Además, cada óptica accede a nuestro panel online, donde vas a tener:\n' +
+      '🕶️ Catálogo en línea con stock real, para ver los modelos y hacer pedidos cuando quieras, incluso a demanda de tus clientes.\n' +
+      '🪞 Probador virtual: tus clientes se prueban los anteojos en la cara desde el celular, y los destacados se ven en 3D.\n' +
+      '✨ Las tendencias más destacadas de la categoría, como inspiración para tu vidriera y tus redes.\n' +
+      '📸 Todo el material de contenido de cada anteojo, listo para que lo publiques en tus redes sin tener que producir nada.\n' +
+      '📦 El estado de tus pedidos y tu historial de compras, siempre a mano.\n' +
+      '🤝 Postventa integrada en el mismo lugar, para que tengas respuesta rápida y precisa.\n\n' +
+      'Mirá el catálogo acá 👉 https://ver.orbitaleyewear.com.ar/catalogo\n' +
+      '¿Te gustaría sumarte? Te cuento cómo arrancar en dos minutos.',
   },
   cliente: {
     key: 'opticas_ig_msj_cliente', t: 'Ópticas que ya son clientes',
