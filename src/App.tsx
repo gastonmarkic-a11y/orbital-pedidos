@@ -51,6 +51,7 @@ import Tienda from './modules/pedidos/Tienda'
 import Publicidad from './modules/publicidad/Publicidad'
 import PanelCanales from './modules/panel/PanelCanales'
 import ColabInfluencers from './modules/colab/ColabInfluencers'
+import CreadoresSuite from './modules/colab/CreadoresSuite'
 import Liquidacion from './modules/liquidacion/Liquidacion'
 import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
@@ -265,6 +266,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/finanzas', label: 'Finanzas (tesorería)' },
       { to: '/cobros', label: 'Cobros (alias / QR propio)' },
       { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
+      { to: '/creadores', label: 'Creadores (administradoras)' },
       { to: '/influencers', label: 'Influencers de Instagram' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
@@ -639,6 +641,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'tienda') && <Route path="/mercadolibre/precios" element={<PreciosML />} />}
           {rol === 'admin' && <Route path="/publicidad" element={<Publicidad />} />}
           {rol === 'admin' && <Route path="/panel-canales" element={<PanelCanales />} />}
+          {rol === 'admin' && <Route path="/creadores" element={<div className="max-w-6xl mx-auto px-4 py-6"><CreadoresSuite /></div>} />}
           {rol === 'admin' && <Route path="/influencers" element={<div className="max-w-4xl mx-auto px-4 py-6"><ColabInfluencers /></div>} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />

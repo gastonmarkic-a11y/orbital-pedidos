@@ -12,7 +12,9 @@ type Fila = {
   usuario: string; pk: string | null; nombre: string | null; seguidores: number
   categoria: string | null; verificado: boolean; negocio: boolean; bio: string | null
   ultimo_dm: string | null; estado: Estado; notas: string | null; escrito_en: string | null; escrito_por: string | null
+  ultimo_por: string | null; actualizado_en: string | null
 }
+type Equipo = { por: string; escrito: number; respondio: number; alta: number; descartado: number; total: number; ultimo: string | null }
 
 const ESTADOS: { k: Estado; t: string }[] = [
   { k: 'pendiente', t: 'Sin escribir' },
@@ -81,17 +83,27 @@ export default function ColabInfluencers({ clave, yo }: { clave?: string; yo?: s
     listar: porClave ? 'ig_infl_listar' : 'ig_infl_listar_admin',
     resumen: porClave ? 'ig_infl_resumen' : 'ig_infl_resumen_admin',
     marcar: porClave ? 'ig_infl_marcar' : 'ig_infl_marcar_admin',
+    tomar: porClave ? 'ig_infl_tomar' : 'ig_infl_tomar_admin',
+    equipo: porClave ? 'ig_infl_equipo' : 'ig_infl_equipo_admin',
   }
   return <Lista clave={clave} rpc={rpc} yo={yo} />
 }
 
-function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resumen: string; marcar: string }; yo?: string }) {
+type Rpc = { listar: string; resumen: string; marcar: string; tomar: string; equipo: string }
+const fechaCorta = (s: string | null) => s ? new Date(s).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : ''
+
+function Lista({ clave, rpc, yo }: { clave?: string; rpc: Rpc; yo?: string }) {
   const [filas, setFilas] = useState<Fila[] | null>(null)
   const [resumen, setResumen] = useState<Record<string, number>>({})
   const [min, setMin] = useState(5000)
   const [estado, setEstado] = useState<Estado | ''>('pendiente')
   const [buscar, setBuscar] = useState('')
   const [q, setQ] = useState('')
+  // Yamila, Mery y Gastón trabajan la misma lista: queda asentado quién contactó a cada uno.
+  const [por, setPor] = useState<string>('')
+  const [equipo, setEquipo] = useState<Equipo[]>([])
+  const [yoSuite, setYoSuite] = useState<string | null>(null)
+  const quienSoy = yo ?? yoSuite ?? 'Orbital'
   // Orbital usa un solo mensaje; la administradora, uno por tramo de seguidores.
   const claves = yo ? TRAMOS.map((_, i) => `${MSJ_KEY}_tramo${i}`) : [MSJ_KEY]
   const [msjs, setMsjs] = useState<string[]>(() => claves.map((k, i) =>
@@ -106,17 +118,23 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
 
   const conClave = clave ? { p_clave: clave } : {}
 
+  const cargarEquipo = () => supabase.rpc(rpc.equipo, conClave).then(({ data }) => setEquipo((data as Equipo[]) ?? []))
+  useEffect(() => {
+    if (!clave) supabase.rpc('ig_infl_quien_suite').then(({ data }) => setYoSuite((data as string) ?? null))
+  }, [clave])
+
   async function cargar() {
     const [{ data }, { data: r }] = await Promise.all([
       supabase.rpc(rpc.listar, {
-        ...conClave, p_min: min, p_estado: estado || null, p_buscar: q || null, p_limite: 300,
+        ...conClave, p_min: min, p_estado: estado || null, p_buscar: q || null, p_limite: 300, p_por: por || null,
       }),
       supabase.rpc(rpc.resumen, { ...conClave, p_min: min }),
     ])
     setFilas((data as Fila[]) ?? [])
     setResumen((r as Record<string, number>) ?? {})
+    cargarEquipo()
   }
-  useEffect(() => { setFilas(null); cargar() }, [clave, min, estado, q])
+  useEffect(() => { setFilas(null); cargar() }, [clave, min, estado, q, por])
 
   const total = useMemo(() => Object.values(resumen).reduce((a, b) => a + b, 0), [resumen])
 
@@ -133,18 +151,36 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
 
   async function marcar(f: Fila, e: Estado) {
     setOcupado(f.usuario)
-    await supabase.rpc(rpc.marcar, { ...conClave, p_usuario: f.usuario, p_estado: e })
-    const quien = e === 'pendiente' ? null : (yo ?? 'Orbital')
-    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: e, escrito_por: quien } : x)) : prev))
+    const { data } = await supabase.rpc(rpc.marcar, { ...conClave, p_usuario: f.usuario, p_estado: e })
+    const nueva = data as Fila | null
+    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, ...(nueva ?? { estado: e }) } : x)) : prev))
     supabase.rpc(rpc.resumen, { ...conClave, p_min: min }).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
+    cargarEquipo()
     setOcupado(null)
   }
 
-  // Copiar + abrir el chat en un solo toque: es el camino normal de trabajo.
+  // Copiar + abrir el chat en un solo toque. Antes de abrir se "toma" el contacto:
+  // si otro del equipo ya le escribió, avisa (así nadie le escribe dos veces).
   async function escribir(f: Fila) {
+    const url = `https://ig.me/m/${f.usuario}`
+    const ventana = window.open('about:blank', '_blank') // se abre ya: si no, el navegador la bloquea
+    setOcupado(f.usuario)
+    const { data } = await supabase.rpc(rpc.tomar, { ...conClave, p_usuario: f.usuario })
+    const t = data as { ok: boolean; por: string | null; estado: Estado; en?: string | null } | null
+    setOcupado(null)
+    if (!t?.ok) {
+      setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: t?.estado ?? x.estado, escrito_por: t?.por ?? x.escrito_por } : x)) : prev))
+      const igual = confirm(`A @${f.usuario} ya lo contactó ${t?.por ?? 'otra persona'}${t?.en ? ` el ${fechaCorta(t.en)}` : ''}.\n\n¿Querés abrir el chat igual?`)
+      if (!igual) { ventana?.close(); return }
+    }
     await copiar(f)
-    window.open(`https://ig.me/m/${f.usuario}`, '_blank', 'noopener,noreferrer')
-    if (f.estado === 'pendiente') await marcar(f, 'escrito')
+    if (ventana) { ventana.opener = null; ventana.location.href = url }
+    else window.open(url, '_blank', 'noopener,noreferrer')
+    if (t?.ok) {
+      setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, estado: t.estado, escrito_por: t.por, ultimo_por: t.por } : x)) : prev))
+      supabase.rpc(rpc.resumen, { ...conClave, p_min: min }).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
+      cargarEquipo()
+    }
   }
 
   return (
@@ -167,6 +203,27 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
         ))}
         <span className="text-[11px] text-neutral-400 self-center ml-1">{nAr(total)} en total</span>
       </div>
+
+      {equipo.length > 0 && (
+        <div className="mb-3 rounded-xl border border-black/10 bg-white p-2.5">
+          <div className="text-[10px] uppercase font-bold tracking-wide text-neutral-500 mb-1.5">Quién contactó · tocá para ver los de cada uno</div>
+          <div className="flex flex-wrap gap-1.5">
+            {equipo.map((e) => {
+              const on = por === e.por
+              return (
+                <button key={e.por} onClick={() => { setPor(on ? '' : e.por); if (!on) setEstado('') }}
+                  className="rounded-lg border px-2.5 py-1.5 text-left"
+                  style={on ? { background: ACENTO, color: '#FFF', borderColor: ACENTO } : { borderColor: 'rgba(0,0,0,.12)' }}>
+                  <div className="text-[12px] font-bold">{e.por}{e.por === quienSoy ? ' (vos)' : ''} <span className="tabular-nums">{e.total}</span></div>
+                  <div className={`text-[10px] tabular-nums ${on ? 'text-white/80' : 'text-neutral-500'}`}>
+                    {e.escrito} escritos · {e.respondio} respondieron · {e.alta} se sumaron{e.descartado ? ` · ${e.descartado} desc.` : ''}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-3 items-center">
         <select value={min} onChange={(e) => setMin(Number(e.target.value))}
@@ -219,7 +276,14 @@ function Lista({ clave, rpc, yo }: { clave?: string; rpc: { listar: string; resu
                   {f.estado !== 'pendiente' && (
                     <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-600">
                       {ESTADOS.find((e) => e.k === f.estado)?.t}{f.escrito_por ? ` · ${f.escrito_por}` : ''}
+                      {f.escrito_en ? ` · ${fechaCorta(f.escrito_en)}` : ''}
                     </span>
+                  )}
+                  {f.estado !== 'pendiente' && f.escrito_por && f.escrito_por !== quienSoy && (
+                    <span className="text-[9px] font-bold rounded px-1.5 py-0.5 bg-amber-100 text-amber-800">Ya lo contactó {f.escrito_por}</span>
+                  )}
+                  {f.ultimo_por && f.escrito_por && f.ultimo_por !== f.escrito_por && (
+                    <span className="text-[9px] rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-500">últ. cambio: {f.ultimo_por}</span>
                   )}
                 </div>
                 <div className="text-[10px] text-neutral-600 truncate">
