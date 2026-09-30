@@ -12,8 +12,13 @@ type Fila = {
   usuario: string; nombre: string | null; seguidores: number | null; categoria: string | null; bio: string | null
   telefono: string | null; ciudad: string | null; ultimo_dm: string | null; lo_seguimos: boolean; origen: 'dm' | 'sigo' | 'base'
   cliente_cod: string | null; cliente_nombre: string | null; cliente_vendedor: string | null; cliente_compro: boolean
+  cliente_posible: string | null; provincia: string | null
   estado: Estado; escrito_por: string | null
 }
+
+const PROVINCIAS = ['CABA', 'Buenos Aires', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy',
+  'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
+  'Santiago del Estero', 'Tierra del Fuego', 'Tucumán', 'Exterior']
 
 const ESTADOS: { k: Estado; t: string }[] = [
   { k: 'pendiente', t: 'Sin escribir' },
@@ -37,17 +42,14 @@ const CLIENTES = [
 // Uno para las que todavía no nos compran y otro para clientes. Sin precios ni fechas.
 const MSJ: Record<'prospecto' | 'cliente', { key: string; t: string; defecto: string }> = {
   prospecto: {
-    key: 'opticas_ig_msj_prospecto_v2', t: 'Ópticas que no son clientes',
+    key: 'opticas_ig_msj_prospecto_v3', t: 'Ópticas que no son clientes',
     defecto:
-      'Hola {nombre}! Te escribimos de Orbital Eyewear 👋\n' +
-      'Estamos sumando ópticas como punto de venta de la marca. Trabajamos con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina.\n\n' +
-      'Además, cada óptica accede a nuestro panel online, donde vas a tener:\n' +
-      '🕶️ Catálogo en línea con stock real, para ver los modelos y hacer pedidos cuando quieras, incluso a demanda de tus clientes.\n' +
-      '🪞 Probador virtual: tus clientes se prueban los anteojos en la cara desde el celular, y los destacados se ven en 3D.\n' +
-      '✨ Las tendencias más destacadas de la categoría, como inspiración para tu vidriera y tus redes.\n' +
-      '📸 Todo el material de contenido de cada anteojo, listo para que lo publiques en tus redes sin tener que producir nada.\n' +
-      '📦 El estado de tus pedidos y tu historial de compras, siempre a mano.\n' +
-      '🤝 Postventa integrada en el mismo lugar, para que tengas respuesta rápida y precisa.\n\n' +
+      'Hola, ¿cómo estás? Hay algo que ninguna otra óptica de tu zona puede ofrecer todavía. Lanzamos Triple Protección: los únicos cristales en Argentina contra UV, luz azul e infrarrojo.\n' +
+      'Además, cada óptica que trabaja con nosotros accede a un panel online donde tenés:\n' +
+      '🕶️ Catálogo con stock real, para ver los modelos y pedir cuando quieras, incluso a demanda de tus clientes.\n' +
+      '🪞 Probador virtual: tus clientes se prueban los anteojos desde el celular, y los destacados se ven en 3D.\n' +
+      '📸 Todo el contenido de cada anteojo listo para publicar en tus redes, sin producir nada.\n' +
+      '🤝 Postventa integrada en el mismo lugar, con respuesta rápida y precisa.\n\n' +
       'Mirá el catálogo acá 👉 {link}\n' +
       '¿Te gustaría sumarte? Te cuento cómo arrancar en dos minutos.',
   },
@@ -86,6 +88,8 @@ function Bandeja() {
   const [estado, setEstado] = useState<Estado | ''>('pendiente')
   const [cliente, setCliente] = useState('no')
   const [origen, setOrigen] = useState('')
+  const [provincia, setProvincia] = useState('')
+  const [provincias, setProvincias] = useState<{ provincia: string; n: number }[]>([])
   const [buscar, setBuscar] = useState('')
   const [q, setQ] = useState('')
   const [msjs, setMsjs] = useState(() => ({
@@ -102,14 +106,27 @@ function Bandeja() {
 
   const filtros = { p_cliente: cliente || null, p_origen: origen || null }
   const cargarResumen = () =>
-    supabase.rpc('ig_opt_resumen', filtros).then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
+    supabase.rpc('ig_opt_resumen', { ...filtros, p_provincia: provincia || null })
+      .then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
 
   useEffect(() => {
     setFilas(null)
-    supabase.rpc('ig_opt_listar', { ...filtros, p_estado: estado || null, p_buscar: q || null, p_limite: 300 })
+    supabase.rpc('ig_opt_listar', { ...filtros, p_provincia: provincia || null, p_estado: estado || null, p_buscar: q || null, p_limite: 300 })
       .then(({ data }) => setFilas((data as Fila[]) ?? []))
     cargarResumen()
-  }, [estado, cliente, origen, q])
+  }, [estado, cliente, origen, provincia, q])
+
+  // Provincia deducida de la bio/nombre/@; los conteos respetan los demás filtros
+  const cargarProvincias = () =>
+    supabase.rpc('ig_opt_provincias', { ...filtros, p_estado: estado || null })
+      .then(({ data }) => setProvincias((data as { provincia: string; n: number }[]) ?? []))
+  useEffect(() => { cargarProvincias() }, [estado, cliente, origen])
+
+  async function corregirProvincia(f: Fila, p: string) {
+    await supabase.rpc('ig_opt_set_provincia', { p_usuario: f.usuario, p_provincia: p })
+    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario ? { ...x, provincia: p || null } : x)) : prev))
+    cargarProvincias()
+  }
 
   const total = useMemo(() => Object.values(resumen).reduce((a, b) => a + b, 0), [resumen])
 
@@ -173,6 +190,13 @@ function Bandeja() {
           className="rounded-lg border border-black/10 px-2 py-1.5 text-[12px]">
           {ORIGENES.map((o) => <option key={o.k} value={o.k}>{o.t}</option>)}
         </select>
+        <select value={provincia} onChange={(e) => setProvincia(e.target.value)}
+          className="rounded-lg border border-black/10 px-2 py-1.5 text-[12px]">
+          <option value="">Todas las provincias</option>
+          {provincias.map((p) => (
+            <option key={p.provincia} value={p.provincia}>{p.provincia === '-' ? 'Sin provincia' : p.provincia} ({nAr(p.n)})</option>
+          ))}
+        </select>
         <form onSubmit={(e) => { e.preventDefault(); setQ(buscar.trim()) }} className="flex-1 min-w-[180px] relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar @, nombre, bio o ciudad"
@@ -220,6 +244,18 @@ function Bandeja() {
                       {f.cliente_compro ? 'Cliente' : 'En la base'} {f.cliente_cod}{f.cliente_vendedor ? ` · ${f.cliente_vendedor}` : ''}
                     </span>
                   )}
+                  {!f.cliente_cod && f.cliente_posible && (
+                    <span title={`Mismo nombre que: ${f.cliente_posible}`}
+                      className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 max-w-[260px] truncate">
+                      Ya nos compra · {f.cliente_posible}
+                    </span>
+                  )}
+                  <select value={f.provincia ?? ''} onChange={(e) => corregirProvincia(f, e.target.value)}
+                    title="Provincia (deducida de la bio; se puede corregir)"
+                    className={`text-[9px] uppercase font-bold rounded px-1 py-0.5 border-0 ${f.provincia ? 'bg-neutral-100 text-neutral-600' : 'bg-rose-50 text-rose-600'}`}>
+                    <option value="">Sin provincia</option>
+                    {PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
                   {f.lo_seguimos && <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-500">La seguimos</span>}
                   {f.estado !== 'pendiente' && (
                     <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-600">
