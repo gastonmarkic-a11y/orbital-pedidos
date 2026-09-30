@@ -37,7 +37,7 @@ const CLIENTES = [
 // Uno para las que todavía no nos compran y otro para clientes. Sin precios ni fechas.
 const MSJ: Record<'prospecto' | 'cliente', { key: string; t: string; defecto: string }> = {
   prospecto: {
-    key: 'opticas_ig_msj_prospecto', t: 'Ópticas que no son clientes',
+    key: 'opticas_ig_msj_prospecto_v2', t: 'Ópticas que no son clientes',
     defecto:
       'Hola {nombre}! Te escribimos de Orbital Eyewear 👋\n' +
       'Estamos sumando ópticas como punto de venta de la marca. Trabajamos con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina.\n\n' +
@@ -48,7 +48,7 @@ const MSJ: Record<'prospecto' | 'cliente', { key: string; t: string; defecto: st
       '📸 Todo el material de contenido de cada anteojo, listo para que lo publiques en tus redes sin tener que producir nada.\n' +
       '📦 El estado de tus pedidos y tu historial de compras, siempre a mano.\n' +
       '🤝 Postventa integrada en el mismo lugar, para que tengas respuesta rápida y precisa.\n\n' +
-      'Mirá el catálogo acá 👉 https://ver.orbitaleyewear.com.ar/catalogo\n' +
+      'Mirá el catálogo acá 👉 {link}\n' +
       '¿Te gustaría sumarte? Te cuento cómo arrancar en dos minutos.',
   },
   cliente: {
@@ -113,11 +113,18 @@ function Bandeja() {
 
   const total = useMemo(() => Object.values(resumen).reduce((a, b) => a + b, 0), [resumen])
 
-  const textoDe = (f: Fila) =>
-    msjs[f.cliente_compro ? 'cliente' : 'prospecto'].replace(/\{nombre\}/g, primerNombre(f)).replace(/\{usuario\}/g, f.usuario)
+  // {link}: catálogo personal de cada óptica (el de cliente si está en la base; si no, uno de prospecto)
+  async function textoDe(f: Fila) {
+    let t = msjs[f.cliente_compro ? 'cliente' : 'prospecto'].replace(/\{nombre\}/g, primerNombre(f)).replace(/\{usuario\}/g, f.usuario)
+    if (t.includes('{link}')) {
+      const { data } = await supabase.rpc('ig_opt_link', { p_usuario: f.usuario })
+      t = t.replace(/\{link\}/g, data ? `https://ver.orbitaleyewear.com.ar/catalogo?k=${data}` : 'https://ver.orbitaleyewear.com.ar/catalogo')
+    }
+    return t
+  }
 
   async function copiar(f: Fila) {
-    await navigator.clipboard.writeText(textoDe(f))
+    await navigator.clipboard.writeText(await textoDe(f))
     setCopiado(f.usuario)
     setTimeout(() => setCopiado((c) => (c === f.usuario ? null : c)), 2500)
   }
@@ -179,7 +186,7 @@ function Bandeja() {
       {editando && (
         <div className="mb-4 rounded-xl border border-black/10 bg-white p-3">
           <p className="text-[10px] text-neutral-500 mb-1.5">
-            {'{nombre}'} se reemplaza por el nombre de la óptica y {'{usuario}'} por su @. Se guarda en este dispositivo.
+            {'{nombre}'} se reemplaza por el nombre de la óptica, {'{usuario}'} por su @ y {'{link}'} por su catálogo personal. Se guarda en este dispositivo.
             «Escribir» usa el de cliente o el de no cliente según corresponda.
           </p>
           {(['prospecto', 'cliente'] as const).map((k, i) => (
