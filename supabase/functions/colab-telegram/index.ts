@@ -49,10 +49,11 @@ async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}):
     body: JSON.stringify(args),
   });
   if (!res.ok) throw new Error(`${fn}: ${res.status} ${await res.text()}`);
-  return (await res.json()) as T;
+  const cuerpo = await res.text(); // las funciones void responden vacío
+  return (cuerpo ? JSON.parse(cuerpo) : null) as T;
 }
 
-type Boton = { text: string; callback_data: string };
+type Boton = { text: string; callback_data?: string; url?: string };
 
 async function enviar(chat: number, texto: string, botones?: Boton[][], teclado?: unknown) {
   const res = await fetch(`https://api.telegram.org/bot${await token()}/sendMessage`, {
@@ -449,7 +450,8 @@ type Resumen = {
   origenes?: { canal: string; neto: number; pedidos: number; com_inf: number }[];
 };
 
-type Lector = { clave: string; pct: number | null; nombre: string; infId?: number }; // pct null = Orbital
+// pct null = Orbital; rol 'admin' = administradora (sus promotores, su comisión es com_adm)
+type Lector = { clave: string; pct: number | null; nombre: string; infId?: number; rol?: "admin" };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const mesLargo = (p: string) => `${MESES[+p.slice(5, 7) - 1]} ${p.slice(0, 4)}`;
@@ -475,12 +477,13 @@ const SECCION: Record<string, string> = {
 
 async function pantallaDashMenu(chat: number, quien: Lector) {
   await enviar(chat,
-    `📊 <b>${quien.pct == null ? "Reporte de colaboradores" : "Tu dashboard"}</b>\n\n¿Qué querés ver?`, BOTONES_DASH);
+    `📊 <b>${quien.pct == null ? "Reporte de colaboradores" : quien.rol === "admin" ? "Resultados de tus promotores" : "Tu dashboard"}</b>\n\n¿Qué querés ver?`, BOTONES_DASH);
 }
 
 async function pantallaDash(chat: number, quien: Lector, sec: string) {
   const r = await rpc<Resumen | null>("colab_resumen", { p_clave: quien.clave, p_admin: null });
   const orb = quien.pct == null;
+  const adm = quien.rol === "admin";
   const com = (neto: number) => Math.round((Number(neto) || 0) * (quien.pct ?? 0) / 100);
   const etCom = orb ? "comisiones" : `tu ${quien.pct}%`;
   const volver: Boton[][] = [[{ text: "← Otro reporte", callback_data: "d|menu" }]];
@@ -488,13 +491,14 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
   if (!r || !r.hay_datos) {
     await enviar(chat,
       orb ? "Todavía no hay toques ni ventas en ningún link." :
+      adm ? "Todavía no hay toques en los links de tus promotores. Cuando publiquen, acá vas a ver todo." :
         "Todavía no hay toques en tus links. Cuando alguien toque el primero, acá vas a ver todo.\n\nEscribime un modelo y te armo el link.",
       volver);
     return;
   }
   const ult = r.serie[r.serie.length - 1];
   const prev = r.serie[r.serie.length - 2];
-  const comMes = (s: typeof ult) => orb ? Number(s.com_inf) + Number(s.com_adm) : Number(s.com_inf);
+  const comMes = (s: typeof ult) => orb ? Number(s.com_inf) + Number(s.com_adm) : adm ? Number(s.com_adm) : Number(s.com_inf);
   let t = "";
 
   if (sec === "mes") {
@@ -512,7 +516,7 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
     const tot = os.reduce((a, o) => a + Number(o.neto || 0), 0);
     t = `<b>De dónde vienen las ventas</b> · ${mesLargo(ult.periodo)}\n\n` + (os.length
       ? os.map((o) => `<b>${CANAL[o.canal] ?? o.canal}</b> — ${pesos(o.neto)} (${pct1(Number(o.neto), tot)}%)\n` +
-          `${o.pedidos} pedido${o.pedidos === 1 ? "" : "s"}${orb ? "" : ` · ${etCom}: ${pesos(o.com_inf)}`}`).join("\n\n")
+          `${o.pedidos} pedido${o.pedidos === 1 ? "" : "s"}${orb || adm ? "" : ` · ${etCom}: ${pesos(o.com_inf)}`}`).join("\n\n")
       : "Sin ventas pagadas este mes.");
   } else if (sec === "meses") {
     const max = Math.max(...r.serie.map((s) => Number(s.neto)), 1);
@@ -532,7 +536,7 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
       : (a, b) => b.pedidos / (b.clicks || 1) - a.pedidos / (a.clicks || 1) || b.clicks - a.clicks);
     t = `<b>${sec === "pubs" ? "Publicaciones que más rinden" : "Conversión por publicación"}</b> · acumulado\n\n` + (ps.length
       ? ps.slice(0, 10).map((p, i) =>
-          `${i + 1}. <b>${p.modelo}</b> · ${RED[p.red] ?? p.red} ${p.formato}${orb && p.influencer ? ` · <i>${esc(p.influencer)}</i>` : ""}\n` +
+          `${i + 1}. <b>${p.modelo}</b> · ${RED[p.red] ?? p.red} ${p.formato}${(orb || adm) && p.influencer ? ` · <i>${esc(p.influencer)}</i>` : ""}\n` +
           (sec === "conv"
             ? `<b>${pct1(p.pedidos, p.clicks)}%</b> conversión · ${p.pedidos} de ${p.clicks} toques`
             : `${pesos(p.neto)} · ${p.pedidos} pedidos · ${p.clicks} toques${orb ? "" : ` · ${etCom} ${pesos(com(p.neto))}`}`) +
@@ -555,6 +559,7 @@ async function pantallaLiquidacion(chat: number, quien: Lector, periodo?: string
     { order_name: string; fecha: string; influencer: string; modelo: string; estado: string; neto: number; com_inf: number; com_adm: number | null; red: string | null; canal?: string | null }[]
   >("colab_liquidacion", { p_clave: quien.clave, p_periodo: per, p_admin: null });
   const orb = quien.pct == null;
+  const adm = quien.rol === "admin";
   const pag = (filas ?? []).filter((f) => f.estado === "pagado");
   const neto = pag.reduce((a, f) => a + Number(f.neto || 0), 0);
   const cInf = pag.reduce((a, f) => a + Number(f.com_inf || 0), 0);
@@ -563,13 +568,16 @@ async function pantallaLiquidacion(chat: number, quien: Lector, periodo?: string
 
   let t = `<b>Liquidación</b> · ${mesLargo(per)}\n<i>Pedido por pedido. Comisión sobre el neto sin IVA.</i>\n\n` +
     `Venta neta: <b>${pesos(neto)}</b> · ${pag.length} pedido${pag.length === 1 ? "" : "s"} pagado${pag.length === 1 ? "" : "s"}\n` +
-    (orb ? `Influencers: <b>${pesos(cInf)}</b> · Admins: <b>${pesos(cAdm)}</b>\n` : `Tu ${quien.pct}%: <b>${pesos(cInf)}</b>\n`);
+    (orb ? `Influencers: <b>${pesos(cInf)}</b> · Admins: <b>${pesos(cAdm)}</b>\n`
+      : adm ? `Tu ${quien.pct}%: <b>${pesos(cAdm)}</b> · Tus promotores: <b>${pesos(cInf)}</b>\n`
+      : `Tu ${quien.pct}%: <b>${pesos(cInf)}</b>\n`);
   if (!filas?.length) t += `\nSin pedidos en ${mesLargo(per)}.`;
   else {
     t += "\n" + filas.slice(0, 20).map((f) =>
       `<b>${esc(f.order_name)}</b> · ${new Date(f.fecha).toLocaleDateString("es-AR")} · ${esc(f.modelo)}\n` +
-      `${EST[f.estado] ?? f.estado} · neto ${pesos(f.neto)} · ${orb ? `inf. ${pesos(f.com_inf)} · adm. ${pesos(f.com_adm ?? 0)}` : `tu comisión ${pesos(f.com_inf)}`}` +
-      (orb ? ` · <i>${esc(f.influencer)}</i>` : "")).join("\n\n");
+      `${EST[f.estado] ?? f.estado} · neto ${pesos(f.neto)} · ${orb ? `inf. ${pesos(f.com_inf)} · adm. ${pesos(f.com_adm ?? 0)}`
+        : adm ? `tu comisión ${pesos(f.com_adm ?? 0)} · promotor ${pesos(f.com_inf)}` : `tu comisión ${pesos(f.com_inf)}`}` +
+      (orb || adm ? ` · <i>${esc(f.influencer)}</i>` : "")).join("\n\n");
     if (filas.length > 20) t += `\n\n… y ${filas.length - 20} más (el detalle completo está en el panel).`;
   }
   const meses = Array.from({ length: 4 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); return periodoDe(d); });
@@ -743,6 +751,413 @@ async function mostrarModeloDeFoto(chat: number, q: Quien, modeloStock: string) 
     `Acá tenés su ficha con los colores disponibles:\n${BASE}/modelo/${encodeURIComponent(modeloStock)}`);
 }
 
+// ————— modo administrador —————
+// Mery, Yamila, Ariel y Gastón entran con su teléfono y hacen desde el celu lo del panel:
+// la lista de Instagram (próximo, tomar, marcar), alta de promotores, sus promotores y resultados.
+// Todo lo que hacen se espeja al grupo interno con la marca #a<id> (responder = contestarle).
+
+type Admin = {
+  admin_id: number; nombre: string; clave: string; pct: number; chat_id: number;
+  ve_ig: boolean; modo: "admin" | "promotor"; estado: Record<string, any>; telefono: string | null;
+};
+type IgFila = { usuario: string; nombre: string | null; seguidores: number; categoria: string | null; bio: string | null;
+  ultimo_dm: string | null; estado: string; escrito_por: string | null; escrito_en: string | null };
+
+const MENU_ADMIN = {
+  keyboard: [
+    [{ text: "📸 Próximo influencer" }, { text: "📋 Mis contactos" }],
+    [{ text: "➕ Alta de promotor" }, { text: "👥 Mis promotores" }],
+    [{ text: "📊 Resultados" }, { text: "💬 Consultar a Gastón" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
+const AYUDA_ADMIN =
+  "Estás en <b>modo administrador</b>. Desde acá hacés lo mismo que en tu panel:\n\n" +
+  "• <b>📸 Próximo influencer</b> — te doy el próximo de la lista de Instagram con el mensaje listo; lo tomás y te abro su chat\n" +
+  "• <b>📋 Mis contactos</b> — los que escribiste: marcás Respondió, Se sumó o Descartado\n" +
+  "• <b>➕ Alta de promotor</b> — lo cargo con vos paso a paso y te doy su panel para mandarle\n" +
+  "• <b>👥 Mis promotores</b> — cada uno con sus links, toques, ventas y si ya usa el bot\n" +
+  "• <b>📊 Resultados</b> — ventas, redes, publicaciones y tu liquidación\n" +
+  "• <b>💬 Consultar a Gastón</b> — te responde por acá\n\n" +
+  "También podés escribirme un <b>@usuario</b> de Instagram y te digo si ya lo contactó alguien.";
+
+const IG_ESTADO: Record<string, string> = {
+  pendiente: "Sin escribir", escrito: "✉️ Escrito", respondio: "💬 Respondió", alta: "✅ Se sumó", descartado: "✖ Descartado",
+};
+
+// Tramos de seguidores: mismos mensajes que la lista del panel (ColabInfluencers.tsx → TRAMOS)
+const TRAMOS_IG: { min: number; max: number | null; t: string; msj: (yo: string) => string }[] = [
+  { min: 5000, max: 10000, t: "5k–10k", msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋 Nos encanta cómo te conecta tu comunidad.\n` +
+    "Queremos invitarte a nuestro plan Orbital Creator Hub:\n" +
+    "🕶️ Elegís los modelos que van con vos, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina\n" +
+    '🔗 Tu propia página "Elegidos por {nombre}" con un descuento exclusivo para tus seguidores\n' +
+    "📊 Tu panel de resultados: ves cuántos entran, cuántos compran y cómo rinde cada publicación. Tenés el control de todo\n" +
+    "💡 Ideas y formatos para tus historias y posteos\n" +
+    "¿Te cuento cómo sería?" },
+  { min: 10000, max: 50000, t: "10k–50k", msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋 Venimos siguiendo tu contenido y tu estilo va perfecto con la marca.\n` +
+    "Queremos invitarte a nuestro plan Orbital Creator Hub:\n" +
+    "🕶️ Elegís los modelos que van con vos, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina\n" +
+    '🔗 Tu página "Elegidos por {nombre}" con un descuento que tu comunidad solo consigue con vos\n' +
+    "📊 Tu panel de resultados: seguís cada publicación, cuántos entran y cuántos compran. Todo bajo tu control\n" +
+    "Son pocos lugares. ¿Te cuento cómo sería?" },
+  { min: 50000, max: 200000, t: "50k–200k", msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋\n` +
+    "Queremos invitarte a nuestro plan Orbital Creator Hub, con pocos creadores seleccionados:\n" +
+    "🕶️ Una selección de modelos elegida con vos, con la Triple Protección, única en Argentina\n" +
+    '🔗 Tu página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad\n' +
+    "📊 Tu panel de resultados para ver en todo momento el alcance y las ventas de cada publicación\n" +
+    "🤝 Una propuesta armada a tu medida\n" +
+    "¿Coordinamos una charla para contarte todo?" },
+  { min: 200000, max: 1000000, t: "200k–1M", msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 👋\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub, con muy pocos creadores esta temporada: una selección de modelos pensada con vos, con la Triple Protección (única en Argentina), y una página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad.\n' +
+    "Además tenés tu panel de resultados: ves en todo momento cuántos entran y cuántos compran por cada publicación. El control lo tenés vos 📊\n" +
+    "¿Coordinamos una charla corta o me pasás el contacto de quien maneja tus marcas?" },
+  { min: 1000000, max: null, t: "+1M", msj: (yo) =>
+    `Hola {nombre}! Soy ${yo}, de Orbital Eyewear 🕶️ Nos encanta lo que hacés.\n` +
+    'Queremos invitarte a nuestro plan Orbital Creator Hub y crear algo juntos: elegir con vos los modelos que van con tu estilo, con la Triple Protección (UV, luz azul e infrarrojo), única en Argentina, y armarte una página propia "Elegidos por {nombre}" con un beneficio exclusivo para tu comunidad ✨\n' +
+    "Y con tu panel de resultados seguís cada publicación, cuántos entran y cuántos compran. Todo a la vista, todo bajo tu control 📊\n" +
+    "¿Te gustaría que lo charlemos?" },
+];
+
+const primerNombreIg = (f: IgFila) => (f.nombre ?? f.usuario).trim().split(/[\s·|,]/)[0] || f.usuario;
+function mensajeIg(f: IgFila, yo: string) {
+  const tr = TRAMOS_IG.find((x) => f.seguidores >= x.min && (x.max == null || f.seguidores < x.max)) ?? TRAMOS_IG[0];
+  return tr.msj(yo).replace(/\{nombre\}/g, primerNombreIg(f)).replace(/\{usuario\}/g, f.usuario);
+}
+const miles = (n: number) => Number(n || 0).toLocaleString("es-AR");
+const fechaCortaAr = (s: string | null) => (s ? new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : "");
+
+async function espejoAdmin(a: Admin, texto: string) {
+  const g = await cfg("colab_telegram_grupo");
+  if (!g) return;
+  await enviar(Number(g), `👁 <b>${esc(a.nombre)}</b> (admin) ${texto}\n\n<code>#a${a.admin_id}</code>`);
+}
+
+const guardarEstado = (tg: number, e: Record<string, any>) => rpc("colab_tg_admin_estado", { p_tg: tg, p_estado: e });
+
+function tarjetaIg(f: IgFila) {
+  return `<b>@${esc(f.usuario)}</b> · ${miles(f.seguidores)} seguidores\n` +
+    `${esc(f.nombre ?? "")}${f.categoria ? ` · ${esc(f.categoria)}` : ""}` +
+    (f.ultimo_dm ? `\nNos escribió por última vez el ${new Date(f.ultimo_dm).toLocaleDateString("es-AR")}` : "") +
+    (f.bio ? `\n<i>${esc(f.bio.slice(0, 220))}</i>` : "");
+}
+
+const botonesEstadoIg = (usuario: string): Boton[][] => [
+  [{ text: "💬 Respondió", callback_data: `ai|e|respondio|${usuario}` }, { text: "✅ Se sumó", callback_data: `ai|e|alta|${usuario}` }],
+  [{ text: "✖ Descartado", callback_data: `ai|e|descartado|${usuario}` }, { text: "↩ Sin escribir", callback_data: `ai|e|pendiente|${usuario}` }],
+];
+
+async function adminProximo(chat: number, tg: number, a: Admin) {
+  if (!a.ve_ig) {
+    await enviar(chat, "Todavía no tenés habilitada la lista de Instagram. Pedíselo a Gastón.", undefined, MENU_ADMIN);
+    return;
+  }
+  const tramo = TRAMOS_IG[Number(a.estado?.tramo ?? -1)];
+  const saltados: string[] = a.estado?.saltados ?? [];
+  const r = await rpc<{ fila: IgFila | null; quedan: number } | null>("ig_infl_proximo", {
+    p_clave: a.clave, p_min: tramo?.min ?? 5000, p_max: tramo?.max ?? null, p_excluir: saltados,
+  });
+  const filtros: Boton[][] = [
+    TRAMOS_IG.slice(0, 3).map((x, i) => ({ text: (Number(a.estado?.tramo) === i ? "● " : "") + x.t, callback_data: `ai|t|${i}` })),
+    [...TRAMOS_IG.slice(3).map((x, i) => ({ text: (Number(a.estado?.tramo) === i + 3 ? "● " : "") + x.t, callback_data: `ai|t|${i + 3}` })),
+      { text: (tramo ? "" : "● ") + "Todos", callback_data: "ai|t|-1" }],
+  ];
+  if (!r?.fila) {
+    await enviar(chat, `No quedan influencers sin escribir${tramo ? ` en ${tramo.t} seguidores` : ""} 🎉\n\nProbá con otro tramo:`, filtros);
+    return;
+  }
+  const f = r.fila;
+  await enviar(chat,
+    `📸 <b>Próximo de la lista</b> · quedan ${miles(r.quedan)}${tramo ? ` en ${tramo.t}` : ""}\n\n${tarjetaIg(f)}`,
+    [
+      [{ text: "✍️ Lo tomo y le escribo", callback_data: `ai|tomar|${f.usuario}` }],
+      [{ text: "⏭ Otro", callback_data: `ai|skip|${f.usuario}` }, { text: "👀 Ver perfil", url: `https://instagram.com/${f.usuario}` }],
+      ...filtros,
+    ]);
+}
+
+async function adminTomar(chat: number, tg: number, a: Admin, usuario: string) {
+  const t = await rpc<{ ok: boolean; por: string | null; estado: string; en?: string | null }>("ig_infl_tomar", { p_clave: a.clave, p_usuario: usuario });
+  if (!t?.ok) {
+    await enviar(chat, `🔒 A @${esc(usuario)} ya lo contactó <b>${esc(t?.por ?? "otra persona")}</b>${t?.en ? ` el ${fechaCortaAr(t.en)}` : ""}. Te paso otro.`);
+    await adminProximo(chat, tg, a);
+    return;
+  }
+  const f = await rpc<IgFila | null>("ig_infl_uno", { p_clave: a.clave, p_usuario: usuario });
+  if (!f) return;
+  await enviar(chat,
+    `✅ Quedó a tu nombre: <b>@${esc(usuario)}</b>\n\n` +
+    "1. Mantené apretado el mensaje de abajo y copialo\n2. Tocá <b>Abrir su chat</b>, pegalo y enviá\n3. Cuando conteste, marcalo acá o en 📋 Mis contactos",
+    [[{ text: `💬 Abrir su chat`, url: `https://ig.me/m/${usuario}` }], ...botonesEstadoIg(usuario),
+      [{ text: "📸 Siguiente", callback_data: "ai|next" }]]);
+  await enviar(chat, `<pre>${esc(mensajeIg(f, a.nombre))}</pre>`);
+  await espejoAdmin(a, `tomó a <b>@${esc(usuario)}</b> (${miles(f.seguidores)} seg.) de la lista de Instagram`);
+}
+
+async function adminMarcar(chat: number, a: Admin, estado: string, usuario: string) {
+  const r = await rpc<IgFila | null>("ig_infl_marcar", { p_clave: a.clave, p_usuario: usuario, p_estado: estado });
+  if (!r) return void (await enviar(chat, "No encontré a ese usuario en la lista."));
+  await enviar(chat, `Listo: <b>@${esc(usuario)}</b> → ${IG_ESTADO[estado] ?? estado}` +
+    (estado === "alta" ? "\n\n¿Lo das de alta como promotor ahora?" : ""),
+    estado === "alta" ? [[{ text: "➕ Darlo de alta", callback_data: `aa|desde|${usuario}` }]] : undefined);
+  await espejoAdmin(a, `marcó a <b>@${esc(usuario)}</b> como ${IG_ESTADO[estado] ?? estado}`);
+}
+
+async function adminMisContactos(chat: number, a: Admin, filtro = "abiertos") {
+  const estados = filtro === "abiertos" ? ["escrito", "respondio"] : [filtro];
+  const filas = await rpc<IgFila[] | null>("ig_infl_mios", { p_clave: a.clave, p_estados: estados });
+  const chips: Boton[][] = [[
+    { text: "Abiertos", callback_data: "ai|mis|abiertos" }, { text: "Se sumaron", callback_data: "ai|mis|alta" },
+    { text: "Descartados", callback_data: "ai|mis|descartado" },
+  ]];
+  if (!filas?.length) {
+    await enviar(chat, filtro === "abiertos" ? "No tenés contactos abiertos. Tocá <b>📸 Próximo influencer</b> para arrancar." : "No hay contactos con ese estado.", chips);
+    return;
+  }
+  await enviar(chat, `📋 <b>Tus contactos</b> · ${filtro === "abiertos" ? "escritos y que respondieron" : IG_ESTADO[filtro]} (${filas.length})\nTocá uno para cambiarle el estado.`,
+    [...filas.map((f) => [{ text: `@${f.usuario} · ${IG_ESTADO[f.estado] ?? f.estado} · ${fechaCortaAr(f.escrito_en)}`, callback_data: `ai|ver|${f.usuario}` }]), ...chips]);
+}
+
+async function adminVerIg(chat: number, a: Admin, usuario: string) {
+  const f = await rpc<IgFila | null>("ig_infl_uno", { p_clave: a.clave, p_usuario: usuario });
+  if (!f) {
+    await enviar(chat, `@${esc(usuario)} no está en la lista de Instagram (solo están los que nos escribieron por DM con 5.000+ seguidores).`);
+    return;
+  }
+  const quien = f.escrito_por ? ` · ${f.escrito_por === a.nombre ? "lo contactaste vos" : `lo contactó <b>${esc(f.escrito_por)}</b>`}${f.escrito_en ? ` el ${fechaCortaAr(f.escrito_en)}` : ""}` : "";
+  await enviar(chat, `${tarjetaIg(f)}\n\nEstado: <b>${IG_ESTADO[f.estado] ?? f.estado}</b>${quien}`,
+    f.estado === "pendiente"
+      ? [[{ text: "✍️ Lo tomo y le escribo", callback_data: `ai|tomar|${f.usuario}` }]]
+      : [[{ text: "💬 Abrir su chat", url: `https://ig.me/m/${f.usuario}` }], ...botonesEstadoIg(f.usuario)]);
+}
+
+// Alta de promotor paso a paso: el estado de la charla vive en colab_tg_admin.estado
+const PASOS_ALTA: { k: string; pregunta: string; opcional?: boolean }[] = [
+  { k: "nombre", pregunta: "¿Cómo se llama? (como lo conoce su comunidad)" },
+  { k: "telefono", pregunta: "¿Su WhatsApp? (ej. 11 5555 5555). Con ese número entra al bot sin clave." },
+  { k: "usuario", pregunta: "¿Su @ de Instagram?", opcional: true },
+  { k: "seguidores", pregunta: "¿Cuántos seguidores tiene? (aproximado)", opcional: true },
+  { k: "cbu_alias", pregunta: "¿Su CBU o alias para pagarle la comisión?", opcional: true },
+];
+
+async function adminAltaPaso(chat: number, tg: number, a: Admin, alta: Record<string, string>) {
+  const paso = PASOS_ALTA.find((p) => alta[p.k] === undefined);
+  await guardarEstado(tg, { ...a.estado, alta });
+  if (paso) {
+    await enviar(chat, `➕ <b>Alta de promotor</b> · paso ${PASOS_ALTA.indexOf(paso) + 1} de ${PASOS_ALTA.length}\n\n${paso.pregunta}`,
+      [[...(paso.opcional ? [{ text: "Saltar", callback_data: "aa|saltar" }] : []), { text: "Cancelar", callback_data: "aa|cancelar" }]]);
+    return;
+  }
+  await enviar(chat,
+    `➕ <b>Revisá los datos</b>\n\n` +
+    `Nombre: <b>${esc(alta.nombre)}</b>\nWhatsApp: ${esc(alta.telefono || "—")}\nInstagram: ${alta.usuario ? "@" + esc(alta.usuario) : "—"}` +
+    `${alta.seguidores ? ` (${esc(alta.seguidores)} seg.)` : ""}\nCBU o alias: ${esc(alta.cbu_alias || "— (se lo podés pedir después)")}\n\n` +
+    `Comisión 10% · descuento para su comunidad 15% (lo fija Orbital).`,
+    [[{ text: "✅ Crear promotor", callback_data: "aa|ok" }, { text: "Cancelar", callback_data: "aa|cancelar" }]]);
+}
+
+async function adminAltaCrear(chat: number, tg: number, a: Admin) {
+  const alta = (a.estado?.alta ?? {}) as Record<string, string>;
+  if (!alta.nombre) return void (await enviar(chat, "Se cortó el alta. Tocá <b>➕ Alta de promotor</b> y arrancamos de nuevo.", undefined, MENU_ADMIN));
+  const usuario = (alta.usuario || "").replace(/^@/, "").trim();
+  let r: { id: number; clave: string } | null = null;
+  try {
+    r = await rpc<{ id: number; clave: string }>("colab_admin_guardar", {
+      p_clave: a.clave,
+      p: {
+        nombre: alta.nombre, telefono: alta.telefono || null, cbu_alias: alta.cbu_alias || null,
+        redes: usuario ? [{ red: "instagram", usuario, url: `https://instagram.com/${usuario}`, seguidores: alta.seguidores || "" }] : [],
+      },
+    });
+  } catch (e) {
+    console.error("alta promotor", e);
+  }
+  await guardarEstado(tg, { ...a.estado, alta: undefined });
+  if (!r?.clave) return void (await enviar(chat, "No pude crearlo 😕 Probá de nuevo o cargalo desde tu panel.", undefined, MENU_ADMIN));
+
+  // Si estaba en la lista de Instagram, queda como "Se sumó"
+  if (usuario) {
+    const f = await rpc<IgFila | null>("ig_infl_uno", { p_clave: a.clave, p_usuario: usuario }).catch(() => null);
+    if (f && f.estado !== "alta") await rpc("ig_infl_marcar", { p_clave: a.clave, p_usuario: f.usuario, p_estado: "alta" }).catch(() => null);
+  }
+  const panel = `${BASE}/colab?k=${r.clave}`;
+  const nombre1 = alta.nombre.split(" ")[0];
+  const msj =
+    `Hola ${nombre1}! Bienvenido/a a Orbital Creator Hub 🕶️\n\n` +
+    `Tu panel (anteojos, textos listos, tu link con descuento para tu comunidad y tus resultados): ${panel}\n\n` +
+    `Y el atajo desde el celu, por Telegram:\n` +
+    `1. Bajá Telegram (Play Store o App Store) y registrate con este mismo número\n` +
+    `2. Abrí https://t.me/orbital_celeb_bot y tocá Iniciar\n` +
+    `3. Tocá "📱 Entrar con mi teléfono"\n` +
+    `Ahí pedís tus links, ves tus números y consultás al equipo.`;
+  const tel = (alta.telefono || "").replace(/\D/g, "");
+  const wa = tel ? `https://wa.me/${tel.startsWith("54") ? tel : "549" + tel.replace(/^0/, "")}?text=${encodeURIComponent(msj)}` : null;
+  await enviar(chat,
+    `🎉 <b>${esc(alta.nombre)}</b> ya es promotor.\n\nSu panel:\n${panel}\n\n` +
+    (wa ? "Tocá <b>Mandarle todo por WhatsApp</b>: le llega su panel y cómo entrar al bot." : "No cargaste WhatsApp: copiá el mensaje de abajo y mandáselo."),
+    wa ? [[{ text: "📲 Mandarle todo por WhatsApp", url: wa }]] : undefined, undefined);
+  if (!wa) await enviar(chat, `<pre>${esc(msj)}</pre>`);
+  await enviar(chat, "¿Algo más?", undefined, MENU_ADMIN);
+  await espejoAdmin(a, `dio de alta al promotor <b>${esc(alta.nombre)}</b>${usuario ? ` (@${esc(usuario)})` : ""}`);
+}
+
+type PromotorAdm = { id: number; nombre: string; clave: string; telefono: string | null; activo: boolean; cbu_alias: string | null;
+  links: number; clicks: number; pedidos: number; neto: number; com_inf: number; com_adm: number };
+
+async function adminPromotores(chat: number, a: Admin) {
+  const lista = ((await rpc<PromotorAdm[] | null>("colab_admin_influencers", { p_clave: a.clave, p_admin: null })) ?? []).filter((p) => p.activo);
+  if (!lista.length) {
+    await enviar(chat, "Todavía no tenés promotores. Tocá <b>➕ Alta de promotor</b>.", undefined, MENU_ADMIN);
+    return;
+  }
+  const enBot = new Set((await conectados()).map((c) => c.influencer_id));
+  const t = `👥 <b>Tus promotores</b> (${lista.length})\n\n` + lista.map((p) =>
+    `<b>${esc(p.nombre)}</b> ${enBot.has(p.id) ? "📱" : "· <i>sin bot</i>"}${p.cbu_alias ? "" : " · ⚠️ falta CBU"}\n` +
+    `${p.links} links · ${miles(p.clicks)} toques · ${p.pedidos} ped. · ${pesos(p.neto)} · tu comisión ${pesos(p.com_adm)}`).join("\n\n") +
+    "\n\n📱 = ya usa el bot. Tocá uno para ver su panel y mandárselo.";
+  await enviar(chat, t, lista.slice(0, 20).map((p) => [{ text: p.nombre, callback_data: `ap|${p.id}` }]));
+}
+
+async function adminPromotor(chat: number, a: Admin, id: number) {
+  const lista = (await rpc<PromotorAdm[] | null>("colab_admin_influencers", { p_clave: a.clave, p_admin: null })) ?? [];
+  const p = lista.find((x) => x.id === id);
+  if (!p) return void (await enviar(chat, "No encontré ese promotor."));
+  const panel = `${BASE}/colab?k=${p.clave}`;
+  const msj = `Hola ${p.nombre.split(" ")[0]}! Tu panel de Orbital: ${panel}\n\nY el atajo por Telegram: https://t.me/orbital_celeb_bot → Iniciar → "📱 Entrar con mi teléfono".`;
+  const tel = (p.telefono || "").replace(/\D/g, "");
+  const wa = tel ? `https://wa.me/${tel.startsWith("54") ? tel : "549" + tel.replace(/^0/, "")}?text=${encodeURIComponent(msj)}` : null;
+  await enviar(chat,
+    `<b>${esc(p.nombre)}</b>\n${p.links} links · ${miles(p.clicks)} toques · ${p.pedidos} pedidos · ${pesos(p.neto)} sin IVA\n` +
+    `Comisión de él/ella: ${pesos(p.com_inf)} · la tuya: ${pesos(p.com_adm)}\n` +
+    `CBU/alias: ${esc(p.cbu_alias || "⚠️ falta")}\n\nPanel: ${panel}`,
+    [[{ text: "🔗 Abrir su panel", url: panel }], ...(wa ? [[{ text: "📲 Mandarle panel + bot por WhatsApp", url: wa }]] : [])]);
+}
+
+const MARCA_CONSULTA_ADMIN = "Escribí tu consulta para Gastón";
+
+async function manejarAdmin(msg: Record<string, any>, chat: number, tg: number, a: Admin) {
+  const texto = String(msg.text ?? "").trim();
+  const t = sinTilde(texto);
+  const lector: Lector = { clave: a.clave, pct: Number(a.pct), nombre: a.nombre, rol: "admin" };
+
+  if (texto.startsWith("/promotor")) {
+    await rpc("colab_tg_admin_modo", { p_tg: tg, p_modo: "promotor" });
+    await enviar(chat, "Pasaste a <b>modo promotor</b>. Para volver escribí /admin.", undefined, MENU);
+    return;
+  }
+  if (texto.startsWith("/start") || texto.startsWith("/admin") || t === "ayuda" || texto.startsWith("/ayuda") || t === "menu") {
+    await guardarEstado(tg, {});
+    await enviar(chat, `Hola ${esc(a.nombre)} 👋\n\n${AYUDA_ADMIN}\n\nTu panel: ${BASE}/colab?k=${a.clave}`, undefined, MENU_ADMIN);
+    return;
+  }
+
+  // Respuesta a "escribí tu consulta" → al grupo interno
+  const cita = String(msg.reply_to_message?.text ?? "");
+  if (texto && msg.reply_to_message?.from?.is_bot && (cita.includes(MARCA_CONSULTA_ADMIN) || cita.startsWith("📣"))) {
+    await espejoAdmin(a, `consulta:\n\n«${esc(texto)}»\n\nRespondé este mensaje para contestarle.`);
+    await enviar(chat, "Listo, se la pasé a Gastón 🙌 Te responde por acá.", undefined, MENU_ADMIN);
+    return;
+  }
+
+  // Botones del menú (cortan cualquier alta a medio hacer)
+  const menu = t.includes("proximo influencer") ? "prox" : t.includes("mis contactos") ? "mis" : t.includes("alta de promotor") ? "alta"
+    : t.includes("mis promotores") ? "proms" : t.includes("resultados") || t.includes("dashboard") ? "res"
+    : t.includes("consultar a gaston") || texto.startsWith("/consulta") ? "cons" : t.includes("liquidacion") ? "liq" : "";
+  if (menu && a.estado?.alta) { await guardarEstado(tg, { ...a.estado, alta: undefined }); a.estado = { ...a.estado, alta: undefined }; }
+  if (menu === "prox") return void (await adminProximo(chat, tg, a));
+  if (menu === "mis") return void (await adminMisContactos(chat, a));
+  if (menu === "alta") return void (await adminAltaPaso(chat, tg, a, {}));
+  if (menu === "proms") return void (await adminPromotores(chat, a));
+  if (menu === "res") return void (await pantallaDashMenu(chat, lector));
+  if (menu === "liq") return void (await pantallaLiquidacion(chat, lector));
+  if (menu === "cons") {
+    await enviar(chat, `💬 ${MARCA_CONSULTA_ADMIN} respondiendo este mensaje.`, undefined, { force_reply: true, input_field_placeholder: "Tu consulta…" });
+    return;
+  }
+
+  // Alta en curso: el texto es la respuesta al paso
+  const alta = a.estado?.alta as Record<string, string> | undefined;
+  if (alta && texto) {
+    const paso = PASOS_ALTA.find((p) => alta[p.k] === undefined);
+    if (paso) {
+      let v = texto;
+      if (paso.k === "telefono" && v.replace(/\D/g, "").length < 8) {
+        await enviar(chat, "Ese número parece incompleto. Mandámelo con característica, ej. <b>11 5555 5555</b>.");
+        return;
+      }
+      if (paso.k === "usuario") v = v.replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\/.*$/, "").trim();
+      return void (await adminAltaPaso(chat, tg, a, { ...alta, [paso.k]: v }));
+    }
+  }
+
+  // @usuario → cómo está en la lista
+  const arroba = texto.match(/^@?([a-z0-9._]{3,30})$/i);
+  if (texto.startsWith("@") && arroba) return void (await adminVerIg(chat, a, arroba[1]));
+
+  await espejoAdmin(a, `escribió algo que el bot no entendió: «${esc(texto)}»\n\nRespondé este mensaje para contestarle.`);
+  await enviar(chat, "No te entendí 🤔\n\n" + AYUDA_ADMIN, undefined, MENU_ADMIN);
+}
+
+async function manejarCallbackAdmin(cb: Record<string, any>, chat: number, tg: number, a: Admin) {
+  const [op, ...resto] = String(cb.data ?? "").split("|");
+  const lector: Lector = { clave: a.clave, pct: Number(a.pct), nombre: a.nombre, rol: "admin" };
+
+  if (op === "ai") {
+    const [acc, x, y] = resto;
+    if (acc === "next") return void (await adminProximo(chat, tg, a));
+    if (acc === "t") {
+      a.estado = { ...a.estado, tramo: Number(x), saltados: [] };
+      await guardarEstado(tg, a.estado);
+      return void (await adminProximo(chat, tg, a));
+    }
+    if (acc === "skip") {
+      a.estado = { ...a.estado, saltados: [...(a.estado?.saltados ?? []), x].slice(-200) };
+      await guardarEstado(tg, a.estado);
+      return void (await adminProximo(chat, tg, a));
+    }
+    if (acc === "tomar") {
+      await adminTomar(chat, tg, a, x);
+      return;
+    }
+    if (acc === "e") return void (await adminMarcar(chat, a, x, y));
+    if (acc === "mis") return void (await adminMisContactos(chat, a, x));
+    if (acc === "ver") return void (await adminVerIg(chat, a, x));
+    return;
+  }
+  if (op === "aa") {
+    const alta = (a.estado?.alta ?? {}) as Record<string, string>;
+    if (resto[0] === "cancelar") {
+      await guardarEstado(tg, { ...a.estado, alta: undefined });
+      return void (await enviar(chat, "Alta cancelada.", undefined, MENU_ADMIN));
+    }
+    if (resto[0] === "saltar") {
+      const paso = PASOS_ALTA.find((p) => alta[p.k] === undefined);
+      if (paso?.opcional) return void (await adminAltaPaso(chat, tg, a, { ...alta, [paso.k]: "" }));
+      return;
+    }
+    if (resto[0] === "ok") return void (await adminAltaCrear(chat, tg, a));
+    if (resto[0] === "desde") {
+      const f = await rpc<IgFila | null>("ig_infl_uno", { p_clave: a.clave, p_usuario: resto[1] });
+      return void (await adminAltaPaso(chat, tg, a, f
+        ? { nombre: f.nombre?.trim() || f.usuario, usuario: f.usuario, seguidores: String(f.seguidores) }
+        : { usuario: resto[1] }));
+    }
+    return;
+  }
+  if (op === "ap") return void (await adminPromotor(chat, a, Number(resto[0])));
+  if (op === "d") {
+    if (resto[0] === "menu") return void (await pantallaDashMenu(chat, lector));
+    if (resto[0] === "liq") return void (await pantallaLiquidacion(chat, lector));
+    return void (await pantallaDash(chat, lector, resto[0]));
+  }
+  if (op === "q") return void (await pantallaLiquidacion(chat, lector, resto[0]));
+}
+
 // ————— webhook —————
 
 async function manejarMensaje(msg: Record<string, any>) {
@@ -825,6 +1240,17 @@ async function manejarMensaje(msg: Record<string, any>) {
 
     // Responder el mensaje 👁 de un promotor = escribirle a ese promotor
     const citado = String(msg.reply_to_message?.text ?? "");
+    // …y el de un administrador (#a<id>) = escribirle a ese administrador
+    const marcaA = citado.match(/#a(\d+)/);
+    if (marcaA && texto && !texto.startsWith("/")) {
+      const c = await rpc<number | null>("colab_tg_admin_chat", { p_admin: Number(marcaA[1]) });
+      if (!c) await enviar(chat, "Ese administrador no está conectado al bot.");
+      else {
+        await enviar(c, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
+        await enviar(chat, "Enviado ✔");
+      }
+      return;
+    }
     const marca = citado.match(/#p(\d+)/);
     if (marca && texto && !texto.startsWith("/")) {
       await mandarAPromotor(chat, Number(marca[1]), texto);
@@ -839,14 +1265,49 @@ async function manejarMensaje(msg: Record<string, any>) {
         "/promotores — quiénes están conectados\n" +
         "/aviso &lt;texto&gt; — mandarle un mensaje a todos\n" +
         "/decile &lt;nombre&gt; &lt;texto&gt; — mandarle un mensaje a uno\n\n" +
-        "Y respondiendo cualquier mensaje 👁 le contestás a ese promotor.");
+        "Y respondiendo cualquier mensaje 👁 le contestás a ese promotor o administrador.");
     }
     return; // en grupo no contesta nada más
   }
 
-  const q = await rpc<Quien | null>("colab_tg_quien", { p_tg: from });
-
   const nombreTg = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") || null;
+
+  // ——— administradores (Mery, Yamila, Ariel, Gastón): entran con su teléfono o su clave ad-… ———
+  const adm = await rpc<Admin | null>("colab_tg_admin_quien", { p_tg: from });
+  const telAdm = msg.contact?.user_id === from ? String(msg.contact?.phone_number ?? "") : "";
+  const claveAd = texto.match(/\bad-[a-z0-9]{6,}\b/i)?.[0];
+  if ((telAdm || claveAd) && !(adm && adm.modo === "admin")) {
+    const r = await rpc<{ ok: boolean; error?: string; nombre?: string; admin_id?: number }>("colab_tg_admin_vincular", {
+      p_tg: from, p_chat: chat, p_tel: telAdm || null, p_clave: claveAd ?? null, p_nombre: nombreTg, p_username: msg.from?.username ?? null,
+    });
+    if (r?.ok) {
+      const a = await rpc<Admin | null>("colab_tg_admin_quien", { p_tg: from });
+      // si además es promotor (Gastón), también queda vinculado como promotor para /promotor
+      if (telAdm) await rpc("colab_tg_vincular_tel", { p_tg: from, p_chat: chat, p_tel: telAdm, p_nombre: nombreTg, p_username: msg.from?.username ?? null }).catch(() => null);
+      await enviar(chat, `¡Hola ${esc(r.nombre ?? "")}! Entraste como <b>administrador</b> 🎉\n\n${AYUDA_ADMIN}` +
+        (a ? `\n\nTu panel: ${BASE}/colab?k=${a.clave}` : ""), undefined, MENU_ADMIN);
+      if (a) await espejoAdmin(a, "se conectó al bot como administrador");
+      return;
+    }
+    if (claveAd) {
+      await enviar(chat, r?.error === "repetido" ? "Ese teléfono figura en más de un administrador. Avisale a Gastón." : "Esa clave de administrador no me figura.");
+      return;
+    }
+    // el teléfono no es de un administrador → sigue como promotor
+  }
+  if (adm && adm.modo === "admin") return void (await manejarAdmin(msg, chat, from, adm));
+  if (texto.startsWith("/admin")) {
+    if (adm) {
+      await rpc("colab_tg_admin_modo", { p_tg: from, p_modo: "admin" });
+      await enviar(chat, `Volviste al <b>modo administrador</b>.\n\n${AYUDA_ADMIN}`, undefined, MENU_ADMIN);
+    } else {
+      await enviar(chat, "Para entrar como administrador tocá el botón y compartí tu teléfono.", undefined,
+        { ...PEDIR_TEL, keyboard: [[{ text: "📱 Entrar como administrador", request_contact: true }]] });
+    }
+    return;
+  }
+
+  const q = await rpc<Quien | null>("colab_tg_quien", { p_tg: from });
 
   // alta con un toque: comparte su teléfono y lo busco en los promotores
   const tel = msg.contact?.user_id === from ? String(msg.contact?.phone_number ?? "") : "";
@@ -889,7 +1350,7 @@ async function manejarMensaje(msg: Record<string, any>) {
 
   if (!q) {
     await enviar(chat,
-      "Hola 👋 Soy el asistente de promotores de Orbital.\n\n" +
+      "Hola 👋 Soy el asistente de Orbital Creator Hub, para promotores y administradores.\n\n" +
       "Tocá el botón de acá abajo y entrás con tu teléfono, sin claves ni contraseñas.",
       undefined, PEDIR_TEL);
     return;
@@ -990,6 +1451,9 @@ async function manejarCallback(cb: Record<string, any>) {
     } else if (op === "q") await pantallaLiquidacion(chat, orb, resto[0]);
     return;
   }
+
+  const adm = await rpc<Admin | null>("colab_tg_admin_quien", { p_tg: from });
+  if (adm && adm.modo === "admin") return void (await manejarCallbackAdmin(cb, chat, from, adm));
 
   const q = await rpc<Quien | null>("colab_tg_quien", { p_tg: from });
   if (!q) {
