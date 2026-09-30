@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 're
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye,
+  BarChart3, Banknote, Calculator, Tag, Landmark,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
@@ -87,8 +87,6 @@ import LandingModelo from './modules/landings/LandingModelo'
 import QrExhibidor from './modules/landings/QrExhibidor'
 import PreciosML from './modules/mercadolibre/PreciosML'
 import FinanzasHub from './modules/finanzas/FinanzasHub'
-import Pretest from './modules/visionlab/Pretest'
-import VisionLabPanel from './modules/visionlab/VisionLabPanel'
 
 interface NavItem {
   to: string
@@ -113,7 +111,6 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion': Factory,
   '/tienda': Store,
   '/publicidad': BarChart3,
-  '/vision-lab': ScanEye,
   '/envios-ecom': Truck,
   '/liquidacion': Banknote,
   '/produccion/costeo': Calculator,
@@ -273,7 +270,6 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/creadores', label: 'Creadores (administradoras)' },
       { to: '/influencers', label: 'Influencers de Instagram' },
       { to: '/opticas-instagram', label: 'Ópticas de Instagram' },
-      { to: '/vision-lab', label: 'Vision Lab (pretest visual)' },
       { to: '/pedidos/dashboard', label: 'Dashboard' },
       { to: '/pedidos/cobranzas', label: 'Cobranzas' },
       { to: '/pedidos/clientes', label: 'Clientes' },
@@ -649,9 +645,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/panel-canales" element={<PanelCanales />} />}
           {rol === 'admin' && <Route path="/creadores" element={<div className="max-w-6xl mx-auto px-4 py-6"><CreadoresSuite /></div>} />}
           {rol === 'admin' && <Route path="/influencers" element={<div className="max-w-4xl mx-auto px-4 py-6"><ColabInfluencers /></div>} />}
-          {rol === 'admin' && <Route path="/vision-lab" element={<div className="max-w-4xl mx-auto px-4 py-6"><VisionLabPanel /></div>} />}
-          {rol === 'admin' && <Route path="/vision-lab/pretest" element={<Pretest origen="suite" />} />}
-          {rol === 'admin' && <Route path="/opticas-instagram"element={<div className="max-w-4xl mx-auto px-4 py-6"><OpticasInstagram /></div>} />}
+          {rol === 'admin' && <Route path="/opticas-instagram" element={<div className="max-w-4xl mx-auto px-4 py-6"><OpticasInstagram /></div>} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
           )}
@@ -824,10 +818,6 @@ export default function App() {
         </ToastProvider>
       )
     }
-  }
-  // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>).
-  if (typeof window !== 'undefined' && /^\/lab(\/pretest)?\/?$/.test(window.location.pathname)) {
-    return <Pretest />
   }
   // Colaboradores (influencers): panel por clave (Orbital / administrador / promotor).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/colab')) {
