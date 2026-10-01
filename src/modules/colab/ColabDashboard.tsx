@@ -144,8 +144,8 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
           </div>
           <div className="rounded-xl p-3 bg-white border border-black/10">
             <div className="text-[22px] font-bold leading-none">{pctResto}%</div>
-            <div className="text-[11px] font-bold mt-1">El resto de tu colección</div>
-            <div className="text-[10px] text-neutral-500">Anuncios de Orbital y venta directa en la tienda. Desde el {new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}.</div>
+            <div className="text-[11px] font-bold mt-1">Ventas por anuncios de Meta</div>
+            <div className="text-[10px] text-neutral-500">Publicidad de Orbital en Instagram y Facebook, y compras directas en la tienda. Desde el {new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}.</div>
           </div>
         </div>
       )}
