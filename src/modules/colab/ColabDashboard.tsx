@@ -70,11 +70,11 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
   const principal = (s?: typeof ult) => !s ? 0 : rol === 'influencer' ? s.com_inf : rol === 'admin' ? s.com_adm : s.neto
   const delta = prev && principal(prev) ? (principal(ult) / principal(prev) - 1) * 100 : null
   const maxMes = Math.max(...r.serie.map((s) => s.neto), 1)
-  // Colección con comisión doble: pctInf por lo que trae el promotor (sus links, redes sin anuncio),
-  // pctResto por anuncios de Orbital y venta directa, para pedidos desde restoDesde.
+  // Colección con comisión doble: pctInf por todo lo orgánico (links, redes, directo),
+  // pctResto solo por anuncios pagos de Meta, para pedidos desde restoDesde.
   const doble = rol === 'influencer' && !!coleccion && pctResto != null && !!restoDesde
   const rige = (periodo?: string) => doble && !!periodo && periodo >= restoDesde!.slice(0, 7)
-  const pctCanal = (canal: string) => rige(ult?.periodo) && canal !== 'link' && canal !== 'redes' ? pctResto! : (pctInf ?? 10)
+  const pctCanal = (canal: string) => rige(ult?.periodo) && canal === 'meta' ? pctResto! : (pctInf ?? 10)
   const etiquetaPrincipal = rol === 'influencer' ? (doble ? 'Tu comisión' : `Tu ${pctInf ?? 10}%`) : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
   const conv = ult && ult.clicks ? (ult.pedidos / ult.clicks) * 100 : 0
 
@@ -139,13 +139,13 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         <div className="grid grid-cols-2 gap-2 mb-4">
           <div className="rounded-xl p-3 text-white" style={{ background: ACENTO }}>
             <div className="text-[22px] font-bold leading-none">{pctInf ?? 10}%</div>
-            <div className="text-[11px] font-bold mt-1">Lo que traés vos</div>
-            <div className="text-[10px] opacity-80">Tus links y quien llega desde Instagram o tus redes sin anuncio.</div>
+            <div className="text-[11px] font-bold mt-1">Ventas orgánicas</div>
+            <div className="text-[10px] opacity-80">Tus links, Instagram y otras redes, publicaciones de Orbital o de otros, y compras directas en la tienda.</div>
           </div>
           <div className="rounded-xl p-3 bg-white border border-black/10">
             <div className="text-[22px] font-bold leading-none">{pctResto}%</div>
             <div className="text-[11px] font-bold mt-1">Ventas por anuncios de Meta</div>
-            <div className="text-[10px] text-neutral-500">Publicidad de Orbital en Instagram y Facebook, y compras directas en la tienda. Desde el {new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}.</div>
+            <div className="text-[10px] text-neutral-500">Solo las que llegan por publicidad paga de Orbital en Instagram y Facebook. Desde el {new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}.</div>
           </div>
         </div>
       )}
@@ -371,7 +371,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
         {doble
-          ? `Cuenta toda venta de tu colección en la tienda desde el lanzamiento. Desde el ${new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}, lo que entra por tus links o desde Instagram y redes sin anuncio va al ${pctInf ?? 10}%; lo que entra por anuncios de Orbital o directo a la tienda, al ${pctResto}%. `
+          ? `Cuenta toda venta de tu colección en la tienda desde el lanzamiento. Desde el ${new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}, todo lo orgánico (tus links, redes, publicaciones de Orbital o de otros y compras directas) va al ${pctInf ?? 10}%; solo lo que entra por anuncios pagos de Meta va al ${pctResto}%. `
           : coleccion
           ? 'Cuenta toda venta de tu colección en la tienda desde el lanzamiento, entre o no por tu link. '
           : 'Cuenta la venta de los pedidos que usan un código generado por un link (se genera uno único por persona que lo toca). '}

@@ -1,5 +1,5 @@
 -- Comisión doble para promotores de colección (Zaira, desde el 01/10/2026):
---   pct_comision        → lo que trae ella: sus links /r/ o Instagram/redes sin anuncio
+--   pct_comision        → todo lo orgánico (ver ajuste al final: solo Meta va al resto)
 --   pct_comision_resto  → el resto de la colección: anuncios de Orbital y directo en la tienda
 -- Rige para pedidos desde pct_resto_desde (fecha AR). Antes de esa fecha, todo a pct_comision.
 -- Sin pct_comision_resto o sin fecha: todo a pct_comision, como antes.
@@ -178,4 +178,18 @@ begin
     'vo as materialized (select * from colab_venta_origen where influencer_id = any(v_infs)) select jsonb_build_object(');
   d := replace(d, E'  );\nend $function$', E'  ));\nend $function$');
   execute d;
+end $mig$;
+
+-- 01/10/2026 (ajuste): el 10% es SOLO para ventas por anuncios pagos de Meta. Todo lo orgánico
+-- (links, redes, publicaciones de Orbital o de otros, compras directas) va al pct_comision.
+do $mig$
+declare d text;
+begin
+  d := pg_get_viewdef('public.colab_coleccion_venta'::regclass);
+  d := regexp_replace(d,
+    '\(\(lk\.link_id IS NOT NULL\) OR \(\(NOT \(\(COALESCE\(v\.landing_site, ''''::text\) ~\* ''utm_source=\(fb\|facebo\|meta\|ig\|insta\)''::text\) OR colab_fbclid_anuncio\(v\.landing_site\)\)\) AND \(COALESCE\(v\.referring_site, ''''::text\) ~\* ''\(instagram\|facebook\|tiktok\|youtube\|fb\\.me\|t\\.co\)''::text\)\)\) AS propio',
+    '((lk.link_id IS NOT NULL) OR (NOT ((COALESCE(v.landing_site, ''''::text) ~* ''utm_source=(fb|facebo|meta|ig|insta)''::text) OR colab_fbclid_anuncio(v.landing_site)))) AS propio');
+  if position('referring_site' in d) = 0 then
+    execute 'create or replace view colab_coleccion_venta as ' || d;
+  end if;
 end $mig$;

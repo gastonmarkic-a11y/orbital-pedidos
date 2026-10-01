@@ -489,9 +489,9 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
   const com = (neto: number) => Math.round((Number(neto) || 0) * (quien.pct ?? 0) / 100);
   const doble = !orb && !adm && quien.pctResto != null && !!quien.restoDesde;
   const etCom = orb ? "comisiones" : doble ? "tu comisión" : `tu ${quien.pct}%`;
-  // % de cada origen (comisión doble): links y redes sin anuncio al pct; anuncios y directo al pctResto
+  // % de cada origen (comisión doble): todo lo orgánico al pct; solo anuncios pagos de Meta al pctResto
   const pctCanal = (canal: string, periodo: string) =>
-    doble && periodo >= quien.restoDesde!.slice(0, 7) && canal !== "link" && canal !== "redes" ? quien.pctResto! : quien.pct;
+    doble && periodo >= quien.restoDesde!.slice(0, 7) && canal === "meta" ? quien.pctResto! : quien.pct;
   const volver: Boton[][] = [[{ text: "← Otro reporte", callback_data: "d|menu" }]];
 
   if (!r || !r.hay_datos) {
@@ -516,7 +516,7 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
       (ult.pendientes ? `⏳ ${ult.pendientes} esperando el pago (se suman cuando se acredita)\n` : "") +
       `\nVenta neta (sin IVA): <b>${pesos(ult.neto)}</b>\n` +
       `${orb ? "Comisiones (influencers + admins)" : doble ? "Tu comisión" : `Tu ${quien.pct}%`}: <b>${pesos(comMes(ult))}</b>` +
-      (doble ? `\n<i>${quien.pct}% lo que traés vos (tus links, Instagram sin anuncio) · ${quien.pctResto}% anuncios de Orbital y directo</i>` : "") +
+      (doble ? `\n<i>${quien.pct}% ventas orgánicas (links, redes, directo) · ${quien.pctResto}% solo anuncios pagos de Meta</i>` : "") +
       (d != null ? `\n${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(0)}% vs ${mesCorto(prev.periodo)}` : "");
   } else if (sec === "origen") {
     const os = r.origenes ?? [];
