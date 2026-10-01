@@ -548,7 +548,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     setLock(null)
     setS((s) => ({ ...s, distMm: dist }))
     // La primera frase se dice dentro del toque: en iPhone la voz solo arranca desde un gesto del usuario.
-    if (dist >= 2000 && usarVoz) prepararVoz()
+    if (usarVoz) prepararVoz()
     if (usarCam) hablar(dist >= 2000 ? 'Apoyá el celular y alejate despacio. Te aviso cuándo frenar.' : 'Sostené el celular con el brazo estirado.')
     else if (dist >= 2000 && usarVoz) hablar('Apoyá el celular a la altura de tus ojos y alejate 3 metros, unos 4 pasos largos. ' + INSTR_VOZ.replace('Listo, quedate ahí. ', ''))
   }
@@ -558,11 +558,36 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     if (vozLejos) hablar(INSTR_VOZ)
   }
   const vozLejos = usarVoz && (modoLejos ?? 0) >= 2000
-  const escucha = useEscucha(step === 2 && vozLejos && (lock !== null || !usarCam), (o) => {
+  // Pruebas con E (lejos, contraste, cerca): se responden por voz y las flechas quedan de respaldo.
+  const pruebaE = (step === 2 && modoLejos !== null && (lock !== null || !usarCam)) || step === 3 || step === 7
+  const escucha = useEscucha(usarVoz && pruebaE, (o) => {
     if (o === 'repetir') return hablar('Decí hacia dónde apuntan las patas de la letra: arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.')
     tonoAnotado()
-    answerE(o)
+    if (step === 2) answerE(o)
+    else if (step === 3) answerC(o)
+    else if (step === 7) answerNear(o)
   })
+  const porVoz = usarVoz && pruebaE && escucha.estado === 'escuchando'
+  const [verFlechas, setVerFlechas] = useState(false)
+  useEffect(() => { setVerFlechas(false) }, [step])
+  // Al entrar a contraste y a cerca, la consigna también se dice en voz alta.
+  useEffect(() => {
+    if (!usarVoz) return
+    if (step === 3) hablar('Volvé al celular. Ahora contraste: con los dos ojos y el celular a 50 centímetros. La letra se va aclarando: decí hacia dónde apunta. Cuando ya no la distingas, decí no la veo.')
+    if (step === 7) hablar('Visión de cerca. Celular a 40 centímetros. Tapate el ojo izquierdo y decí hacia dónde apunta la letra.')
+  }, [step, usarVoz])
+  const panelVoz = usarVoz && pruebaE && (
+    <div className={'escucha ' + escucha.estado} role="status">
+      <Mic size={22} />
+      <span>{escucha.estado === 'escuchando' ? (escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho: decí arriba, abajo, derecha o izquierda')
+        : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: respondé tocando las flechas.'
+        : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: respondé tocando las flechas.' : 'Preparando el micrófono…'}</span>
+    </div>
+  )
+  /** Flechas: siempre si no hay voz; con voz, escondidas detrás de un link. */
+  const flechas = (onAnswer: (d: Dir | 'none') => void) => !porVoz || verFlechas
+    ? <DPad onAnswer={onAnswer} />
+    : <div style={{ textAlign: 'center' }}><button className="link" onClick={() => setVerFlechas(true)}>Prefiero responder tocando</button></div>
   function answerE(a: Dir | 'none') {
     const val = escalera(ac, setAc, a)
     if (val === null) return
@@ -586,8 +611,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     if (eye === 'R') {
       setEye('L')
       setNa(escaleraNueva())
+      if (usarVoz) hablar('Muy bien. Ahora tapate el ojo derecho.')
     } else {
       setNear(null)
+      if (usarVoz) hablar('Listo. Ahora elegí en la pantalla el texto más chico que leés.')
       go(8)
     }
   }
@@ -866,20 +893,13 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Guia items={modoLejos >= 2000
               ? [[<Ruler size={14} />, '3 m · unos 4 pasos largos'], [<Eye size={14} />, 'Celular a la altura de los ojos'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]
               : [[<Ruler size={14} />, '50 cm · brazo estirado'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]} />
-            {vozLejos && (
-              <div className={'escucha ' + escucha.estado} role="status">
-                <Mic size={22} />
-                <span>{escucha.estado === 'escuchando' ? (escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho…')
-                  : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: que alguien toque las flechas.'
-                  : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: que alguien toque las flechas.' : 'Preparando el micrófono…'}</span>
-              </div>
-            )}
+            {panelVoz}
             {usarCam && <Indicador d={dist} objetivo={modoLejos} tol={0.15} />}
             <Stage izq={`Nivel ${ac.lvl + 1} de 6 · ${S.distMm >= 1000 ? (S.distMm / 1000).toFixed(1).replace('.', ',') + ' m' : Math.round(S.distMm / 10) + ' cm'}`} der={`${letterMm(LEVELS[ac.lvl], S.distMm).toFixed(1)} mm`}>
               <E dir={ac.dir} px={Math.max(6, letterMm(LEVELS[ac.lvl], S.distMm) * S.pxPerMm)} />
             </Stage>
             <Intentos n={ac.trial} />
-            <DPad onAnswer={answerE} />
+            {flechas(answerE)}
             {ac.lvl === 0 && ac.trial === 0 && eye === 'R' && (
               <div style={{ textAlign: 'center' }}><button className="link" onClick={() => { setModoLejos(null); setLock(null) }}>Cambiar la distancia</button></div>
             )}
@@ -890,7 +910,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
           <section className="step">
             <div>
               <h2>Contraste: la E se va aclarando</h2>
-              <p>Con los dos ojos. Tocá hacia dónde apunta; cuando ya no la distingas del fondo, tocá “No la veo”.</p>
+              <p>{usarVoz ? 'Con los dos ojos. Decí hacia dónde apunta; cuando ya no la distingas del fondo, decí “no la veo”.' : 'Con los dos ojos. Tocá hacia dónde apunta; cuando ya no la distingas del fondo, tocá “No la veo”.'}</p>
             </div>
             <Guia items={[[<Eye size={14} />, 'Los dos ojos'], [<Ruler size={14} />, '50 cm'], [<Sun size={14} />, 'Brillo al máximo']]} />
             {usarCam && <Indicador d={dist} objetivo={DIST_MM} tol={0.2} />}
@@ -901,7 +921,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               })()}
             </Stage>
             <Intentos n={ct.trial} />
-            <DPad onAnswer={answerC} />
+            {panelVoz}
+            {flechas(answerC)}
           </section>
         )}
 
@@ -959,7 +980,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
           <section className="step">
             <div>
               <h2>Visión de cerca: ¿hacia dónde apunta la E?</h2>
-              <p>Sostené el celular a <b>40 cm</b>, la distancia a la que leés un libro. Tocá hacia dónde apuntan las patas de la letra; si no la distinguís, tocá “No la veo”.</p>
+              <p>Sostené el celular a <b>40 cm</b>, la distancia a la que leés un libro. {usarVoz ? 'Decí hacia dónde apuntan las patas de la letra; si no la distinguís, decí “no la veo”.' : 'Tocá hacia dónde apuntan las patas de la letra; si no la distinguís, tocá “No la veo”.'}</p>
             </div>
             <Ojos eye={eye} />
             <Guia items={[[<Ruler size={14} />, '40 cm · distancia de lectura'], [<Glasses size={14} />, usa === 'si' ? 'Con anteojos de lectura si usás' : 'Sin anteojos']]} />
@@ -968,7 +989,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               <E dir={na.dir} px={Math.max(4, letterMm(LEVELS[na.lvl], DIST_CERCA_MM) * S.pxPerMm)} />
             </Stage>
             <Intentos n={na.trial} />
-            <DPad onAnswer={answerNear} />
+            {panelVoz}
+            {flechas(answerNear)}
           </section>
         )}
 
