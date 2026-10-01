@@ -15,6 +15,7 @@ import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, L
 import { colorLegible, colorSwatch } from './colorLegible'
 import ColabAnteojos from '../colab/ColabAnteojos'
 import { MisLinks as ColabMisLinks } from '../colab/Colab'
+import ColabDashboard from '../colab/ColabDashboard'
 
 const CLAVE_KEY = 'orbital_zn_clave'
 const SEL_KEY = 'orbital_zn_seleccion'   // + ':' + rol
@@ -429,7 +430,8 @@ function ResumenSheet({ modelos, rol, zn, orb, sub, toggle, limpiar, onClose, cl
 // se pega el link de la publicación y cuenta toques, pedidos y su 20%.
 // El catálogo se limita a la colección "Orbital x Zaira" de la tienda (zn_links_color).
 // Sin cupón: la colección ya tiene su precio; el pedido se atribuye por el
-// utm_content del link. Comisión: 20% sobre la venta sin IVA ni envío (colab-ventas-sync).
+// utm_content del link. Comisión sin IVA ni envío: 20% lo que trae ella (links, redes sin
+// anuncio) y, desde el 01/10/2026, 10% el resto de la colección (vista colab_coleccion_venta).
 const PCT_ZN = 20
 
 function MisLinks({ clave }: { clave: string }) {
@@ -457,6 +459,21 @@ function MisLinks({ clave }: { clave: string }) {
         : <ColabMisLinks key={version} clave={colab.clave} pct={Number(colab.pct) || PCT_ZN} irAnteojos={() => setVista('anteojos')} />}
     </>
   )
+}
+
+// ── Dashboard real de ZN: el mismo de /colab (ventas reales de la colección, liquidación
+// y comisión doble 20% lo que trae ella / 10% el resto). Si el panel de colaboradores no
+// está activo, queda el dashboard viejo de zn_metricas.
+type ZnColab = { clave: string; pct: number; pct_resto: number | null; pct_resto_desde: string | null }
+function DashboardZN({ clave }: { clave: string }) {
+  const [colab, setColab] = useState<ZnColab | null | undefined>(undefined)
+  useEffect(() => {
+    supabase.rpc('zn_colab_clave', { p_clave: clave }).then(({ data }) => setColab((data as ZnColab | null) ?? null))
+  }, [clave])
+  if (colab === undefined) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
+  if (!colab) return <Dashboard clave={clave} />
+  return <ColabDashboard clave={colab.clave} rol="influencer" coleccion pctInf={Number(colab.pct) || PCT_ZN}
+    pctResto={colab.pct_resto != null ? Number(colab.pct_resto) : null} restoDesde={colab.pct_resto_desde} />
 }
 
 // ── Dashboard de ZN ─────────────────────────────────────────────────────────
@@ -1070,7 +1087,7 @@ export default function CatalogoZN() {
       {tab === 'links' ? (
         <div className="max-w-6xl mx-auto px-4 py-5"><MisLinks clave={clave} /></div>
       ) : tab === 'dash' ? (
-        <div className="max-w-6xl mx-auto px-4 py-5"><Dashboard clave={clave} /></div>
+        <div className="max-w-6xl mx-auto px-4 py-5"><DashboardZN clave={clave} /></div>
       ) : (
       <div className="max-w-6xl mx-auto px-4 py-5">
         <div className="mb-4">

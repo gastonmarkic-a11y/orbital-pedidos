@@ -40,9 +40,10 @@ const EJEMPLO: Resumen = {
 
 const C_RED: Record<string, string> = { instagram: '#c13584', tiktok: '#111827', youtube: '#dc2626', facebook: '#2a78d6', x: '#525252', otra: '#8d8a82' }
 
-export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, coleccion }: {
+export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, coleccion, pctResto, restoDesde }: {
   clave: string; rol: Rol; pctInf?: number; pctAdm?: number; adminId?: number | null
   coleccion?: boolean   // promotor de colección: cuenta toda la venta de la colección, sin cupón
+  pctResto?: number | null; restoDesde?: string | null   // colección: % de lo que no trae el promotor y desde cuándo
 }) {
   const [r, setR] = useState<Resumen | null>(null)
   const [actualizando, setActualizando] = useState(false)
@@ -69,7 +70,12 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
   const principal = (s?: typeof ult) => !s ? 0 : rol === 'influencer' ? s.com_inf : rol === 'admin' ? s.com_adm : s.neto
   const delta = prev && principal(prev) ? (principal(ult) / principal(prev) - 1) * 100 : null
   const maxMes = Math.max(...r.serie.map((s) => s.neto), 1)
-  const etiquetaPrincipal = rol === 'influencer' ? `Tu ${pctInf ?? 10}%` : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
+  // Colección con comisión doble: pctInf por lo que trae el promotor (sus links, redes sin anuncio),
+  // pctResto por anuncios de Orbital y venta directa, para pedidos desde restoDesde.
+  const doble = rol === 'influencer' && !!coleccion && pctResto != null && !!restoDesde
+  const rige = (periodo?: string) => doble && !!periodo && periodo >= restoDesde!.slice(0, 7)
+  const pctCanal = (canal: string) => rige(ult?.periodo) && canal !== 'link' && canal !== 'redes' ? pctResto! : (pctInf ?? 10)
+  const etiquetaPrincipal = rol === 'influencer' ? (doble ? 'Tu comisión' : `Tu ${pctInf ?? 10}%`) : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
   const conv = ult && ult.clicks ? (ult.pedidos / ult.clicks) * 100 : 0
 
   return (
@@ -129,6 +135,21 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         )}
       </div>
 
+      {doble && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="rounded-xl p-3 text-white" style={{ background: ACENTO }}>
+            <div className="text-[22px] font-bold leading-none">{pctInf ?? 10}%</div>
+            <div className="text-[11px] font-bold mt-1">Lo que traés vos</div>
+            <div className="text-[10px] opacity-80">Tus links y quien llega desde Instagram o tus redes sin anuncio.</div>
+          </div>
+          <div className="rounded-xl p-3 bg-white border border-black/10">
+            <div className="text-[22px] font-bold leading-none">{pctResto}%</div>
+            <div className="text-[11px] font-bold mt-1">El resto de tu colección</div>
+            <div className="text-[10px] text-neutral-500">Anuncios de Orbital y venta directa en la tienda. Desde el {new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}.</div>
+          </div>
+        </div>
+      )}
+
       {/* Embudo en escalones */}
       <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
         <h2 className="text-[12px] font-bold uppercase tracking-wide">Del link a la venta</h2>
@@ -178,7 +199,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                   <div className="text-right shrink-0 tabular-nums">
                     <div className="font-bold">{kAr(o.neto)}</div>
                     <div className="text-[9px] text-neutral-500">
-                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctInf ?? 10}%: ${kAr(o.com_inf)}` : ''}
+                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctCanal(o.canal)}%: ${kAr(o.com_inf)}` : ''}
                     </div>
                   </div>
                 </div>
@@ -211,7 +232,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                     ['Impresiones', nAr(c.impresiones)],
                     ['Clics', nAr(c.clicks)],
                     ['Pedidos', nAr(c.pedidos)],
-                    rol === 'influencer' ? [`Tu ${pctInf ?? 10}%`, kAr(c.com_inf)] : ['Venta neta', kAr(c.neto)],
+                    rol === 'influencer' ? [doble ? 'Tu comisión' : `Tu ${pctInf ?? 10}%`, kAr(c.com_inf)] : ['Venta neta', kAr(c.neto)],
                   ] as [string, string][]).map(([k, v]) => (
                     <div key={k}>
                       <div className="text-[9px] uppercase tracking-wide text-neutral-400">{k}</div>
@@ -346,10 +367,12 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         </div>
       )}
 
-      {rol === 'influencer' && <Liquidacion clave={clave} rol={rol} pctInf={pctInf} pctAdm={pctAdm} compacta />}
+      {rol === 'influencer' && <Liquidacion clave={clave} rol={rol} pctInf={pctInf} pctAdm={pctAdm} doble={doble} compacta />}
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
-        {coleccion
+        {doble
+          ? `Cuenta toda venta de tu colección en la tienda desde el lanzamiento. Desde el ${new Date(`${restoDesde}T12:00:00`).toLocaleDateString('es-AR')}, lo que entra por tus links o desde Instagram y redes sin anuncio va al ${pctInf ?? 10}%; lo que entra por anuncios de Orbital o directo a la tienda, al ${pctResto}%. `
+          : coleccion
           ? 'Cuenta toda venta de tu colección en la tienda desde el lanzamiento, entre o no por tu link. '
           : 'Cuenta la venta de los pedidos que usan un código generado por un link (se genera uno único por persona que lo toca). '}
         Venta neta = productos después de descuentos y devoluciones, sin IVA y sin envío. Solo suman los pedidos pagados;
@@ -394,8 +417,8 @@ const ESTADO: Record<FilaLiq['estado'], { t: string; c: string }> = {
   reembolsado: { t: 'Reembolsado', c: '#6b7280' },
 }
 
-export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
-  clave: string; rol: Rol; pctInf?: number; pctAdm?: number; adminId?: number | null; compacta?: boolean
+export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, doble, compacta }: {
+  clave: string; rol: Rol; pctInf?: number; pctAdm?: number; adminId?: number | null; doble?: boolean; compacta?: boolean
 }) {
   const [periodo, setPeriodo] = useState(periodoActual())
   const [filas, setFilas] = useState<FilaLiq[] | null>(null)
@@ -437,7 +460,7 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
       <div className="grid grid-cols-3 gap-2 mb-3">
         <Kpi k="Venta neta" v={kAr(neto)} />
         {rol === 'influencer'
-          ? <Kpi k={`Tu ${pctInf ?? 10}%`} v={kAr(cInf)} fuerte />
+          ? <Kpi k={doble ? 'Tu comisión' : `Tu ${pctInf ?? 10}%`} v={kAr(cInf)} fuerte />
           : <Kpi k={`Influencers`} v={kAr(cInf)} fuerte={rol === 'orbital'} />}
         {rol === 'influencer'
           ? <Kpi k="Pedidos" v={String(pagadas.length)} />
@@ -480,7 +503,7 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, compacta }: {
                 <div className="flex flex-wrap justify-between gap-x-3 text-[10px] text-neutral-500 mt-0.5">
                   <span>{new Date(f.fecha).toLocaleDateString('es-AR')}{rol !== 'influencer' ? ` · ${f.influencer}` : ''}{origenFila(f)}</span>
                   <span>neto <b className="text-black">{kAr(f.neto)}</b>
-                    {' · '}{rol === 'admin' ? `tu ${pctAdm ?? 5}%` : `inf.`} <b className="text-black">{kAr(rol === 'admin' ? f.com_adm : f.com_inf)}</b>
+                    {' · '}{rol === 'admin' ? `tu ${pctAdm ?? 5}%` : rol === 'influencer' ? `tu ${f.pct ?? pctInf ?? 10}%` : `inf.`} <b className="text-black">{kAr(rol === 'admin' ? f.com_adm : f.com_inf)}</b>
                     {rol === 'orbital' && <> · adm. <b className="text-black">{kAr(f.com_adm)}</b></>}
                   </span>
                 </div>

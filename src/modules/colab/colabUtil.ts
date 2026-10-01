@@ -14,6 +14,8 @@ export type Entrada = {
   rol: Rol; id: number; nombre: string
   pct?: number; pct_descuento?: number; ref?: string; admin?: string
   coleccion?: string | null   // promotor de colección (cobranding ZN)
+  pct_resto?: number | null   // colección: % sobre lo que no trae el promotor (anuncios de Orbital, directo)
+  pct_resto_desde?: string | null
   influencers_ig?: boolean    // administrador habilitado para la bandeja de influencers de IG
 }
 
@@ -68,6 +70,7 @@ export type FilaLiq = {
   order_name: string; fecha: string; influencer: string; admin: string; modelo: string
   estado: 'pagado' | 'pendiente' | 'cancelado' | 'reembolsado'; unidades: number
   total_cliente: number; neto: number; com_inf: number; com_adm: number | null
+  pct?: number | null   // % de comisión que se le aplicó a ese pedido
   red: string | null; formato: string | null
   canal?: string | null; campana?: string | null
 }

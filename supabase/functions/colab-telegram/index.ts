@@ -121,6 +121,7 @@ const pctPublico = (promo: number, tachado: number) =>
 type Quien = {
   influencer_id: number; nombre: string; clave: string;
   pct_comision: number; pct_descuento: number; coleccion: string | null;
+  pct_comision_resto?: number | null; pct_resto_desde?: string | null;   // colección: % de lo que trae Orbital y desde cuándo
   chat_id: number; admin: string; cbu_alias: string | null;
 };
 
@@ -451,7 +452,8 @@ type Resumen = {
 };
 
 // pct null = Orbital; rol 'admin' = administradora (sus promotores, su comisión es com_adm)
-type Lector = { clave: string; pct: number | null; nombre: string; infId?: number; rol?: "admin" };
+// pctResto/restoDesde: colección con comisión doble (pct lo que trae el promotor, pctResto anuncios y directo)
+type Lector = { clave: string; pct: number | null; nombre: string; infId?: number; rol?: "admin"; pctResto?: number | null; restoDesde?: string | null };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const mesLargo = (p: string) => `${MESES[+p.slice(5, 7) - 1]} ${p.slice(0, 4)}`;
@@ -485,7 +487,11 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
   const orb = quien.pct == null;
   const adm = quien.rol === "admin";
   const com = (neto: number) => Math.round((Number(neto) || 0) * (quien.pct ?? 0) / 100);
-  const etCom = orb ? "comisiones" : `tu ${quien.pct}%`;
+  const doble = !orb && !adm && quien.pctResto != null && !!quien.restoDesde;
+  const etCom = orb ? "comisiones" : doble ? "tu comisión" : `tu ${quien.pct}%`;
+  // % de cada origen (comisión doble): links y redes sin anuncio al pct; anuncios y directo al pctResto
+  const pctCanal = (canal: string, periodo: string) =>
+    doble && periodo >= quien.restoDesde!.slice(0, 7) && canal !== "link" && canal !== "redes" ? quien.pctResto! : quien.pct;
   const volver: Boton[][] = [[{ text: "← Otro reporte", callback_data: "d|menu" }]];
 
   if (!r || !r.hay_datos) {
@@ -509,14 +515,15 @@ async function pantallaDash(chat: number, quien: Lector, sec: string) {
       `🛍 Pedidos pagados: <b>${ult.pedidos}</b>\n` +
       (ult.pendientes ? `⏳ ${ult.pendientes} esperando el pago (se suman cuando se acredita)\n` : "") +
       `\nVenta neta (sin IVA): <b>${pesos(ult.neto)}</b>\n` +
-      `${orb ? "Comisiones (influencers + admins)" : `Tu ${quien.pct}%`}: <b>${pesos(comMes(ult))}</b>` +
+      `${orb ? "Comisiones (influencers + admins)" : doble ? "Tu comisión" : `Tu ${quien.pct}%`}: <b>${pesos(comMes(ult))}</b>` +
+      (doble ? `\n<i>${quien.pct}% lo que traés vos (tus links, Instagram sin anuncio) · ${quien.pctResto}% anuncios de Orbital y directo</i>` : "") +
       (d != null ? `\n${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(0)}% vs ${mesCorto(prev.periodo)}` : "");
   } else if (sec === "origen") {
     const os = r.origenes ?? [];
     const tot = os.reduce((a, o) => a + Number(o.neto || 0), 0);
     t = `<b>De dónde vienen las ventas</b> · ${mesLargo(ult.periodo)}\n\n` + (os.length
       ? os.map((o) => `<b>${CANAL[o.canal] ?? o.canal}</b> — ${pesos(o.neto)} (${pct1(Number(o.neto), tot)}%)\n` +
-          `${o.pedidos} pedido${o.pedidos === 1 ? "" : "s"}${orb || adm ? "" : ` · ${etCom}: ${pesos(o.com_inf)}`}`).join("\n\n")
+          `${o.pedidos} pedido${o.pedidos === 1 ? "" : "s"}${orb || adm ? "" : ` · tu ${pctCanal(o.canal, ult.periodo)}%: ${pesos(o.com_inf)}`}`).join("\n\n")
       : "Sin ventas pagadas este mes.");
   } else if (sec === "meses") {
     const max = Math.max(...r.serie.map((s) => Number(s.neto)), 1);
@@ -556,7 +563,7 @@ const periodoDe = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pa
 async function pantallaLiquidacion(chat: number, quien: Lector, periodo?: string) {
   const per = periodo ?? periodoDe(new Date());
   const filas = await rpc<
-    { order_name: string; fecha: string; influencer: string; modelo: string; estado: string; neto: number; com_inf: number; com_adm: number | null; red: string | null; canal?: string | null }[]
+    { order_name: string; fecha: string; influencer: string; modelo: string; estado: string; neto: number; com_inf: number; com_adm: number | null; red: string | null; canal?: string | null; pct?: number | null }[]
   >("colab_liquidacion", { p_clave: quien.clave, p_periodo: per, p_admin: null });
   const orb = quien.pct == null;
   const adm = quien.rol === "admin";
@@ -570,13 +577,13 @@ async function pantallaLiquidacion(chat: number, quien: Lector, periodo?: string
     `Venta neta: <b>${pesos(neto)}</b> · ${pag.length} pedido${pag.length === 1 ? "" : "s"} pagado${pag.length === 1 ? "" : "s"}\n` +
     (orb ? `Influencers: <b>${pesos(cInf)}</b> · Admins: <b>${pesos(cAdm)}</b>\n`
       : adm ? `Tu ${quien.pct}%: <b>${pesos(cAdm)}</b> · Tus promotores: <b>${pesos(cInf)}</b>\n`
-      : `Tu ${quien.pct}%: <b>${pesos(cInf)}</b>\n`);
+      : `Tu ${quien.pctResto != null ? "comisión" : `${quien.pct}%`}: <b>${pesos(cInf)}</b>\n`);
   if (!filas?.length) t += `\nSin pedidos en ${mesLargo(per)}.`;
   else {
     t += "\n" + filas.slice(0, 20).map((f) =>
       `<b>${esc(f.order_name)}</b> · ${new Date(f.fecha).toLocaleDateString("es-AR")} · ${esc(f.modelo)}\n` +
       `${EST[f.estado] ?? f.estado} · neto ${pesos(f.neto)} · ${orb ? `inf. ${pesos(f.com_inf)} · adm. ${pesos(f.com_adm ?? 0)}`
-        : adm ? `tu comisión ${pesos(f.com_adm ?? 0)} · promotor ${pesos(f.com_inf)}` : `tu comisión ${pesos(f.com_inf)}`}` +
+        : adm ? `tu comisión ${pesos(f.com_adm ?? 0)} · promotor ${pesos(f.com_inf)}` : `tu ${f.pct ?? quien.pct}% ${pesos(f.com_inf)}`}` +
       (orb || adm ? ` · <i>${esc(f.influencer)}</i>` : "")).join("\n\n");
     if (filas.length > 20) t += `\n\n… y ${filas.length - 20} más (el detalle completo está en el panel).`;
   }
@@ -1357,7 +1364,8 @@ async function manejarMensaje(msg: Record<string, any>) {
   }
 
   const t = sinTilde(texto);
-  const lector: Lector = { clave: q.clave, pct: Number(q.pct_comision), nombre: q.nombre, infId: q.influencer_id };
+  const lector: Lector = { clave: q.clave, pct: Number(q.pct_comision), nombre: q.nombre, infId: q.influencer_id,
+    pctResto: q.pct_comision_resto != null ? Number(q.pct_comision_resto) : null, restoDesde: q.pct_resto_desde ?? null };
 
   // Foto (o imagen mandada como archivo) → qué anteojo es
   const docMime = String(msg.document?.mime_type ?? "");
@@ -1460,7 +1468,8 @@ async function manejarCallback(cb: Record<string, any>) {
     await enviar(chat, "Tocá el botón para entrar con tu teléfono.", undefined, PEDIR_TEL);
     return;
   }
-  const lector: Lector = { clave: q.clave, pct: Number(q.pct_comision), nombre: q.nombre, infId: q.influencer_id };
+  const lector: Lector = { clave: q.clave, pct: Number(q.pct_comision), nombre: q.nombre, infId: q.influencer_id,
+    pctResto: q.pct_comision_resto != null ? Number(q.pct_comision_resto) : null, restoDesde: q.pct_resto_desde ?? null };
 
   if (op === "r") return void (await pantallaRecomendar(chat, q));
   if (op === "k" || op === "v") return void (await pantallaComoVa(chat, q));

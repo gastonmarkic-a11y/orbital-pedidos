@@ -127,7 +127,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
           <div className="ml-auto min-w-0 text-right leading-tight">
             <div className="text-[12px] font-bold truncate">{ent.nombre}</div>
             <div className="text-[10px] text-neutral-500 truncate">
-              {ROL_TXT[ent.rol]}{ent.rol === 'admin' || ent.rol === 'influencer' ? ` · ${ent.pct}%` : ''}
+              {ROL_TXT[ent.rol]}{ent.rol === 'admin' || ent.rol === 'influencer' ? ` · ${ent.pct}%${ent.pct_resto != null ? ` / ${ent.pct_resto}%` : ''}` : ''}
               {ent.rol === 'influencer' && ent.admin ? <span className="hidden sm:inline"> · {ent.admin}</span> : null}
             </div>
           </div>
@@ -187,7 +187,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
         {tab === 'links' && <LinksTodos key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} />}
         {tab === 'dashboard' && (
           <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}
-            pctInf={ent.rol === 'influencer' ? ent.pct : 10} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
+            pctInf={ent.rol === 'influencer' ? ent.pct : 10} pctAdm={ent.rol === 'admin' ? ent.pct : 5}
+            pctResto={ent.rol === 'influencer' ? ent.pct_resto : null} restoDesde={ent.rol === 'influencer' ? ent.pct_resto_desde : null} />
         )}
         {tab === 'liquidacion' && (
           <Liquidacion clave={clave} rol={ent.rol} adminId={adminSel} pctAdm={ent.rol === 'admin' ? ent.pct : 5} />
