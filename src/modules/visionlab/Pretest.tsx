@@ -40,6 +40,7 @@ interface Zona { barrio: string | null; partido: string | null; provincia: strin
 const PASOS = ['Calibración', 'Visión de lejos', 'Contraste', 'Astigmatismo', 'Visión de color', 'Visión central', 'Visión de cerca', 'Lectura']
 const N_PASOS = PASOS.length
 const PASO_INFORME = N_PASOS + 1
+const CAL_MIN = 150
 const PRUEBAS: [string, string][] = [
   ['Visión de lejos', 'A 3 m, ojo por ojo'],
   ['Sensibilidad al contraste', 'Binocular'],
@@ -479,6 +480,21 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const verLegales = () => { setVolverA(step); go(PASO_LEGAL) }
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const calibRef = useRef<HTMLDivElement>(null)
+  // Calibración: con el celular vertical la tarjeta se dibuja parada (acostada no entra a lo ancho) y acostada si está
+  // horizontal. calW es siempre el largo de la tarjeta en px, así girar el celular no pierde la medida.
+  const [vista, setVista] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  useEffect(() => {
+    const f = () => setVista({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', f)
+    window.addEventListener('orientationchange', f)
+    return () => { window.removeEventListener('resize', f); window.removeEventListener('orientationchange', f) }
+  }, [])
+  const vertical = vista.h > vista.w
+  const calMax = Math.max(CAL_MIN + 50, Math.floor(vertical ? vista.h - 24 : vista.w - 40))
+  useEffect(() => {
+    if (step === 1) calibRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [step, vertical])
   const ticketRef = useRef<HTMLDivElement>(null)
 
   const pxPerMm = calW / CARD_MM
@@ -690,7 +706,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   return (
     <div className="ovl">
       <div className="wrap">
-        <header className={'top' + (scrolled ? ' scrolled' : '')}>
+        <header className={'top' + (scrolled ? ' scrolled' : '') + (step === 1 ? ' fijo-no' : '')}>
           <div className="brand">
             <div className="logo"><b>ORBITAL</b><span>Vision Lab</span></div>
             {lado}
@@ -762,26 +778,25 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         )}
 
         {step === 1 && (
-          <section className="step">
+          <section className="step calibstep">
             <div>
               <h2>Calibrá tu pantalla</h2>
-              <p>Apoyá una tarjeta sobre el dibujo y mové el control hasta que tenga <b>exactamente el mismo ancho</b>. Así las pruebas se ven del tamaño real, sin importar tu celular.</p>
+              <p className="small">Apoyá una tarjeta {vertical ? <b>parada</b> : <b>acostada</b>} sobre el dibujo y mové el control hasta que coincida <b>exactamente</b> con el borde.</p>
             </div>
-            <div className="card">
-              <div className="calib" style={{ paddingTop: 28 }}>
-                <div className="ccard" style={{ width: calW, height: (calW * CARD_H_MM) / CARD_MM }}>
-                  <span className="w num">85,6 mm</span>
-                  <span className="chipc" /><span className="stripe" />
-                </div>
-              </div>
-              <input type="range" min={150} max={560} step={1} value={calW} onChange={(e) => setCalW(+e.target.value)} aria-label="Ancho de la tarjeta" style={{ marginTop: 16 }} />
-              <div className="meta" style={{ marginTop: 4 }}>
-                <span>Más chica</span>
-                <span>Densidad <b className="num">{(pxPerMm * 25.4).toFixed(0)} ppi</b></span>
-                <span>Más grande</span>
+            <div className="calib" ref={calibRef}>
+              <div className={'ccard' + (vertical ? ' v' : '')} style={vertical
+                ? { width: (calW * CARD_H_MM) / CARD_MM, height: calW }
+                : { width: calW, height: (calW * CARD_H_MM) / CARD_MM }}>
+                <span className="chipc" /><span className="stripe" />
+                <span className="w num">85,6 mm</span>
               </div>
             </div>
-            <Guia items={[[<CreditCard size={14} />, 'Cualquier tarjeta estándar o SUBE'], [<Info size={14} />, 'Sacale la funda al celular si tapa el borde']]} />
+            <div className="ajuste">
+              <button className="btn ghost sm" onClick={() => setCalW((w) => Math.max(CAL_MIN, w - 1))} aria-label="Más chica">−</button>
+              <input type="range" min={CAL_MIN} max={calMax} step={1} value={Math.min(calW, calMax)} onChange={(e) => setCalW(+e.target.value)} aria-label="Tamaño de la tarjeta" />
+              <button className="btn ghost sm" onClick={() => setCalW((w) => Math.min(calMax, w + 1))} aria-label="Más grande">+</button>
+            </div>
+            <Guia items={[[<CreditCard size={14} />, 'Tarjeta de crédito, débito o SUBE'], [<Info size={14} />, 'Sin funda si tapa el borde'], [<Info size={14} />, vertical ? 'Si no entra, girá el celular' : 'Si no entra, poné el celular vertical']]} />
             <div className="answers2">
               <button className="btn ghost" onClick={() => go(0)}><ChevronLeft size={18} />Volver</button>
               <button className="btn" onClick={calibrado}>Coincide, seguir</button>

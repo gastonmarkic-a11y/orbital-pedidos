@@ -135,8 +135,8 @@
 .ovl .answers2 .btn{min-height:56px;line-height:1.2;text-align:center}
 
 /* ---------- calibración ---------- */
-.ovl .calib{display:flex;justify-content:center;padding:6px 0 4px;overflow:hidden}
-.ovl .ccard{position:relative;border:2px solid var(--ink);border-radius:10px;background:linear-gradient(135deg,#fbfaf8,#efece6);max-width:100%}
+.ovl .calib{display:flex;justify-content:center;padding:4px 0}
+.ovl .ccard{position:relative;flex:none;border:2px solid var(--ink);border-radius:10px;background:linear-gradient(135deg,#fbfaf8,#efece6)}
 .ovl .ccard .chipc{position:absolute;left:11%;top:34%;width:14%;height:22%;border-radius:4px;background:linear-gradient(135deg,#d9c79f,#b89a5e)}
 .ovl .ccard .stripe{position:absolute;left:11%;right:11%;bottom:18%;height:7%;border-radius:3px;background:var(--line)}
 .ovl .ccard .w{position:absolute;left:0;right:0;top:-24px;text-align:center;font-size:11px;font-weight:700;color:var(--muted)}
@@ -312,3 +312,13 @@
 .ovl .ayuda b{font-size:14px;line-height:1.3}
 .ovl .ayuda li>span{font-size:13px;color:var(--muted);line-height:1.4}
 @media (min-width:560px){.ovl .ayuda ol{grid-template-columns:repeat(4,1fr)}}
+
+/* calibración: tarjeta parada (celular vertical), sin barra fija que tape el dibujo */
+.ovl header.top.fijo-no{position:static}
+.ovl .calibstep{gap:12px}
+.ovl .calibstep .calib{margin:0 -16px}
+.ovl .ccard.v .chipc{left:auto;right:34%;top:11%;width:22%;height:14%}
+.ovl .ccard.v .stripe{left:18%;right:auto;top:11%;bottom:11%;width:7%;height:auto}
+.ovl .ccard .w{top:auto;bottom:6px;font-size:12px;color:var(--faint)}
+.ovl .ajuste{display:grid;grid-template-columns:44px 1fr 44px;gap:10px;align-items:center}
+.ovl .ajuste .btn{min-height:44px;padding:0;font-size:22px}
