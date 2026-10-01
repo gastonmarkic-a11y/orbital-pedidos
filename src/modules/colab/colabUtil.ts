@@ -53,7 +53,9 @@ export type MiLink = {
   video_url?: string | null; video_ejemplo?: boolean
 }
 
-export type SerieMes = { periodo: string; clicks: number; pedidos: number; pendientes: number; neto: number; com_inf: number; com_adm: number }
+export type SerieMes = { periodo: string; clicks: number; pedidos: number; pendientes: number; neto: number; com_inf: number; com_adm: number
+  com_pend?: number   // comisión que suman los pedidos esperando pago, si se acreditan
+}
 export type Resumen = {
   rol: Rol; hay_datos: boolean
   serie: SerieMes[]

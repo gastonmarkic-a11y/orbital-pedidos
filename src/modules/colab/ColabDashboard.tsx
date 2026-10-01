@@ -95,7 +95,8 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
     periodo: a.periodo, clicks: a.clicks + Number(s.clicks || 0), pedidos: a.pedidos + Number(s.pedidos || 0),
     pendientes: a.pendientes + Number(s.pendientes || 0), neto: a.neto + Number(s.neto || 0),
     com_inf: a.com_inf + Number(s.com_inf || 0), com_adm: a.com_adm + Number(s.com_adm || 0),
-  }), { periodo: rango[0], clicks: 0, pedidos: 0, pendientes: 0, neto: 0, com_inf: 0, com_adm: 0 })
+    com_pend: Number(a.com_pend || 0) + Number(s.com_pend || 0),
+  }), { periodo: rango[0], clicks: 0, pedidos: 0, pendientes: 0, neto: 0, com_inf: 0, com_adm: 0, com_pend: 0 })
   const fila = (p: string) => serie.find((s) => s.periodo === p) ?? sumar([])
   const ult = modo === 'acum' ? sumar(meses) : fila(mesSel)
   const iSel = serie.findIndex((s) => s.periodo === mesSel)
@@ -218,14 +219,15 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
           </div>
           <div className="flex flex-wrap gap-5 text-[11px]">
             {([
-              rol !== 'orbital' ? ['Venta neta', kAr(ult?.neto)] : ['Influencers', kAr(ult?.com_inf)],
-              rol === 'orbital' ? ['Administradores', kAr(ult?.com_adm)] : null,
-              ['Toques', nAr(ult?.clicks)],
-              ['Pedidos', nAr(ult?.pedidos)],
-            ].filter(Boolean) as [string, string][]).map(([k, v]) => (
+              rol !== 'orbital' ? ['Venta neta', kAr(ult?.neto), 'sin IVA ni envío'] : ['Influencers', kAr(ult?.com_inf), ''],
+              rol === 'orbital' ? ['Administradores', kAr(ult?.com_adm), ''] : null,
+              ['Toques', nAr(ult?.clicks), 'aperturas de tus links'],
+              ['Pedidos', nAr(ult?.pedidos), 'pagados'],
+            ].filter(Boolean) as [string, string, string][]).map(([k, v, d]) => (
               <div key={k}>
                 <div className="text-[9px] uppercase tracking-wide opacity-50">{k}</div>
                 <div className="font-bold">{v}</div>
+                {d && <div className="text-[9px] opacity-50">{d}</div>}
               </div>
             ))}
           </div>
@@ -236,23 +238,40 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
             (a, o) => ({ n: a.n + Number(o.pedidos || 0), neto: a.neto + Number(o.neto || 0), com: a.com + Number(o.com_inf || 0) }),
             { n: 0, neto: 0, com: 0 })
           const org = g(false), meta = g(true), pm = pctCanal('meta')
-          const fila = (k: string, pct: number | null, x: typeof org) => (
+          const fila = (k: string, que: string, pct: number | null, x: typeof org) => (
             <div className="flex items-baseline justify-between gap-3">
-              <span><b>{k}</b> <span className="opacity-60">· {x.n} pedido{x.n === 1 ? '' : 's'} · venta {kAr(x.neto)}{pct != null ? ` × ${pct}%` : ''}</span></span>
-              <b className="tabular-nums">{kAr(x.com)}</b>
+              <div className="min-w-0">
+                <div><b>{k}</b> <span className="opacity-60">· {x.n} pedido{x.n === 1 ? '' : 's'} · venta {kAr(x.neto)}{pct != null ? ` × ${pct}%` : ''}</span></div>
+                <div className="text-[9px] opacity-50">{que}</div>
+              </div>
+              <b className="tabular-nums shrink-0">{kAr(x.com)}</b>
             </div>
           )
           return (
             <div className="mt-3 pt-3 border-t border-white/10 space-y-1 text-[11px]">
-              {fila('Ventas orgánicas', pctInf ?? 10, org)}
-              {fila('Anuncios de Meta', pm, meta)}
+              {fila('Ventas orgánicas', 'tu link, redes, publicaciones de Orbital o de otros, compras directas en la tienda', pctInf ?? 10, org)}
+              {fila('Anuncios de Meta', 'solo las que llegan por publicidad paga de Orbital en Instagram y Facebook', pm, meta)}
               <div className="flex items-baseline justify-between gap-3 pt-1 border-t border-white/10">
-                <b>Total</b><b className="tabular-nums">{kAr(org.com + meta.com)}</b>
+                <div><b>Total cobrado</b><div className="text-[9px] opacity-50">pedidos con el pago acreditado</div></div>
+                <b className="tabular-nums">{kAr(org.com + meta.com)}</b>
               </div>
+              {(ult?.pendientes ?? 0) > 0 && (
+                <>
+                  <div className="flex items-baseline justify-between gap-3 opacity-70">
+                    <div><b>+ Pendientes de pago</b> <span>· {ult.pendientes} pedido{ult.pendientes === 1 ? '' : 's'}</span>
+                      <div className="text-[9px] opacity-70">compras hechas que todavía no se pagaron (ej. transferencias); suman cuando se acredita</div></div>
+                    <b className="tabular-nums">{kAr(ult.com_pend ?? 0)}</b>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 pt-1 border-t border-white/10">
+                    <div><b>Total si se pagan todos</b><div className="text-[9px] opacity-50">si alguno se cancela, no suma</div></div>
+                    <b className="tabular-nums">{kAr(org.com + meta.com + Number(ult.com_pend ?? 0))}</b>
+                  </div>
+                </>
+              )}
             </div>
           )
         })()}
-        {(ult?.pendientes ?? 0) > 0 && (
+        {!doble && (ult?.pendientes ?? 0) > 0 && (
           <p className="text-[10px] opacity-60 mt-2">
             Además hay {ult.pendientes} pedido{ult.pendientes === 1 ? '' : 's'} esperando el pago (por ejemplo, transferencias):
             {' '}<b>no están incluidos</b> en este número. Se suman solos cuando se acredita el pago.
