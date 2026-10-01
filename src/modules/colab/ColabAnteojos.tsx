@@ -281,7 +281,7 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
                 </button>
               ) : (
                 <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-2">
-                  <span className="flex-1 truncate font-mono text-[12px] font-bold">{link.replace('https://', '')}</span>
+                  <a href={link} target="_blank" rel="noopener noreferrer" className="flex-1 truncate font-mono text-[12px] font-bold underline underline-offset-2">{link.replace('https://', '')}</a>
                   <BotonCopiar texto={link} label="Copiar link" grande />
                 </div>
               )}
@@ -292,7 +292,7 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
                     La misma página que abre el reconocimiento con la cámara: fotos, colores y ópticas cerca. Al comprar, tu comunidad pasa por tu link.
                   </p>
                   <div className="flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-2">
-                    <span className="flex-1 truncate font-mono text-[12px] font-bold">{ficha.replace('https://', '')}</span>
+                    <a href={ficha} target="_blank" rel="noopener noreferrer" className="flex-1 truncate font-mono text-[12px] font-bold underline underline-offset-2">{ficha.replace('https://', '')}</a>
                     <BotonCopiar texto={ficha} label="Copiar ficha" grande />
                   </div>
                 </div>

@@ -754,7 +754,7 @@ function FilaLink({ l, clave, pct, onCambio }: { l: MiLink; clave: string; pct: 
         </div>
       </div>
       <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#F5F5F7] px-2.5 py-1.5">
-        <span className="flex-1 truncate font-mono text-[11px] font-bold">{url.replace('https://', '')}</span>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate font-mono text-[11px] font-bold underline underline-offset-2">{url.replace('https://', '')}</a>
         <BotonCopiar texto={url} label="Copiar link" />
       </div>
       <div className="mt-1.5 flex items-center gap-1.5">
