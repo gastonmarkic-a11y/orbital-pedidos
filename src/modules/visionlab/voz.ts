@@ -7,7 +7,8 @@ import type { Dir } from './logic'
 // ---------- hablar ----------
 let vozEs: SpeechSynthesisVoice | null | undefined
 let hablandoHasta = 0
-export const estaHablando = () => (typeof speechSynthesis !== 'undefined' && speechSynthesis.speaking) || performance.now() < hablandoHasta
+// Solo el reloj propio: en algunos Android speechSynthesis.speaking queda en true para siempre y no se escucharía más.
+export const estaHablando = () => performance.now() < hablandoHasta
 
 export function hablar(t: string, alTerminar?: () => void) {
   if (typeof speechSynthesis === 'undefined') { alTerminar?.(); return }
@@ -23,7 +24,7 @@ export function hablar(t: string, alTerminar?: () => void) {
   u.rate = 1.02
   // margen por si el evento de fin llega tarde (o no llega, en algunos Android)
   hablandoHasta = performance.now() + 700 + t.length * 75
-  u.onend = () => { hablandoHasta = performance.now() + 350; alTerminar?.() }
+  u.onend = () => { hablandoHasta = Math.min(hablandoHasta, performance.now() + 350); alTerminar?.() }
   speechSynthesis.speak(u)
 }
 
@@ -69,15 +70,17 @@ export function interpretar(texto: string): Oido | null {
   return mejor?.d ?? null
 }
 
-export type EstadoEscucha = 'apagado' | 'escuchando' | 'sin-permiso' | 'no-soportado'
+export type EstadoEscucha = 'apagado' | 'preparando' | 'escuchando' | 'sin-permiso' | 'no-soportado' | 'error'
 
 /**
  * Escucha mientras `activo` y llama a `onOido` con cada respuesta reconocida (una por frase).
  * Se reinicia sola cuando el navegador corta por silencio.
  */
-export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => void): { estado: EstadoEscucha; ultimo: string } {
+export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => void): { estado: EstadoEscucha; ultimo: string; crudo: string } {
   const [estado, setEstado] = useState<EstadoEscucha>('apagado')
   const [ultimo, setUltimo] = useState('')
+  // lo último que oyó aunque no lo haya entendido (para que la persona vea que el micrófono anda)
+  const [crudo, setCrudo] = useState('')
   const cb = useRef(onOido)
   cb.current = onOido
 
@@ -85,10 +88,14 @@ export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => 
     if (!activo) { setEstado('apagado'); return }
     const C = ctor()
     if (!C) { setEstado('no-soportado'); return }
-    let vivo = true, r: Reconocedor | null = null, atendido = -1, pausaHasta = 0
+    let vivo = true, r: Reconocedor | null = null, atendido = -1, pausaHasta = 0, oyoAudio = false
+    setEstado('preparando')
+    // "Escuchando" recién cuando el micrófono entrega audio; si en 5 s no arrancó, se vuelve a las flechas.
+    const vigia = setTimeout(() => { if (vivo && !oyoAudio) { vivo = false; r?.abort(); setEstado('error') } }, 5000)
     const arrancar = () => {
       if (!vivo) return
       r = new C()
+      ;(r as unknown as { onaudiostart: () => void }).onaudiostart = () => { oyoAudio = true; if (vivo) setEstado('escuchando') }
       r.lang = 'es-AR'
       r.continuous = true
       r.interimResults = true
@@ -100,7 +107,8 @@ export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => 
           if (i <= atendido) continue
           const texto = e.results[i][0].transcript
           const o = interpretar(texto)
-          if (!o) continue
+          if (!o) { if (e.results[i].isFinal) setCrudo(texto.trim()); continue }
+          setCrudo('')
           atendido = i
           pausaHasta = performance.now() + 600
           setUltimo(texto.trim())
@@ -112,13 +120,14 @@ export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => 
       }
       r.onerror = (e) => {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { vivo = false; setEstado('sin-permiso') }
+        else if (e.error === 'audio-capture' || e.error === 'network' || e.error === 'language-not-supported') { vivo = false; setEstado('error') }
       }
       r.onend = () => { if (vivo) setTimeout(arrancar, 250) }
-      try { r.start(); setEstado('escuchando') } catch { setTimeout(arrancar, 500) }
+      try { r.start() } catch { setTimeout(arrancar, 500) }
     }
     arrancar()
-    return () => { vivo = false; r?.abort() }
+    return () => { vivo = false; clearTimeout(vigia); r?.abort() }
   }, [activo])
 
-  return { estado, ultimo }
+  return { estado, ultimo, crudo }
 }

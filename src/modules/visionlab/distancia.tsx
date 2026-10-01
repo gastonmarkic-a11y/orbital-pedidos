@@ -247,6 +247,8 @@ export function Indicador({ d, objetivo, tol }: { d: Distancia; objetivo: number
   const dicho = useRef(0)
   useEffect(() => {
     if (!lejos) return
+    // Si volvió al celular (a menos de la mitad) es para tocar: no insistir con "volvé a tu lugar".
+    if (d.mm !== null && d.mm < objetivo * 0.5) { fuera.current = null; return }
     const ahora = performance.now()
     if (p === 'cerca' || p === 'lejos') {
       fuera.current ??= ahora

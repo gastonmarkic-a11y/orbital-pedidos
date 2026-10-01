@@ -568,6 +568,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     else if (step === 7) answerNear(o)
   })
   const porVoz = usarVoz && pruebaE && escucha.estado === 'escuchando'
+  // Si a 3 m vuelve al celular (la cámara lo ve a menos de 1,2 m), aparecen las flechas para tocar.
+  const volvioAlCel = step === 2 && (modoLejos ?? 0) >= 2000 && usarCam && dist.mm !== null && dist.mm < 1200
   const [verFlechas, setVerFlechas] = useState(false)
   useEffect(() => { setVerFlechas(false) }, [step])
   // Al entrar a contraste y a cerca, la consigna también se dice en voz alta.
@@ -579,15 +581,18 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const panelVoz = usarVoz && pruebaE && (
     <div className={'escucha ' + escucha.estado} role="status">
       <Mic size={22} />
-      <span>{escucha.estado === 'escuchando' ? (escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho: decí arriba, abajo, derecha o izquierda')
+      <span>{escucha.estado === 'escuchando'
+        ? (escucha.crudo ? <>Escuché “{escucha.crudo}”: decí arriba, abajo, derecha, izquierda o no la veo</>
+          : escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho: decí arriba, abajo, derecha o izquierda')
         : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: respondé tocando las flechas.'
+        : escucha.estado === 'error' ? 'No pude usar el micrófono: respondé tocando las flechas.'
         : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: respondé tocando las flechas.' : 'Preparando el micrófono…'}</span>
     </div>
   )
   /** Flechas: siempre si no hay voz; con voz, escondidas detrás de un link. */
-  const flechas = (onAnswer: (d: Dir | 'none') => void) => !porVoz || verFlechas
+  const flechas = (onAnswer: (d: Dir | 'none') => void) => !porVoz || verFlechas || volvioAlCel
     ? <DPad onAnswer={onAnswer} />
-    : <div style={{ textAlign: 'center' }}><button className="link" onClick={() => setVerFlechas(true)}>Prefiero responder tocando</button></div>
+    : <button className="btn ghost block" onClick={() => setVerFlechas(true)}>Responder tocando</button>
   function answerE(a: Dir | 'none') {
     const val = escalera(ac, setAc, a)
     if (val === null) return
