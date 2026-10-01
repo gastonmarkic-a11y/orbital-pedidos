@@ -455,7 +455,7 @@ function MisLinks({ clave }: { clave: string }) {
         ))}
       </div>
       {vista === 'anteojos'
-        ? <ColabAnteojos clave={colab.clave} pct={0} puedeLink onLink={() => setVersion((v) => v + 1)} />
+        ? <ColabAnteojos clave={colab.clave} pct={0} puedeLink onLink={() => setVersion((v) => v + 1)} coleccion="orbital-x-zaira" />
         : <ColabMisLinks key={version} clave={colab.clave} pct={Number(colab.pct) || PCT_ZN} irAnteojos={() => setVista('anteojos')} />}
     </>
   )

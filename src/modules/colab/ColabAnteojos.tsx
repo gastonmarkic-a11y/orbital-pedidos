@@ -29,9 +29,36 @@ export function BotonCopiar({ texto, label = 'Copiar', grande }: { texto: string
   )
 }
 
+// El recuadro que rodea la foto toma el color del fondo de la foto (promedio de las 4 esquinas),
+// así no queda un marco blanco alrededor de las fotos con fondo gris.
+const colorFondo = new Map<string, string>()
+function pintarFondo(img: HTMLImageElement) {
+  const caja = img.parentElement
+  if (!caja) return
+  let c = colorFondo.get(img.src)
+  if (!c) {
+    try {
+      const n = 24, cv = document.createElement('canvas')
+      cv.width = n; cv.height = n
+      const ctx = cv.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return
+      ctx.drawImage(img, 0, 0, n, n)
+      const sum = [0, 0, 0]
+      for (const [x, y] of [[1, 1], [n - 2, 1], [1, n - 2], [n - 2, n - 2]]) {
+        const d = ctx.getImageData(x, y, 1, 1).data
+        sum[0] += d[0]; sum[1] += d[1]; sum[2] += d[2]
+      }
+      c = `rgb(${sum.map((v) => Math.round(v / 4)).join(',')})`
+      colorFondo.set(img.src, c)
+    } catch { return }   // sin CORS no se puede leer: queda el fondo de siempre
+  }
+  caja.style.background = c
+}
+
 function Foto({ src, alt }: { src: string | null; alt: string }) {
   return src
-    ? <img src={src} alt={alt} className="w-full h-full object-contain" loading="lazy" />
+    ? <img src={src} alt={alt} crossOrigin="anonymous" onLoad={(e) => pintarFondo(e.currentTarget)}
+        className="w-full h-full object-contain" loading="lazy" />
     : <div className="w-full h-full bg-gradient-to-br from-[#F0F0F2] to-[#E4E4E8]" />
 }
 
@@ -173,7 +200,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
       {lista.length === 0 && <p className="text-sm text-neutral-500 py-10 text-center">Nada con ese filtro.</p>}
 
       {abierto != null && modelos[abierto] && (
-        <Hoja key={abierto} m={modelos[abierto]} pct={pct} clave={clave} puedeLink={puedeLink} onLink={onLink}
+        <Hoja key={abierto} m={modelos[abierto]} pct={pct} clave={clave} puedeLink={puedeLink} onLink={onLink} conFicha={!coleccion}
           soloTriple={filtro === 'Triple protección'}
           onClose={() => setAbierto(null)}
           onPrev={() => setAbierto((abierto - 1 + modelos.length) % modelos.length)}
@@ -183,8 +210,9 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
   )
 }
 
-function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, onNext }: {
+function Hoja({ m, pct, clave, puedeLink, onLink, conFicha, soloTriple, onClose, onPrev, onNext }: {
   m: Modelo; pct: number; clave: string; puedeLink: boolean; onLink?: () => void; soloTriple?: boolean
+  conFicha?: boolean   // la ficha del reconocimiento muestra ópticas: no va en paneles de colección (cobranding)
   onClose: () => void; onPrev: () => void; onNext: () => void
 }) {
   const [ci, setCi] = useState(() => (soloTriple ? Math.max(0, m.colores.findIndex(esTriple)) : 0))
@@ -216,7 +244,7 @@ function Hoja({ m, pct, clave, puedeLink, onLink, soloTriple, onClose, onPrev, o
     const codigo = (data as { codigo: string }).codigo
     setLink(linkPublico(codigo))
     // La ficha solo si el modelo está en el catálogo con stock (si no, diría "no lo encontré")
-    supabase.rpc('modelo_landing', { p_modelo: m.modelo, p_sku: c.sku }).then(({ data: f }) => {
+    if (conFicha) supabase.rpc('modelo_landing', { p_modelo: m.modelo, p_sku: c.sku }).then(({ data: f }) => {
       if (f) setFicha(linkFicha(m.modelo, c.sku, codigo))
     })
     onLink?.()

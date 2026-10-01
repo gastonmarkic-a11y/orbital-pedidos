@@ -126,10 +126,11 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
           <Marca oscuro={oscuro} />
           <div className="ml-auto min-w-0 text-right leading-tight">
             <div className="text-[12px] font-bold truncate">{ent.nombre}</div>
-            <div className="text-[10px] text-neutral-500 truncate">
-              {ROL_TXT[ent.rol]}{ent.rol === 'admin' || ent.rol === 'influencer' ? ` · ${ent.pct}%${ent.pct_resto != null ? ` / ${ent.pct_resto}%` : ''}` : ''}
-              {ent.rol === 'influencer' && ent.admin ? <span className="hidden sm:inline"> · {ent.admin}</span> : null}
-            </div>
+            {ent.rol !== 'influencer' && (
+              <div className="text-[10px] text-neutral-500 truncate">
+                {ROL_TXT[ent.rol]}{ent.rol === 'admin' ? ` · ${ent.pct}%` : ''}
+              </div>
+            )}
           </div>
           <InstalarApp nombre="Orbital Colaboradores" que="tu panel" urlParaInstalar={`/colab?k=${clave}`}
             bajada="Queda con el ícono de Orbital y entra directo a tu panel, sin clave." />
