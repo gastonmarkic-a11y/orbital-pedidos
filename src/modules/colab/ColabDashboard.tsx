@@ -4,7 +4,7 @@
 //   admin      → su 5% + el ranking de sus promotores
 //   orbital    → venta total, las dos comisiones y el ranking de administradores
 // Mientras no haya clicks se muestra un ejemplo CON cartel; con el primero, lo real.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ACENTO, CANALES, Resumen, Rol, FilaLiq, kAr, kM, nAr, mesCorto, mesLargo, labelRed, labelFormato, periodoActual } from './colabUtil'
@@ -47,6 +47,11 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
 }) {
   const [r, setR] = useState<Resumen | null>(null)
   const [actualizando, setActualizando] = useState(false)
+  // vista: 'YYYY-MM' (un mes), 'acum' o 'comparar'. Arranca en el mes en curso.
+  const [vista, setVista] = useState('')
+  const [cmpA, setCmpA] = useState('')
+  const [cmpB, setCmpB] = useState('')
+  const [origenes, setOrigenes] = useState<Resumen['origenes'] | null>(null)
 
   const cargar = () =>
     supabase.rpc('colab_resumen', { p_clave: clave, p_admin: adminId ?? null }).then(({ data }) => {
@@ -62,19 +67,55 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
     setActualizando(false)
   }
 
+  // ── Período: un mes, el acumulado o dos meses comparados ──
+  // Meses con algo (desde el primero con toques o ventas); el mes en curso siempre está.
+  const serie = r?.serie ?? []
+  const primero = serie.findIndex((s) => s.clicks || s.pedidos || s.pendientes || Number(s.neto))
+  const meses = primero < 0 ? serie.slice(-1) : serie.slice(primero)
+  const ultP = serie[serie.length - 1]?.periodo ?? ''
+  const vistaOk = vista === 'acum' || vista === 'comparar' || meses.some((s) => s.periodo === vista)
+  const modo: 'mes' | 'acum' | 'comparar' = vista === 'acum' ? 'acum' : vista === 'comparar' ? 'comparar' : 'mes'
+  const mesSel = modo === 'mes' && vistaOk ? vista : ultP
+  const mesA = meses.some((s) => s.periodo === cmpA) ? cmpA : meses[Math.max(0, meses.length - 2)]?.periodo ?? ultP
+  const mesB = meses.some((s) => s.periodo === cmpB) ? cmpB : ultP
+  const rango: [string, string] = modo === 'acum' ? [meses[0]?.periodo ?? ultP, ultP] : [mesSel, mesSel]
+
+  useEffect(() => {
+    if (!r || modo === 'comparar') return
+    if (!r.hay_datos) { setOrigenes(r.origenes ?? []); return }
+    setOrigenes(null)
+    supabase.rpc('colab_origenes', { p_clave: clave, p_desde: rango[0], p_hasta: rango[1], p_admin: adminId ?? null })
+      .then(({ data }) => setOrigenes((data as Resumen['origenes']) ?? []))
+  }, [r, modo, rango[0], rango[1]])
+
   if (!r) return <p className="text-sm text-neutral-500 py-16 text-center">Cargando…</p>
 
-  const ult = r.serie[r.serie.length - 1]
-  const prev = r.serie[r.serie.length - 2]
+  type Fila = typeof r.serie[number]
+  const sumar = (filas: Fila[]): Fila => filas.reduce((a, s) => ({
+    periodo: a.periodo, clicks: a.clicks + Number(s.clicks || 0), pedidos: a.pedidos + Number(s.pedidos || 0),
+    pendientes: a.pendientes + Number(s.pendientes || 0), neto: a.neto + Number(s.neto || 0),
+    com_inf: a.com_inf + Number(s.com_inf || 0), com_adm: a.com_adm + Number(s.com_adm || 0),
+  }), { periodo: rango[0], clicks: 0, pedidos: 0, pendientes: 0, neto: 0, com_inf: 0, com_adm: 0 })
+  const fila = (p: string) => serie.find((s) => s.periodo === p) ?? sumar([])
+  const ult = modo === 'acum' ? sumar(meses) : fila(mesSel)
+  const iSel = serie.findIndex((s) => s.periodo === mesSel)
+  const prev = modo === 'mes' && iSel > 0 && meses.some((s) => s.periodo === serie[iSel - 1].periodo) ? serie[iSel - 1] : undefined
+  const nombrePeriodo = modo === 'acum'
+    ? `acumulado ${meses.length > 1 ? `${mesCorto(meses[0].periodo)} – ${mesCorto(ultP)}` : mesCorto(ultP)}`
+    : mesCorto(mesSel)
+  const nombrePeriodoLargo = modo === 'acum' ? nombrePeriodo : mesLargo(mesSel)
   // El número grande es lo que cobra cada nivel; Orbital ve la venta total.
-  const principal = (s?: typeof ult) => !s ? 0 : rol === 'influencer' ? s.com_inf : rol === 'admin' ? s.com_adm : s.neto
+  const principal = (s?: Fila) => !s ? 0 : rol === 'influencer' ? s.com_inf : rol === 'admin' ? s.com_adm : s.neto
   const delta = prev && principal(prev) ? (principal(ult) / principal(prev) - 1) * 100 : null
-  const maxMes = Math.max(...r.serie.map((s) => s.neto), 1)
   // Colección con comisión doble: pctInf por todo lo orgánico (links, redes, directo),
   // pctResto solo por anuncios pagos de Meta, para pedidos desde restoDesde.
   const doble = rol === 'influencer' && !!coleccion && pctResto != null && !!restoDesde
-  const rige = (periodo?: string) => doble && !!periodo && periodo >= restoDesde!.slice(0, 7)
-  const pctCanal = (canal: string) => rige(ult?.periodo) && canal === 'meta' ? pctResto! : (pctInf ?? 10)
+  const desdeMes = doble ? restoDesde!.slice(0, 7) : ''
+  // % de un origen en el período elegido; null si el período mezcla las dos reglas (acumulado)
+  const pctCanal = (canal: string): number | null => {
+    if (!doble || canal !== 'meta' || rango[1] < desdeMes) return pctInf ?? 10
+    return rango[0] >= desdeMes ? pctResto! : null
+  }
   const etiquetaPrincipal = rol === 'influencer' ? (doble ? 'Tu comisión' : `Tu ${pctInf ?? 10}%`) : rol === 'admin' ? `Tu ${pctAdm ?? 5}%` : 'Venta neta'
   const conv = ult && ult.clicks ? (ult.pedidos / ult.clicks) * 100 : 0
 
@@ -89,13 +130,38 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
               : 'Todos los administradores y sus promotores.'}
           </p>
         </div>
-        {rol !== 'influencer' && (
-          <button onClick={actualizar} disabled={actualizando}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-50">
-            <RefreshCw size={12} className={actualizando ? 'animate-spin' : ''} /> Actualizar ventas
-          </button>
-        )}
+        <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
+          <select value={modo === 'mes' ? mesSel : vista} onChange={(e) => setVista(e.target.value)} aria-label="Período"
+            className="rounded-lg border border-black/10 px-2.5 py-1.5 text-[12px] font-semibold bg-white">
+            {[...meses].reverse().map((s) => (
+              <option key={s.periodo} value={s.periodo}>{s.periodo === ultP ? `Este mes · ${mesLargo(s.periodo)}` : mesLargo(s.periodo)}</option>
+            ))}
+            {meses.length > 1 && <option value="acum">Acumulado</option>}
+            {meses.length > 1 && <option value="comparar">Comparar meses</option>}
+          </select>
+          {rol !== 'influencer' && (
+            <button onClick={actualizar} disabled={actualizando}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-50">
+              <RefreshCw size={12} className={actualizando ? 'animate-spin' : ''} /> Actualizar ventas
+            </button>
+          )}
+        </div>
       </div>
+
+      {modo === 'comparar' && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-[12px]">
+          <span className="text-neutral-500">Comparar</span>
+          <select value={mesA} onChange={(e) => setCmpA(e.target.value)} aria-label="Primer mes"
+            className="rounded-lg border border-black/10 px-2.5 py-1.5 font-semibold bg-white">
+            {[...meses].reverse().map((s) => <option key={s.periodo} value={s.periodo}>{mesLargo(s.periodo)}</option>)}
+          </select>
+          <span className="text-neutral-500">con</span>
+          <select value={mesB} onChange={(e) => setCmpB(e.target.value)} aria-label="Segundo mes"
+            className="rounded-lg border border-black/10 px-2.5 py-1.5 font-semibold bg-white">
+            {[...meses].reverse().map((s) => <option key={s.periodo} value={s.periodo}>{mesLargo(s.periodo)}</option>)}
+          </select>
+        </div>
+      )}
 
       {!r.hay_datos && (
         <div className="mb-4 rounded-xl border border-dashed border-black/25 bg-white p-3 text-[11px] flex gap-2">
@@ -104,15 +170,49 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         </div>
       )}
 
+      {/* Comparar dos meses: lado a lado, con la diferencia */}
+      {modo === 'comparar' && (() => {
+        const a = fila(mesA), b = fila(mesB)
+        const filas: [string, number, number, 'plata' | 'n'][] = [
+          [etiquetaPrincipal, principal(a), principal(b), 'plata'],
+          ...(rol !== 'orbital' ? [['Venta neta', a.neto, b.neto, 'plata'] as [string, number, number, 'plata']] : []),
+          ['Pedidos pagados', a.pedidos, b.pedidos, 'n'],
+          ['Toques', a.clicks, b.clicks, 'n'],
+        ]
+        return (
+          <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
+            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 items-baseline text-[12px]">
+              <span />
+              <span className="text-[10px] uppercase tracking-[0.14em] opacity-60 text-right">{mesCorto(mesA)}</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] opacity-60 text-right">{mesCorto(mesB)}</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] opacity-60 text-right">Cambio</span>
+              {filas.map(([k, va, vb, tipo], i) => {
+                const d = va ? (vb / va - 1) * 100 : null
+                return (
+                  <Fragment key={k}>
+                    <span className={i === 0 ? 'font-bold' : 'opacity-70'}>{k}</span>
+                    <span className={`text-right tabular-nums ${i === 0 ? 'text-[18px] font-bold' : 'font-semibold'}`}>{tipo === 'plata' ? kAr(va) : nAr(va)}</span>
+                    <span className={`text-right tabular-nums ${i === 0 ? 'text-[18px] font-bold' : 'font-semibold'}`}>{tipo === 'plata' ? kAr(vb) : nAr(vb)}</span>
+                    <span className="text-right tabular-nums text-[11px]" style={{ color: d == null ? 'rgba(255,255,255,0.5)' : d >= 0 ? '#6ee7b7' : '#fca5a5' }}>
+                      {d == null ? (vb ? 'nuevo' : '—') : `${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(0)}%`}
+                    </span>
+                  </Fragment>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* La plata primero */}
-      <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
+      {modo !== 'comparar' && <div className="rounded-2xl p-4 text-white mb-4" style={{ background: '#111827' }}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">{etiquetaPrincipal} · {ult ? mesCorto(ult.periodo) : ''}</div>
+            <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">{etiquetaPrincipal} · {nombrePeriodo}</div>
             <div className="text-[32px] font-bold leading-none mt-1">{kAr(principal(ult))}</div>
             {delta != null && (
               <div className="text-[11px] mt-1" style={{ color: delta >= 0 ? '#6ee7b7' : '#fca5a5' }}>
-                {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)}% vs {mesCorto(prev.periodo)}
+                {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)}% vs {mesCorto(prev!.periodo)}
               </div>
             )}
           </div>
@@ -133,7 +233,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         {(ult?.pendientes ?? 0) > 0 && (
           <p className="text-[10px] opacity-60 mt-2">+ {ult.pendientes} pedido{ult.pendientes === 1 ? '' : 's'} esperando el pago (se suman cuando se acredita).</p>
         )}
-      </div>
+      </div>}
 
       {doble && (
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -150,10 +250,17 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         </div>
       )}
 
+      {/* Curva de venta: todos los meses, con el período elegido marcado */}
+      {meses.length > 1 && (
+        <CurvaVentas meses={meses} marcados={modo === 'comparar' ? [mesA, mesB] : modo === 'acum' ? meses.map((s) => s.periodo) : [mesSel]}
+          valor={rol === 'orbital' ? (s) => s.neto : principal} etiqueta={rol === 'orbital' ? 'Venta neta' : etiquetaPrincipal}
+          onElegir={(p) => setVista(p)} />
+      )}
+
       {/* Embudo en escalones */}
-      <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+      {modo !== 'comparar' && <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
         <h2 className="text-[12px] font-bold uppercase tracking-wide">Del link a la venta</h2>
-        <p className="text-[10px] text-neutral-500 mb-3">{ult ? mesLargo(ult.periodo) : ''}</p>
+        <p className="text-[10px] text-neutral-500 mb-3">{nombrePeriodoLargo}</p>
         <div className="flex items-baseline justify-between gap-3 rounded-lg bg-[#F5F5F7] px-3 py-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wide">Toques al link</div>
@@ -172,22 +279,22 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
           </div>
           <div className="text-[20px] font-bold tabular-nums leading-none">{nAr(ult?.pedidos)}</div>
         </div>
-      </div>
+      </div>}
 
-      {/* De dónde vienen las ventas del mes */}
-      {r.origenes && r.origenes.length > 0 && (() => {
-        const tot = r.origenes.reduce((a, o) => a + Number(o.neto || 0), 0) || 1
+      {/* De dónde vienen las ventas del período */}
+      {modo !== 'comparar' && origenes && origenes.length > 0 && (() => {
+        const tot = origenes.reduce((a, o) => a + Number(o.neto || 0), 0) || 1
         return (
           <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
             <h2 className="text-[12px] font-bold uppercase tracking-wide">De dónde vienen las ventas</h2>
-            <p className="text-[10px] text-neutral-500 mb-3">{ult ? mesLargo(ult.periodo) : ''} · pedidos pagados.{coleccion ? ' Todas suman a tu comisión.' : ''}</p>
-            <div className="flex h-3 rounded-full overflow-hidden bg-[#F5F5F7]">
-              {r.origenes.map((o) => (
+            <p className="text-[10px] text-neutral-500 mb-3">{nombrePeriodoLargo} · pedidos pagados.{coleccion ? ' Todas suman a tu comisión.' : ''}</p>
+            <div className="flex gap-[2px] h-3 rounded-full overflow-hidden bg-[#F5F5F7]">
+              {origenes.map((o) => (
                 <div key={o.canal} style={{ width: `${(Number(o.neto) / tot) * 100}%`, background: CANALES[o.canal]?.color ?? '#8d8a82' }} />
               ))}
             </div>
             <div className="mt-3 space-y-2">
-              {r.origenes.map((o) => (
+              {origenes.map((o) => (
                 <div key={o.canal} className="flex items-start justify-between gap-3 text-[11px]">
                   <div className="flex items-start gap-2 min-w-0">
                     <span className="w-2.5 h-2.5 rounded-sm mt-1 shrink-0" style={{ background: CANALES[o.canal]?.color ?? '#8d8a82' }} />
@@ -199,7 +306,7 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
                   <div className="text-right shrink-0 tabular-nums">
                     <div className="font-bold">{kAr(o.neto)}</div>
                     <div className="text-[9px] text-neutral-500">
-                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · tu ${pctCanal(o.canal)}%: ${kAr(o.com_inf)}` : ''}
+                      {o.pedidos} pedido{o.pedidos === 1 ? '' : 's'}{rol === 'influencer' ? ` · ${pctCanal(o.canal) != null ? `tu ${pctCanal(o.canal)}%` : 'tu comisión'}: ${kAr(o.com_inf)}` : ''}
                     </div>
                   </div>
                 </div>
@@ -245,21 +352,6 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
           </div>
         </div>
       )}
-
-      {/* Evolución mensual */}
-      <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
-        <h2 className="text-[12px] font-bold uppercase tracking-wide">Venta neta por mes</h2>
-        <p className="text-[10px] text-neutral-500 mb-3">Sin IVA y sin envío. Arriba de cada barra, {rol === 'orbital' ? 'la venta' : 'tu comisión'}.</p>
-        <div className="flex items-end gap-2 h-44">
-          {r.serie.map((s) => (
-            <div key={s.periodo} className="flex-1 flex flex-col items-center justify-end h-full">
-              <div className="text-[9px] font-bold mb-1 tabular-nums">{kM(rol === 'orbital' ? s.neto : principal(s))}</div>
-              <div className="w-full rounded-t-[4px]" style={{ background: ACENTO, height: `${(s.neto / maxMes) * 100}%`, minHeight: s.neto ? 2 : 0 }} />
-              <div className="text-[9px] text-neutral-500 mt-1">{mesCorto(s.periodo)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Ranking de administradores (Orbital) */}
       {rol === 'orbital' && r.admins.length > 0 && (
@@ -367,7 +459,8 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         </div>
       )}
 
-      {rol === 'influencer' && <Liquidacion clave={clave} rol={rol} pctInf={pctInf} pctAdm={pctAdm} doble={doble} compacta />}
+      {rol === 'influencer' && <Liquidacion clave={clave} rol={rol} pctInf={pctInf} pctAdm={pctAdm} doble={doble} compacta
+        mesesDisponibles={[...meses].reverse().map((s) => s.periodo)} periodoSel={modo === 'mes' ? mesSel : modo === 'comparar' ? mesB : ultP} />}
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
         {doble
@@ -379,6 +472,68 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
         los cancelados y reembolsados no. Las comisiones se liquidan sobre ese neto, sin IVA.
       </p>
     </>
+  )
+}
+
+// ── Curva de venta mensual ──
+// Una sola serie (venta neta o comisión): línea + área suave, punto por mes, el período elegido
+// en el color de acento. Pasar el dedo/mouse muestra el mes; tocar un punto lo elige.
+type MesSerie = Resumen['serie'][number]
+function CurvaVentas({ meses, marcados, valor, etiqueta, onElegir }: {
+  meses: MesSerie[]; marcados: string[]; valor: (s: MesSerie) => number; etiqueta: string; onElegir: (p: string) => void
+}) {
+  const [hover, setHover] = useState<number | null>(null)
+  const W = 640, H = 170, padL = 8, padR = 8, padT = 28, padB = 26
+  const vals = meses.map((s) => Number(valor(s)) || 0)
+  const max = Math.max(...vals, 1)
+  const x = (i: number) => padL + (meses.length === 1 ? (W - padL - padR) / 2 : (i * (W - padL - padR)) / (meses.length - 1))
+  const y = (v: number) => padT + (1 - v / max) * (H - padT - padB)
+  const linea = vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const area = `${linea} L${x(vals.length - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`
+  const h = hover != null ? meses[hover] : null
+  const totalAcum = vals.reduce((a, v) => a + v, 0)
+  return (
+    <div className="bg-white rounded-xl p-4 border border-black/10 mb-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide">Curva de venta</h2>
+        <span className="text-[10px] text-neutral-500">{etiqueta} acumulada: <b className="text-black tabular-nums">{kAr(totalAcum)}</b></span>
+      </div>
+      <p className="text-[10px] text-neutral-500 mb-2">{etiqueta} por mes, sin IVA ni envío. Tocá un mes para verlo.</p>
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" role="img"
+          aria-label={`${etiqueta} por mes: ${meses.map((s, i) => `${mesLargo(s.periodo)} ${kAr(vals[i])}`).join(', ')}`}
+          onMouseLeave={() => setHover(null)}>
+          <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke="rgba(0,0,0,0.12)" strokeWidth={1} />
+          <path d={area} fill={ACENTO} opacity={0.08} />
+          <path d={linea} fill="none" stroke={ACENTO} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          {hover != null && <line x1={x(hover)} x2={x(hover)} y1={padT - 6} y2={H - padB} stroke="rgba(0,0,0,0.25)" strokeWidth={1} strokeDasharray="3 3" />}
+          {meses.map((s, i) => {
+            const on = marcados.includes(s.periodo)
+            return (
+              <g key={s.periodo}>
+                <circle cx={x(i)} cy={y(vals[i])} r={on ? 6 : 4} fill={on ? ACENTO : '#ffffff'} stroke={on ? '#ffffff' : ACENTO} strokeWidth={2} />
+                {on && <text x={x(i)} y={y(vals[i]) - 12} textAnchor={i === 0 ? 'start' : i === meses.length - 1 ? 'end' : 'middle'}
+                  fontSize={12} fontWeight={700} fill="#111827">{kM(vals[i])}</text>}
+                <text x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === meses.length - 1 ? 'end' : 'middle'}
+                  fontSize={11} fill={on ? '#111827' : '#6b7280'} fontWeight={on ? 700 : 400}>{mesCorto(s.periodo)}</text>
+                {/* zona de toque más grande que el punto */}
+                <rect x={x(i) - (W - padL - padR) / Math.max(meses.length - 1, 1) / 2} y={0}
+                  width={(W - padL - padR) / Math.max(meses.length - 1, 1)} height={H} fill="transparent" style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setHover(i)} onClick={() => onElegir(s.periodo)} />
+              </g>
+            )
+          })}
+        </svg>
+        {h && hover != null && (
+          <div className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-lg bg-[#111827] text-white px-2.5 py-1.5 text-[10px] leading-snug shadow"
+            style={{ left: `${Math.min(88, Math.max(12, (x(hover) / W) * 100))}%` }}>
+            <div className="font-bold">{mesLargo(h.periodo)}</div>
+            <div className="tabular-nums">{etiqueta}: <b>{kAr(vals[hover])}</b></div>
+            <div className="tabular-nums opacity-80">Venta neta {kAr(h.neto)} · {h.pedidos} pedido{h.pedidos === 1 ? '' : 's'}</div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -417,10 +572,13 @@ const ESTADO: Record<FilaLiq['estado'], { t: string; c: string }> = {
   reembolsado: { t: 'Reembolsado', c: '#6b7280' },
 }
 
-export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, doble, compacta }: {
+export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, doble, compacta, mesesDisponibles, periodoSel }: {
   clave: string; rol: Rol; pctInf?: number; pctAdm?: number; adminId?: number | null; doble?: boolean; compacta?: boolean
+  mesesDisponibles?: string[]   // desde el dashboard: solo los meses con datos (si no, los últimos 6)
+  periodoSel?: string           // mes elegido arriba en el dashboard: la liquidación lo sigue
 }) {
-  const [periodo, setPeriodo] = useState(periodoActual())
+  const [periodo, setPeriodo] = useState(periodoSel ?? periodoActual())
+  useEffect(() => { if (periodoSel) setPeriodo(periodoSel) }, [periodoSel])
   const [filas, setFilas] = useState<FilaLiq[] | null>(null)
   useEffect(() => {
     setFilas(null)
@@ -428,7 +586,7 @@ export function Liquidacion({ clave, rol, pctInf, pctAdm, adminId, doble, compac
       .then(({ data }) => setFilas((data as FilaLiq[]) ?? []))
   }, [clave, periodo, adminId])
 
-  const meses = Array.from({ length: 6 }, (_, i) => {
+  const meses = mesesDisponibles?.length ? mesesDisponibles : Array.from({ length: 6 }, (_, i) => {
     const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })

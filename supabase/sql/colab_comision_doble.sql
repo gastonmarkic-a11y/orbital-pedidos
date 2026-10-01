@@ -193,3 +193,6 @@ begin
     execute 'create or replace view colab_coleccion_venta as ' || d;
   end if;
 end $mig$;
+
+-- Dashboard con período: serie de 12 meses y orígenes por rango de meses.
+-- (aplicado como migración colab_dashboard_periodos: colab_resumen 5→11 meses + colab_origenes)
