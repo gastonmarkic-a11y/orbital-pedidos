@@ -5,7 +5,7 @@
 // Warby Parker Virtual Vision Test): pasos con progreso, instrucciones con íconos, informe imprimible.
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, Clock, Copy, CreditCard, Eye, EyeOff, Glasses,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Mic, ChevronLeft, Clock, Copy, CreditCard, Eye, EyeOff, Glasses,
   Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, Search, Share2, ShieldCheck, Stethoscope, Store, Sun,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -15,7 +15,8 @@ import {
   armarTicket, codigoLocal, drawPlate, evaluar, letterMm, rndDir,
 } from './logic'
 import { ComoSeHace } from './ayuda'
-import { Indicador, Ubicarse, hablar, useDistancia } from './distancia'
+import { Indicador, Ubicarse, useDistancia } from './distancia'
+import { hablar, prepararVoz, puedeEscuchar, tono as tonoAnotado, useEscucha } from './voz'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
 import './pretest.css'
 
@@ -41,6 +42,7 @@ const PASOS = ['Calibración', 'Visión de lejos', 'Contraste', 'Astigmatismo', 
 const N_PASOS = PASOS.length
 const PASO_INFORME = N_PASOS + 1
 const CAL_MIN = 150
+const INSTR_VOZ = 'Listo, quedate ahí. Tapate el ojo izquierdo con la palma. Te voy a mostrar letras: decí en voz alta hacia dónde apuntan las patas, arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.'
 const PRUEBAS: [string, string][] = [
   ['Visión de lejos', 'A 3 m, ojo por ojo'],
   ['Sensibilidad al contraste', 'Binocular'],
@@ -63,7 +65,7 @@ const LEGALES: [string, ReactNode][] = [
   ['Cuándo ir a una guardia', 'Si tenés pérdida de visión repentina, dolor ocular, ojo rojo con dolor, destellos de luz, una "cortina" o manchas nuevas en la visión, visión doble repentina o un golpe en el ojo, no hagas esta guía: consultá de inmediato en una guardia oftalmológica.'],
   ['Menores de edad', 'Las personas menores de 18 años deben hacer la guía acompañadas por un adulto responsable. Los chicos necesitan controles oftalmológicos periódicos aunque no tengan síntomas.'],
   ['Armazones y ópticas sugeridos', 'Las sugerencias de armazones son recomendaciones comerciales generales de Orbital Eyewear según criterios ópticos habituales, no una indicación médica. Los anteojos recetados se confeccionan únicamente con la receta de un profesional matriculado; el óptico confirma medidas y calce. Los oftalmólogos del buscador provienen de Google Maps: Orbital Eyewear no tiene relación con ellos ni responde por su atención.'],
-  ['Tus datos', <>Si activás la medición de distancia, la cámara se usa solo dentro de tu celular para calcular a qué distancia estás: las imágenes no se guardan ni se envían. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
+  ['Tus datos', <>Si activás la medición de distancia, la cámara se usa solo dentro de tu celular para calcular a qué distancia estás: las imágenes no se guardan ni se envían. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
   ['Responsabilidad', 'Al usar la guía aceptás que es informativa y que las decisiones sobre tu salud visual las tomás con un profesional. Orbital Eyewear no se responsabiliza por decisiones tomadas solo en base a estos resultados.'],
 ]
 
@@ -469,6 +471,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   // Medición de distancia con la cámara frontal (se puede apagar) y distancia confirmada para la prueba de lejos.
   const [usarCam, setUsarCam] = useState(true)
   const [lock, setLock] = useState<number | null>(null)
+  // Guía de voz a 3 m: el celular pregunta, escucha "derecha / arriba / no la veo" y pasa solo a la letra siguiente.
+  const [usarVoz, setUsarVoz] = useState(puedeEscuchar)
   const [cvI, setCvI] = useState(0)
   const [near, setNear] = useState<NearId | null>(null)
   const [informe, setInforme] = useState<Informe | null>(null)
@@ -544,12 +548,21 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     setLock(null)
     setS((s) => ({ ...s, distMm: dist }))
     // La primera frase se dice dentro del toque: en iPhone la voz solo arranca desde un gesto del usuario.
+    if (dist >= 2000 && usarVoz) prepararVoz()
     if (usarCam) hablar(dist >= 2000 ? 'Apoyá el celular y alejate despacio. Te aviso cuándo frenar.' : 'Sostené el celular con el brazo estirado.')
+    else if (dist >= 2000 && usarVoz) hablar('Apoyá el celular a la altura de tus ojos y alejate 3 metros, unos 4 pasos largos. ' + INSTR_VOZ.replace('Listo, quedate ahí. ', ''))
   }
   function listoLejos(mm: number) {
     setLock(mm)
     setS((s) => ({ ...s, distMm: mm }))
+    if (vozLejos) hablar(INSTR_VOZ)
   }
+  const vozLejos = usarVoz && (modoLejos ?? 0) >= 2000
+  const escucha = useEscucha(step === 2 && vozLejos && (lock !== null || !usarCam), (o) => {
+    if (o === 'repetir') return hablar('Decí hacia dónde apuntan las patas de la letra: arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.')
+    tonoAnotado()
+    answerE(o)
+  })
   function answerE(a: Dir | 'none') {
     const val = escalera(ac, setAc, a)
     if (val === null) return
@@ -557,8 +570,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     if (eye === 'R') {
       setEye('L')
       setAc(escaleraNueva())
+      if (vozLejos) hablar('Muy bien. Ahora destapá el ojo izquierdo y tapate el derecho. Seguimos.')
     } else {
       setCt(escaleraNueva())
+      if (vozLejos) hablar('Terminaste la visión de lejos. Ya podés volver al celular.')
       go(3)
     }
   }
@@ -813,8 +828,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <ComoSeHace />
             <button className="mode rec" onClick={() => elegirLejos(DIST_LEJOS_MM)}>
               <span className="badge">Recomendado</span>
-              <b>A 3 metros, con ayuda</b>
-              <span>Apoyá el celular a la altura de tus ojos (contra un libro o una taza) y alejate 3 metros{usarCam ? ': el celular te avisa cuándo frenar' : ', unos 4 pasos largos'}. Vos decís en voz alta hacia dónde apunta la E y la otra persona lo toca en la pantalla.</span>
+              <b>{usarVoz ? 'A 3 metros, con guía de voz' : 'A 3 metros, con ayuda'}</b>
+              <span>Apoyá el celular a la altura de tus ojos (contra un libro o una taza) y alejate 3 metros{usarCam ? ': el celular te avisa cuándo frenar' : ', unos 4 pasos largos'}. {usarVoz ? 'Respondés en voz alta hacia dónde apunta la E: el celular te escucha y pasa solo a la siguiente. No hace falta ayudante.' : 'Vos decís en voz alta hacia dónde apunta la E y la otra persona lo toca en la pantalla.'}</span>
             </button>
             <button className="mode" onClick={() => elegirLejos(DIST_MM)}>
               <b>Sin ayuda, a 50 cm</b>
@@ -824,6 +839,12 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               <input type="checkbox" checked={usarCam} onChange={(e) => setUsarCam(e.target.checked)} />
               <span>Medir la distancia con la cámara y avisarme en voz alta cuándo frenar. Las imágenes no salen del celular.</span>
             </label>
+            {puedeEscuchar() && (
+              <label className="camopt">
+                <input type="checkbox" checked={usarVoz} onChange={(e) => setUsarVoz(e.target.checked)} />
+                <span>Responder en voz alta a 3 m: el celular me pregunta y me escucha (usa el micrófono).</span>
+              </label>
+            )}
           </section>
         )}
 
@@ -835,7 +856,9 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
           <section className="step">
             <div>
               <h2>¿Hacia dónde apunta la E?</h2>
-              <p>{modoLejos >= 2000
+              <p>{vozLejos
+                ? 'Decí en voz alta hacia dónde apuntan las patas: “arriba”, “abajo”, “derecha” o “izquierda”. Si no la distinguís, decí “no la veo”. El celular pasa solo a la siguiente.'
+                : modoLejos >= 2000
                 ? 'Decí en voz alta hacia dónde apuntan las patas de la letra; tu ayudante toca esa flecha. Si no la distinguís, que toque “No la veo”.'
                 : 'Tocá la flecha hacia donde apuntan las patas de la letra. Si no la distinguís, tocá “No la veo”. Las letras se achican a medida que acertás.'}</p>
             </div>
@@ -843,6 +866,14 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Guia items={modoLejos >= 2000
               ? [[<Ruler size={14} />, '3 m · unos 4 pasos largos'], [<Eye size={14} />, 'Celular a la altura de los ojos'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]
               : [[<Ruler size={14} />, '50 cm · brazo estirado'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]} />
+            {vozLejos && (
+              <div className={'escucha ' + escucha.estado} role="status">
+                <Mic size={22} />
+                <span>{escucha.estado === 'escuchando' ? (escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho…')
+                  : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: que alguien toque las flechas.'
+                  : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: que alguien toque las flechas.' : 'Preparando el micrófono…'}</span>
+              </div>
+            )}
             {usarCam && <Indicador d={dist} objetivo={modoLejos} tol={0.15} />}
             <Stage izq={`Nivel ${ac.lvl + 1} de 6 · ${S.distMm >= 1000 ? (S.distMm / 1000).toFixed(1).replace('.', ',') + ' m' : Math.round(S.distMm / 10) + ' cm'}`} der={`${letterMm(LEVELS[ac.lvl], S.distMm).toFixed(1)} mm`}>
               <E dir={ac.dir} px={Math.max(6, letterMm(LEVELS[ac.lvl], S.distMm) * S.pxPerMm)} />

@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, HelpCircle, Ruler, ScanFace } from 'lucide-react'
 import { ComoSeHace } from './ayuda'
+import { hablar } from './voz'
 
 const MP_VERSION = '1.0.1'
 const WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
@@ -131,23 +132,6 @@ export function useDistancia(activo: boolean): Distancia {
   }, [activo])
 
   return { estado, mm, stream }
-}
-
-// ---------- voz ----------
-let vozEs: SpeechSynthesisVoice | null | undefined
-export function hablar(t: string) {
-  if (typeof speechSynthesis === 'undefined') return
-  if (vozEs === undefined) {
-    const vs = speechSynthesis.getVoices()
-    vozEs = vs.find((v) => v.lang === 'es-AR') ?? vs.find((v) => v.lang.startsWith('es-4') || v.lang === 'es-US' || v.lang === 'es-MX') ?? vs.find((v) => v.lang.startsWith('es')) ?? null
-    if (!vs.length) vozEs = undefined // todavía no cargaron: reintentar la próxima
-  }
-  speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(t)
-  u.lang = vozEs?.lang ?? 'es-AR'
-  if (vozEs) u.voice = vozEs
-  u.rate = 1.02
-  speechSynthesis.speak(u)
 }
 
 type Posicion = 'cerca' | 'lejos' | 'ok' | 'nadie'

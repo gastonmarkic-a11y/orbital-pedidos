@@ -105,7 +105,7 @@ const ESCENAS: { titulo: string; texto: string; svg: JSX.Element }[] = [
   },
   {
     titulo: 'Decí hacia dónde apunta la E',
-    texto: '“Derecha”, “arriba”… tu ayudante toca esa flecha. Si no la ves, que toque “No la veo”.',
+    texto: '“Derecha”, “arriba”… el celular te escucha y pasa solo a la siguiente. Si no la ves, decí “no la veo”.',
     svg: (
       <svg viewBox="0 0 160 110" aria-hidden="true">
         <Cel x={22} y={10} w={46} h={86} e={false} />

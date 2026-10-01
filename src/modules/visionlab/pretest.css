@@ -322,3 +322,11 @@
 .ovl .ccard .w{top:auto;bottom:6px;font-size:12px;color:var(--faint)}
 .ovl .ajuste{display:grid;grid-template-columns:44px 1fr 44px;gap:10px;align-items:center}
 .ovl .ajuste .btn{min-height:44px;padding:0;font-size:22px}
+
+/* guía de voz a 3 m: grande para leerlo de lejos */
+.ovl .escucha{display:flex;align-items:center;justify-content:center;gap:10px;font-size:clamp(18px,5vw,24px);font-weight:700;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;text-align:center}
+.ovl .escucha.escuchando{border-color:var(--ok);background:var(--ok-bg)}
+.ovl .escucha.escuchando svg{color:var(--ok);animation:ovl-pulso 1.4s ease-in-out infinite}
+.ovl .escucha.sin-permiso,.ovl .escucha.no-soportado{font-size:15px;color:var(--warn);background:var(--warn-bg);border-color:transparent}
+@keyframes ovl-pulso{50%{transform:scale(1.18);opacity:.6}}
+@media (prefers-reduced-motion:reduce){.ovl .escucha svg{animation:none!important}}
