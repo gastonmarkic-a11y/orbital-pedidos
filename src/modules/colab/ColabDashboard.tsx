@@ -230,8 +230,33 @@ export default function ColabDashboard({ clave, rol, pctInf, pctAdm, adminId, co
             ))}
           </div>
         </div>
+        {/* Cómo se arma el número: orgánicas vs anuncios pagos de Meta */}
+        {doble && origenes && origenes.length > 0 && (() => {
+          const g = (meta: boolean) => origenes.filter((o) => (o.canal === 'meta') === meta).reduce(
+            (a, o) => ({ n: a.n + Number(o.pedidos || 0), neto: a.neto + Number(o.neto || 0), com: a.com + Number(o.com_inf || 0) }),
+            { n: 0, neto: 0, com: 0 })
+          const org = g(false), meta = g(true), pm = pctCanal('meta')
+          const fila = (k: string, pct: number | null, x: typeof org) => (
+            <div className="flex items-baseline justify-between gap-3">
+              <span><b>{k}</b> <span className="opacity-60">· {x.n} pedido{x.n === 1 ? '' : 's'} · venta {kAr(x.neto)}{pct != null ? ` × ${pct}%` : ''}</span></span>
+              <b className="tabular-nums">{kAr(x.com)}</b>
+            </div>
+          )
+          return (
+            <div className="mt-3 pt-3 border-t border-white/10 space-y-1 text-[11px]">
+              {fila('Ventas orgánicas', pctInf ?? 10, org)}
+              {fila('Anuncios de Meta', pm, meta)}
+              <div className="flex items-baseline justify-between gap-3 pt-1 border-t border-white/10">
+                <b>Total</b><b className="tabular-nums">{kAr(org.com + meta.com)}</b>
+              </div>
+            </div>
+          )
+        })()}
         {(ult?.pendientes ?? 0) > 0 && (
-          <p className="text-[10px] opacity-60 mt-2">+ {ult.pendientes} pedido{ult.pendientes === 1 ? '' : 's'} esperando el pago (se suman cuando se acredita).</p>
+          <p className="text-[10px] opacity-60 mt-2">
+            Además hay {ult.pendientes} pedido{ult.pendientes === 1 ? '' : 's'} esperando el pago (por ejemplo, transferencias):
+            {' '}<b>no están incluidos</b> en este número. Se suman solos cuando se acredita el pago.
+          </p>
         )}
       </div>}
 
