@@ -1680,6 +1680,65 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
   )
 }
 
+// ── Buscador de clientes (solo links de vendedor) ──
+interface ClienteBusq { cod: string; razon: string | null; nomcomerc: string | null; localidad: string | null; contacto: string | null; whatsapp: string | null; email: string | null; propio: boolean }
+
+function BuscadorCliente({ acceso, elegido, onElegir }: { acceso: string; elegido: ClienteBusq | null; onElegir: (c: ClienteBusq | null) => void }) {
+  const [q, setQ] = useState('')
+  const [res, setRes] = useState<ClienteBusq[]>([])
+  const [buscando, setBuscando] = useState(false)
+  useEffect(() => {
+    const t = q.trim()
+    if (t.length < 2) { setRes([]); return }
+    let vivo = true
+    setBuscando(true)
+    const id = window.setTimeout(() => {
+      supabase.rpc('catalogo_buscar_clientes', { p_acceso: acceso, p_q: t }).then(({ data }) => {
+        if (!vivo) return
+        setRes((data as ClienteBusq[]) ?? []); setBuscando(false)
+      })
+    }, 250)
+    return () => { vivo = false; window.clearTimeout(id) }
+  }, [q, acceso])
+
+  if (elegido) {
+    return (
+      <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium text-[#0004FF]">Pedido para</p>
+          <p className="text-sm font-semibold truncate">{elegido.cod} · {elegido.nomcomerc || elegido.razon}</p>
+          {elegido.localidad && <p className="text-[11px] text-neutral-500">{elegido.localidad}</p>}
+        </div>
+        <button onClick={() => { onElegir(null); setQ('') }} className="text-[12px] text-[#0004FF] underline shrink-0">Cambiar</button>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <label className="text-[11px] font-medium text-neutral-500">Cliente *</label>
+      <div className="relative mt-1">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder="Nombre, código, CUIT o localidad"
+          className="w-full rounded-lg border border-black/10 pl-9 pr-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+      </div>
+      {q.trim().length >= 2 && (
+        <div className="mt-1 rounded-lg border border-black/10 divide-y divide-black/5 max-h-64 overflow-y-auto">
+          {res.map((c) => (
+            <button key={c.cod} onClick={() => onElegir(c)} className="w-full text-left px-3 py-2 hover:bg-[#0004FF]/5">
+              <p className="text-sm font-semibold leading-tight">
+                {c.nomcomerc || c.razon} {c.propio && <span className="ml-1 text-[9px] font-bold uppercase rounded-full px-1.5 py-0.5 bg-emerald-100 text-emerald-700">Tuyo</span>}
+              </p>
+              <p className="text-[11px] text-neutral-500">{c.cod}{c.localidad ? ` · ${c.localidad}` : ''}{c.razon && c.razon !== c.nomcomerc ? ` · ${c.razon}` : ''}</p>
+            </button>
+          ))}
+          {!buscando && res.length === 0 && <p className="text-[12px] text-neutral-500 px-3 py-2">No hay clientes con “{q.trim()}”.</p>}
+          {buscando && res.length === 0 && <p className="text-[12px] text-neutral-400 px-3 py-2">Buscando…</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Carrito + checkout ──
 function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, topModelos, onClose, onDone }: {
   cart: Record<string, CartItem>; clave: string; acceso: Acceso | null; bono?: BonoEstado | null; modoPack?: boolean
@@ -1701,6 +1760,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
   const identFijo = acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
+  // Link de vendedor: elige el cliente con un buscador en vez de tipear el código exacto
+  const esVend = acceso?.tipo === 'vendedor'
+  const [elegido, setElegido] = useState<ClienteBusq | null>(null)
   const sinPrecios = useSinPrecios()
   // Escalera por volumen: solo ópticas con precios, sin pack ni bono de campaña (esos traen sus condiciones)
   // unidades al abrir el carrito: si desde acá completa un escalón, gana el premio de +30 días
@@ -1880,6 +1942,16 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
                 <p className="text-[11px] font-medium text-[#0004FF]">{esRev ? 'Tu cuenta revendedor' : sinPrecios ? 'Pedido a nombre de' : 'Pedido para tu óptica'}</p>
                 <p className="text-sm font-semibold">{sinPrecios ? empresaDe(acceso?.label) || identFijo : acceso?.label || identFijo}</p>
               </div>
+            ) : esVend ? (
+              <BuscadorCliente acceso={acceso?.codigo || clave} elegido={elegido}
+                onElegir={(c) => {
+                  setElegido(c); setIdent(c?.cod ?? ''); setPedirRazon(false); setErr(null)
+                  if (c) {
+                    if (!contacto.trim() && c.contacto) setContacto(c.contacto)
+                    if (!wsp.trim() && c.whatsapp) setWsp(c.whatsapp)
+                    if (!mail.trim() && c.email) setMail(c.email)
+                  }
+                }} />
             ) : (
               <div>
                 <label className="text-[11px] font-medium text-neutral-500">Código de cliente, CUIT o email *</label>
