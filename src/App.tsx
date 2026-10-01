@@ -1,11 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator, Tag, Landmark,
+  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye, Search,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { FormEvent, ReactNode, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/auth'
 import { supabase } from './lib/supabase'
 import { ToastProvider } from './lib/toast'
@@ -87,10 +87,13 @@ import LandingModelo from './modules/landings/LandingModelo'
 import QrExhibidor from './modules/landings/QrExhibidor'
 import PreciosML from './modules/mercadolibre/PreciosML'
 import FinanzasHub from './modules/finanzas/FinanzasHub'
+import Pretest from './modules/visionlab/Pretest'
+import VisionLabPanel from './modules/visionlab/VisionLabPanel'
 
 interface NavItem {
   to: string
   label: string
+  grupo?: string // subtítulo dentro del menú Gestión
 }
 
 const NAV_ICONS: Record<string, LucideIcon> = {
@@ -111,6 +114,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/produccion': Factory,
   '/tienda': Store,
   '/publicidad': BarChart3,
+  '/vision-lab': ScanEye,
   '/envios-ecom': Truck,
   '/liquidacion': Banknote,
   '/produccion/costeo': Calculator,
@@ -263,28 +267,30 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
   if (rol === 'admin') {
     secundarios.push({ to: '/pedidos/stock', label: 'Stock' }, { to: '/consignas', label: 'Consignas' }, { to: '/marca-blanca-pedidos', label: 'Marca blanca' })
+    const V = 'Ventas y clientes', M = 'Marketing y redes', P = 'Producción y canales', F = 'Plata', E = 'Equipo'
     menu.push(
-      { to: '/finanzas', label: 'Finanzas (tesorería)' },
-      { to: '/cobros', label: 'Cobros (alias / QR propio)' },
-      { to: '/panel-canales', label: 'Panel de canales (maqueta)' },
-      { to: '/creadores', label: 'Creadores (administradoras)' },
-      { to: '/influencers', label: 'Influencers de Instagram' },
-      { to: '/opticas-instagram', label: 'Ópticas de Instagram' },
-      { to: '/pedidos/dashboard', label: 'Dashboard' },
-      { to: '/pedidos/cobranzas', label: 'Cobranzas' },
-      { to: '/pedidos/clientes', label: 'Clientes' },
-      { to: '/produccion', label: 'Producción (órdenes y costos)' },
-      { to: '/tienda', label: 'Tienda Shopify' },
-      { to: '/mercadolibre/precios', label: 'Precios Mercado Libre' },
-      { to: '/publicidad', label: 'Publicidad / ROAS' },
-      { to: '/conversaciones', label: 'Conversaciones (bot)' },
-      { to: '/envios-ecom', label: 'Envíos' },
-      { to: '/actividad-admin', label: 'Equipo' },
-      { to: '/actividad-admin/marketing', label: 'Piezas de marketing' },
-      { to: '/prospeccion-social', label: 'Cola de prospección social' },
-      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)' },
-      { to: '/postventa', label: 'Postventa' },
-      { to: '/accesos', label: 'Accesos y usuarios' }
+      { to: '/pedidos/dashboard', label: 'Dashboard', grupo: V },
+      { to: '/pedidos/clientes', label: 'Clientes', grupo: V },
+      { to: '/pedidos/cobranzas', label: 'Cobranzas', grupo: V },
+      { to: '/conversaciones', label: 'Conversaciones (bot)', grupo: V },
+      { to: '/envios-ecom', label: 'Envíos', grupo: V },
+      { to: '/devoluciones', label: 'Devoluciones (ingreso + NC)', grupo: V },
+      { to: '/postventa', label: 'Postventa', grupo: V },
+      { to: '/publicidad', label: 'Publicidad / ROAS', grupo: M },
+      { to: '/panel-canales', label: 'Panel de canales (maqueta)', grupo: M },
+      { to: '/actividad-admin/marketing', label: 'Piezas de marketing', grupo: M },
+      { to: '/creadores', label: 'Creadores (administradoras)', grupo: M },
+      { to: '/influencers', label: 'Influencers de Instagram', grupo: M },
+      { to: '/opticas-instagram', label: 'Ópticas de Instagram', grupo: M },
+      { to: '/prospeccion-social', label: 'Cola de prospección social', grupo: M },
+      { to: '/vision-lab', label: 'Vision Lab (pretest visual)', grupo: M },
+      { to: '/produccion', label: 'Producción (órdenes y costos)', grupo: P },
+      { to: '/tienda', label: 'Tienda Shopify', grupo: P },
+      { to: '/mercadolibre/precios', label: 'Precios Mercado Libre', grupo: P },
+      { to: '/finanzas', label: 'Finanzas (tesorería)', grupo: F },
+      { to: '/cobros', label: 'Cobros (alias / QR propio)', grupo: F },
+      { to: '/actividad-admin', label: 'Equipo', grupo: E },
+      { to: '/accesos', label: 'Accesos y usuarios', grupo: E }
     )
   }
   return { principales, secundarios, menu }
@@ -511,6 +517,84 @@ function MiClave() {
   )
 }
 
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+// Menú "Más / Gestión": buscador, subgrupos y alto máximo con scroll, así nunca queda
+// nada por afuera de la pantalla. Si los secundarios ya están en la barra de escritorio,
+// acá solo se muestran en celular.
+function MenuMas({ secundarios, secEnBarra, menu, onClose }: {
+  secundarios: NavItem[]; secEnBarra: boolean; menu: NavItem[]; onClose: () => void
+}) {
+  const [q, setQ] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    function fuera(e: MouseEvent) {
+      const t = e.target as HTMLElement
+      if (ref.current && !ref.current.contains(t) && !t.closest('[data-menu-mas]')) onClose()
+    }
+    function esc(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', fuera)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', fuera); document.removeEventListener('keydown', esc) }
+  }, [onClose])
+
+  const filtro = sinTildes(q.trim())
+  const pasa = (it: NavItem) => !filtro || sinTildes(it.label).includes(filtro)
+  // Secciones: primero los accesos de "Más" (sin título si no hay Gestión), después Gestión por grupo.
+  const secciones: { titulo: string; items: NavItem[]; soloCelular: boolean }[] = []
+  if (secundarios.length) secciones.push({ titulo: menu.length ? 'Accesos' : '', items: secundarios.filter(pasa), soloCelular: secEnBarra })
+  const grupos = new Map<string, NavItem[]>()
+  for (const it of menu.filter(pasa)) {
+    const titulo = it.grupo ?? 'Gestión'
+    grupos.set(titulo, [...(grupos.get(titulo) ?? []), it])
+  }
+  for (const [titulo, items] of grupos) secciones.push({ titulo, items, soloCelular: false })
+  const visibles = secciones.filter((s) => s.items.length)
+  const resultados = visibles.flatMap((s) => s.items)
+  const total = secundarios.length + menu.length
+  const ancho = menu.length > 12 ? 'md:w-[560px]' : 'md:w-64'
+
+  return (
+    <div ref={ref}
+      className={`absolute bottom-full right-2 left-2 md:left-auto mb-2 bg-white border border-black/10 rounded-xl shadow-lg ${ancho} max-h-[calc(100dvh-140px)] flex flex-col`}>
+      {total > 8 && (
+        <div className="p-2 border-b border-black/5">
+          <div className="flex items-center gap-2 rounded-lg border border-black/10 px-2.5 focus-within:ring-2 focus-within:ring-brand/20">
+            <Search size={14} className="text-faint shrink-0" />
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              autoFocus={window.matchMedia('(pointer: fine)').matches}
+              onKeyDown={(e) => { if (e.key === 'Enter' && resultados[0]) { navigate(resultados[0].to); onClose() } }}
+              placeholder="Buscar sección…"
+              className="w-full py-1.5 text-sm bg-transparent focus:outline-none placeholder:text-faint" />
+          </div>
+        </div>
+      )}
+      <div className={`overflow-y-auto overscroll-contain p-2 ${menu.length > 12 ? 'md:columns-2 md:gap-2' : ''}`}>
+        {visibles.map((s) => (
+          <div key={s.titulo || '_'} className={`break-inside-avoid mb-1 ${s.soloCelular ? 'md:hidden' : ''}`}>
+            {s.titulo && <p className="text-[10px] text-faint uppercase tracking-wide px-3 pt-2 pb-1">{s.titulo}</p>}
+            {s.items.map((it) => {
+              const Icono = iconoDe(it.to, it.label)
+              return (
+                <NavLink key={it.to} to={it.to} onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-gold/10' : 'text-ink hover:bg-black/[0.03]'}`
+                  }>
+                  <Icono size={16} strokeWidth={1.75} className="shrink-0" />
+                  <span className="truncate">{it.label}</span>
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+        {resultados.length === 0 && <p className="text-sm text-faint px-3 py-4 text-center">Nada con “{q}”.</p>}
+      </div>
+    </div>
+  )
+}
+
 function Layout() {
   const { vendedor, signOut, rolEfectivo, codigoEfectivo, viewAs, setViewAs, cuentas, setCuenta } = useAuth()
   const location = useLocation()
@@ -522,6 +606,11 @@ function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const hayMenu = nav.menu.length > 0 || nav.secundarios.length > 0
   const esVendedorOAdmin = rol === 'vendedor' || rol === 'admin'
+  // En escritorio los secundarios van en la barra solo si entran todos; si no, pasan al
+  // menú (antes se iban de pantalla por el costado y no se veían).
+  const secEnBarra = nav.principales.length + nav.secundarios.length <= 9
+  const enMenu = [...nav.secundarios, ...nav.menu].some((it) => it.to === location.pathname)
+    && !nav.principales.some((it) => it.to === location.pathname)
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F4EF]">
@@ -645,6 +734,8 @@ function Layout() {
           {rol === 'admin' && <Route path="/panel-canales" element={<PanelCanales />} />}
           {rol === 'admin' && <Route path="/creadores" element={<div className="max-w-6xl mx-auto px-4 py-6"><CreadoresSuite /></div>} />}
           {rol === 'admin' && <Route path="/influencers" element={<div className="max-w-4xl mx-auto px-4 py-6"><ColabInfluencers /></div>} />}
+          {rol === 'admin' && <Route path="/vision-lab" element={<div className="max-w-4xl mx-auto px-4 py-6"><VisionLabPanel /></div>} />}
+          {rol === 'admin' && <Route path="/vision-lab/pretest" element={<Pretest origen="suite" />} />}
           {rol === 'admin' && <Route path="/opticas-instagram" element={<div className="max-w-4xl mx-auto px-4 py-6"><OpticasInstagram /></div>} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
@@ -677,41 +768,12 @@ function Layout() {
       <CoachFlotante />
       <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-black/10 max-w-6xl mx-auto w-full left-0 right-0 z-20">
         {menuOpen && (
-          <div className="absolute bottom-full right-2 mb-2 bg-white border border-black/10 rounded-xl shadow-lg p-2 w-56">
-            {nav.secundarios.map((it) => (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                onClick={() => setMenuOpen(false)}
-                className={({ isActive }) =>
-                  `md:hidden block px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-brand/5' : 'text-ink'}`
-                }
-              >
-                {it.label}
-              </NavLink>
-            ))}
-            {nav.menu.length > 0 && nav.secundarios.length > 0 && (
-              <p className="md:hidden text-[10px] text-faint uppercase tracking-wide px-3 pt-2 pb-1 border-t border-black/5 mt-1">
-                Gestión
-              </p>
-            )}
-            {nav.menu.map((it) => {
-              const Icono = iconoDe(it.to, it.label)
-              return (
-                <NavLink
-                  key={it.to}
-                  to={it.to}
-                  onClick={() => setMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm ${isActive ? 'text-brandDark font-semibold bg-gold/10' : 'text-ink'}`
-                  }
-                >
-                  <Icono size={16} strokeWidth={1.75} />
-                  {it.label}
-                </NavLink>
-              )
-            })}
-          </div>
+          <MenuMas
+            secundarios={nav.secundarios}
+            secEnBarra={secEnBarra}
+            menu={nav.menu}
+            onClose={() => setMenuOpen(false)}
+          />
         )}
         <div className="flex overflow-x-auto">
           {nav.principales.map((it) => {
@@ -741,7 +803,7 @@ function Layout() {
                 to={it.to}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `hidden md:flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 ${
+                  `hidden ${secEnBarra ? 'md:flex' : ''} flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 ${
                     isActive ? 'text-ink border-gold' : 'text-faint border-transparent'
                   }`
                 }
@@ -753,9 +815,10 @@ function Layout() {
           })}
           {hayMenu && (
             <button
+              data-menu-mas
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex-1 md:flex-none md:px-6 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 border-transparent ${
-                menuOpen ? 'text-ink' : 'text-faint'
+              className={`flex-1 md:flex-none md:px-6 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold whitespace-nowrap px-2 border-t-2 ${
+                enMenu ? 'text-ink border-gold' : menuOpen ? 'text-ink border-transparent' : 'text-faint border-transparent'
               }`}
             >
               <MenuIcon size={19} strokeWidth={1.75} />
@@ -818,6 +881,10 @@ export default function App() {
         </ToastProvider>
       )
     }
+  }
+  // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>) y /lab/buscar (solo ópticas / oftalmólogos).
+  if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(window.location.pathname)) {
+    return <Pretest />
   }
   // Colaboradores (influencers): panel por clave (Orbital / administrador / promotor).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/colab')) {
