@@ -5,6 +5,22 @@ import { useEffect, useRef, useState } from 'react'
 import type { Dir } from './logic'
 
 // ---------- hablar ----------
+// Voz latina neutra: primero español de Latinoamérica / EE. UU. (la "Google español de Estados Unidos" de Android y
+// Chrome es la más neutra), después México y el resto de Latinoamérica, Argentina, y España solo si no hay otra.
+const PREFERIDAS = ['es-US', 'es-419', 'es-MX', 'es-CO', 'es-CL', 'es-PE', 'es-AR', 'es-UY', 'es-VE']
+function elegirVoz(vs: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const es = vs.filter((v) => /^es[-_]/i.test(v.lang) || v.lang === 'es')
+  if (!es.length) return null
+  const lang = (v: SpeechSynthesisVoice) => v.lang.replace('_', '-')
+  // dentro de cada idioma, mejor las voces de red / "natural" / Google (suenan menos robóticas)
+  const calidad = (v: SpeechSynthesisVoice) => (/natural|neural|online|premium|enhanced/i.test(v.name) ? 2 : 0) + (/google/i.test(v.name) ? 1 : 0)
+  for (const l of PREFERIDAS) {
+    const c = es.filter((v) => lang(v) === l).sort((a, b) => calidad(b) - calidad(a))
+    if (c.length) return c[0]
+  }
+  return es.find((v) => !/^es-ES/i.test(lang(v))) ?? es[0]
+}
+if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = () => { vozEs = undefined }
 let vozEs: SpeechSynthesisVoice | null | undefined
 let hablandoHasta = 0
 // Solo el reloj propio: en algunos Android speechSynthesis.speaking queda en true para siempre y no se escucharía más.
@@ -14,12 +30,12 @@ export function hablar(t: string, alTerminar?: () => void) {
   if (typeof speechSynthesis === 'undefined') { alTerminar?.(); return }
   if (vozEs === undefined) {
     const vs = speechSynthesis.getVoices()
-    vozEs = vs.find((v) => v.lang === 'es-AR') ?? vs.find((v) => v.lang.startsWith('es-4') || v.lang === 'es-US' || v.lang === 'es-MX') ?? vs.find((v) => v.lang.startsWith('es')) ?? null
+    vozEs = elegirVoz(vs)
     if (!vs.length) vozEs = undefined // todavía no cargaron: reintentar la próxima
   }
   speechSynthesis.cancel()
   const u = new SpeechSynthesisUtterance(t)
-  u.lang = vozEs?.lang ?? 'es-AR'
+  u.lang = vozEs?.lang ?? 'es-US'
   if (vozEs) u.voice = vozEs
   u.rate = 1.02
   // margen por si el evento de fin llega tarde (o no llega, en algunos Android)
@@ -70,19 +86,69 @@ export function interpretar(texto: string): Oido | null {
   return mejor?.d ?? null
 }
 
+// ---------- intérpretes de cada prueba ----------
+const repetir = (t: string) => /\brepet/.test(t)
+/** Reloj astigmático: true = todas iguales, false = algunas más oscuras. */
+export function entenderReloj(texto: string): boolean | 'repetir' | null {
+  const t = norm(texto)
+  if (repetir(t)) return 'repetir'
+  if (/distint|diferent|oscur|grues|marcad|nitid|algunas/.test(t)) return false
+  if (/igual|parej|todas/.test(t)) return true
+  return null
+}
+/** Rejilla de Amsler: true = rectas y completas, false = onduladas o con faltantes. */
+export function entenderRejilla(texto: string): boolean | 'repetir' | null {
+  const t = norm(texto)
+  if (repetir(t)) return 'repetir'
+  if (/ondul|torcid|curv|borros|falt|manch|deform|raras?\b/.test(t)) return false
+  if (/rect|complet|bien|normal|derech/.test(t)) return true
+  return null
+}
+const NUMEROS: Record<string, string> = { uno: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6', siete: '7', ocho: '8', nueve: '9' }
+/** Láminas de color: el número dicho, o '' si no ve ninguno. */
+export function entenderNumero(texto: string): string | 'repetir' | null {
+  const t = norm(texto)
+  if (repetir(t)) return 'repetir'
+  if (/ningun|no veo|nada|no hay|no se\b/.test(t)) return ''
+  const m = t.match(/\b([1-9])\b|\b(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b/g)
+  if (!m) return null
+  const u = m[m.length - 1]
+  return NUMEROS[u] ?? u
+}
+/**
+ * Lectura: la persona lee en voz alta el renglón más chico que puede. Se elige el renglón más chico cuyas palabras
+ * (de 4 letras o más) aparecen al menos en un 50 %. "Listo" pasa al informe; "ninguno" marca que no lee ninguno.
+ */
+export function entenderLectura(texto: string, renglones: { id: string; t: string }[]): { id: string } | 'listo' | 'ninguno' | 'repetir' | null {
+  const t = norm(texto)
+  if (repetir(t)) return 'repetir'
+  if (/\b(listo|termine|informe|ya esta)\b/.test(t)) return 'listo'
+  if (/ningun|no (puedo|leo)|no veo/.test(t)) return 'ninguno'
+  const dichas = new Set(t.split(/[^a-z0-9ñ]+/))
+  let mejor: string | null = null
+  for (const r of renglones) { // de más grande a más chico: queda el más chico que coincide
+    const pals = norm(r.t).split(/[^a-z0-9ñ]+/).filter((p) => p.length >= 4)
+    const ok = pals.filter((p) => dichas.has(p)).length
+    if (pals.length && ok / pals.length >= 0.5) mejor = r.id
+  }
+  return mejor ? { id: mejor } : null
+}
+
 export type EstadoEscucha = 'apagado' | 'preparando' | 'escuchando' | 'sin-permiso' | 'no-soportado' | 'error'
 
 /**
  * Escucha mientras `activo` y llama a `onOido` con cada respuesta reconocida (una por frase).
  * Se reinicia sola cuando el navegador corta por silencio.
  */
-export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => void): { estado: EstadoEscucha; ultimo: string; crudo: string } {
+export function useEscucha<T>(activo: boolean, entender: (texto: string) => T | null, onOido: (o: T, texto: string) => void): { estado: EstadoEscucha; ultimo: string; crudo: string } {
   const [estado, setEstado] = useState<EstadoEscucha>('apagado')
   const [ultimo, setUltimo] = useState('')
   // lo último que oyó aunque no lo haya entendido (para que la persona vea que el micrófono anda)
   const [crudo, setCrudo] = useState('')
   const cb = useRef(onOido)
   cb.current = onOido
+  const ent = useRef(entender)
+  ent.current = entender
 
   useEffect(() => {
     if (!activo) { setEstado('apagado'); return }
@@ -106,8 +172,8 @@ export function useEscucha(activo: boolean, onOido: (o: Oido, texto: string) => 
         for (let i = e.resultIndex; i < e.results.length; i++) {
           if (i <= atendido) continue
           const texto = e.results[i][0].transcript
-          const o = interpretar(texto)
-          if (!o) { if (e.results[i].isFinal) setCrudo(texto.trim()); continue }
+          const o = ent.current(texto)
+          if (o === null) { if (e.results[i].isFinal) setCrudo(texto.trim()); continue }
           setCrudo('')
           atendido = i
           pausaHasta = performance.now() + 600

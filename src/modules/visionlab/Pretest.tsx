@@ -16,7 +16,10 @@ import {
 } from './logic'
 import { ComoSeHace } from './ayuda'
 import { Indicador, Ubicarse, useDistancia } from './distancia'
-import { hablar, prepararVoz, puedeEscuchar, tono as tonoAnotado, useEscucha } from './voz'
+import {
+  entenderLectura, entenderNumero, entenderRejilla, entenderReloj, hablar, interpretar, prepararVoz, puedeEscuchar,
+  tono as tonoAnotado, useEscucha,
+} from './voz'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
 import './pretest.css'
 
@@ -42,6 +45,26 @@ const PASOS = ['Calibración', 'Visión de lejos', 'Contraste', 'Astigmatismo', 
 const N_PASOS = PASOS.length
 const PASO_INFORME = N_PASOS + 1
 const CAL_MIN = 150
+// Guía de voz: consigna de cada prueba (se dice al entrar y con "repetí") y la pista corta que queda en pantalla.
+const RENGLONES = [...NEAR].reverse().filter((n) => n.id !== 'J14')
+const CONSIGNAS: Record<number, string> = {
+  2: 'Decí hacia dónde apuntan las patas de la letra: arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.',
+  3: 'Contraste. Con los dos ojos y el celular a 50 centímetros. La letra se va aclarando: decí hacia dónde apunta. Cuando ya no la distingas, decí no la veo.',
+  4: 'Reloj de astigmatismo. Celular a 50 centímetros. Tapate el ojo izquierdo y mirá el centro. Si todas las líneas se ven iguales, decí iguales. Si algunas se ven más oscuras o marcadas, decí distintas.',
+  5: 'Visión de color. Con los dos ojos. Decí qué número ves dentro del círculo. Si no ves ninguno, decí ninguno.',
+  6: 'Rejilla. Celular a 30 centímetros. Tapate el ojo izquierdo y mirá fijo el punto del centro. Si las líneas se ven rectas y completas, decí rectas. Si se ven onduladas o falta alguna parte, decí onduladas.',
+  7: 'Visión de cerca. Celular a 40 centímetros. Tapate el ojo izquierdo y decí hacia dónde apunta la letra.',
+  8: 'Lectura. Con los dos ojos, a 40 centímetros. Leé en voz alta el renglón más chico que puedas leer sin esfuerzo. Si no podés leer ninguno, decí ninguno.',
+}
+const PISTAS: Record<number, string> = {
+  2: 'decí arriba, abajo, derecha, izquierda o no la veo',
+  3: 'decí arriba, abajo, derecha, izquierda o no la veo',
+  4: 'decí “iguales” o “distintas”',
+  5: 'decí el número que ves o “ninguno”',
+  6: 'decí “rectas” u “onduladas”',
+  7: 'decí arriba, abajo, derecha, izquierda o no la veo',
+  8: 'leé en voz alta el renglón más chico que puedas; después decí “listo”',
+}
 const INSTR_VOZ = 'Listo, quedate ahí. Tapate el ojo izquierdo con la palma. Te voy a mostrar letras: decí en voz alta hacia dónde apuntan las patas, arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.'
 const PRUEBAS: [string, string][] = [
   ['Visión de lejos', 'A 3 m, ojo por ojo'],
@@ -558,35 +581,56 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     if (vozLejos) hablar(INSTR_VOZ)
   }
   const vozLejos = usarVoz && (modoLejos ?? 0) >= 2000
-  // Pruebas con E (lejos, contraste, cerca): se responden por voz y las flechas quedan de respaldo.
+  // Todas las pruebas se pueden responder por voz; en las de la E las flechas quedan de respaldo.
   const pruebaE = (step === 2 && modoLejos !== null && (lock !== null || !usarCam)) || step === 3 || step === 7
-  const escucha = useEscucha(usarVoz && pruebaE, (o) => {
-    if (o === 'repetir') return hablar('Decí hacia dónde apuntan las patas de la letra: arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.')
+  const vozPaso = pruebaE || (step >= 4 && step <= 8 && step !== 7)
+  const escucha = useEscucha<unknown>(usarVoz && vozPaso, (t) => {
+    if (step === 4) return entenderReloj(t)
+    if (step === 5) return entenderNumero(t)
+    if (step === 6) return entenderRejilla(t)
+    if (step === 8) return entenderLectura(t, RENGLONES)
+    return interpretar(t)
+  }, (o) => {
+    if (o === 'repetir') return hablar(CONSIGNAS[step] ?? CONSIGNAS[2])
     tonoAnotado()
-    if (step === 2) answerE(o)
-    else if (step === 3) answerC(o)
-    else if (step === 7) answerNear(o)
+    if (step === 2) answerE(o as Dir | 'none')
+    else if (step === 3) answerC(o as Dir | 'none')
+    else if (step === 7) answerNear(o as Dir | 'none')
+    else if (step === 4) answerAstig(o as boolean)
+    else if (step === 5) answerColor(o === '' ? null : String(o))
+    else if (step === 6) answerAmsler(o as boolean)
+    else if (step === 8) {
+      if (o === 'listo') {
+        if (near) void finish()
+        else hablar('Primero leé en voz alta el renglón más chico que puedas, o decí ninguno.')
+      } else if (o === 'ninguno') {
+        setNear('J14')
+        hablar('Anotado. Decí listo para ver tu informe.')
+      } else {
+        setNear((o as { id: NearId }).id)
+        hablar('Anotado. Si podés leer uno más chico, leelo. Si no, decí listo.')
+      }
+    }
   })
   const porVoz = usarVoz && pruebaE && escucha.estado === 'escuchando'
+  const pista = PISTAS[step] ?? PISTAS[2]
   // Si a 3 m vuelve al celular (la cámara lo ve a menos de 1,2 m), aparecen las flechas para tocar.
   const volvioAlCel = step === 2 && (modoLejos ?? 0) >= 2000 && usarCam && dist.mm !== null && dist.mm < 1200
   const [verFlechas, setVerFlechas] = useState(false)
   useEffect(() => { setVerFlechas(false) }, [step])
-  // Al entrar a contraste y a cerca, la consigna también se dice en voz alta.
+  // Al entrar a cada prueba, la consigna también se dice en voz alta (la de lejos se dice al llegar a los 3 m).
   useEffect(() => {
-    if (!usarVoz) return
-    if (step === 3) hablar('Volvé al celular. Ahora contraste: con los dos ojos y el celular a 50 centímetros. La letra se va aclarando: decí hacia dónde apunta. Cuando ya no la distingas, decí no la veo.')
-    if (step === 7) hablar('Visión de cerca. Celular a 40 centímetros. Tapate el ojo izquierdo y decí hacia dónde apunta la letra.')
+    if (usarVoz && step >= 3 && step <= 8) hablar((step === 3 ? 'Volvé al celular. ' : '') + CONSIGNAS[step])
   }, [step, usarVoz])
-  const panelVoz = usarVoz && pruebaE && (
+  const panelVoz = usarVoz && vozPaso && (
     <div className={'escucha ' + escucha.estado} role="status">
       <Mic size={22} />
       <span>{escucha.estado === 'escuchando'
-        ? (escucha.crudo ? <>Escuché “{escucha.crudo}”: decí arriba, abajo, derecha, izquierda o no la veo</>
-          : escucha.ultimo ? <>Escuché: <b>“{escucha.ultimo}”</b></> : 'Te escucho: decí arriba, abajo, derecha o izquierda')
-        : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: respondé tocando las flechas.'
-        : escucha.estado === 'error' ? 'No pude usar el micrófono: respondé tocando las flechas.'
-        : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: respondé tocando las flechas.' : 'Preparando el micrófono…'}</span>
+        ? (escucha.crudo ? <>Escuché “{escucha.crudo}”: {pista}</>
+          : escucha.ultimo && step !== 8 ? <>Escuché: <b>“{escucha.ultimo}”</b></> : <>Te escucho: {pista}</>)
+        : escucha.estado === 'sin-permiso' ? 'Sin permiso para el micrófono: respondé tocando.'
+        : escucha.estado === 'error' ? 'No pude usar el micrófono: respondé tocando.'
+        : escucha.estado === 'no-soportado' ? 'Este celular no reconoce la voz: respondé tocando.' : 'Preparando el micrófono…'}</span>
     </div>
   )
   /** Flechas: siempre si no hay voz; con voz, escondidas detrás de un link. */
@@ -643,14 +687,20 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   // ---------- astigmatismo / Amsler (ojo por ojo) ----------
   function answerAstig(eq: boolean) {
     setS((s) => ({ ...s, astig: { ...s.astig, [eye]: eq } }))
-    if (eye === 'R') return setEye('L')
+    if (eye === 'R') {
+      if (usarVoz) hablar('Ahora destapá el ojo izquierdo y tapate el derecho. ¿Iguales o distintas?')
+      return setEye('L')
+    }
     setS((s) => ({ ...s, colorHits: 0 }))
     setCvI(0)
     go(5)
   }
   function answerAmsler(ok: boolean) {
     setS((s) => ({ ...s, amsler: { ...s.amsler, [eye]: ok } }))
-    if (eye === 'R') return setEye('L')
+    if (eye === 'R') {
+      if (usarVoz) hablar('Ahora el otro ojo: tapate el derecho y mirá el punto. ¿Rectas u onduladas?')
+      return setEye('L')
+    }
     setEye('R')
     setNa(escaleraNueva())
     go(7)
@@ -941,6 +991,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Guia items={[[<Ruler size={14} />, '50 cm'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos' : 'Sin anteojos']]} />
             {usarCam && <Indicador d={dist} objetivo={DIST_MM} tol={0.2} />}
             <Stage izq="Reloj astigmático" der="12 meridianos"><Dial /></Stage>
+            {panelVoz}
             <div className="answers2">
               <button className="btn ghost" onClick={() => answerAstig(true)}>Todas iguales</button>
               <button className="btn ghost" onClick={() => answerAstig(false)}>Algunas más oscuras</button>
@@ -957,6 +1008,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Stage izq={`Lámina ${cvI + 1} de 3`} der="Rojo-verde">
               <canvas ref={canvasRef} width={300} height={300} style={{ width: 'min(280px,72vw)', height: 'auto', borderRadius: '50%' }} />
             </Stage>
+            {panelVoz}
             <div className="choices">
               {opcionesColor.map((v) => <button key={cvI + '-' + v} onClick={() => answerColor(v)}>{v}</button>)}
               <button className="wide" onClick={() => answerColor(null)}>No veo ningún número</button>
@@ -974,6 +1026,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Guia items={[[<Ruler size={14} />, '30 cm · más cerca'], [<Glasses size={14} />, 'Con anteojos de lectura si usás']]} />
             {usarCam && <Indicador d={dist} objetivo={300} tol={0.25} />}
             <Stage izq="Rejilla de Amsler" der="Campo central 10°"><Amsler /></Stage>
+            {panelVoz}
             <div className="answers2">
               <button className="btn ghost" onClick={() => answerAmsler(true)}>Rectas y completas</button>
               <button className="btn ghost" onClick={() => answerAmsler(false)}>Onduladas o con faltantes</button>
@@ -1008,12 +1061,13 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <Guia items={[[<Eye size={14} />, 'Los dos ojos'], [<Ruler size={14} />, '40 cm · distancia de lectura'], [<Glasses size={14} />, 'Con anteojos de lectura si usás']]} />
             {usarCam && <Indicador d={dist} objetivo={DIST_CERCA_MM} tol={0.2} />}
             <div className="nearbox near">
-              {[...NEAR].reverse().filter((n) => n.id !== 'J14').map((n) => (
+              {RENGLONES.map((n) => (
                 <p key={n.id} style={{ fontSize: `${((n.mm * S.pxPerMm) / 0.45).toFixed(1)}px`, lineHeight: 1.35 }}>
                   <span className="jid">{n.id}</span> {n.t}
                 </p>
               ))}
             </div>
+            {panelVoz}
             <div className="nearpick" role="radiogroup">
               {NEAR.map((n) => (
                 <button key={n.id} role="radio" aria-checked={near === n.id} className={near === n.id ? 'sel' : ''} onClick={() => setNear(n.id)}>{n.id === 'J14' ? 'Ninguno' : n.id}</button>
