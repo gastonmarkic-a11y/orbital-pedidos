@@ -29,7 +29,8 @@ export function BotonCopiar({ texto, label = 'Copiar', grande }: { texto: string
   )
 }
 
-// El recuadro que rodea la foto toma el color del fondo de la foto (promedio de las 4 esquinas),
+// La foto llena su recuadro (object-cover, sin márgenes) y el recuadro toma el color de fondo de
+// la foto (promedio de las 4 esquinas) por si queda algún borde mientras carga o en fotos no cuadradas,
 // así no queda un marco blanco alrededor de las fotos con fondo gris.
 const colorFondo = new Map<string, string>()
 function pintarFondo(img: HTMLImageElement) {
@@ -58,7 +59,7 @@ function pintarFondo(img: HTMLImageElement) {
 function Foto({ src, alt }: { src: string | null; alt: string }) {
   return src
     ? <img src={src} alt={alt} crossOrigin="anonymous" onLoad={(e) => pintarFondo(e.currentTarget)}
-        className="w-full h-full object-contain" loading="lazy" />
+        className="w-full h-full object-cover" loading="lazy" />
     : <div className="w-full h-full bg-gradient-to-br from-[#F0F0F2] to-[#E4E4E8]" />
 }
 
@@ -155,7 +156,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
           if (oscuro) {
             return (
               <button key={m.modelo} onClick={() => setAbierto(idx)} className="text-left group">
-                <div className="aspect-square p-3 relative rounded-md overflow-hidden" style={{ background: FONDO_FOTO }}>
+                <div className="aspect-square relative rounded-md overflow-hidden" style={{ background: FONDO_FOTO }}>
                   <Foto src={c0?.imagen} alt={m.modelo} />
                   {insignias}
                 </div>
@@ -177,7 +178,7 @@ export default function ColabAnteojos({ clave, pct, puedeLink, onLink, oscuro, f
           }
           return (
             <button key={m.modelo} onClick={() => setAbierto(idx)} className="text-left bg-white rounded-xl border border-black/10 overflow-hidden hover:border-black/30">
-              <div className="aspect-[4/3] bg-white p-2 relative">
+              <div className="aspect-[4/3] bg-white relative overflow-hidden">
                 <Foto src={c0?.imagen} alt={m.modelo} />
                 {insignias}
               </div>
@@ -266,13 +267,13 @@ function Hoja({ m, pct, clave, puedeLink, onLink, conFicha, soloTriple, onClose,
         <div className="p-4 space-y-4">
           {/* Foto + colores */}
           <div className="bg-white rounded-xl border border-black/10 p-3">
-            <div className="aspect-[16/9] foto-clara rounded-lg p-2"><Foto src={c.imagen} alt={m.modelo} /></div>
+            <div className="aspect-[16/9] foto-clara rounded-lg overflow-hidden"><Foto src={c.imagen} alt={m.modelo} /></div>
             <div className="flex gap-2 overflow-x-auto mt-3 pb-1">
               {m.colores.map((x, i) => (
                 <button key={x.product_id} onClick={() => setCi(i)} title={x.color ?? ''}
                   className="shrink-0 w-16 rounded-lg border-2 overflow-hidden bg-white relative"
                   style={{ borderColor: i === ci ? ACENTO : 'rgba(0,0,0,0.08)' }}>
-                  <div className="h-10 p-0.5 foto-clara"><Foto src={x.imagen} alt={x.color ?? ''} /></div>
+                  <div className="h-10 foto-clara"><Foto src={x.imagen} alt={x.color ?? ''} /></div>
                   {esTriple(x) && <span className="absolute bottom-0 inset-x-0 text-[7px] font-bold text-white text-center" style={{ background: ROJO_TRIPLE }}>TRIPLE</span>}
                 </button>
               ))}
