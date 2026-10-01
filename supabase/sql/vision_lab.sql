@@ -166,3 +166,14 @@ returns jsonb language sql stable security definer set search_path = public as $
   from mods where libre > 0 and foto is not null;
 $$;
 grant execute on function public.pretest_marcos() to anon, authenticated;
+
+-- Obra social / prepaga que eligió en el buscador de oftalmólogos (2026-10-01): para derivar a oftalmólogos de su
+-- cartilla y a la óptica. Texto corto (id de la lista de la página, ej. 'osde', o lo que escribió en "Otra").
+alter table public.pretests add column if not exists obra_social text;
+create or replace function public.pretest_obra_social(p_code text, p_os text)
+returns void language sql security definer set search_path = public as $$
+  update pretests set obra_social = left(nullif(btrim(p_os),''), 60)
+  where code = p_code and created_at > now() - interval '2 days';
+$$;
+revoke all on function public.pretest_obra_social(text, text) from public;
+grant execute on function public.pretest_obra_social(text, text) to anon, authenticated;

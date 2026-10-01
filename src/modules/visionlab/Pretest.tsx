@@ -21,6 +21,7 @@ import {
   tono as tonoAnotado, useEscucha,
 } from './voz'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
+import { OBRAS, ObraSocial, PRINCIPALES } from './obras'
 import './pretest.css'
 
 type Origen = 'web' | 'tienda' | 'qr' | 'suite'
@@ -229,6 +230,10 @@ function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?
   const [opticas, setOpticas] = useState<Optica[] | null>(null)
   const [buscando, setBuscando] = useState(false)
   const [mapaDe, setMapaDe] = useState<string | null>(null)
+  // Obra social / prepaga: para mandar a su cartilla de oftalmólogos y buscar en el mapa los que la atienden.
+  const [os, setOs] = useState<ObraSocial | null>(null)
+  const [verOtras, setVerOtras] = useState(false)
+  const [osOtra, setOsOtra] = useState('')
 
   // Zona en texto: "Palermo, CABA" (barrio del GPS + lo que dice el campo).
   const zonaTexto = [zona?.barrio, loc.trim()].filter(Boolean).join(', ')
@@ -306,6 +311,17 @@ function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?
     return () => clearTimeout(t)
   }, [code, zonaTexto])
 
+  const elegirOs = (o: ObraSocial | null) => {
+    setOs(o)
+    if (code && o) supabase.rpc('pretest_obra_social', { p_code: code, p_os: o.id === 'otra' ? 'otra: ' + osOtra.trim() : o.id }).then(() => {})
+  }
+  // "Otra" escrita a mano: se guarda cuando deja de tipear.
+  useEffect(() => {
+    if (!code || os?.id !== 'otra' || osOtra.trim().length < 3) return
+    const t = setTimeout(() => supabase.rpc('pretest_obra_social', { p_code: code, p_os: 'otra: ' + osOtra.trim() }).then(() => {}), 1500)
+    return () => clearTimeout(t)
+  }, [code, os, osOtra])
+
   const elegirOptica = (o: Optica) => {
     if (code) supabase.rpc('pretest_actualizar', { p_code: code, p_optica_cod: o.cod }).then(() => {})
   }
@@ -368,6 +384,37 @@ function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?
 
       {tab === 'oftalmo' && (
         <div className="opts">
+          <div className="opt">
+            <div className="hd"><b>¿Tenés obra social o prepaga?</b></div>
+            <div className="muted small">Te llevamos a su cartilla de oftalmólogos y te mostramos los que la atienden {hayZona ? 'en ' + zonaTexto : 'cerca tuyo'}.</div>
+            <div className="oschips" role="radiogroup" aria-label="Obra social o prepaga">
+              {PRINCIPALES.map((o) => (
+                <button key={o.id} role="radio" aria-checked={os?.id === o.id} className={os?.id === o.id ? 'sel' : ''} onClick={() => { setVerOtras(false); elegirOs(o) }}>{o.corto ?? o.nombre}</button>
+              ))}
+              <button role="radio" aria-checked={verOtras} className={verOtras ? 'sel' : ''} onClick={() => { setVerOtras(true); setOs(null) }}>Otra</button>
+              <button role="radio" aria-checked={os?.id === 'particular'} className={os?.id === 'particular' ? 'sel' : ''} onClick={() => { setVerOtras(false); elegirOs(OBRAS.find((o) => o.id === 'particular')!) }}>No tengo</button>
+            </div>
+            {verOtras && (
+              <select value={os?.id ?? ''} onChange={(e) => { const o = OBRAS.find((x) => x.id === e.target.value) ?? null; elegirOs(o) }} aria-label="Elegí tu obra social">
+                <option value="" disabled>Elegí tu obra social o prepaga…</option>
+                {OBRAS.filter((o) => !o.principal && o.id !== 'particular').map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </select>
+            )}
+            {os?.id === 'otra' && (
+              <input type="text" value={osOtra} onChange={(e) => setOsOtra(e.target.value)} placeholder="¿Cuál? (ej.: OSPJN)" aria-label="Nombre de tu obra social" />
+            )}
+            {os && os.id !== 'particular' && (
+              <div className="oscard">
+                {os.cartilla && (
+                  <a className="btn" target="_blank" rel="noopener" href={os.cartilla}><Stethoscope size={16} />Cartilla de oftalmólogos de {os.corto ?? os.nombre}</a>
+                )}
+                {os.cartilla && <div className="muted small">{os.ayuda ?? 'En la cartilla elegí la especialidad Oftalmología y tu localidad.'}{os.login ? ' Te va a pedir tu número de afiliado.' : ''}</div>}
+                <a className={os.cartilla ? 'btn ghost' : 'btn'} target="_blank" rel="noopener" href={mapaAbrir(qOftalmo('oftalmólogo ' + (os.id === 'otra' ? osOtra.trim() : os.busqueda ?? os.nombre)))}>
+                  <MapPin size={16} />Oftalmólogos que atienden {os.id === 'otra' ? osOtra.trim() || 'tu obra social' : os.corto ?? os.nombre}
+                </a>
+              </div>
+            )}
+          </div>
           {/* El mapa embebido sin API key muestra un solo punto, no la lista: se abre la búsqueda en Google Maps. */}
           <div className="opt">
             <div className="hd"><b>Oftalmólogos {hayZona ? 'en ' + zonaTexto : 'cerca tuyo'}</b></div>

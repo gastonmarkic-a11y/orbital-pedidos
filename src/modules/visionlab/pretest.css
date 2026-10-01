@@ -330,3 +330,10 @@
 .ovl .escucha.sin-permiso,.ovl .escucha.no-soportado{font-size:15px;color:var(--warn);background:var(--warn-bg);border-color:transparent}
 @keyframes ovl-pulso{50%{transform:scale(1.18);opacity:.6}}
 @media (prefers-reduced-motion:reduce){.ovl .escucha svg{animation:none!important}}
+
+/* obra social / prepaga en el buscador de oftalmólogos */
+.ovl .oschips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.ovl .oschips button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}
+.ovl .oschips button.sel{border-color:var(--ink);background:var(--ink);color:#fff}
+.ovl .opt select,.ovl .opt input[type=text]{margin-top:8px}
+.ovl .oscard{display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}

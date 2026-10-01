@@ -4,13 +4,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, QrCode, Copy, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { nombreObraSocial } from './obras'
 
 type Estado = 'nuevo' | 'contactado' | 'turno' | 'vendido' | 'descartado'
 type Semaforo = 'verde' | 'amarillo' | 'rojo'
 interface Lead {
   id: string; code: string; created_at: string; origen: string; optica_origen: string | null
   nombre: string | null; edad: number | null; usa: string | null; indice: number | null; semaforo: Semaforo | null
-  ticket: string | null; localidad: string | null
+  ticket: string | null; localidad: string | null; obra_social: string | null
   optica_cod: string | null; optica_click_at: string | null; estado: Estado; nota: string | null
 }
 
@@ -155,7 +156,7 @@ export default function VisionLabPanel() {
                   <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-500">{ORIGEN[l.origen] ?? l.origen}</span>
                 </div>
                 <div className="text-[12px] text-neutral-700 mt-0.5">
-                  {[l.nombre, l.edad ? `${l.edad} años` : null, l.usa === 'si' ? 'usa anteojos' : l.usa === 'viejos' ? 'anteojos viejos' : null, l.localidad]
+                  {[l.nombre, l.edad ? `${l.edad} años` : null, l.usa === 'si' ? 'usa anteojos' : l.usa === 'viejos' ? 'anteojos viejos' : null, l.localidad, l.obra_social ? nombreObraSocial(l.obra_social) : null]
                     .filter(Boolean).join(' · ') || 'Sin datos personales'}
                 </div>
                 <div className="text-[11px] text-neutral-500 mt-0.5">
