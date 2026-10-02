@@ -25,6 +25,10 @@
       "destination": "/p/marca-blanca.html"
     },
     {
+      "source": "/berabbit",
+      "destination": "/br/app.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
