@@ -355,13 +355,7 @@
 @media (max-width:520px){.ovl .asives-par{grid-template-columns:1fr}}
 @media print{.ovl .asives{box-shadow:none;border-color:#ccc;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 
-/* ---------- inicio: síntomas de alarma y hábitos ---------- */
-.ovl .alarmas{display:grid;gap:6px}
-.ovl .alarmas button{font:inherit;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer;min-height:44px}
-.ovl .alarmas button .box{width:18px;height:18px;border-radius:5px;border:2px solid var(--line-2);display:grid;place-items:center;flex:none;color:#fff}
-.ovl .alarmas button.sel{border-color:var(--bad);background:var(--bad-bg)}
-.ovl .alarmas button.sel .box{background:var(--bad);border-color:var(--bad)}
-.ovl .urgent .btn{display:inline-flex;background:var(--bad);border-color:var(--bad)}
+/* ---------- inicio: hábitos ---------- */
 .ovl .chips2{display:flex;flex-wrap:wrap;gap:6px}
 .ovl .chips2 button{font:inherit;font-size:14px;font-weight:600;padding:8px 14px;min-height:40px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink-2);cursor:pointer}
 .ovl .chips2 button.sel{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -412,3 +406,14 @@
 .ovl .qrbox img{width:112px;height:112px;flex:none;image-rendering:pixelated}
 .ovl .qrbox>div{display:grid;gap:4px}
 .ovl .qrbox b{font-size:15px}
+
+/* ---------- calibración: borde arrastrable ---------- */
+.ovl .calib{touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;padding-bottom:26px}
+.ovl .calib:active{cursor:grabbing}
+.ovl .ccard .manija{position:absolute;left:50%;bottom:-15px;width:64px;height:28px;margin-left:-32px;border-radius:14px;background:var(--gold);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.ovl .ccard .manija::before,.ovl .ccard .manija::after{content:"";position:absolute;left:16px;right:16px;height:2px;border-radius:2px;background:#fff}
+.ovl .ccard .manija::before{top:8px}.ovl .ccard .manija::after{bottom:8px}
+.ovl .ccard:not(.v) .manija{left:auto;right:-15px;bottom:auto;top:50%;width:28px;height:64px;margin:-32px 0 0}
+.ovl .ccard:not(.v) .manija::before,.ovl .ccard:not(.v) .manija::after{top:16px;bottom:16px;left:auto;right:auto;width:2px;height:auto}
+.ovl .ccard:not(.v) .manija::before{left:8px}.ovl .ccard:not(.v) .manija::after{right:8px}
+.ovl .ccard.v .w{bottom:22px}

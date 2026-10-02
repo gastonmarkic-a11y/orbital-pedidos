@@ -23,7 +23,7 @@ import {
 import { DP, MedirDP } from './dp'
 import { TestFatiga, Fatiga } from './fatiga'
 import {
-  Alarmas, compactar, CuestionarioHabitos, Duocromo, Evolucion, guardarEnHistorial, leerHistorial, OjoDominante, QRProfesional,
+  compactar, CuestionarioHabitos, Duocromo, Evolucion, guardarEnHistorial, leerHistorial, OjoDominante, QRProfesional,
   Recordatorio, Registro, urlProfesional,
 } from './extras'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
@@ -704,8 +704,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const [scrolled, setScrolled] = useState(false)
   const [acepta, setAcepta] = useState(false)
   const [volverA, setVolverA] = useState(0)
-  // Inicio: síntomas de alarma (si hay alguno no se hace la guía) y hábitos para sugerir cristales.
-  const [alarmas, setAlarmas] = useState<string[]>([])
+  // Inicio: hábitos para sugerir cristales.
   const [habitos, setHabitos] = useState<Habitos>(habitosVacios)
   // Calibración en dos partes: la pantalla (tarjeta sobre el dibujo) y, opcional, la DP (tarjeta en la frente).
   const [faseCal, setFaseCal] = useState<'pantalla' | 'frente'>('pantalla')
@@ -731,6 +730,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   }, [])
   const vertical = vista.h > vista.w
   const calMax = Math.max(CAL_MIN + 50, Math.floor(vertical ? vista.h - 24 : vista.w - 40))
+  const arrastre = useRef<{ x: number; y: number; w: number; lado: number } | null>(null)
   useEffect(() => {
     if (step === 1) calibRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [step, vertical])
@@ -1116,8 +1116,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               {usa === 'si' && <div className="note"><Glasses size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Hacé las pruebas de lejos con tus anteojos puestos: así vemos si tu graduación actual todavía te sirve.</div>}
             </div>
 
-            <Alarmas marcadas={alarmas} set={setAlarmas} />
-            {alarmas.length === 0 && <CuestionarioHabitos h={habitos} set={setHabitos} />}
+            <CuestionarioHabitos h={habitos} set={setHabitos} />
 
             <div className="legal-box">
               <b><Info size={16} />Antes de empezar</b>
@@ -1132,7 +1131,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               </label>
             </div>
 
-            <button className="btn block" onClick={() => { setFaseCal('pantalla'); go(1) }} disabled={!acepta || alarmas.length > 0}>Comenzar la guía</button>
+            <button className="btn block" onClick={() => { setFaseCal('pantalla'); go(1) }} disabled={!acepta}>Comenzar la guía</button>
             <div style={{ textAlign: 'center' }}>
               <button className="link" onClick={() => go(PASO_BUSCAR)}><MapPin size={15} />Solo quiero buscar una óptica u oftalmólogo</button>
             </div>
@@ -1154,14 +1153,29 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
           <section className="step calibstep">
             <div>
               <h2>Calibrá tu pantalla</h2>
-              <p className="small">Apoyá una tarjeta {vertical ? <b>parada</b> : <b>acostada</b>} sobre el dibujo y mové el control hasta que coincida <b>exactamente</b> con el borde.</p>
+              <p className="small">Apoyá una tarjeta {vertical ? <b>parada</b> : <b>acostada</b>} sobre el dibujo y <b>arrastrá el borde dorado</b> con el dedo hasta que coincida <b>exactamente</b> con la tarjeta. Para el ajuste fino usá − y +.</p>
             </div>
-            <div className="calib" ref={calibRef}>
+            {/* Arrastrando con el dedo: parada crece hacia abajo (1:1); acostada está centrada y crece a los dos lados (×2). */}
+            <div className="calib" ref={calibRef}
+              onPointerDown={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                arrastre.current = { x: e.clientX, y: e.clientY, w: calW, lado: e.clientX >= r.left + r.width / 2 ? 1 : -1 }
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                const a = arrastre.current
+                if (!a) return
+                const delta = vertical ? e.clientY - a.y : 2 * a.lado * (e.clientX - a.x)
+                setCalW(Math.round(Math.min(calMax, Math.max(CAL_MIN, a.w + delta))))
+              }}
+              onPointerUp={() => { arrastre.current = null }}
+              onPointerCancel={() => { arrastre.current = null }}>
               <div className={'ccard' + (vertical ? ' v' : '')} style={vertical
                 ? { width: (calW * CARD_H_MM) / CARD_MM, height: calW }
                 : { width: calW, height: (calW * CARD_H_MM) / CARD_MM }}>
                 <span className="chipc" /><span className="stripe" />
                 <span className="w num">85,6 mm</span>
+                <span className="manija" aria-hidden="true" />
               </div>
             </div>
             <div className="ajuste">

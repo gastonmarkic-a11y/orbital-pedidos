@@ -1,50 +1,12 @@
 // Orbital Vision Lab: piezas del informe y del inicio que no son pruebas de agudeza.
-// - Síntomas de alarma (cortan la guía y mandan a la guardia) y hábitos (alimentan la sugerencia de cristales).
+// - Hábitos (alimentan la sugerencia de cristales).
 // - Duocromo rojo-verde, ojo dominante, QR para el profesional, recordatorio del próximo control e historial local.
 import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { AlertTriangle, CalendarPlus, Check, History, QrCode, Stethoscope } from 'lucide-react'
+import { CalendarPlus, Check, History, QrCode } from 'lucide-react'
 import { acuityLabel, Duo, Eye as Ojo, Habitos, NearId, Resultados, Usa } from './logic'
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// Síntomas de alarma (como el "eligibility quiz" de Warby Parker): si hay alguno, no se hace la guía.
-export const ALARMAS = [
-  'Pérdida de visión repentina',
-  'Dolor en el ojo',
-  'Destellos, moscas nuevas o una “cortina”',
-  'Visión doble de golpe',
-  'Golpe, corte o químico en el ojo',
-  'Ojo rojo con dolor o sensibilidad a la luz',
-]
-
-export function Alarmas({ marcadas, set }: { marcadas: string[]; set: (m: string[]) => void }) {
-  const toggle = (a: string) => set(marcadas.includes(a) ? marcadas.filter((x) => x !== a) : [...marcadas, a])
-  return (
-    <div className="card field">
-      <div>
-        <label>¿Tenés ahora alguno de estos síntomas?</label>
-        <div className="alarmas">
-          {ALARMAS.map((a) => (
-            <button key={a} type="button" role="checkbox" aria-checked={marcadas.includes(a)} className={marcadas.includes(a) ? 'sel' : ''} onClick={() => toggle(a)}>
-              <span className="box">{marcadas.includes(a) && <Check size={13} />}</span>{a}
-            </button>
-          ))}
-        </div>
-      </div>
-      {marcadas.length > 0 && (
-        <div className="urgent">
-          <AlertTriangle size={18} />
-          <span>
-            <b>No hagas la guía: consultá hoy en una guardia oftalmológica.</b> Estos síntomas necesitan que te vea un médico
-            cuanto antes y no se evalúan con el celular.
-            <a className="btn sm" style={{ marginTop: 10 }} target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=guardia%20oftalmol%C3%B3gica%20cerca%20de%20m%C3%AD"><Stethoscope size={15} />Guardias oftalmológicas cerca</a>
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /** Cuestionario de hábitos (como el "Vision Profile" de Zeiss). Todo opcional. */
 export function CuestionarioHabitos({ h, set }: { h: Habitos; set: Dispatch<SetStateAction<Habitos>> }) {
   const fila = <K extends keyof Habitos>(k: K, titulo: string, ops: [Habitos[K], string][]) => (
