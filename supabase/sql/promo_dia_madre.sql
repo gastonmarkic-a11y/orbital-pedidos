@@ -14,6 +14,8 @@ create table if not exists promo_precio (
   created_at timestamptz not null default now()
 );
 create index if not exists promo_precio_modelo on promo_precio (modelo);
+-- codigo null = todo el modelo; con codigo = solo ese color (SKU).
+alter table promo_precio add column if not exists codigo text;
 alter table promo_precio enable row level security;
 drop policy if exists promo_precio_lectura on promo_precio;
 create policy promo_precio_lectura on promo_precio for select to authenticated using (true);
@@ -23,6 +25,14 @@ create or replace function _promo_precio(p_modelo text, p_at timestamptz default
 returns numeric language sql stable security definer set search_path to 'public' as $$
   select min(precio) from promo_precio
    where activo and modelo = p_modelo and p_at >= desde and p_at < hasta
+$$;
+
+-- Igual, por color: vale la fila del SKU o la de todo el modelo (codigo null).
+create or replace function _promo_precio_sku(p_codigo text, p_modelo text, p_at timestamptz default now())
+returns numeric language sql stable security definer set search_path to 'public' as $$
+  select min(precio) from promo_precio
+   where activo and modelo = p_modelo and (codigo is null or codigo = p_codigo)
+     and p_at >= desde and p_at < hasta
 $$;
 
 -- Se carga apagada: se prende (update ... set activo = true) recién cuando la Suite que la respeta está publicada.
@@ -52,13 +62,14 @@ begin
   v as (
     select s.modelo as mod, s.es_caliente, s.clasificacion, s.tratamiento, s.tipo, s.descripcion,
       case when v_dist then coalesce(pe.precio_neto, s.precio)
-           else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio(s.modelo), coalesce(pe.precio_neto, s.precio))) end as precio,
+           else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio_sku(s.codigo, s.modelo), coalesce(pe.precio_neto, s.precio))) end as precio,
       s.precio as precio_lista,
       (l.fisico_libre <= 0) as v_proy,
       row_number() over (partition by s.modelo order by coalesce(s.es_caliente,false) desc, (l.fisico_libre<=0), s.descripcion) as rn,
       (position('/' in s.descripcion) > 0
         and substring(s.descripcion from position('/' in s.descripcion)) ~* '(ocre|naranj|roj|amaril|ambar|ámbar)') as v_bajaluz,
       (s.tratamiento ilike '%blue cut%') as v_bluecut,
+      (not v_sp and not v_dist and _promo_precio_sku(s.codigo, s.modelo) is not null) as v_pm,
       (select pi.url from producto_imagenes pi
          where pi.codigo = s.codigo and pi.url not ilike '%packaging%' and not pi.es_lifestyle
          order by pi.orden nulls last, pi.id limit 1) as img_prod,
@@ -87,12 +98,12 @@ begin
   ),
   allf as (
     select d.mod,
-      jsonb_agg(jsonb_build_object('u',d.u,'c',d.c,'t',d.t,'k',d.k,'tp',d.tp,'bl',d.bl,'bc',d.bc,'ca',d.ca,'pr',d.pr,'o',d.o) order by d.rn) as fotos,
+      jsonb_agg(jsonb_build_object('u',d.u,'c',d.c,'t',d.t,'k',d.k,'tp',d.tp,'bl',d.bl,'bc',d.bc,'ca',d.ca,'pr',d.pr,'o',d.o,'pm',d.pm) order by d.rn) as fotos,
       array_remove(array_agg(d.u order by d.rn), null) as imgs
     from (
       select distinct on (v.mod, v.descripcion) v.mod,
         coalesce(v.img_prod, v.img_any, v.img_modelo) u, v.descripcion c, v.tratamiento t,
-        v.clasificacion k, v.tipo tp, v.v_bajaluz bl, v.v_bluecut bc, coalesce(v.es_caliente,false) ca, v.v_proy pr, (v.img_prod is not null or v.img_any is not null) o, v.rn
+        v.clasificacion k, v.tipo tp, v.v_bajaluz bl, v.v_bluecut bc, coalesce(v.es_caliente,false) ca, v.v_proy pr, (v.img_prod is not null or v.img_any is not null) o, v.v_pm pm, v.rn
       from v order by v.mod, v.descripcion, v.rn
     ) d group by d.mod
   ),
@@ -139,7 +150,7 @@ begin
   select s.codigo, s.descripcion, s.tipo, s.tratamiento, s.clasificacion,
     case when v_sp then 0
          when v_dist then coalesce(pe.precio_neto, s.precio)
-         else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio(s.modelo), coalesce(pe.precio_neto, s.precio))) end as precio,
+         else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio_sku(s.codigo, s.modelo), coalesce(pe.precio_neto, s.precio))) end as precio,
     case when v_sp then 0 else s.precio end as precio_lista,
     false as tiene_preventa,
     coalesce(s.es_caliente,false) as caliente,
@@ -254,7 +265,7 @@ begin
         select coalesce(pe.precio_neto, s.precio) base,
                (select pr.promo from promo_precio pr where pr.modelo = s.modelo and pr.activo order by pr.hasta desc limit 1) nom,
                case when v_pcli in ('010001','010002') then coalesce(pe.precio_neto, s.precio)
-                    else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio(s.modelo), coalesce(pe.precio_neto, s.precio))) end ok
+                    else least(coalesce(pe.precio_neto, s.precio), coalesce(_promo_precio_sku(s.codigo, s.modelo), coalesce(pe.precio_neto, s.precio))) end ok
           from stock s
           left join cliente_precio_especial pe on pe.cod_cliente = v_pcli and pe.modelo = s.modelo
          where s.codigo = it.value->>'codigo'
@@ -285,3 +296,115 @@ begin
                             'total_units', v_total, 'importe', v_importe,
                             'identificado', (v_cod is not null));
 end; $function$;
+
+
+-- ── Día de la Madre por COLOR (2/10): solo los colores de la colección Para Ellas de Shopify ──
+-- (orbitaleyewear.com.ar/collections/para-ellas). Cruce por SKU y, si el SKU de la tienda es otro
+-- código, por modelo + color normalizado. El stock lo filtra el catálogo en vivo (libre > 0).
+create or replace function _norm_color(t text) returns text language sql immutable as $$
+  select trim(regexp_replace(regexp_replace(translate(lower(coalesce(t,'')),'áéíóúü','aeiouu'),'\s*/\s*','/','g'),'\s+',' ','g'))
+$$;
+update promo_precio set activo = false where promo = 'Día de la Madre' and codigo is null;
+insert into promo_precio (promo, modelo, codigo, precio, desde, hasta, activo)
+select 'Día de la Madre', s.modelo, s.codigo, 48000, now(), '2026-10-20 00:00:00-03', true
+  from stock s
+ where (s.codigo in ('002050978900103','002050921900100','000050A27900100','002050960901183','000050A28900100','00205096092553F','00205096490000P','000050A29905414','000050A28905402','000050707902811','00205096390010P','00205096090010P','00205096090123F','000050A29900100','000050A27973502','000050A25925511','002050917905412','000050A32972604','000050A29905412','000050A29900103','000050A28905412','000050A27905402','000050A32900204','000050A32900003','000050A32903804','000050A32905402','002050964900105','002050917900111','002050964925500','002050964900258','002050964925556','002050964900212','002050964900202','000050A32900100','002050A36973404','000050A29973502','000050A28973502','000050A27905412','000050A27900114','002050964900134','002050943900103','002050943905400','000050A32973411','000050A3290015F','00205096390125F','002050963972212','002050963900058','002050960900914','002050917900114','00205097890002P','00005070790286F','000050707902800','00205096096493F','002050921905402','002050921900103','002050A36905402','002050A36905412','002050A36973504','002050A36900100','000050A29900105','000050A29900111','000050A29973404','000050A28973402','000050A28900111','000050A28900114','000050A27900111','000050A25900214','002050921925503','002050943903502','000050A32900103','000050A32905404','000050A32903811','000050A32972602','000050A32925500','000050A32900202','000050A32904804','000050A3290010P')
+        or (s.modelo, _norm_color(s.descripcion)) in (select m, _norm_color(c) from (values
+          ('LOS HAMPTON','Negro Brillo / Gris Degrade'),
+          ('BRERA','Negro Brillo / Gris'),
+          ('CHARLOTTE','Negro Brillo / Gris'),
+          ('VENICE','Verde Clear / Flash Deg Verde'),
+          ('CRETA','Negro Brillo / Gris'),
+          ('VENICE','Gris Clear / Flash Deg Gris'),
+          ('PARIS','Negro Mate / Gris Polarizado'),
+          ('SOPHIA','Carey Brillo Clear / Rosa'),
+          ('CRETA','Carey Brillo Clear / Habano'),
+          ('REBECCA','Dorado Brillo / Verde'),
+          ('ROMA','Negro Brillo / Gris Polarizado'),
+          ('VENICE','Negro Brillo / Gris Polarizado'),
+          ('VENICE','Celeste Clear / Gris Flash'),
+          ('SOPHIA','Negro Brillo / Gris'),
+          ('CHARLOTTE','Hueso Brillo / Habano'),
+          ('ATLANTIC CITY','Gris Brillo Clear / Verde'),
+          ('WYNWOOD','Carey Mate / Celeste'),
+          ('PALERMO','Beige Pastel Mate Compacto / Habano Degrade'),
+          ('SOPHIA','Carey Brillo Clear / Celeste'),
+          ('SOPHIA','Negro Brillo / Gris Degrade'),
+          ('CRETA','Carey Brillo Clear / Celeste'),
+          ('CHARLOTTE','Carey Brillo Clear / Habano'),
+          ('PALERMO','Habano Brillo Clear / Habano Degrade'),
+          ('PALERMO','Negro Mate Compacto / Gris Degrade'),
+          ('PALERMO','Marron Mate / Habano Degrade'),
+          ('PALERMO','Carey Brillo Clear / Habano'),
+          ('PARIS','Negro Brillo / Ocre'),
+          ('WYNWOOD','Negro Brillo / Verde'),
+          ('PARIS','Gris Brillo Clear / Gris'),
+          ('PARIS','Habano Brillo / Champagne'),
+          ('PARIS','Gris Clear / Plateado Espejado'),
+          ('PARIS','Habano   Brillo Clear / Celeste'),
+          ('PARIS','Habano   Brillo Clear / Habano'),
+          ('PALERMO','Negro Brillo / Gris'),
+          ('WYNWOOD','Marron Brillo / Habano Degrade'),
+          ('SOPHIA','Hueso Brillo / Habano'),
+          ('CRETA','Hueso Brillo / Habano'),
+          ('CHARLOTTE','Carey Brillo Clear / Celeste'),
+          ('CHARLOTTE','Negro Brillo / Rosa'),
+          ('PARIS','Negro Brillo / Naranja'),
+          ('BROOKLYN','Negro Brillo - Gris Degrade'),
+          ('BROOKLYN','Carey - Gris'),
+          ('PALERMO','Marron Brillo Compacto / Verde'),
+          ('PALERMO','Negro Brillo / Celeste Flash'),
+          ('LOS HAMPTON','Negro Brillo / Espejo Rosa'),
+          ('LOS HAMPTON','Negro Brillo / Espejo Champagne'),
+          ('ROMA','Negro Brillo / Amarillo'),
+          ('ROMA','Bordo Mate / Espejo Rosa'),
+          ('ROMA','Celeste Clear / Celeste Flash'),
+          ('ROMA','Celeste Clear / Celeste'),
+          ('ROMA','Negro Mate / Espejo Oro'),
+          ('VENICE','Bordo Mate / Rosa'),
+          ('WYNWOOD','Negro Brillo / Rosa'),
+          ('LOS HAMPTON','Negro Mate / Habano Polarizado'),
+          ('REBECCA','Dorado Brillo / Habano Flash Degrade'),
+          ('REBECCA','Dorado Brillo / Gris'),
+          ('VENICE','Amarillo Clear / Gris Flash'),
+          ('BRERA','Carey Brillo / Habano'),
+          ('BRERA','Negro Brillo / Gris Degrade'),
+          ('WYNWOOD','Carey Brillo Clear / Habano'),
+          ('WYNWOOD','Carey Brillo Clear / Celeste'),
+          ('WYNWOOD','Hueso Brillo / Habano Degrade'),
+          ('WYNWOOD','Negro Brillo / Gris'),
+          ('SOPHIA','Negro Brillo / Ocre'),
+          ('SOPHIA','Negro Brillo / Verde'),
+          ('SOPHIA','Marron Brillo / Habano Degrade'),
+          ('CRETA','Marron Brillo / Habano'),
+          ('CRETA','Negro Brillo / Verde'),
+          ('CRETA','Negro Brillo / Rosa'),
+          ('CHARLOTTE','Negro Brillo / Verde'),
+          ('ATLANTIC CITY','Habano Brillo Clear / Rosa'),
+          ('BRERA','Gris Clear / Gris Degrade'),
+          ('BROOKLYN','Azul Clear - Habano'),
+          ('PALERMO','Negro Brillo Compacto / Gris Degrade'),
+          ('PALERMO','Carey Brillo Clear / Habano Degrade'),
+          ('PALERMO','Marron Mate / Verde'),
+          ('PALERMO','Beige Pastel Mate / Habano'),
+          ('PALERMO','Gris Brillo Clear / Gris'),
+          ('PALERMO','Habano Brillo Clear / Habano'),
+          ('PALERMO','Marrón Mate / Habano Degradé'),
+          ('PALERMO','Negro Brillo / Gris Polarizado')) x(m, c)))
+   and not exists (select 1 from promo_precio p where p.promo = 'Día de la Madre' and p.codigo = s.codigo);
+
+-- Si la colección cubre TODOS los colores con stock de un modelo, la promo va por modelo entero
+-- (fila con codigo null) y no color por color.
+with cubiertos as (
+  select s.modelo
+    from stock s join stock_libre(null, null, null) l on l.codigo = s.codigo
+   where l.libre > 0 and s.modelo in (select modelo from promo_precio where promo = 'Día de la Madre' and codigo is not null and activo)
+   group by s.modelo
+  having bool_and(exists (select 1 from promo_precio p where p.promo = 'Día de la Madre' and p.codigo = s.codigo and p.activo))
+), alta as (
+  update promo_precio p set activo = true
+    from cubiertos c where p.promo = 'Día de la Madre' and p.codigo is null and p.modelo = c.modelo
+  returning p.modelo
+)
+update promo_precio p set activo = false
+  from cubiertos c where p.promo = 'Día de la Madre' and p.codigo is not null and p.modelo = c.modelo;

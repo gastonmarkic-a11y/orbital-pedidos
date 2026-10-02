@@ -36,7 +36,8 @@ interface Variante {
 // precio_lista: solo en ítems en promo (Día de la Madre) → se muestra tachado y el ahorro
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean; precio_lista?: number }
 // o = la foto es del propio color (false = genérica del modelo, heredada por un color sin foto)
-interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean }
+// pm = ese color está en la promo (Día de la Madre)
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean; pm?: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
@@ -379,10 +380,18 @@ const DIA_MADRE_PRECIO = 48000
 // El precio promo lo pone la base (tabla promo_precio): acá solo se detecta para mostrar el descuento.
 const enPromo = (modelo: string, precio: number | null | undefined, lista: number | null | undefined) =>
   DIA_MADRE_MODELOS.includes(modelo) && !!precio && !!lista && precio < lista
+// Modelo con algún color en promo (la base marca cada color con pm; solo colores con stock)
+const tienePromo = (m: HomeModelo) => (m.fotos || []).some((f) => f.pm)
 const pctOff = (precio: number, lista: number) => Math.round((1 - precio / lista) * 100)
 // Importe a precio cerrado (promo) y ahorro del carrito: la promo no suma escalera / bono / contado.
 const importePromo = (items: CartItem[]) => items.reduce((a, c) => a + (c.precio_lista && c.precio_lista > c.precio ? c.cantidad * c.precio : 0), 0)
 const ahorroPromo = (items: CartItem[]) => items.reduce((a, c) => a + (c.precio_lista && c.precio_lista > c.precio ? c.cantidad * (c.precio_lista - c.precio) : 0), 0)
+// Desde la sección Día de la Madre: solo los colores en promo (si el modelo no tiene ninguno, todos)
+function filtrarPromo(vs: Variante[], modelo: string, soloPromo?: boolean): Variante[] {
+  if (!soloPromo) return vs
+  const p = vs.filter((v) => enPromo(modelo, v.precio, v.precio_lista))
+  return p.length ? p : vs
+}
 function PromoTag({ precio, lista, chico }: { precio: number; lista: number; chico?: boolean }) {
   return <span className={`${chico ? 'text-[8px] px-1.5' : 'text-[10px] px-2'} font-bold rounded-full py-0.5 bg-pink-100 text-pink-700 whitespace-nowrap`}>−{pctOff(precio, lista)}% Día de la Madre</span>
 }
@@ -399,7 +408,7 @@ const matchGrupo = (g: Grupo, m: HomeModelo) => {
 }
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea' | 'madre'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
-  ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => DIA_MADRE_MODELOS.includes(m.modelo) }] : []),
+  ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => tienePromo(m) }] : []),
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
@@ -467,7 +476,7 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
 }
 
 // Banner de campaña: Especial Día de la Madre (home y sección). Los precios no cambian.
-function DiaMadreBanner({ onVer, enSeccion, promo }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean }) {
+function DiaMadreBanner({ onVer, enSeccion, promo, modelos }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean; modelos?: number }) {
   const sinPrecios = useSinPrecios()
   const Tag = onVer ? 'button' : 'div'
   // Foto de campaña (madre e hija con anteojos). La mitad izquierda es pared clara: ahí va el texto en desktop;
@@ -480,7 +489,7 @@ function DiaMadreBanner({ onVer, enSeccion, promo }: { onVer?: () => void; enSec
         <p className="text-[10px] tracking-[0.3em] uppercase font-semibold text-neutral-600">Especial Día de la Madre · Domingo 18/10</p>
         <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold uppercase tracking-tight leading-[0.95] mt-2">Modern<br />Mom</h2>
         <p className="text-sm text-neutral-700 mt-3 max-w-sm leading-relaxed">
-          La selección <b>Para Ellas</b>: {DIA_MADRE_MODELOS.length} modelos de sol para armar la vidriera del regalo
+          La selección <b>Para Ellas</b>: {modelos || DIA_MADRE_MODELOS.length} modelos de sol para armar la vidriera del regalo
           {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
         </p>
         {onVer && !enSeccion && (
@@ -499,16 +508,19 @@ function ProtBadge({ triple }: { triple: boolean }) {
 // Tarjeta de modelo reutilizable (grilla y secciones)
 function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () => void; onQuick: () => void; grupo?: string }) {
   const sinPrecios = useSinPrecios()
+  // En la sección Día de la Madre la tarjeta muestra solo los colores que están en la promo
+  const fotos = grupo === 'diamadre' && tienePromo(m) ? m.fotos.filter((f) => f.pm) : m.fotos
+  const nColores = fotos === m.fotos ? m.n_colores : fotos.length
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
-        <CardCarousel fotos={m.fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(m.fotos, grupo, m.modelo)} />
+        <CardCarousel fotos={fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(fotos, grupo, m.modelo)} />
         {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
         {m.has_bluecut && <ProtBadge triple={m.tratamientos.includes('Infrarrojo + Blue cut')} />}
       </div>
       <button onClick={onOpen} className="text-left w-full block px-3 pt-3 pb-2 flex-1">
         <p className="text-sm font-semibold truncate">{m.modelo}</p>
-        <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
+        <p className="text-[11px] text-neutral-400">{nColores} color{nColores !== 1 ? 'es' : ''}{fotos !== m.fotos ? ' en promo' : ''}</p>
         {sinPrecios
           ? <p className="text-[11px] font-semibold mt-1 text-emerald-600">Disponible</p>
           : enPromo(m.modelo, m.precio_desde, m.precio_lista_desde) ? (
@@ -895,6 +907,10 @@ export default function CatalogoPublico() {
   // navegación
   const [sel, setSel] = useState<Modelo | null>(null)
   const [quick, setQuick] = useState<Modelo | null>(null)
+  // Abierto desde la sección Día de la Madre: el selector y la ficha muestran solo los colores en promo
+  const [soloPromo, setSoloPromo] = useState(false)
+  const abrir = (m: Modelo, promo = false) => { setSoloPromo(promo); setSel(m) }
+  const rapido = (m: Modelo, promo = false) => { setSoloPromo(promo); setQuick(m) }
   const [infoGrupo, setInfoGrupo] = useState<string | null>(null)
   const [carritoOpen, setCarritoOpen] = useState(false)
   const [cart, setCart] = useState<Record<string, CartItem>>(() => {
@@ -955,7 +971,8 @@ export default function CatalogoPublico() {
   const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn))), [todos, qn])
   const grupoObj = GRUPOS.find((g) => g.key === grupoActivo) || null
   // La promo de precio está prendida en la base si algún modelo de la selección viene con descuento
-  const promoActiva = todos.some((m) => enPromo(m.modelo, m.precio_desde, m.precio_lista_desde))
+  const modelosPromo = todos.filter(tienePromo).length
+  const promoActiva = modelosPromo > 0
   const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
@@ -1236,7 +1253,7 @@ export default function CatalogoPublico() {
           </div>
         ) : grupoObj ? (
           <>
-            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} />}
+            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} modelos={modelosPromo} />}
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
               <button onClick={() => setInfoGrupo(grupoObj.key)} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupoObj.nombre}`}>
                 <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupoObj.nombre}</span>
@@ -1247,7 +1264,7 @@ export default function CatalogoPublico() {
               <button onClick={irInicio} className="text-[11px] font-semibold whitespace-nowrap opacity-90 hover:opacity-100">← Inicio</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              {modelosGrupo.map((m) => <ModelCard key={m.modelo} m={m} grupo={grupoObj.key} onOpen={() => setSel(m)} onQuick={() => setQuick(m)} />)}
+              {modelosGrupo.map((m) => <ModelCard key={m.modelo} m={m} grupo={grupoObj.key} onOpen={() => abrir(m, grupoObj.key === 'diamadre')} onQuick={() => rapido(m, grupoObj.key === 'diamadre')} />)}
             </div>
           </>
         ) : (
@@ -1261,7 +1278,7 @@ export default function CatalogoPublico() {
               if (g.key === 'bajaluz' || g.key === 'diamadre') {
                 if (!items.length) return null
                 return <SectionRow key={g.key} grupo={g} items={items} row={items}
-                  onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
+                  onOpen={(m) => abrir(m, g.key === 'diamadre')} onQuick={(m) => rapido(m, g.key === 'diamadre')} onInfo={() => setInfoGrupo(g.key)} />
               }
               const row = items.filter((m) => MULTI_GRUPO.includes(m.modelo) || !usados.has(m.modelo))
               row.forEach((m) => { if (!MULTI_GRUPO.includes(m.modelo)) usados.add(m.modelo) })
@@ -1271,7 +1288,7 @@ export default function CatalogoPublico() {
             })
             return (
               <>
-                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} />}
+                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosPromo} />}
                 {secciones}
               </>
             )
@@ -1281,14 +1298,14 @@ export default function CatalogoPublico() {
 
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
 
-      {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
+      {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {comoPagar && <MediosPagoCatalogo onClose={() => setComoPagar(false)} />}
       {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
       {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
       {compras && esOptica && <MisCompras clave={clave} onClose={() => setCompras(false)} />}
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
-      {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
+      {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
         topModelos={todos.filter((m) => m.caliente).map((m) => m.modelo)} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
@@ -1330,8 +1347,8 @@ export default function CatalogoPublico() {
 }
 
 // ── Carga rápida desde la grilla: elegir color y cantidad sin entrar al detalle ──
-function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle }: {
-  modelo: Modelo; clave: string; cart: Record<string, CartItem>
+function QuickAdd({ modelo, clave, cart, soloPromo, onAdd, onSetQty, onClose, onVerDetalle }: {
+  modelo: Modelo; clave: string; cart: Record<string, CartItem>; soloPromo?: boolean
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void; onVerDetalle: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
@@ -1339,9 +1356,9 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
   const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
-      setVars(error ? [] : ((data as Variante[]) ?? [])); setLoading(false)
+      setVars(filtrarPromo(error ? [] : ((data as Variante[]) ?? []), modelo.modelo, soloPromo)); setLoading(false)
     })
-  }, [clave, modelo.modelo])
+  }, [clave, modelo.modelo, soloPromo])
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -1470,8 +1487,8 @@ function ContenidoBuscar({ modelos, clave, esOptica, solapaInicial, onElegir, on
 }
 
 // ── Ficha del modelo con carrusel de colores ──
-function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSetQty, onClose }: {
-  modelo: Modelo; clave: string; esOptica: boolean; soloContenido?: boolean; cart: Record<string, CartItem>
+function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, onAdd, onSetQty, onClose }: {
+  modelo: Modelo; clave: string; esOptica: boolean; soloContenido?: boolean; cart: Record<string, CartItem>; soloPromo?: boolean
   onAdd: (v: Variante, modelo: string) => void; onSetQty: (codigo: string, n: number) => void; onClose: () => void
 }) {
   const [vars, setVars] = useState<Variante[]>([])
@@ -1483,7 +1500,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       // Los colores con foto propia primero: la ficha abre en uno que se ve (orden estable)
-      const vs = error ? [] : ((data as Variante[]) ?? [])
+      const vs = filtrarPromo(error ? [] : ((data as Variante[]) ?? []), modelo.modelo, soloPromo)
       setVars([...vs.filter((x) => x.imagen), ...vs.filter((x) => !x.imagen)]); setLoading(false)
     })
     supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))

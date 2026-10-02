@@ -65,7 +65,8 @@ export default function NuevoPedido() {
   // Precios especiales del cliente (lista especial por cliente). Clave = modelo en MAYÚSCULAS.
   const [preciosEsp, setPreciosEsp] = useState<Record<string, number>>({})
   // Promos por modelo con vigencia (tabla promo_precio, ej. Día de la Madre). Precio neto cerrado.
-  const [promos, setPromos] = useState<{ modelo: string; precio: number; promo: string; desde: string; hasta: string }[]>([])
+  // codigo null = todo el modelo; con codigo = solo ese color.
+  const [promos, setPromos] = useState<{ modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string }[]>([])
   // Fecha de referencia de la promo: la del pedido web (si la óptica lo armó en promo, se respeta aunque se cargue después).
   const [webCreado, setWebCreado] = useState<string | null>(null)
   const [busquedaStock, setBusquedaStock] = useState('')
@@ -195,7 +196,7 @@ export default function NuevoPedido() {
   }, [cliente?.cod])
 
   useEffect(() => {
-    supabase.from('promo_precio').select('modelo, precio, promo, desde, hasta').eq('activo', true)
+    supabase.from('promo_precio').select('modelo, codigo, precio, promo, desde, hasta').eq('activo', true)
       .then(({ data }) => setPromos(((data ?? []) as typeof promos).map((p) => ({ ...p, precio: Number(p.precio) }))))
   }, [])
 
@@ -503,11 +504,11 @@ export default function NuevoPedido() {
     modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined
   // Promo vigente para el modelo, solo si baja el precio que pagaría el cliente (lista o especial).
   // Distribuidores (lista 1) ya pagan menos → no les aplica. La venta de consigna no entra en promos.
-  const promoDe = (modelo: string | null | undefined, precioBase: number | null | undefined): { precio: number; promo: string } | undefined => {
+  const promoDe = (codigo: string, modelo: string | null | undefined, precioBase: number | null | undefined): { precio: number; promo: string } | undefined => {
     if (!modelo || esConsigna || !promos.length) return undefined
     const ref = new Date(precargaWebId && webCreado ? webCreado : Date.now())
     const m = modelo.trim().toUpperCase()
-    const p = promos.find((x) => x.modelo === m && ref >= new Date(x.desde) && ref < new Date(x.hasta))
+    const p = promos.find((x) => x.modelo === m && (!x.codigo || x.codigo === codigo) && ref >= new Date(x.desde) && ref < new Date(x.hasta))
     if (!p) return undefined
     const base = espDe(modelo) ?? (precioBase ? getPrecioLista(precioBase, cliente?.nro_lista ?? 5) : 0)
     return p.precio < base ? { precio: p.precio, promo: p.promo } : undefined
@@ -521,7 +522,7 @@ export default function NuevoPedido() {
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
     const esp = espDe(info?.modelo)
-    const pr = esPreventa ? undefined : promoDe(info?.modelo, info?.precio)
+    const pr = esPreventa ? undefined : promoDe(k, info?.modelo, info?.precio)
     return {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
@@ -540,7 +541,7 @@ export default function NuevoPedido() {
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
     const esp = espDe(info?.modelo)
-    const pr = esPreventa ? undefined : promoDe(info?.modelo, info?.precio)
+    const pr = esPreventa ? undefined : promoDe(k, info?.modelo, info?.precio)
     const item: PedidoItem = {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
@@ -695,7 +696,7 @@ export default function NuevoPedido() {
         const esRegalo = regaloSel.has(k)
         const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
         const esp = espDe(p?.modelo ?? info?.modelo)
-        const pr = esPreventa ? undefined : promoDe(p?.modelo ?? info?.modelo, info?.precio)
+        const pr = esPreventa ? undefined : promoDe(k, p?.modelo ?? info?.modelo, info?.precio)
         return {
           codigo: k,
           modelo: p?.modelo ?? info?.modelo ?? k,
