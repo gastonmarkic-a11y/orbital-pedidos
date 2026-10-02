@@ -189,3 +189,54 @@ returns void language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.pretest_extras(text, jsonb) from public;
 grant execute on function public.pretest_extras(text, jsonb) to anon, authenticated;
+
+-- Armazones del informe (2026-10-02, pedido de Gastón): todo el catálogo mayorista de receta con stock libre (no solo
+-- los que tienen medidas cargadas). Precio solo si el modelo tiene precio minorista (precios_publicos); si no, sin
+-- precio. Medidas cuando estén cargadas (si no, null y la página dice "medidas a confirmar").
+create or replace function public.pretest_marcos()
+returns jsonb language sql stable security definer set search_path = public as $$
+  with lib as (select * from stock_libre(null, null, null)),
+  mods as (
+    select s.modelo,
+      sum(greatest(l.libre, 0)) libre,
+      bool_or(coalesce(s.es_caliente, false)) caliente,
+      coalesce(
+        (select pi.url from producto_imagenes pi join stock s2 on s2.codigo = pi.codigo
+          where s2.modelo = s.modelo and s2.tipo = 'receta' and pi.url not ilike '%packaging%' and not coalesce(pi.es_lifestyle, false)
+          order by pi.orden nulls last, (pi.url ilike '%.png%'), pi.id limit 1),
+        (select pi.url from producto_imagenes pi
+          where pi.modelo = s.modelo and pi.codigo is null and pi.url not ilike '%packaging%'
+          order by pi.es_lifestyle, pi.orden nulls last, pi.id limit 1)) foto,
+      (select min(pp.precio) from precios_publicos pp join stock s3 on s3.codigo = pp.codigo
+        where s3.modelo = s.modelo and s3.tipo = 'receta' and pp.precio > 0) precio_desde
+    from stock s
+    join lib l on l.codigo = s.codigo
+    where s.tipo = 'receta' and l.libre > 0
+    group by s.modelo
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'modelo', mo.modelo, 'alto_mm', round(m.alto * 10), 'ancho_mm', round(m.ancho * 10), 'formato', m.formato,
+    'frente', m.frente, 'para', m.para, 'foto', mo.foto, 'precio_desde', mo.precio_desde)
+    order by mo.caliente desc, mo.libre desc), '[]'::jsonb)
+  from mods mo
+  left join producto_medidas m on m.modelo = mo.modelo
+  where mo.foto is not null;
+$$;
+grant execute on function public.pretest_marcos() to anon, authenticated;
+
+-- Foto de la receta (2026-10-02): la persona la sube desde el informe para llevarla a la óptica. Bucket privado
+-- (dato de salud): la página pública solo puede subir dentro de la carpeta de un código vigente; la ve el equipo.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('recetas', 'recetas', false, 10485760, array['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'])
+on conflict (id) do nothing;
+create or replace function public.pretest_codigo_vigente(p_code text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from pretests where code = p_code and created_at > now() - interval '2 days');
+$$;
+grant execute on function public.pretest_codigo_vigente(text) to anon, authenticated;
+drop policy if exists recetas_subir on storage.objects;
+create policy recetas_subir on storage.objects for insert to anon, authenticated
+  with check (bucket_id = 'recetas' and public.pretest_codigo_vigente((storage.foldername(name))[1]));
+drop policy if exists recetas_admin_ver on storage.objects;
+create policy recetas_admin_ver on storage.objects for select to authenticated
+  using (bucket_id = 'recetas' and public.es_admin());

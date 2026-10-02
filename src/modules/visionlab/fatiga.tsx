@@ -123,9 +123,9 @@ export function TestFatiga({ valor, onListo }: { valor: Fatiga | null; onListo: 
             <span className="muted small">En reposo lo habitual es 15 a 20; leyendo en pantalla suele bajar.</span>
           </div>
           <p className="small" style={{ margin: 0 }}>
-            {pocos && res.sintomas >= 2 ? 'Parpadeás poco y tenés síntomas de cansancio visual. Probá la regla 20-20-20, pausas y cristales con antirreflejo y filtro de luz azul. Si el ardor sigue, consultá con un oftalmólogo.'
+            {pocos && res.sintomas >= 2 ? 'Parpadeás poco y tenés síntomas de cansancio visual. Probá la regla 20-20-20 y pausas, y comentáselo al oftalmólogo.'
               : pocos ? 'Parpadeás poco mientras leés en pantalla. Pausas cada 20 minutos y parpadear a conciencia ayudan a que no se reseque la vista.'
-              : res.sintomas >= 2 ? 'Tu parpadeo está bien, pero tenés síntomas de cansancio visual: puede ser una graduación desactualizada o mucho tiempo de pantalla. Vale la pena revisarlo.'
+              : res.sintomas >= 2 ? 'Tu parpadeo está bien, pero tenés síntomas de cansancio visual. Comentáselo al oftalmólogo.'
               : 'Sin señales de cansancio visual por pantallas. Igual, las pausas cada 20 minutos cuidan la vista.'}
           </p>
           <p className="muted small" style={{ margin: 0 }}>Orientativo: no evalúa ojo seco ni ninguna enfermedad.</p>

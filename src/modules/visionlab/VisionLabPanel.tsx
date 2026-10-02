@@ -20,6 +20,8 @@ interface Lead {
 interface Extras {
   dp?: { lejos: number; cerca: number }; espejo?: boolean; dominante?: 'R' | 'L'
   fatiga?: { parpadeos: number; sintomas: number }; sugerencias?: string[]
+  /** Foto de la receta en el bucket privado `recetas`. */
+  receta?: string
 }
 
 const ESTADOS: { k: Estado; t: string }[] = [
@@ -85,6 +87,14 @@ export default function VisionLabPanel() {
   }, [leads])
 
   const visibles = (leads ?? []).filter((l) => (!fSem || l.semaforo === fSem) && (!fEst || l.estado === fEst))
+
+  // La receta está en un bucket privado: se abre con un link firmado de 10 minutos.
+  async function verReceta(path: string) {
+    const w = window.open('', '_blank')
+    const { data } = await supabase.storage.from('recetas').createSignedUrl(path, 600)
+    if (data?.signedUrl && w) w.location.href = data.signedUrl
+    else w?.close()
+  }
 
   async function guardar(l: Lead, cambios: Partial<Pick<Lead, 'estado' | 'nota'>>) {
     setLeads((ls) => ls?.map((x) => (x.id === l.id ? { ...x, ...cambios } : x)) ?? null)
@@ -179,13 +189,14 @@ export default function VisionLabPanel() {
             {abierto === l.id && (
               <div className="mt-3 space-y-2">
                 {l.ticket && <pre className="text-[11px] font-mono whitespace-pre-wrap bg-neutral-50 rounded-lg p-2 border border-black/5">{l.ticket}</pre>}
-                {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias) && (
+                {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias || l.extras.receta) && (
                   <div className="text-[12px] text-neutral-700 bg-amber-50/60 rounded-lg p-2 border border-black/5 space-y-0.5">
                     {l.extras.dp && <div><b>DP</b> {l.extras.dp.lejos} mm de lejos · {l.extras.dp.cerca} de cerca (tarjeta en la frente): lista para venta online</div>}
                     {l.extras.espejo && <div>Visión de lejos hecha frente a un espejo</div>}
                     {l.extras.dominante && <div><b>Ojo dominante</b> {l.extras.dominante === 'R' ? 'derecho' : 'izquierdo'}</div>}
                     {l.extras.fatiga && <div><b>Pantallas</b> {l.extras.fatiga.parpadeos} parpadeos/min · {l.extras.fatiga.sintomas}/3 síntomas</div>}
                     {l.extras.sugerencias?.map((s) => <div key={s}>· {s}</div>)}
+                    {l.extras.receta && <button onClick={() => verReceta(l.extras!.receta!)} className="mt-1 rounded-lg border border-black/15 bg-white px-2 py-1 text-[11px] font-semibold">Ver receta subida</button>}
                   </div>
                 )}
                 <textarea

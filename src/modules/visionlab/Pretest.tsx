@@ -6,7 +6,7 @@
 import { ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Check, Mic, ChevronLeft, Clock, Copy, CreditCard, Eye, EyeOff, Glasses,
-  Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, ScanFace, Search, Share2, ShieldCheck, Stethoscope, Store, Sun,
+  Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, ScanFace, Search, Share2, ShieldCheck, Stethoscope, Store, Sun, Upload,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { telefonosCliente } from '../../lib/telefono'
@@ -139,9 +139,23 @@ const guardarExtras = (code: string | null, extras: Record<string, unknown>) => 
 /** Lo que se ve en un espejo está invertido de izquierda a derecha. */
 const ESPEJADA: Record<Dir, Dir> = { up: 'up', down: 'down', left: 'right', right: 'left', ur: 'ul', ul: 'ur', dr: 'dl', dl: 'dr' }
 
-// Escalera de 2 intentos por nivel: ambos correctos para subir (agudeza y contraste).
+// Escalera de hasta 3 intentos por nivel (agudeza y contraste): con 2 aciertos sube, con 2 errores termina.
+// Así un error suelto (o la voz que entendió mal) no corta la prueba; con 8 posiciones, acertar 2 de 3 de
+// casualidad pasa menos de 1 vez en 20.
 interface Escalera { lvl: number; trial: number; hits: number; best: number; dir: Dir }
 const escaleraNueva = (): Escalera => ({ lvl: 0, trial: 0, hits: 0, best: -1, dir: rndDir() })
+/** Un paso de la escalera: el estado siguiente, o el índice del mejor nivel aprobado (-1 = ninguno) si terminó. */
+function pasoEscalera(e: Escalera, a: Dir | 'none', niveles: number): { sig: Escalera } | { fin: number } {
+  const hits = e.hits + (a === e.dir ? 1 : 0)
+  const trial = e.trial + 1
+  const errores = trial - hits
+  if (hits >= 2) {
+    const lvl = e.lvl + 1
+    return lvl < niveles ? { sig: { lvl, trial: 0, hits: 0, best: e.lvl, dir: rndDir(e.dir) } } : { fin: e.lvl }
+  }
+  if (errores >= 2) return { fin: e.best }
+  return { sig: { ...e, trial, hits, dir: rndDir(e.dir) } }
+}
 
 /**
  * Anillo de Landolt (ISO 8596): diámetro 5, trazo 1 y abertura 1 de bordes paralelos. Se dibuja con la abertura a la
@@ -242,8 +256,8 @@ function DPad({ onAnswer }: { onAnswer: (d: Dir | 'none') => void }) {
   )
 }
 
-/** Intentos del nivel actual (2 por nivel). */
-const Intentos = ({ n }: { n: number }) => <div className="dots" aria-hidden="true"><i className={n >= 0 ? 'on' : ''} /><i className={n >= 1 ? 'on' : ''} /></div>
+/** Intentos del nivel actual (hasta 3 por nivel). */
+const Intentos = ({ n }: { n: number }) => <div className="dots" aria-hidden="true">{[0, 1, 2].map((i) => <i key={i} className={n >= i ? 'on' : ''} />)}</div>
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // "Así ves vos" (idea de Peek Vision: ver la imagen borrosa al lado de la nítida duplicó la gente que va al control).
@@ -365,7 +379,7 @@ function AsiVes({ S, usa }: { S: Resultados; usa: Usa }) {
       <p className="muted small" style={{ margin: 0 }}>
         {nitido
           ? 'Con este ojo no encontramos pérdida de nitidez. '
-          : 'Unos anteojos bien graduados suelen devolver la nitidez de la imagen de 10/10. '}
+          : 'Un oftalmólogo puede decirte a qué se debe y cómo mejorarlo. '}
         Simulación aproximada a partir de tu resultado: sirve para darte una idea, no muestra exactamente cómo ves.
       </p>
     </div>
@@ -374,7 +388,7 @@ function AsiVes({ S, usa }: { S: Resultados; usa: Usa }) {
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // Buscador de ópticas Orbital y oftalmólogos: al final del informe y solo en /lab/buscar.
-function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?: 'opticas' | 'oftalmo' }) {
+function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: string | null; inicial?: 'opticas' | 'oftalmo'; recetaFoto?: boolean }) {
   const [tab, setTab] = useState<'opticas' | 'oftalmo'>(inicial)
   const [zona, setZona] = useState<Zona | null>(null)
   const [geo, setGeo] = useState<string | null>(null)
@@ -513,7 +527,7 @@ function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?
             const wa = telefonosCliente(o.whatsapp, null).find((n) => n.tipo === 'celular')
             const tel = o.telefono || o.whatsapp
             const msg = code
-              ? `Hola, hice el chequeo visual Orbital (código ${code}) y quiero pedir turno para hacer mis anteojos`
+              ? `Hola, hice el chequeo visual Orbital (código ${code})${recetaFoto ? ', ya subí mi receta' : ''} y quiero pedir turno para hacer mis anteojos`
               : 'Hola, los encontré en Orbital Vision Lab y quiero consultar por anteojos'
             const dir = [o.nombre, o.direccion, o.localidad, o.provincia].filter(Boolean).join(', ')
             const verMapa = mapaDe === o.cod
@@ -588,19 +602,34 @@ function Buscador({ code, inicial = 'opticas' }: { code: string | null; inicial?
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// Recomendador de armazones: por la receta (si la carga) o por las señales del pretest.
+// Armazones del catálogo mayorista (con precio solo si tienen precio minorista). Sin receta no se deduce nada del
+// chequeo; con la receta (valores o foto) se ordenan por las reglas de armazón y la óptica la recibe con el código.
 const precioAR = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
-function Marcos({ S, edad, usa, code }: { S: Resultados; edad: number | null; usa: Usa; code: string | null }) {
+function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recetaFoto: boolean; onRecetaFoto: (path: string) => void }) {
   const [marcos, setMarcos] = useState<Marco[] | null>(null)
   const [rec, setRec] = useState<Receta>(recetaVacia)
   const [abrir, setAbrir] = useState(false)
+  const [subiendo, setSubiendo] = useState<'no' | 'si' | 'error'>('no')
 
   useEffect(() => {
     supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? []))
   }, [])
 
-  const r = useMemo(() => (marcos ? recomendar(marcos, rec, S, edad, usa) : null), [marcos, rec, S, edad, usa])
+  // Foto o PDF de la receta → bucket privado `recetas/<código>/…`; queda en el lead para la óptica.
+  async function subirReceta(f: File | undefined) {
+    if (!f || !code) return
+    setSubiendo('si')
+    const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5)
+    const path = `${code}/receta-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('recetas').upload(path, f, { contentType: f.type || undefined, upsert: false })
+    if (error) { setSubiendo('error'); return }
+    guardarExtras(code, { receta: path })
+    onRecetaFoto(path)
+    setSubiendo('no')
+  }
+
+  const r = useMemo(() => (marcos ? recomendar(marcos, rec) : null), [marcos, rec])
   const campo = (k: keyof Receta, lbl: string, ph: string) => (
     <div>
       <label htmlFor={'rx-' + k}>{lbl}</label>
@@ -614,16 +643,31 @@ function Marcos({ S, edad, usa, code }: { S: Resultados; edad: number | null; us
       <div className="card flat rx">
         <button className="rx-toggle" onClick={() => setAbrir(!abrir)} aria-expanded={abrir}>
           <Glasses size={18} />
-          <span><b>¿Ya tenés tu receta?</b><small>Cargala y ajustamos la recomendación a tu graduación exacta.</small></span>
+          <span><b>¿Ya tenés tu receta del oftalmólogo?</b><small>Subila para llevarla a la óptica y te mostramos los armazones que mejor le van.</small></span>
           <span className="chev">{abrir ? '−' : '+'}</span>
         </button>
         {abrir && (
-          <div className="rx-grid">
-            {campo('esfOD', 'Esfera OD', '-2,50')}
-            {campo('esfOI', 'Esfera OI', '-2,25')}
-            {campo('cil', 'Cilindro (mayor)', '-1,00')}
-            {campo('add', 'Adición', '+1,50')}
-            <p className="muted small" style={{ gridColumn: '1/-1', margin: 0 }}>Copiá los valores de la receta tal cual (con el signo). Si no tiene adición, dejalo vacío.</p>
+          <div className="rx-body">
+            <div className="rx-subir">
+              {recetaFoto ? (
+                <div className="ok"><Check size={16} /><span><b>Receta subida.</b> La óptica Orbital que elijas la ve con tu código <b className="num">{code}</b>.</span></div>
+              ) : (
+                <label className={'btn' + (!code || subiendo === 'si' ? ' disabled' : '')}>
+                  <Upload size={16} />{subiendo === 'si' ? 'Subiendo…' : 'Subir foto de la receta'}
+                  <input type="file" accept="image/*,application/pdf" hidden disabled={!code || subiendo === 'si'} onChange={(e) => subirReceta(e.target.files?.[0])} />
+                </label>
+              )}
+              {subiendo === 'error' && <div className="muted small">No se pudo subir. Probá de nuevo o mandala por WhatsApp cuando pidas turno.</div>}
+              <div className="muted small">Se guarda en forma privada: solo la ven Orbital y la óptica que elijas.</div>
+            </div>
+            <div className="rx-grid">
+              <p className="small" style={{ gridColumn: '1/-1', margin: 0 }}><b>Opcional:</b> copiá los valores para ordenar los armazones según tu receta.</p>
+              {campo('esfOD', 'Esfera OD', '-2,50')}
+              {campo('esfOI', 'Esfera OI', '-2,25')}
+              {campo('cil', 'Cilindro (mayor)', '-1,00')}
+              {campo('add', 'Adición', '+1,50')}
+              <p className="muted small" style={{ gridColumn: '1/-1', margin: 0 }}>Tal cual figuran (con el signo). Si no tiene adición, dejalo vacío.</p>
+            </div>
           </div>
         )}
       </div>
@@ -631,18 +675,19 @@ function Marcos({ S, edad, usa, code }: { S: Resultados; edad: number | null; us
       {!r && <div className="empty">Buscando armazones…</div>}
       {r && (
         <>
-          <div className="profile">
-            <div className="muted small">{r.fuente === 'receta' ? 'Según tu receta' : 'Según tu chequeo'}</div>
-            <div className="lvl">{r.nivel}</div>
-            {r.criterios.length > 0 ? (
-              <ul className="crit">
-                {r.criterios.map((c) => <li key={c.id}><Check size={16} /><span><b>{c.t}</b><small>{c.por}</small></span></li>)}
-              </ul>
-            ) : (
-              <p className="muted small" style={{ margin: '4px 0 0' }}>Sin restricciones de armazón: elegí el que más te guste.</p>
-            )}
-            {r.fuente === 'pretest' && <p className="muted small" style={{ margin: '8px 0 0' }}>El chequeo no mide dioptrías: con tu receta la recomendación es exacta.</p>}
-          </div>
+          {r.fuente === 'receta' && (
+            <div className="profile">
+              <div className="muted small">Según tu receta</div>
+              <div className="lvl">{r.nivel}</div>
+              {r.criterios.length > 0 ? (
+                <ul className="crit">
+                  {r.criterios.map((c) => <li key={c.id}><Check size={16} /><span><b>{c.t}</b><small>{c.por}</small></span></li>)}
+                </ul>
+              ) : (
+                <p className="muted small" style={{ margin: '4px 0 0' }}>Sin restricciones de armazón: elegí el que más te guste.</p>
+              )}
+            </div>
+          )}
 
           {r.marcos.length === 0 && <div className="empty">No encontramos armazones en stock que cumplan todo. Consultá en tu óptica Orbital.</div>}
           <div className="fgrid">
@@ -651,8 +696,10 @@ function Marcos({ S, edad, usa, code }: { S: Resultados; edad: number | null; us
                 <div className="ph"><img src={m.foto} alt={'Armazón ' + m.modelo} loading="lazy" /></div>
                 <div className="fb">
                   <b>{m.modelo}</b>
-                  <span className="dim num">{m.formato ? m.formato.charAt(0).toUpperCase() + m.formato.slice(1) + ' · ' : ''}{m.ancho_mm} × {m.alto_mm} mm</span>
-                  <span className="why">{m.motivos.slice(0, 2).join(' · ')}</span>
+                  {(m.formato || m.ancho_mm) && (
+                    <span className="dim num">{[m.formato && m.formato.charAt(0).toUpperCase() + m.formato.slice(1), m.ancho_mm && m.alto_mm ? `${m.ancho_mm} × ${m.alto_mm} mm` : null].filter(Boolean).join(' · ')}</span>
+                  )}
+                  {r.fuente === 'receta' && <span className="why">{m.motivos.slice(0, 2).join(' · ')}</span>}
                   {m.precio_desde ? <span className="price num">Desde {precioAR(m.precio_desde)}</span> : null}
                 </div>
               </a>
@@ -664,7 +711,7 @@ function Marcos({ S, edad, usa, code }: { S: Resultados; edad: number | null; us
               {r.lentes.map((l) => <div key={l}>· {l}</div>)}
             </div>
           )}
-          <p className="muted small" style={{ margin: 0 }}>Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.</p>
+          <p className="muted small" style={{ margin: 0 }}>Armazones para receta del catálogo Orbital con stock. Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.</p>
         </>
       )}
     </div>
@@ -715,6 +762,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const [dom, setDom] = useState<Ojo | null>(null)
   const [fatiga, setFatiga] = useState<Fatiga | null>(null)
   const [previos, setPrevios] = useState<Registro[]>([])
+  const [recetaFoto, setRecetaFoto] = useState<string | null>(null)
   const verLegales = () => { setVolverA(step); go(PASO_LEGAL) }
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -774,18 +822,11 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     empezarPruebas()
   }
 
-  /** Escalera de agudeza con E: devuelve la agudeza final o null si sigue la prueba. */
+  /** Escalera de agudeza con el anillo: devuelve la agudeza final o null si sigue la prueba. */
   function escalera(e: Escalera, set: (e: Escalera) => void, a: Dir | 'none'): number | null {
-    const hits = e.hits + (a === e.dir ? 1 : 0)
-    const trial = e.trial + 1
-    if (trial < 2) { set({ ...e, trial, hits, dir: rndDir(e.dir) }); return null }
-    let best = e.best
-    if (hits === 2) {
-      best = e.lvl
-      const lvl = e.lvl + 1
-      if (lvl < LEVELS.length) { set({ lvl, trial: 0, hits: 0, best, dir: rndDir(e.dir) }); return null }
-    }
-    return best >= 0 ? LEVELS[best] : 0
+    const r = pasoEscalera(e, a, LEVELS.length)
+    if ('sig' in r) { set(r.sig); return null }
+    return r.fin >= 0 ? LEVELS[r.fin] : 0
   }
 
   // ---------- agudeza de lejos (3 m con ayudante o 50 cm) ----------
@@ -920,16 +961,9 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
 
   // ---------- contraste ----------
   function answerC(a: Dir | 'none') {
-    const hits = ct.hits + (a === ct.dir ? 1 : 0)
-    const trial = ct.trial + 1
-    if (trial < 2) return setCt({ ...ct, trial, hits, dir: rndDir(ct.dir) })
-    let best = ct.best
-    if (hits === 2) {
-      best = ct.lvl
-      const lvl = ct.lvl + 1
-      if (lvl < CLEVELS.length) return setCt({ lvl, trial: 0, hits: 0, best, dir: rndDir(ct.dir) })
-    }
-    setS((s) => ({ ...s, contrast: best >= 0 ? CLEVELS[best] : null }))
+    const r = pasoEscalera(ct, a, CLEVELS.length)
+    if ('sig' in r) return setCt(r.sig)
+    setS((s) => ({ ...s, contrast: r.fin >= 0 ? CLEVELS[r.fin] : null }))
     setEye('R')
     go(4)
   }
@@ -1046,6 +1080,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     setNear(null)
     setDom(null)
     setFatiga(null)
+    setRecetaFoto(null)
     setInforme(null)
     setCode(null)
     setCopiado('no')
@@ -1113,7 +1148,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
                   ))}
                 </div>
               </div>
-              {usa === 'si' && <div className="note"><Glasses size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Hacé las pruebas de lejos con tus anteojos puestos: así vemos si tu graduación actual todavía te sirve.</div>}
+              {usa === 'si' && <div className="note"><Glasses size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Hacé las pruebas de lejos con tus anteojos puestos.</div>}
             </div>
 
             <CuestionarioHabitos h={habitos} set={setHabitos} />
@@ -1294,7 +1329,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
           <section className="step">
             <div>
               <h2>¿Todas las líneas se ven iguales?</h2>
-              <p>Mirá el centro del reloj. Si algunas líneas se ven más oscuras, gruesas o nítidas que otras, puede ser señal de astigmatismo.</p>
+              <p>Mirá el centro del reloj y fijate si algunas líneas se ven más oscuras, gruesas o nítidas que otras.</p>
             </div>
             <Ojos eye={eye} />
             <Guia items={[[<Ruler size={14} />, '50 cm'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos' : 'Sin anteojos']]} />
@@ -1490,9 +1525,9 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             </div>
 
             <div className="no-print" style={{ marginTop: 12 }}>
-              <h2>Armazones recomendados para vos</h2>
-              <p className="muted small">Según la graduación conviene un tamaño, una forma y un material de armazón: así el cristal queda más fino, liviano y ves mejor.</p>
-              <Marcos S={S} edad={edadNum} usa={usa} code={code} />
+              <h2>Tu receta y armazones</h2>
+              <p className="muted small">Si el oftalmólogo te indica anteojos, subí la receta y elegí el armazón en una óptica Orbital.</p>
+              <Marcos code={code} recetaFoto={!!recetaFoto} onRecetaFoto={setRecetaFoto} />
               {consejos.length > 0 && (
                 <div className="note" style={{ marginTop: 12 }}>
                   <b style={{ display: 'block', marginBottom: 4, color: 'var(--ink)' }}>Según tu día a día</b>
@@ -1503,8 +1538,8 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
 
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Dónde atenderte</h2>
-              <p className="muted small">Pedí turno con un oftalmólogo para confirmar la graduación y hacé tus anteojos en una óptica Orbital: con tu código tenés el chequeo registrado y atención prioritaria.</p>
-              <Buscador code={code} inicial={informe.semaforo === 'verde' ? 'opticas' : 'oftalmo'} />
+              <p className="muted small">Pedí turno con un oftalmólogo y, si te indica anteojos, hacelos en una óptica Orbital: con tu código tenés el chequeo registrado y atención prioritaria.</p>
+              <Buscador code={code} recetaFoto={!!recetaFoto} inicial={informe.semaforo === 'verde' ? 'opticas' : 'oftalmo'} />
             </div>
             <div className="no-print" style={{ textAlign: 'center' }}>
               <button className="link" onClick={restart}>Repetir el chequeo</button>

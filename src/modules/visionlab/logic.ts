@@ -150,8 +150,8 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
     s: aS, n: S.distMm >= 2000 ? 'Visión de lejos (3 m)' : 'Visión de lejos (a 50 cm, estimada)',
     v: `OD ${acuityLabel(S.acuity.R)} · OI ${acuityLabel(S.acuity.L)}`,
     t: aS === 'ok' ? (S.distMm >= 2000 ? 'Dentro de lo esperado.' : 'Dentro de lo esperado a 50 cm. Para medir bien la visión de lejos, repetila a 3 m con ayuda.')
-      : aS === 'warn' ? 'Por debajo de lo esperado en al menos un ojo, o diferencia notable entre ojos.'
-      : 'Baja agudeza: pedí turno pronto.',
+      : aS === 'warn' ? 'Por debajo de lo esperado en al menos un ojo, o diferencia entre ojos. Comentáselo al oftalmólogo.'
+      : 'Por debajo de lo esperado: pedí turno con un oftalmólogo pronto.',
   })
 
   // Agudeza de cerca a 40 cm, ojo por ojo (2026-09-30, pedido de Gastón: prueba de cerca y de lejos por separado).
@@ -161,8 +161,7 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   items.push({
     s: naS, n: 'Visión de cerca (40 cm)', v: `OD ${acuityLabel(S.acuityNear.R)} · OI ${acuityLabel(S.acuityNear.L)}`,
     t: naS === 'ok' ? 'Buen enfoque de cerca en ambos ojos.'
-      : edad && edad >= 40 ? 'Cuesta enfocar de cerca: a tu edad suele ser presbicia (vista cansada), se corrige con anteojos de lectura o multifocales.'
-      : 'Cuesta enfocar de cerca en al menos un ojo: vale la pena revisarlo.',
+      : 'Costó ver de cerca en al menos un ojo. Comentáselo al oftalmólogo.',
   })
 
   const c = S.contrast
@@ -171,16 +170,16 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   items.push({
     s: cS, n: 'Sensibilidad al contraste', v: c === null ? 'no detectada' : 'umbral ' + c + '%',
     t: cS === 'ok' ? 'Distinguís contrastes bajos: normal.'
-      : cS === 'warn' ? 'Umbral algo alto. Puede deberse al brillo de pantalla o a un principio de opacidad; conviene revisarlo.'
-      : 'Umbral muy alto. Merece consulta.',
+      : cS === 'warn' ? 'Umbral algo alto (puede influir el brillo de la pantalla). Comentáselo al oftalmólogo.'
+      : 'Umbral alto. Comentáselo al oftalmólogo.',
   })
 
   const asBad = S.astig.R === false || S.astig.L === false
   score += asBad ? 1 : 0
   items.push({
-    s: asBad ? 'warn' : 'ok', n: 'Astigmatismo',
+    s: asBad ? 'warn' : 'ok', n: 'Reloj astigmático',
     v: `OD ${S.astig.R ? 'parejo' : 'desparejo'} · OI ${S.astig.L ? 'parejo' : 'desparejo'}`,
-    t: asBad ? 'Compatible con astigmatismo; se corrige con anteojos.' : 'Todas las líneas parejas en ambos ojos.',
+    t: asBad ? 'Algunas líneas se vieron distintas. Comentáselo al oftalmólogo.' : 'Todas las líneas parejas en ambos ojos.',
   })
 
   const ch = S.colorHits
@@ -189,8 +188,8 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   items.push({
     s: cvS, n: 'Visión de color', v: `${ch}/3 láminas`,
     t: cvS === 'ok' ? 'Sin indicios de alteración rojo-verde.'
-      : cvS === 'warn' ? 'Una lámina fallida: puede ser la pantalla. Si se repite, consultá.'
-      : 'Posible dificultad rojo-verde. Es hereditaria y frecuente; un oftalmólogo lo confirma.',
+      : cvS === 'warn' ? 'Una lámina no coincidió (puede influir la pantalla). Si se repite, comentáselo al oftalmólogo.'
+      : 'Varias láminas no coincidieron. Comentáselo al oftalmólogo.',
   })
 
   const amBad = S.amsler.R === false || S.amsler.L === false
@@ -198,23 +197,21 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   items.push({
     s: amBad ? 'bad' : 'ok', n: 'Visión central',
     v: `OD ${S.amsler.R ? 'normal' : 'alterada'} · OI ${S.amsler.L ? 'normal' : 'alterada'}`,
-    t: amBad ? 'Líneas onduladas o faltantes. Consulta oftalmológica sin demora; no se resuelve con anteojos.'
+    t: amBad ? 'Líneas onduladas o faltantes. Consultá con un oftalmólogo sin demora.'
       : 'Rejilla recta y completa en ambos ojos.',
   })
 
   const ni = NEAR.findIndex((n) => n.id === S.near)
   let nS: Estado = 'ok'
   let nT = ''
-  if (ni <= 1) nT = 'Visión de cerca cómoda.'
+  if (ni <= 1) nT = 'Lectura cómoda.'
   else if (ni <= 3) {
     nS = 'warn'
-    nT = edad && edad >= 40
-      ? 'A tu edad es habitual la presbicia: se resuelve con anteojos de lectura o multifocales.'
-      : 'Cuesta la lectura fina; vale la pena revisarlo.'
+    nT = 'Costó un poco la lectura fina. Comentáselo al oftalmólogo.'
     score += 1
   } else {
     nS = 'bad'
-    nT = 'Necesitás una revisión de cerca.'
+    nT = 'Costó leer el texto chico. Comentáselo al oftalmólogo.'
     score += 2
   }
   items.push({ s: nS, n: 'Lectura (texto chico)', v: 'hasta ' + (S.near === 'J14' ? 'ninguno' : S.near), t: nT })
@@ -227,11 +224,7 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
     const nom = (d: Duo | null) => (d === null ? '—' : d === 'iguales' ? 'parejo' : d)
     items.push({
       s: verde || rojo ? 'warn' : 'ok', n: 'Rojo y verde (40 cm)', v: `OD ${nom(S.duo.R)} · OI ${nom(S.duo.L)}`,
-      t: !verde && !rojo ? 'Los dos lados se ven parejos: el enfoque de cerca está equilibrado.'
-        : verde ? (usa === 'si'
-          ? 'Más nítido sobre verde: tus anteojos podrían quedarse cortos de cerca. Que el óptico los revise.'
-          : 'Más nítido sobre verde: de cerca te podría faltar ayuda (es frecuente después de los 40).')
-        : 'Más nítido sobre rojo: podría sobrar graduación de cerca o haber miopía. Que lo revise el profesional.',
+      t: !verde && !rojo ? 'Los dos lados se vieron parejos.' : 'Un lado se vio más nítido que el otro. Comentáselo al oftalmólogo.',
     })
   }
 
@@ -244,17 +237,15 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   if (amBad || score >= 4) {
     semaforo = 'rojo'
     titulo = cap(pre + 'pedí turno con un oftalmólogo esta semana')
-    lead = 'Alguna prueba dio un resultado que conviene revisar pronto. El pretest es orientativo, pero no lo dejes pasar.'
+    lead = 'Alguna prueba dio un resultado que conviene que vea un oftalmólogo pronto. Esta guía es orientativa: llevá el informe a la consulta.'
   } else if (score >= 1) {
     semaforo = 'amarillo'
     titulo = cap(pre + 'te conviene una consulta')
-    lead = usa === 'si'
-      ? 'Es probable que tu graduación actual necesite un ajuste. Llevá tus anteojos a la consulta.'
-      : 'Hay señales de que unos anteojos te ayudarían. Un oftalmólogo confirma la graduación exacta.'
+    lead = 'Algunas pruebas conviene revisarlas con un oftalmólogo. Llevá este informe' + (usa === 'si' ? ' y tus anteojos' : '') + ' a la consulta.'
   } else {
     semaforo = 'verde'
     titulo = cap(pre + 'tu visión se ve bien')
-    lead = 'Sin señales de alarma. Un control cada dos años es la mejor forma de cuidarla.'
+    lead = 'Las pruebas se vieron dentro de lo esperado. Igual, un control con el oftalmólogo cada 1 o 2 años es la mejor forma de cuidarla.'
   }
   return { items, score, indice, semaforo, titulo, lead }
 }
@@ -278,7 +269,7 @@ Lectura (40 cm, binoc.)    ${S.near}
 Duocromo (40 cm)           OD ${S.duo.R ?? '—'}   OI ${S.duo.L ?? '—'}${S.dp ? `
 DP (tarjeta en la frente)  lejos ${S.dp.lejos} mm   cerca ${S.dp.cerca} mm` : ''}
 
-C8 = anillo de Landolt, 8 posiciones, 2/2 aciertos por nivel, recuadro de apiñamiento.
+C8 = anillo de Landolt, 8 posiciones, 2 de 3 aciertos por nivel, recuadro de apiñamiento.
 Orientativo, no diagnóstico. Generado por el paciente.`
 }
 

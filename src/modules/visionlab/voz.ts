@@ -82,9 +82,10 @@ export const puedeEscuchar = () => typeof window !== 'undefined' && !!ctor()
 export type Oido = Dir | 'none' | 'repetir'
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 type Eje = 'v' | 'h'
+// Incluye lo que el reconocedor suele escribir mal: "a bajo", "bajo", "arriva", "riba", "isquierda", "derecho".
 const PALABRAS: [RegExp, 'up' | 'down' | 'left' | 'right', Eje][] = [
-  [/arriba|subiendo|\bsube\b/g, 'up', 'v'], [/abajo|bajando|\bbaja\b/g, 'down', 'v'],
-  [/derech/g, 'right', 'h'], [/izquierd/g, 'left', 'h'],
+  [/a ?rr?i[bv]a|\brr?iba\b|subiendo|\bsube\b|\barrib/g, 'up', 'v'], [/a ?bajo|\bbajo\b|debajo|bajando|\bbaja\b/g, 'down', 'v'],
+  [/derech/g, 'right', 'h'], [/[iy][sz](qu|k)ier?d|\bizq/g, 'left', 'h'],
 ]
 const DIAG: Record<string, Dir> = { 'up-right': 'ur', 'up-left': 'ul', 'down-right': 'dr', 'down-left': 'dl' }
 /**
@@ -209,20 +210,30 @@ export function useEscucha<T>(activo: boolean, entender: (texto: string) => T | 
       rec.interimResults = true
       rec.maxAlternatives = 1
       let respondida = false
+      let pendiente: ReturnType<typeof setTimeout> | null = null
+      const aceptar = (o: T, texto: string) => {
+        if (pendiente) clearTimeout(pendiente)
+        pendiente = null
+        if (mia !== sesion || respondida || !vivo) return
+        respondida = true
+        setCrudo('')
+        setUltimo(texto.trim())
+        pausaHasta = performance.now() + 500
+        cortar()
+        cb.current(o, texto)
+      }
       rec.onresult = (e) => {
         if (mia !== sesion || respondida || estaHablando() || performance.now() < pausaHasta) return
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const texto = e.results[i][0].transcript
-          const o = ent.current(texto)
-          if (o === null) { if (e.results[i].isFinal) setCrudo(texto.trim()); continue }
-          respondida = true
-          setCrudo('')
-          setUltimo(texto.trim())
-          pausaHasta = performance.now() + 900
-          cortar()
-          cb.current(o, texto)
-          return
-        }
+        // Toda la frase dicha hasta ahora (en algunos Android llega partida en varios resultados).
+        let texto = '', final = true
+        for (let i = 0; i < e.results.length; i++) { texto += ' ' + e.results[i][0].transcript; final = e.results[i].isFinal }
+        const o = ent.current(texto)
+        if (o === null) { if (final) setCrudo(texto.trim()); return }
+        // Un resultado parcial puede estar incompleto ("abajo…" antes de "…a la derecha"): se espera un instante
+        // por si sigue la frase; el resultado final se toma en el acto.
+        if (final) return aceptar(o, texto)
+        if (pendiente) clearTimeout(pendiente)
+        pendiente = setTimeout(() => aceptar(o, texto), 650)
       }
       rec.onerror = (e) => {
         if (mia !== sesion) return

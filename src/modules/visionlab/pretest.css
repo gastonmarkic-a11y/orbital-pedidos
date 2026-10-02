@@ -417,3 +417,12 @@
 .ovl .ccard:not(.v) .manija::before,.ovl .ccard:not(.v) .manija::after{top:16px;bottom:16px;left:auto;right:auto;width:2px;height:auto}
 .ovl .ccard:not(.v) .manija::before{left:8px}.ovl .ccard:not(.v) .manija::after{right:8px}
 .ovl .ccard.v .w{bottom:22px}
+
+/* ---------- receta: subir foto ---------- */
+.ovl .rx-body{display:grid;gap:14px;padding:0 16px 16px}
+.ovl .rx-body .rx-grid{padding:14px 0 0}
+.ovl .rx-subir{display:grid;gap:6px}
+.ovl .rx-subir label.btn{margin:0;cursor:pointer;display:inline-flex}
+.ovl .rx-subir label.btn.disabled{opacity:.5;pointer-events:none}
+.ovl .rx-subir .ok{display:flex;gap:8px;align-items:flex-start;background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:10px 12px;font-size:14px}
+.ovl .rx-subir .ok svg{flex:none;margin-top:2px}
