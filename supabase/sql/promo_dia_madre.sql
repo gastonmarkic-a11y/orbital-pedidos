@@ -304,7 +304,7 @@ end; $function$;
 create or replace function _norm_color(t text) returns text language sql immutable as $$
   select trim(regexp_replace(regexp_replace(translate(lower(coalesce(t,'')),'áéíóúü','aeiouu'),'\s*/\s*','/','g'),'\s+',' ','g'))
 $$;
-update promo_precio set activo = false where promo = 'Día de la Madre' and codigo is null;
+update promo_precio set activo = (codigo is not null) where promo = 'Día de la Madre';
 insert into promo_precio (promo, modelo, codigo, precio, desde, hasta, activo)
 select 'Día de la Madre', s.modelo, s.codigo, 48000, now(), '2026-10-20 00:00:00-03', true
   from stock s
