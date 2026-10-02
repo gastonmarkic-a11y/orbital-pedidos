@@ -5,7 +5,7 @@
 // - A 3 m la cara ocupa pocos píxeles: se sigue la cara y se recorta alrededor para que el detector la encuentre.
 // - Guía por voz (speechSynthesis): "un paso más para atrás", "listo, quedate ahí".
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, HelpCircle, Ruler, ScanFace } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, HelpCircle, Ruler, ScanFace, Sun } from 'lucide-react'
 import { ComoSeHace } from './ayuda'
 import { hablar } from './voz'
 
@@ -23,35 +23,71 @@ const FOCAL_K = 0.7
 const CROP = 384
 
 export type EstadoCam = 'apagada' | 'cargando' | 'sin-cara' | 'midiendo' | 'denegada' | 'error'
-export interface Distancia { estado: EstadoCam; mm: number | null; stream: MediaStream | null }
+/** `luz`: 'baja' si la imagen de la cámara está oscura (ambiente poco iluminado). */
+export interface Distancia { estado: EstadoCam; mm: number | null; stream: MediaStream | null; luz: 'baja' | 'ok' | null }
 
 type P = { x: number; y: number }
-const dist = (a: P, b: P) => Math.hypot(a.x - b.x, a.y - b.y)
-const mediana = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
+export const dist = (a: P, b: P) => Math.hypot(a.x - b.x, a.y - b.y)
+export const mediana = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
+export { IRIS_D, IRIS_I, FOCAL_K }
 
-/** Prende la cámara frontal mientras `activo` y devuelve la distancia ojos-pantalla suavizada (mm). */
-export function useDistancia(activo: boolean): Distancia {
+/** Cámara frontal (en alta, para ver la cara chica a 3 m) lista para reproducir. */
+export async function abrirCamara(): Promise<{ st: MediaStream; v: HTMLVideoElement }> {
+  const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+  const v = document.createElement('video')
+  v.muted = true; v.playsInline = true; v.srcObject = st
+  await v.play()
+  return { st, v }
+}
+
+/** Detector de cara de MediaPipe (modelo y wasm desde CDN). Con `gestos` también da parpadeo (blendshapes). */
+export async function cargarDetector(gestos = false) {
+  const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision')
+  const fs = await FilesetResolver.forVisionTasks(WASM)
+  return FaceLandmarker.createFromOptions(fs, {
+    baseOptions: { modelAssetPath: MODELO, delegate: 'GPU' }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: gestos,
+  })
+}
+
+/** Luminancia media (0-255) de un cuadro, sobre una miniatura de 32 px. */
+const miniLuz = (() => {
+  let cv: HTMLCanvasElement | null = null
+  return (v: HTMLVideoElement) => {
+    cv ??= Object.assign(document.createElement('canvas'), { width: 32, height: 18 })
+    const c = cv.getContext('2d', { willReadFrequently: true })!
+    c.drawImage(v, 0, 0, 32, 18)
+    const d = c.getImageData(0, 0, 32, 18).data
+    let s = 0
+    for (let i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
+    return s / (d.length / 4)
+  }
+})()
+
+/**
+ * Prende la cámara frontal mientras `activo` y devuelve la distancia ojos-pantalla suavizada (mm).
+ * `dpLejos`: distancia entre pupilas medida con la tarjeta en la frente (mm). Si está, la distancia sale de ahí
+ * (más precisa que la estimación por el iris), corrigiendo la convergencia de los ojos al mirar de cerca.
+ */
+export function useDistancia(activo: boolean, dpLejos: number | null = null): Distancia {
   const [estado, setEstado] = useState<EstadoCam>('apagada')
   const [mm, setMm] = useState<number | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
+  const [luz, setLuz] = useState<'baja' | 'ok' | null>(null)
+  const dpRef = useRef(dpLejos)
+  dpRef.current = dpLejos
 
   useEffect(() => {
-    if (!activo) { setEstado('apagada'); setMm(null); return }
+    if (!activo) { setEstado('apagada'); setMm(null); setLuz(null); return }
     let vivo = true, raf = 0, st: MediaStream | null = null
     setEstado('cargando')
     ;(async () => {
       try {
-        st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+        const cam = await abrirCamara()
+        st = cam.st
+        const v = cam.v
         if (!vivo) { st.getTracks().forEach((t) => t.stop()); return }
         setStream(st)
-        const v = document.createElement('video')
-        v.muted = true; v.playsInline = true; v.srcObject = st
-        await v.play()
-        const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision')
-        const fs = await FilesetResolver.forVisionTasks(WASM)
-        const det = await FaceLandmarker.createFromOptions(fs, {
-          baseOptions: { modelAssetPath: MODELO, delegate: 'GPU' }, runningMode: 'VIDEO', numFaces: 1,
-        })
+        const det = await cargarDetector()
         if (!vivo) { det.close(); return }
         const cv = document.createElement('canvas')
         cv.width = cv.height = CROP
@@ -68,6 +104,8 @@ export function useDistancia(activo: boolean): Distancia {
           if (!vivo) return
           raf = requestAnimationFrame(loop)
           if (++cuadroN % 2 || v.readyState < 2) return // ~15 cuadros por segundo alcanzan
+          // luz ambiente cada ~2 s: con imagen oscura las letras chicas y la medición fallan
+          if (cuadroN % 60 === 0) setLuz(miniLuz(v) < 55 ? 'baja' : 'ok')
           const W = v.videoWidth, H = v.videoHeight, corto = Math.min(W, H)
           let ts = performance.now()
           if (ts <= ultimoTs) ts = ultimoTs + 1
@@ -111,7 +149,11 @@ export function useDistancia(activo: boolean): Distancia {
             if (irisPx >= 14) ratios.push(ipdPx / irisPx)
             if (ratios.length >= 20) ipdMm = Math.min(72, Math.max(54, mediana(ratios) * IRIS_MM))
           }
-          const d = (FOCAL_K * Math.max(W, H) * (ipdMm ?? IPD_PROMEDIO)) / ipdPx
+          // Con la DP de lejos de la tarjeta: al mirar la pantalla a distancia d, las pupilas convergen y quedan a
+          // DP·d/(d+13) (13 mm = centro de rotación del ojo) → d = f·DP/px − 13.
+          const d = dpRef.current
+            ? (FOCAL_K * Math.max(W, H) * dpRef.current) / ipdPx - 13
+            : (FOCAL_K * Math.max(W, H) * (ipdMm ?? IPD_PROMEDIO)) / ipdPx
           lecturas.push(d)
           if (lecturas.length > 7) lecturas.shift()
           setMm(Math.round(mediana(lecturas)))
@@ -131,7 +173,13 @@ export function useDistancia(activo: boolean): Distancia {
     }
   }, [activo])
 
-  return { estado, mm, stream }
+  return { estado, mm, stream, luz }
+}
+
+/** Aviso de poca luz (lo mide la cámara). */
+export function AvisoLuz({ d }: { d: Distancia }) {
+  if (d.luz !== 'baja') return null
+  return <div className="distpill mal" role="status"><Sun size={14} /><span>Poca luz: prendé una luz o acercate a una ventana</span></div>
 }
 
 type Posicion = 'cerca' | 'lejos' | 'ok' | 'nadie'
@@ -163,8 +211,10 @@ function Espejo({ stream }: { stream: MediaStream | null }) {
  * Pantalla de ubicación: guía (voz + flechas) hasta quedar a la distancia pedida y la confirma cuando se sostiene
  * 1,2 s dentro de la tolerancia. Devuelve la distancia medida para dibujar las letras a la medida exacta.
  */
-export function Ubicarse({ d, objetivo, tol, onListo, onManual }: {
+export function Ubicarse({ d, objetivo, tol, onListo, onManual, espejo = false }: {
   d: Distancia; objetivo: number; tol: number; onListo: (mm: number) => void; onManual: () => void
+  /** Modo espejo (Essilor): la cámara ve el reflejo, así que mide el doble de la distancia al espejo. */
+  espejo?: boolean
 }) {
   const p = posicion(d.mm, objetivo, tol)
   const desde = useRef<number | null>(null)
@@ -198,8 +248,10 @@ export function Ubicarse({ d, objetivo, tol, onListo, onManual }: {
   return (
     <section className="step">
       <div>
-        <h2>{lejos ? 'Alejate hasta que te diga “listo”' : `Ubicá el celular a ${fmt(objetivo)}`}</h2>
-        <p>{lejos
+        <h2>{espejo ? 'Alejate del espejo hasta que te diga “listo”' : lejos ? 'Alejate hasta que te diga “listo”' : `Ubicá el celular a ${fmt(objetivo)}`}</h2>
+        <p>{espejo
+          ? 'Parate frente a un espejo. Sostené el celular al costado de tu cara, a la altura de los ojos, con la pantalla mirando al espejo. Caminá despacio para atrás: a 1,5 m del espejo te aviso en voz alta. Por el reflejo, es como mirar una cartilla a 3 metros.'
+          : lejos
           ? 'Apoyá el celular a la altura de tus ojos (contra un libro o una taza), con la pantalla hacia vos. Mirándolo, caminá despacio para atrás: el celular mide la distancia y te avisa en voz alta cuándo frenar.'
           : 'Sostené el celular frente a tu cara con el brazo estirado. Te avisamos si tenés que acercarlo o alejarlo.'}</p>
       </div>
@@ -213,8 +265,8 @@ export function Ubicarse({ d, objetivo, tol, onListo, onManual }: {
         <div className={'medir ' + p}>
           <Espejo stream={d.stream} />
           <div className="lectura">
-            <span className="num big">{d.mm ? fmt(d.mm) : '—'}</span>
-            <span className="obj"><Ruler size={14} />Objetivo {fmt(objetivo)}</span>
+            <span className="num big">{d.mm ? fmt(espejo ? d.mm / 2 : d.mm) : '—'}</span>
+            <span className="obj"><Ruler size={14} />{espejo ? `Objetivo ${fmt(objetivo / 2)} del espejo` : `Objetivo ${fmt(objetivo)}`}</span>
           </div>
           <div className="aviso">
             {d.estado === 'cargando' ? <><ScanFace size={22} />Preparando la cámara…</>
@@ -225,7 +277,8 @@ export function Ubicarse({ d, objetivo, tol, onListo, onManual }: {
           </div>
         </div>
       )}
-      {lejos && (verAyuda
+      <AvisoLuz d={d} />
+      {lejos && !espejo && (verAyuda
         ? <ComoSeHace />
         : <div style={{ textAlign: 'center' }}><button className="link" onClick={() => setVerAyuda(true)}><HelpCircle size={15} />Ver cómo se hace</button></div>)}
       <div className="note">La cámara se usa solo dentro de tu celular para medir la distancia: las imágenes no se guardan ni se envían.</div>

@@ -2,24 +2,42 @@
 // No cambiar umbrales ni textos sin revisarlo con Gastón: el pretest es orientativo (no dispositivo médico).
 
 export type Eye = 'R' | 'L'
-export type Dir = 'up' | 'down' | 'left' | 'right'
+/** Hacia dónde está la abertura del anillo (C de Landolt de 8 posiciones, como Zeiss y Essilor). */
+export type Dir = 'up' | 'down' | 'left' | 'right' | 'ur' | 'ul' | 'dr' | 'dl'
 export type Usa = 'no' | 'si' | 'viejos'
 export type Estado = 'ok' | 'warn' | 'bad'
 export type NearId = 'J1' | 'J3' | 'J5' | 'J7' | 'J10' | 'J14'
+/** Test rojo-verde (duocromo): de qué lado se ven más nítidos los anillos. */
+export type Duo = 'rojo' | 'verde' | 'iguales'
 
 export interface Resultados {
   pxPerMm: number
-  /** Distancia de la prueba de lejos en mm: 3000 (3 m con ayudante) o 500 (sin ayuda, brazo estirado). */
+  /** Distancia de la prueba de lejos en mm: 3000 (3 m con ayudante o 1,5 m frente a un espejo) o 500 (brazo estirado). */
   distMm: number
+  /** La prueba de lejos se hizo frente a un espejo (el reflejo duplica la distancia). */
+  espejo: boolean
   acuity: { R: number | null; L: number | null }
-  /** Agudeza de cerca a 40 cm, ojo por ojo (E). */
+  /** Agudeza de cerca a 40 cm, ojo por ojo (anillo de 8 posiciones). */
   acuityNear: { R: number | null; L: number | null }
   contrast: number | null
   astig: { R: boolean | null; L: boolean | null }
   colorHits: number
   amsler: { R: boolean | null; L: boolean | null }
   near: NearId | null
+  /** Duocromo a 40 cm, ojo por ojo. */
+  duo: { R: Duo | null; L: Duo | null }
+  /** Distancia entre pupilas medida con la tarjeta en la frente (mm), si la midió. */
+  dp: { lejos: number; cerca: number } | null
 }
+
+/** Cuestionario inicial de hábitos (como el "Vision Profile" de Zeiss): alimenta la recomendación de cristales. */
+export interface Habitos {
+  pantalla: 'poco' | 'medio' | 'mucho' | null
+  noche: boolean | null
+  sol: boolean | null
+  control: 'reciente' | '1-2' | 'mas2' | 'nunca' | null
+}
+export const habitosVacios = (): Habitos => ({ pantalla: null, noche: null, sol: null, control: null })
 
 export const LEVELS = [0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
 export const CLEVELS = [100, 50, 25, 12, 6, 3]
@@ -45,13 +63,21 @@ export const NEAR: { id: NearId; mm: number; t: string }[] = [
   { id: 'J14', mm: 5.2, t: 'Ninguno de los anteriores.' },
 ]
 
-/** Tamaño en mm de una E de agudeza v a la distancia dada (5 minutos de arco para 1.0). */
+/** Diámetro en mm del anillo de agudeza v a la distancia dada (5 minutos de arco para 1.0; abertura = 1/5). */
 export const letterMm = (v: number, dist = DIST_MM) => dist * Math.tan(((5 / 60) * (Math.PI / 180)) / v)
 
-export const rndDir = (): Dir => (['up', 'down', 'left', 'right'] as Dir[])[Math.floor(Math.random() * 4)]
+export const DIRS: Dir[] = ['up', 'ur', 'right', 'dr', 'down', 'dl', 'left', 'ul']
+/** Posición al azar, distinta de la anterior. Con 8 posiciones se acierta de casualidad 1 vez en 8 (con la E, 1 en 4). */
+export const rndDir = (antes?: Dir): Dir => {
+  const d = DIRS[Math.floor(Math.random() * DIRS.length)]
+  return d === antes ? rndDir(antes) : d
+}
 
+/** Agudeza en las notaciones de las cartillas: decimal, pies (20/x) y metros (6/x), como Peek y Zeiss. */
 export const acuityLabel = (v: number | null) =>
-  v === null ? '—' : v === 0 ? '<0.1' : v.toFixed(1) + ' (20/' + Math.round(20 / v) + ')'
+  v === null ? '—' : v === 0 ? '<0.1 (<20/200 · <6/60)' : `${v.toFixed(1)} (20/${Math.round(20 / v)} · 6/${Math.round(6 / v)})`
+/** logMAR (0 = 10/10; cada 0,1 es un renglón de la cartilla ETDRS). */
+export const logmar = (v: number | null) => (v === null ? '—' : v === 0 ? '>1.0' : (-Math.log10(v)).toFixed(1))
 
 /** Pinta una lámina pseudoisocromática en el canvas (300×300). */
 export function drawPlate(canvas: HTMLCanvasElement, p: (typeof PLATES)[number]) {
@@ -193,6 +219,22 @@ export function evaluar(S: Resultados, edad: number | null, usa: Usa, nombre: st
   }
   items.push({ s: nS, n: 'Lectura (texto chico)', v: 'hasta ' + (S.near === 'J14' ? 'ninguno' : S.near), t: nT })
 
+  // Duocromo a 40 cm (2026-10-02, idea de Essilor): orientativo, no suma al puntaje para no mover el semáforo.
+  if (S.duo.R || S.duo.L) {
+    const lados = [S.duo.R, S.duo.L]
+    const verde = lados.includes('verde')
+    const rojo = lados.includes('rojo')
+    const nom = (d: Duo | null) => (d === null ? '—' : d === 'iguales' ? 'parejo' : d)
+    items.push({
+      s: verde || rojo ? 'warn' : 'ok', n: 'Rojo y verde (40 cm)', v: `OD ${nom(S.duo.R)} · OI ${nom(S.duo.L)}`,
+      t: !verde && !rojo ? 'Los dos lados se ven parejos: el enfoque de cerca está equilibrado.'
+        : verde ? (usa === 'si'
+          ? 'Más nítido sobre verde: tus anteojos podrían quedarse cortos de cerca. Que el óptico los revise.'
+          : 'Más nítido sobre verde: de cerca te podría faltar ayuda (es frecuente después de los 40).')
+        : 'Más nítido sobre rojo: podría sobrar graduación de cerca o haber miopía. Que lo revise el profesional.',
+    })
+  }
+
   const indice = Math.max(0, 100 - Math.round((score / 13) * 100))
   const pre = nombre ? nombre + ', ' : ''
   const cap = (t: string) => (nombre ? t : t.charAt(0).toUpperCase() + t.slice(1))
@@ -225,15 +267,31 @@ ${nombre ? 'Paciente: ' + nombre + '  ' : ''}${edad ? 'Edad: ' + edad : ''}
 Usa corrección: ${usa === 'si' ? 'sí (test con ella)' : usa === 'viejos' ? 'tiene, no la usa' : 'no'}
 Pantalla: ${(S.pxPerMm * 25.4).toFixed(0)} ppi calibrada con tarjeta
 
-Agudeza lejos (${S.distMm >= 2000 ? '3 m, E)    ' : '50 cm, E)  '} OD ${acuityLabel(S.acuity.R)}   OI ${acuityLabel(S.acuity.L)}
-Agudeza cerca (40 cm, E)   OD ${acuityLabel(S.acuityNear.R)}   OI ${acuityLabel(S.acuityNear.L)}
+Agudeza lejos (${S.distMm >= 2000 ? (S.espejo ? '3 m espejo)' : '3 m, C8)   ') : '50 cm, C8) '} OD ${acuityLabel(S.acuity.R)}   OI ${acuityLabel(S.acuity.L)}
+                           logMAR OD ${logmar(S.acuity.R)}   OI ${logmar(S.acuity.L)}
+Agudeza cerca (40 cm, C8)  OD ${acuityLabel(S.acuityNear.R)}   OI ${acuityLabel(S.acuityNear.L)}
 Contraste (binocular)      umbral ${c === null ? 'no detectado' : c + '%'}
 Reloj astigmático          OD ${S.astig.R ? 'parejo' : 'DESPAREJO'}   OI ${S.astig.L ? 'parejo' : 'DESPAREJO'}
 Color (rojo-verde)         ${S.colorHits}/3 láminas
 Amsler                     OD ${S.amsler.R ? 'normal' : 'ALTERADA'}   OI ${S.amsler.L ? 'normal' : 'ALTERADA'}
 Lectura (40 cm, binoc.)    ${S.near}
+Duocromo (40 cm)           OD ${S.duo.R ?? '—'}   OI ${S.duo.L ?? '—'}${S.dp ? `
+DP (tarjeta en la frente)  lejos ${S.dp.lejos} mm   cerca ${S.dp.cerca} mm` : ''}
 
+C8 = anillo de Landolt, 8 posiciones, 2/2 aciertos por nivel, recuadro de apiñamiento.
 Orientativo, no diagnóstico. Generado por el paciente.`
+}
+
+/** Consejos de cristales según los hábitos del cuestionario inicial (sugerencias comerciales, no indicación médica). */
+export function sugerenciasHabitos(h: Habitos, edad: number | null): string[] {
+  const s: string[] = []
+  if (h.pantalla === 'mucho') s.push('Muchas horas de pantalla: cristales con filtro de luz azul y antirreflejo, y la regla 20-20-20 (cada 20 minutos, mirá 20 segundos algo a 6 metros).')
+  else if (h.pantalla === 'medio') s.push('Uso diario de pantallas: el filtro de luz azul con antirreflejo descansa la vista al final del día.')
+  if (h.pantalla !== 'poco' && h.pantalla !== null && edad && edad >= 40) s.push('Después de los 40, los cristales ocupacionales (para compu y escritorio) dan una zona de pantalla más ancha que los multifocales comunes.')
+  if (h.noche) s.push('Manejás de noche: un antirreflejo de buena calidad reduce los destellos de los faros.')
+  if (h.sol) s.push('Pasás tiempo al sol: fotocromáticos o anteojos de sol graduados con filtro UV400.')
+  if (h.control === 'mas2' || h.control === 'nunca') s.push(h.control === 'nunca' ? 'Nunca te hiciste un control visual: es buen momento para el primero.' : 'Pasaron más de 2 años de tu último control: es buen momento para hacerlo.')
+  return s
 }
 
 /** Código local de respaldo si el backend no responde (mismo formato que pretest_guardar). */

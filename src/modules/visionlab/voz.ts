@@ -1,6 +1,6 @@
 // Orbital Vision Lab: guía de voz para la prueba de lejos (3 m). El celular habla (speechSynthesis), escucha la
 // respuesta (SpeechRecognition: "arriba", "derecha", "no la veo"…) y pasa solo a la letra siguiente.
-// Mientras habla no escucha, para no oírse a sí mismo.
+// Mientras habla no escucha (corta el micrófono y lo vuelve a abrir al terminar), para no oírse a sí mismo.
 import { useEffect, useRef, useState } from 'react'
 import type { Dir } from './logic'
 
@@ -25,6 +25,11 @@ let vozEs: SpeechSynthesisVoice | null | undefined
 let hablandoHasta = 0
 // Solo el reloj propio: en algunos Android speechSynthesis.speaking queda en true para siempre y no se escucharía más.
 export const estaHablando = () => performance.now() < hablandoHasta
+// Avisa a quien esté escuchando que el celular empieza a hablar: corta el micrófono para no oírse a sí mismo
+// (si no, "decí arriba, abajo… o no la veo" se tomaba como respuesta y pasaba solo a la letra siguiente).
+const alHablar = new Set<() => void>()
+// margen después de hablar: eco del parlante y resultados que el reconocedor entrega tarde
+const COLA_MS = 700
 
 export function hablar(t: string, alTerminar?: () => void) {
   if (typeof speechSynthesis === 'undefined') { alTerminar?.(); return }
@@ -40,7 +45,8 @@ export function hablar(t: string, alTerminar?: () => void) {
   u.rate = 1.02
   // margen por si el evento de fin llega tarde (o no llega, en algunos Android)
   hablandoHasta = performance.now() + 700 + t.length * 75
-  u.onend = () => { hablandoHasta = Math.min(hablandoHasta, performance.now() + 350); alTerminar?.() }
+  u.onend = () => { hablandoHasta = Math.min(hablandoHasta, performance.now() + COLA_MS); alTerminar?.() }
+  alHablar.forEach((f) => f())
   speechSynthesis.speak(u)
 }
 
@@ -75,15 +81,33 @@ export const puedeEscuchar = () => typeof window !== 'undefined' && !!ctor()
 
 export type Oido = Dir | 'none' | 'repetir'
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-/** Interpreta lo que dijo: la última dirección nombrada, "no la veo", o "repetí". */
+type Eje = 'v' | 'h'
+const PALABRAS: [RegExp, 'up' | 'down' | 'left' | 'right', Eje][] = [
+  [/arriba|subiendo|\bsube\b/g, 'up', 'v'], [/abajo|bajando|\bbaja\b/g, 'down', 'v'],
+  [/derech/g, 'right', 'h'], [/izquierd/g, 'left', 'h'],
+]
+const DIAG: Record<string, Dir> = { 'up-right': 'ur', 'up-left': 'ul', 'down-right': 'dr', 'down-left': 'dl' }
+/**
+ * Interpreta lo que dijo: la última posición nombrada, "no la veo", o "repetí". Las diagonales se dicen con las dos
+ * palabras juntas en cualquier orden: "arriba a la derecha", "derecha arriba", "abajo izquierda".
+ */
 export function interpretar(texto: string): Oido | null {
   const t = norm(texto)
   if (/\bno (la )?veo\b|\bno se\b|\bnose\b|\bpaso\b|\bnada\b|\bni idea\b/.test(t)) return 'none'
   if (/\brepet/.test(t)) return 'repetir'
-  const pals: [RegExp, Dir][] = [[/arriba/g, 'up'], [/abajo/g, 'down'], [/derech/g, 'right'], [/izquierd/g, 'left']]
-  let mejor: { i: number; d: Dir } | null = null
-  for (const [re, d] of pals) for (const m of t.matchAll(re)) if (!mejor || m.index! > mejor.i) mejor = { i: m.index!, d }
-  return mejor?.d ?? null
+  const hits: { i: number; fin: number; d: 'up' | 'down' | 'left' | 'right'; eje: Eje }[] = []
+  for (const [re, d, eje] of PALABRAS) for (const m of t.matchAll(re)) hits.push({ i: m.index!, fin: m.index! + m[0].length, d, eje })
+  if (!hits.length) return null
+  hits.sort((a, b) => a.i - b.i)
+  const ult = hits[hits.length - 1]
+  const prev = hits[hits.length - 2]
+  // la palabra del otro eje justo antes (con "a la", "hacia la", "y" en el medio) forma la diagonal
+  if (prev && prev.eje !== ult.eje && /^[\s,]*(y\s+)?((a|hacia|para)\s+)?(la\s+|el\s+)?(costado\s+)?$/.test(t.slice(prev.fin, ult.i).replace(/^[a-z]*/, ''))) {
+    const v = prev.eje === 'v' ? prev.d : ult.d
+    const h = prev.eje === 'h' ? prev.d : ult.d
+    return DIAG[v + '-' + h]
+  }
+  return ult.d
 }
 
 // ---------- intérpretes de cada prueba ----------
@@ -103,6 +127,15 @@ export function entenderRejilla(texto: string): boolean | 'repetir' | null {
   if (/ondul|torcid|curv|borros|falt|manch|deform|raras?\b/.test(t)) return false
   if (/rect|complet|bien|normal|derech/.test(t)) return true
   return null
+}
+/** Duocromo: de qué lado se ven más nítidos los anillos (lo último que nombró). */
+export function entenderDuo(texto: string): 'rojo' | 'verde' | 'iguales' | 'repetir' | null {
+  const t = norm(texto)
+  if (repetir(t)) return 'repetir'
+  const m = [...t.matchAll(/roj|verd|igual|parej|mism|los dos|ambos/g)]
+  if (!m.length) return null
+  const u = m[m.length - 1][0]
+  return u === 'roj' ? 'rojo' : u === 'verd' ? 'verde' : 'iguales'
 }
 const NUMEROS: Record<string, string> = { uno: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6', siete: '7', ocho: '8', nueve: '9' }
 /** Láminas de color: el número dicho, o '' si no ve ninguno. */
@@ -154,45 +187,66 @@ export function useEscucha<T>(activo: boolean, entender: (texto: string) => T | 
     if (!activo) { setEstado('apagado'); return }
     const C = ctor()
     if (!C) { setEstado('no-soportado'); return }
-    let vivo = true, r: Reconocedor | null = null, atendido = -1, pausaHasta = 0, oyoAudio = false
+    // Una frase por sesión (continuous = false): en Android Chrome el modo continuo repite resultados y una
+    // respuesta contaba dos veces. Cada sesión tiene número: lo que llegue de una sesión cortada se descarta.
+    let vivo = true, r: Reconocedor | null = null, sesion = 0, pausaHasta = 0, oyoAudio = false
+    let vigia: ReturnType<typeof setTimeout> | null = null, espera: ReturnType<typeof setTimeout> | null = null
     setEstado('preparando')
-    // "Escuchando" recién cuando el micrófono entrega audio; si en 5 s no arrancó, se vuelve a las flechas.
-    const vigia = setTimeout(() => { if (vivo && !oyoAudio) { vivo = false; r?.abort(); setEstado('error') } }, 5000)
+    const programar = (ms: number) => { if (espera) clearTimeout(espera); espera = setTimeout(arrancar, ms) }
+    const cortar = () => { sesion++; try { r?.abort() } catch { /* ya cortado */ } r = null }
     const arrancar = () => {
+      espera = null
       if (!vivo) return
-      r = new C()
-      ;(r as unknown as { onaudiostart: () => void }).onaudiostart = () => { oyoAudio = true; if (vivo) setEstado('escuchando') }
-      r.lang = 'es-AR'
-      r.continuous = true
-      r.interimResults = true
-      r.maxAlternatives = 1
-      atendido = -1
-      r.onresult = (e) => {
-        if (estaHablando() || performance.now() < pausaHasta) return
+      // mientras habla (o justo después), esperar: se vuelve a escuchar cuando termina
+      const falta = Math.max(hablandoHasta, pausaHasta) - performance.now()
+      if (falta > 0) return programar(falta + 50)
+      const mia = ++sesion
+      const rec = new C()
+      r = rec
+      ;(rec as unknown as { onaudiostart: () => void }).onaudiostart = () => { if (mia !== sesion) return; oyoAudio = true; if (vivo) setEstado('escuchando') }
+      rec.lang = 'es-AR'
+      rec.continuous = false
+      rec.interimResults = true
+      rec.maxAlternatives = 1
+      let respondida = false
+      rec.onresult = (e) => {
+        if (mia !== sesion || respondida || estaHablando() || performance.now() < pausaHasta) return
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (i <= atendido) continue
           const texto = e.results[i][0].transcript
           const o = ent.current(texto)
           if (o === null) { if (e.results[i].isFinal) setCrudo(texto.trim()); continue }
+          respondida = true
           setCrudo('')
-          atendido = i
-          pausaHasta = performance.now() + 600
           setUltimo(texto.trim())
+          pausaHasta = performance.now() + 900
+          cortar()
           cb.current(o, texto)
-          // cortar y volver a escuchar limpio, para que la frase siguiente no arrastre la anterior
-          r?.abort()
           return
         }
       }
-      r.onerror = (e) => {
+      rec.onerror = (e) => {
+        if (mia !== sesion) return
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { vivo = false; setEstado('sin-permiso') }
         else if (e.error === 'audio-capture' || e.error === 'network' || e.error === 'language-not-supported') { vivo = false; setEstado('error') }
       }
-      r.onend = () => { if (vivo) setTimeout(arrancar, 250) }
-      try { r.start() } catch { setTimeout(arrancar, 500) }
+      // termina por silencio, por una respuesta o porque se cortó al hablar: volver a escuchar
+      rec.onend = () => { if (vivo && (mia === sesion || !r)) programar(250) }
+      try {
+        rec.start()
+        // "Escuchando" recién cuando el micrófono entrega audio; si en 5 s no arrancó, se vuelve a las flechas.
+        vigia ??= setTimeout(() => { if (vivo && !oyoAudio) { vivo = false; cortar(); setEstado('error') } }, 5000)
+      } catch { programar(500) }
     }
+    const silenciar = () => { if (!vivo) return; cortar(); programar(300) }
+    alHablar.add(silenciar)
     arrancar()
-    return () => { vivo = false; clearTimeout(vigia); r?.abort() }
+    return () => {
+      vivo = false
+      alHablar.delete(silenciar)
+      if (vigia) clearTimeout(vigia)
+      if (espera) clearTimeout(espera)
+      cortar()
+    }
   }, [activo])
 
   return { estado, ultimo, crudo }

@@ -3,23 +3,29 @@
 // Público sin login en /lab/pretest (tienda: ?src=tienda · QR de óptica: ?o=<cod>), solo el buscador en
 // /lab/buscar, y dentro de la Suite. Diseño de herramienta clínica (ref.: Zeiss Online Vision Screening,
 // Warby Parker Virtual Vision Test): pasos con progreso, instrucciones con íconos, informe imprimible.
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Mic, ChevronLeft, Clock, Copy, CreditCard, Eye, EyeOff, Glasses,
-  Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, Search, Share2, ShieldCheck, Stethoscope, Store, Sun,
+  ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Check, Mic, ChevronLeft, Clock, Copy, CreditCard, Eye, EyeOff, Glasses,
+  Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, ScanFace, Search, Share2, ShieldCheck, Stethoscope, Store, Sun,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { telefonosCliente } from '../../lib/telefono'
 import {
-  CAL_DEFAULT, CARD_H_MM, CARD_MM, CLEVELS, DIST_CERCA_MM, DIST_LEJOS_MM, DIST_MM, Dir, Eye as Ojo, Informe, LEVELS, NEAR, NearId, PLATES, Resultados, Usa,
-  armarTicket, codigoLocal, drawPlate, evaluar, letterMm, rndDir,
+  CAL_DEFAULT, CARD_H_MM, CARD_MM, CLEVELS, DIST_CERCA_MM, DIST_LEJOS_MM, DIST_MM, Dir, Duo, Eye as Ojo, Habitos, Informe, LEVELS, NEAR, NearId, PLATES, Resultados, Usa,
+  acuityLabel, armarTicket, codigoLocal, drawPlate, evaluar, habitosVacios, letterMm, rndDir, sugerenciasHabitos,
 } from './logic'
 import { ComoSeHace } from './ayuda'
-import { Indicador, Ubicarse, useDistancia } from './distancia'
+import { AvisoLuz, Indicador, Ubicarse, useDistancia } from './distancia'
 import {
-  entenderLectura, entenderNumero, entenderRejilla, entenderReloj, hablar, interpretar, prepararVoz, puedeEscuchar,
+  entenderDuo, entenderLectura, entenderNumero, entenderRejilla, entenderReloj, hablar, interpretar, prepararVoz, puedeEscuchar,
   tono as tonoAnotado, useEscucha,
 } from './voz'
+import { DP, MedirDP } from './dp'
+import { TestFatiga, Fatiga } from './fatiga'
+import {
+  Alarmas, compactar, CuestionarioHabitos, Duocromo, Evolucion, guardarEnHistorial, leerHistorial, OjoDominante, QRProfesional,
+  Recordatorio, Registro, urlProfesional,
+} from './extras'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
 import { OBRAS, ObraSocial, PRINCIPALES } from './obras'
 import './pretest.css'
@@ -42,31 +48,36 @@ interface Optica {
 // `partido`: en el conurbano la localidad (Banfield) no suele tener óptica y el partido (Lomas de Zamora) sí.
 interface Zona { barrio: string | null; partido: string | null; provincia: string | null }
 
-const PASOS = ['Calibración', 'Visión de lejos', 'Contraste', 'Astigmatismo', 'Visión de color', 'Visión central', 'Visión de cerca', 'Lectura']
+const PASOS = ['Calibración', 'Visión de lejos', 'Contraste', 'Astigmatismo', 'Visión de color', 'Visión central', 'Visión de cerca', 'Lectura', 'Rojo y verde']
 const N_PASOS = PASOS.length
 const PASO_INFORME = N_PASOS + 1
 const CAL_MIN = 150
 // Guía de voz: consigna de cada prueba (se dice al entrar y con "repetí") y la pista corta que queda en pantalla.
 const RENGLONES = [...NEAR].reverse().filter((n) => n.id !== 'J14')
 const CONSIGNAS: Record<number, string> = {
-  2: 'Decí hacia dónde apuntan las patas de la letra: arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.',
-  3: 'Contraste. Con los dos ojos y el celular a 50 centímetros. La letra se va aclarando: decí hacia dónde apunta. Cuando ya no la distingas, decí no la veo.',
+  2: 'Decí dónde está la abertura del anillo: arriba, abajo, derecha, izquierda, o en diagonal, por ejemplo arriba a la derecha. Si no la ves, decí no la veo.',
+  3: 'Contraste. Con los dos ojos y el celular a 50 centímetros. El anillo se va aclarando: decí dónde está la abertura. Cuando ya no lo distingas, decí no la veo.',
   4: 'Reloj de astigmatismo. Celular a 50 centímetros. Tapate el ojo izquierdo y mirá el centro. Si todas las líneas se ven iguales, decí iguales. Si algunas se ven más oscuras o marcadas, decí distintas.',
   5: 'Visión de color. Con los dos ojos. Decí qué número ves dentro del círculo. Si no ves ninguno, decí ninguno.',
   6: 'Rejilla. Celular a 30 centímetros. Tapate el ojo izquierdo y mirá fijo el punto del centro. Si las líneas se ven rectas y completas, decí rectas. Si se ven onduladas o falta alguna parte, decí onduladas.',
-  7: 'Visión de cerca. Celular a 40 centímetros. Tapate el ojo izquierdo y decí hacia dónde apunta la letra.',
+  7: 'Visión de cerca. Celular a 40 centímetros. Tapate el ojo izquierdo y decí dónde está la abertura del anillo, por ejemplo abajo a la izquierda.',
   8: 'Lectura. Con los dos ojos, a 40 centímetros. Leé en voz alta el renglón más chico que puedas leer sin esfuerzo. Si no podés leer ninguno, decí ninguno.',
+  9: 'Rojo y verde. Celular a 40 centímetros. Tapate el ojo izquierdo. ¿Los anillos se ven más nítidos y negros sobre el rojo, sobre el verde, o iguales? Decí rojo, verde o iguales.',
 }
 const PISTAS: Record<number, string> = {
-  2: 'decí arriba, abajo, derecha, izquierda o no la veo',
-  3: 'decí arriba, abajo, derecha, izquierda o no la veo',
+  2: 'decí dónde está la abertura: “arriba”, “abajo a la derecha”… o “no la veo”',
+  3: 'decí dónde está la abertura: “arriba”, “abajo a la derecha”… o “no la veo”',
   4: 'decí “iguales” o “distintas”',
   5: 'decí el número que ves o “ninguno”',
   6: 'decí “rectas” u “onduladas”',
-  7: 'decí arriba, abajo, derecha, izquierda o no la veo',
+  7: 'decí dónde está la abertura: “arriba”, “abajo a la derecha”… o “no la veo”',
   8: 'leé en voz alta el renglón más chico que puedas; después decí “listo”',
+  9: 'decí “rojo”, “verde” o “iguales”',
 }
-const INSTR_VOZ = 'Listo, quedate ahí. Tapate el ojo izquierdo con la palma. Te voy a mostrar letras: decí en voz alta hacia dónde apuntan las patas, arriba, abajo, derecha o izquierda. Si no la ves, decí no la veo.'
+const instrVoz = (espejo: boolean) => (espejo
+  ? 'Listo, quedate ahí. Ahora tapate el ojo izquierdo con el celular, con la pantalla mirando al espejo, y mirá su reflejo con el ojo derecho. '
+  : 'Listo, quedate ahí. Tapate el ojo izquierdo con la palma. ') + INSTR_ANILLOS
+const INSTR_ANILLOS = 'Te voy a mostrar anillos con una abertura: decí en voz alta dónde está, arriba, abajo, derecha, izquierda, o en diagonal, como arriba a la derecha. Si no la ves, decí no la veo.'
 const PRUEBAS: [string, string][] = [
   ['Visión de lejos', 'A 3 m, ojo por ojo'],
   ['Sensibilidad al contraste', 'Binocular'],
@@ -75,6 +86,7 @@ const PRUEBAS: [string, string][] = [
   ['Visión central', 'Rejilla de Amsler'],
   ['Visión de cerca', 'A 40 cm, ojo por ojo'],
   ['Lectura', 'Texto de lectura (Jaeger)'],
+  ['Rojo y verde', 'Duocromo a 40 cm, ojo por ojo'],
 ]
 const PASO_BUSCAR = PASO_INFORME + 1
 const PASO_LEGAL = PASO_INFORME + 2
@@ -84,12 +96,12 @@ const PASO_LEGAL = PASO_INFORME + 2
 const WA_IRIS = '5491178548316'
 const LEGALES: [string, ReactNode][] = [
   ['Qué es esta herramienta', 'Orbital Vision Lab es una guía previa a la consulta oftalmológica: un conjunto de pruebas de autoevaluación visual que te ayuda a llegar a la consulta con información y a saber qué contarle al profesional. Es gratuita y la ofrece Orbital Eyewear con fines informativos.'],
-  ['Qué no es', 'No es un examen oftalmológico, no es un dispositivo médico, no realiza diagnósticos y no reemplaza la consulta con un médico oftalmólogo. No sirve para obtener, renovar ni modificar una receta de anteojos o lentes de contacto. Un resultado "normal" no descarta enfermedades oculares: muchas no dan síntomas y solo se detectan en un control profesional.'],
+  ['Qué no es', 'No es un examen oftalmológico ni un dispositivo médico: no está destinada al diagnóstico de enfermedades ni a su cura, mitigación, tratamiento o prevención, y no reemplaza la consulta con un médico oftalmólogo. No sirve para obtener, renovar ni modificar una receta de anteojos o lentes de contacto. Un resultado "normal" no descarta enfermedades oculares: muchas no dan síntomas y solo se detectan en un control profesional.'],
   ['Cómo leer los resultados', 'Los valores son estimaciones orientativas. Dependen de la calibración de tu pantalla, el brillo, la iluminación, la distancia a la que sostengas el celular y tus respuestas. Pueden no coincidir con los de un examen profesional.'],
   ['Cuándo ir a una guardia', 'Si tenés pérdida de visión repentina, dolor ocular, ojo rojo con dolor, destellos de luz, una "cortina" o manchas nuevas en la visión, visión doble repentina o un golpe en el ojo, no hagas esta guía: consultá de inmediato en una guardia oftalmológica.'],
   ['Menores de edad', 'Las personas menores de 18 años deben hacer la guía acompañadas por un adulto responsable. Los chicos necesitan controles oftalmológicos periódicos aunque no tengan síntomas.'],
   ['Armazones y ópticas sugeridos', 'Las sugerencias de armazones son recomendaciones comerciales generales de Orbital Eyewear según criterios ópticos habituales, no una indicación médica. Los anteojos recetados se confeccionan únicamente con la receta de un profesional matriculado; el óptico confirma medidas y calce. Los oftalmólogos del buscador provienen de Google Maps: Orbital Eyewear no tiene relación con ellos ni responde por su atención.'],
-  ['Tus datos', <>Si activás la medición de distancia, la cámara se usa solo dentro de tu celular para calcular a qué distancia estás: las imágenes no se guardan ni se envían. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
+  ['Tus datos', <>La cámara (medición de distancia, distancia entre pupilas con la tarjeta y conteo de parpadeos) se usa solo dentro de tu celular: las imágenes y la foto no se guardan ni se envían. El código QR del informe lleva tus resultados sin tu nombre, y solo los ve quien lo escanee. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
   ['Responsabilidad', 'Al usar la guía aceptás que es informativa y que las decisiones sobre tu salud visual las tomás con un profesional. Orbital Eyewear no se responsabiliza por decisiones tomadas solo en base a estos resultados.'],
 ]
 
@@ -115,23 +127,37 @@ async function zonaDesdeGps(lat: number, lng: number): Promise<Zona & { ciudad: 
 const mapaEmbed = (q: string) => `https://maps.google.com/maps?q=${encodeURIComponent(q)}&hl=es&z=13&output=embed`
 const mapaAbrir = (q: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
 
-const resultadosIniciales = (pxPerMm: number): Resultados => ({
-  pxPerMm, distMm: DIST_LEJOS_MM, acuity: { R: null, L: null }, acuityNear: { R: null, L: null }, contrast: null, astig: { R: null, L: null },
-  colorHits: 0, amsler: { R: null, L: null }, near: null,
+const resultadosIniciales = (pxPerMm: number, dp: DP | null = null): Resultados => ({
+  pxPerMm, distMm: DIST_LEJOS_MM, espejo: false, acuity: { R: null, L: null }, acuityNear: { R: null, L: null }, contrast: null, astig: { R: null, L: null },
+  colorHits: 0, amsler: { R: null, L: null }, near: null, duo: { R: null, L: null }, dp,
 })
+
+/** Datos que no tienen columna propia (DP, duocromo, hábitos, fatiga…): se suman al lead en `pretests.extras`. */
+const guardarExtras = (code: string | null, extras: Record<string, unknown>) => {
+  if (code) supabase.rpc('pretest_extras', { p_code: code, p: extras }).then(() => {})
+}
+/** Lo que se ve en un espejo está invertido de izquierda a derecha. */
+const ESPEJADA: Record<Dir, Dir> = { up: 'up', down: 'down', left: 'right', right: 'left', ur: 'ul', ul: 'ur', dr: 'dl', dl: 'dr' }
 
 // Escalera de 2 intentos por nivel: ambos correctos para subir (agudeza y contraste).
 interface Escalera { lvl: number; trial: number; hits: number; best: number; dir: Dir }
 const escaleraNueva = (): Escalera => ({ lvl: 0, trial: 0, hits: 0, best: -1, dir: rndDir() })
 
-function E({ dir, px, color = '#000' }: { dir: Dir; px: number; color?: string }) {
-  const rot = { up: 270, right: 0, down: 90, left: 180 }[dir]
+/**
+ * Anillo de Landolt (ISO 8596): diámetro 5, trazo 1 y abertura 1 de bordes paralelos. Se dibuja con la abertura a la
+ * derecha y se gira hacia una de las 8 posiciones.
+ */
+const ROT: Record<Dir, number> = { right: 0, dr: 45, down: 90, dl: 135, left: 180, ul: 225, up: 270, ur: 315 }
+const ANILLO = `M${2.5 + Math.sqrt(6)} 3 A2.5 2.5 0 1 1 ${2.5 + Math.sqrt(6)} 2 L${2.5 + Math.SQRT2} 2 A1.5 1.5 0 1 0 ${2.5 + Math.SQRT2} 3 Z`
+// Recuadro de apiñamiento (Peek Acuity): barra del grosor del trazo, separada medio anillo. Imita el efecto de las
+// letras vecinas en una cartilla real; si no entra en la pantalla (anillos grandes a 3 m) se dibuja sin recuadro.
+const CAJA = 'M-3.5 -3.5 H8.5 V8.5 H-3.5 Z M-2.5 -2.5 V7.5 H7.5 V-2.5 Z'
+function Anillo({ dir, px, color = '#000', caja = false }: { dir: Dir; px: number; color?: string; caja?: boolean }) {
+  const conCaja = caja && px * 2.4 <= Math.min(320, window.innerWidth - 60)
   return (
-    <svg width={px} height={px} viewBox="0 0 5 5" style={{ transform: `rotate(${rot}deg)` }} aria-hidden="true">
-      <rect x="0" y="0" width="5" height="1" fill={color} />
-      <rect x="0" y="2" width="5" height="1" fill={color} />
-      <rect x="0" y="4" width="5" height="1" fill={color} />
-      <rect x="0" y="0" width="1" height="5" fill={color} />
+    <svg width={conCaja ? px * 2.4 : px} height={conCaja ? px * 2.4 : px} viewBox={conCaja ? '-3.5 -3.5 12 12' : '0 0 5 5'} aria-hidden="true">
+      {conCaja && <path d={CAJA} fill={color} fillRule="evenodd" />}
+      <path d={ANILLO} fill={color} transform={`rotate(${ROT[dir]} 2.5 2.5)`} />
     </svg>
   )
 }
@@ -187,13 +213,13 @@ function Guia({ items }: { items: [ReactNode, string][] }) {
 }
 
 /** Qué ojo se evalúa y cuál se tapa. */
-function Ojos({ eye }: { eye: Ojo }) {
+function Ojos({ eye, espejo = false }: { eye: Ojo; espejo?: boolean }) {
   const card = (o: Ojo) => {
     const on = o === eye
     return (
       <div className={on ? 'on' : 'off'}>
         <span className="ic">{on ? <Eye size={18} /> : <EyeOff size={18} />}</span>
-        <span><b>Ojo {o === 'R' ? 'derecho' : 'izquierdo'}</b><small>{on ? 'Evaluando' : 'Tapalo con la palma'}</small></span>
+        <span><b>Ojo {o === 'R' ? 'derecho' : 'izquierdo'}</b><small>{on ? 'Evaluando' : espejo ? 'Tapalo con el celular' : 'Tapalo con la palma'}</small></span>
       </div>
     )
   }
@@ -203,21 +229,148 @@ function Ojos({ eye }: { eye: Ojo }) {
 function DPad({ onAnswer }: { onAnswer: (d: Dir | 'none') => void }) {
   return (
     <div className="dpad">
-      <span className="blank" />
+      <button onClick={() => onAnswer('ul')} aria-label="Arriba a la izquierda"><ArrowUpLeft size={24} /></button>
       <button onClick={() => onAnswer('up')} aria-label="Arriba"><ArrowUp size={26} /></button>
-      <span className="blank" />
+      <button onClick={() => onAnswer('ur')} aria-label="Arriba a la derecha"><ArrowUpRight size={24} /></button>
       <button onClick={() => onAnswer('left')} aria-label="Izquierda"><ArrowLeft size={26} /></button>
       <button className="none" onClick={() => onAnswer('none')}>No la veo</button>
       <button onClick={() => onAnswer('right')} aria-label="Derecha"><ArrowRight size={26} /></button>
-      <span className="blank" />
+      <button onClick={() => onAnswer('dl')} aria-label="Abajo a la izquierda"><ArrowDownLeft size={24} /></button>
       <button onClick={() => onAnswer('down')} aria-label="Abajo"><ArrowDown size={26} /></button>
-      <span className="blank" />
+      <button onClick={() => onAnswer('dr')} aria-label="Abajo a la derecha"><ArrowDownRight size={24} /></button>
     </div>
   )
 }
 
 /** Intentos del nivel actual (2 por nivel). */
 const Intentos = ({ n }: { n: number }) => <div className="dots" aria-hidden="true"><i className={n >= 0 ? 'on' : ''} /><i className={n >= 1 ? 'on' : ''} /></div>
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// "Así ves vos" (idea de Peek Vision: ver la imagen borrosa al lado de la nítida duplicó la gente que va al control).
+// La misma escena nítida y desenfocada según la agudeza medida en cada ojo. Es una aproximación visual, no una medida.
+/** Desenfoque (en unidades de la escena de 320 de ancho) para una agudeza decimal: 0 con 1.0, máximo 11. */
+const desenfoque = (v: number | null) => Math.min(11, 1.4 * (1 / Math.max(0.08, v ?? 0.08) - 1))
+
+function EscenaLejos() {
+  return (
+    <>
+      <rect width="320" height="200" fill="#cfe3f2" />
+      <rect y="150" width="320" height="50" fill="#9a9a9a" />
+      <rect y="146" width="320" height="6" fill="#d8d4cc" />
+      <rect x="12" y="40" width="96" height="110" fill="#e9dccb" />
+      <rect x="22" y="52" width="22" height="26" fill="#7da3c0" /><rect x="58" y="52" width="22" height="26" fill="#7da3c0" />
+      <rect x="22" y="92" width="22" height="26" fill="#7da3c0" /><rect x="58" y="92" width="22" height="26" fill="#7da3c0" />
+      <rect x="214" y="20" width="96" height="130" fill="#d9c7b0" />
+      <rect x="224" y="34" width="76" height="20" rx="2" fill="#1f5f3a" />
+      <text x="262" y="48" textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff" fontFamily="Arial,sans-serif">FARMACIA</text>
+      <text x="262" y="72" textAnchor="middle" fontSize="7" fill="#3a3a42" fontFamily="Arial,sans-serif">Abierto de 8 a 22 h</text>
+      <rect x="128" y="34" width="4" height="116" fill="#555" />
+      <rect x="104" y="22" width="88" height="16" fill="#0d6b3c" />
+      <text x="148" y="33.5" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#fff" fontFamily="Arial,sans-serif">AV. CORRIENTES</text>
+      <text x="158" y="47" fontSize="6" fill="#17171c" fontFamily="Arial,sans-serif">1200 - 1300</text>
+      <rect x="138" y="70" width="58" height="40" rx="4" fill="#f2c200" />
+      <text x="167" y="88" textAnchor="middle" fontSize="15" fontWeight="800" fill="#17171c" fontFamily="Arial,sans-serif">152</text>
+      <text x="167" y="101" textAnchor="middle" fontSize="7" fill="#17171c" fontFamily="Arial,sans-serif">Retiro · Olivos</text>
+      <rect x="40" y="160" width="84" height="30" rx="8" fill="#b23a3a" />
+      <rect x="60" y="179" width="42" height="9" rx="1" fill="#fff" />
+      <text x="81" y="186.5" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="#17171c" fontFamily="Arial,sans-serif">AB 123 CD</text>
+    </>
+  )
+}
+function EscenaCerca() {
+  return (
+    <>
+      <rect width="320" height="200" fill="#f4efe6" />
+      <rect x="18" y="14" width="150" height="172" rx="6" fill="#fff" stroke="#e0d9cc" />
+      <text x="30" y="36" fontSize="11" fontWeight="800" fill="#17171c" fontFamily="Georgia,serif">Menú del día</text>
+      {[['Milanesa con puré', '$ 9.800'], ['Ravioles de verdura', '$ 8.500'], ['Ensalada completa', '$ 7.200'], ['Flan con dulce', '$ 3.900']].map(([p, $], i) => (
+        <g key={p} fontFamily="Georgia,serif" fill="#3a3a42">
+          <text x="30" y={60 + i * 22} fontSize="8">{p}</text>
+          <text x="156" y={60 + i * 22} fontSize="8" textAnchor="end">{$}</text>
+        </g>
+      ))}
+      <text x="30" y="160" fontSize="5.5" fill="#6e6a61" fontFamily="Georgia,serif">Incluye bebida y postre. Consultá</text>
+      <text x="30" y="168" fontSize="5.5" fill="#6e6a61" fontFamily="Georgia,serif">opciones sin TACC.</text>
+      <rect x="184" y="24" width="120" height="152" rx="14" fill="#17171c" />
+      <rect x="190" y="34" width="108" height="132" rx="8" fill="#e8f1e4" />
+      <rect x="196" y="44" width="86" height="30" rx="6" fill="#fff" />
+      <text x="201" y="56" fontSize="7" fill="#17171c" fontFamily="Arial,sans-serif">¿Llegás a las 8?</text>
+      <text x="201" y="66" fontSize="5.5" fill="#6e6a61" fontFamily="Arial,sans-serif">Te espero en la puerta</text>
+      <rect x="208" y="84" width="84" height="22" rx="6" fill="#cdeec0" />
+      <text x="213" y="98" fontSize="7" fill="#17171c" fontFamily="Arial,sans-serif">Sí, salgo ahora</text>
+      <rect x="196" y="116" width="86" height="22" rx="6" fill="#fff" />
+      <text x="201" y="130" fontSize="7" fill="#17171c" fontFamily="Arial,sans-serif">Dale, beso 😊</text>
+    </>
+  )
+}
+
+function AsiVes({ S, usa }: { S: Resultados; usa: Usa }) {
+  const [cerca, setCerca] = useState(false)
+  const [ojo, setOjo] = useState<Ojo>(() => ((S.acuity.L ?? 0) < (S.acuity.R ?? 0) ? 'L' : 'R'))
+  const id = useId().replace(/:/g, '')
+  const v = cerca ? S.acuityNear[ojo] : S.acuity[ojo]
+  const sd = desenfoque(v)
+  // con umbral de contraste alto, la imagen también pierde contraste
+  const lav = S.contrast === null ? 0.55 : S.contrast >= 25 ? 0.7 : S.contrast >= 12 ? 0.85 : 1
+  const escena = cerca ? <EscenaCerca /> : <EscenaLejos />
+  const nitido = sd < 0.3 && lav === 1
+  return (
+    <div className="asives">
+      <div className="asives-hd">
+        <div>
+          <h3>Así ves vos</h3>
+          <p className="muted small">Con el ojo {ojo === 'R' ? 'derecho' : 'izquierdo'}, {cerca ? 'de cerca' : 'de lejos'}{usa === 'si' ? ', con tus anteojos actuales' : ''}: agudeza {acuityLabel(v)}.</p>
+        </div>
+        <div className="asives-ctl no-print">
+          <div className="seg2" role="radiogroup" aria-label="Distancia">
+            <button role="radio" aria-checked={!cerca} className={!cerca ? 'sel' : ''} onClick={() => setCerca(false)}>De lejos</button>
+            <button role="radio" aria-checked={cerca} className={cerca ? 'sel' : ''} onClick={() => setCerca(true)}>De cerca</button>
+          </div>
+          <div className="seg2" role="radiogroup" aria-label="Ojo">
+            <button role="radio" aria-checked={ojo === 'R'} className={ojo === 'R' ? 'sel' : ''} onClick={() => setOjo('R')}>OD</button>
+            <button role="radio" aria-checked={ojo === 'L'} className={ojo === 'L' ? 'sel' : ''} onClick={() => setOjo('L')}>OI</button>
+          </div>
+        </div>
+      </div>
+      <div className="asives-par">
+        <figure>
+          <svg viewBox="0 0 320 200" role="img" aria-label="Escena nítida">{escena}</svg>
+          <figcaption>Con buena visión (10/10)</figcaption>
+        </figure>
+        <figure>
+          <svg viewBox="0 0 320 200" role="img" aria-label="Escena simulada según tu resultado">
+            <defs>
+              <filter id={'av' + id} x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur stdDeviation={sd.toFixed(2)} />
+                <feComponentTransfer>
+                  {['R', 'G', 'B'].map((c) => {
+                    const F = { R: 'feFuncR', G: 'feFuncG', B: 'feFuncB' }[c] as 'feFuncR'
+                    return <F key={c} type="linear" slope={lav} intercept={((1 - lav) * 0.75).toFixed(3)} />
+                  })}
+                </feComponentTransfer>
+              </filter>
+              <clipPath id={'ac' + id}><rect width="320" height="200" /></clipPath>
+            </defs>
+            {/* el fondo se extiende fuera del cuadro para que el desenfoque no aclare los bordes */}
+            <g clipPath={`url(#ac${id})`}><g filter={`url(#av${id})`}>
+              {cerca
+                ? <rect x="-30" y="-30" width="380" height="260" fill="#f4efe6" />
+                : <><rect x="-30" y="-30" width="380" height="180" fill="#cfe3f2" /><rect x="-30" y="150" width="380" height="80" fill="#9a9a9a" /></>}
+              {escena}
+            </g></g>
+          </svg>
+          <figcaption>{nitido ? 'Así ves vos: nítido' : 'Así ves vos (aproximado)'}</figcaption>
+        </figure>
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        {nitido
+          ? 'Con este ojo no encontramos pérdida de nitidez. '
+          : 'Unos anteojos bien graduados suelen devolver la nitidez de la imagen de 10/10. '}
+        Simulación aproximada a partir de tu resultado: sirve para darte una idea, no muestra exactamente cómo ves.
+      </p>
+    </div>
+  )
+}
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // Buscador de ópticas Orbital y oftalmólogos: al final del informe y solo en /lab/buscar.
@@ -551,6 +704,18 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const [scrolled, setScrolled] = useState(false)
   const [acepta, setAcepta] = useState(false)
   const [volverA, setVolverA] = useState(0)
+  // Inicio: síntomas de alarma (si hay alguno no se hace la guía) y hábitos para sugerir cristales.
+  const [alarmas, setAlarmas] = useState<string[]>([])
+  const [habitos, setHabitos] = useState<Habitos>(habitosVacios)
+  // Calibración en dos partes: la pantalla (tarjeta sobre el dibujo) y, opcional, la DP (tarjeta en la frente).
+  const [faseCal, setFaseCal] = useState<'pantalla' | 'frente'>('pantalla')
+  const hayCamara = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+  // Modo espejo (Essilor): parado a 1,5 m de un espejo, mirando el reflejo de la pantalla = 3 m.
+  const [espejo, setEspejo] = useState(false)
+  // Extras del informe
+  const [dom, setDom] = useState<Ojo | null>(null)
+  const [fatiga, setFatiga] = useState<Fatiga | null>(null)
+  const [previos, setPrevios] = useState<Registro[]>([])
   const verLegales = () => { setVolverA(step); go(PASO_LEGAL) }
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -575,7 +740,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const edadNum = +edad || null
   const nombreT = nombre.trim()
   const enTest = step >= 1 && step <= N_PASOS
-  const dist = useDistancia(usarCam && step >= 2 && step <= N_PASOS && (step !== 2 || modoLejos !== null))
+  const dist = useDistancia(usarCam && step >= 2 && step <= N_PASOS && (step !== 2 || modoLejos !== null), S.dp?.lejos ?? null)
 
   useEffect(() => {
     const f = () => setScrolled(window.scrollY > 8)
@@ -591,56 +756,76 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   // ---------- calibración ----------
   function calibrado() {
     setS((s) => ({ ...s, pxPerMm }))
+    // Si ya midió la DP (repite el chequeo) o no hay cámara, directo a las pruebas.
+    if (hayCamara && !S.dp) { setFaseCal('frente'); window.scrollTo({ top: 0, behavior: 'smooth' }); return }
+    empezarPruebas()
+  }
+  function empezarPruebas() {
+    setFaseCal('pantalla')
     setEye('R')
     setAc(escaleraNueva())
     setModoLejos(null)
+    setEspejo(false)
     setLock(null)
     go(2)
+  }
+  function dpMedida(dp: DP) {
+    setS((s) => ({ ...s, dp }))
+    empezarPruebas()
   }
 
   /** Escalera de agudeza con E: devuelve la agudeza final o null si sigue la prueba. */
   function escalera(e: Escalera, set: (e: Escalera) => void, a: Dir | 'none'): number | null {
     const hits = e.hits + (a === e.dir ? 1 : 0)
     const trial = e.trial + 1
-    if (trial < 2) { set({ ...e, trial, hits, dir: rndDir() }); return null }
+    if (trial < 2) { set({ ...e, trial, hits, dir: rndDir(e.dir) }); return null }
     let best = e.best
     if (hits === 2) {
       best = e.lvl
       const lvl = e.lvl + 1
-      if (lvl < LEVELS.length) { set({ lvl, trial: 0, hits: 0, best, dir: rndDir() }); return null }
+      if (lvl < LEVELS.length) { set({ lvl, trial: 0, hits: 0, best, dir: rndDir(e.dir) }); return null }
     }
     return best >= 0 ? LEVELS[best] : 0
   }
 
   // ---------- agudeza de lejos (3 m con ayudante o 50 cm) ----------
-  function elegirLejos(dist: number) {
+  function elegirLejos(dist: number, conEspejo = false) {
     setModoLejos(dist)
+    setEspejo(conEspejo)
     setLock(null)
-    setS((s) => ({ ...s, distMm: dist }))
+    setS((s) => ({ ...s, distMm: dist, espejo: conEspejo }))
+    // En el espejo no se llega a tocar la pantalla: se responde por voz sí o sí.
+    if (conEspejo) setUsarVoz(true)
     // La primera frase se dice dentro del toque: en iPhone la voz solo arranca desde un gesto del usuario.
-    if (usarVoz) prepararVoz()
-    if (usarCam) hablar(dist >= 2000 ? 'Apoyá el celular y alejate despacio. Te aviso cuándo frenar.' : 'Sostené el celular con el brazo estirado.')
-    else if (dist >= 2000 && usarVoz) hablar('Apoyá el celular a la altura de tus ojos y alejate 3 metros, unos 4 pasos largos. ' + INSTR_VOZ.replace('Listo, quedate ahí. ', ''))
+    if (usarVoz || conEspejo) prepararVoz()
+    if (conEspejo) {
+      hablar(usarCam
+        ? 'Parate frente al espejo con el celular al costado de tu cara y la pantalla mirando al espejo. Alejate despacio: te aviso cuándo frenar.'
+        : 'Parate a un metro y medio del espejo, unos 2 pasos largos. ' + instrVoz(true).replace('Listo, quedate ahí. ', ''))
+    } else if (usarCam) hablar(dist >= 2000 ? 'Apoyá el celular y alejate despacio. Te aviso cuándo frenar.' : 'Sostené el celular con el brazo estirado.')
+    else if (dist >= 2000 && usarVoz) hablar('Apoyá el celular a la altura de tus ojos y alejate 3 metros, unos 4 pasos largos. ' + instrVoz(false).replace('Listo, quedate ahí. ', ''))
   }
   function listoLejos(mm: number) {
     setLock(mm)
     setS((s) => ({ ...s, distMm: mm }))
-    if (vozLejos) hablar(INSTR_VOZ)
+    if (vozLejos) hablar(instrVoz(espejo))
   }
   const vozLejos = usarVoz && (modoLejos ?? 0) >= 2000
-  // Todas las pruebas se pueden responder por voz; en las de la E las flechas quedan de respaldo.
+  // Todas las pruebas se pueden responder por voz; en las del anillo las flechas quedan de respaldo.
   const pruebaE = (step === 2 && modoLejos !== null && (lock !== null || !usarCam)) || step === 3 || step === 7
-  const vozPaso = pruebaE || (step >= 4 && step <= 8 && step !== 7)
+  const vozPaso = pruebaE || (step >= 4 && step <= 9 && step !== 7)
   const escucha = useEscucha<unknown>(usarVoz && vozPaso, (t) => {
     if (step === 4) return entenderReloj(t)
     if (step === 5) return entenderNumero(t)
     if (step === 6) return entenderRejilla(t)
     if (step === 8) return entenderLectura(t, RENGLONES)
+    if (step === 9) return entenderDuo(t)
     return interpretar(t)
   }, (o) => {
-    if (o === 'repetir') return hablar(CONSIGNAS[step] ?? CONSIGNAS[2])
+    if (o === 'repetir') return hablar(step === 2 && espejo ? instrVoz(true) : CONSIGNAS[step] ?? CONSIGNAS[2])
     tonoAnotado()
-    if (step === 2) answerE(o as Dir | 'none')
+    if (step === 9) answerDuo(o as Duo)
+    else if (step === 2) answerE(o as Dir | 'none')
     else if (step === 3) answerC(o as Dir | 'none')
     else if (step === 7) answerNear(o as Dir | 'none')
     else if (step === 4) answerAstig(o as boolean)
@@ -648,11 +833,11 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     else if (step === 6) answerAmsler(o as boolean)
     else if (step === 8) {
       if (o === 'listo') {
-        if (near) void finish()
+        if (near) irDuo()
         else hablar('Primero leé en voz alta el renglón más chico que puedas, o decí ninguno.')
       } else if (o === 'ninguno') {
         setNear('J14')
-        hablar('Anotado. Decí listo para ver tu informe.')
+        hablar('Anotado. Decí listo para seguir.')
       } else {
         setNear((o as { id: NearId }).id)
         hablar('Anotado. Si podés leer uno más chico, leelo. Si no, decí listo.')
@@ -667,7 +852,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   useEffect(() => { setVerFlechas(false) }, [step])
   // Al entrar a cada prueba, la consigna también se dice en voz alta (la de lejos se dice al llegar a los 3 m).
   useEffect(() => {
-    if (usarVoz && step >= 3 && step <= 8) hablar((step === 3 ? 'Volvé al celular. ' : '') + CONSIGNAS[step])
+    if (usarVoz && step >= 3 && step <= 9) hablar((step === 3 ? 'Volvé al celular. ' : '') + CONSIGNAS[step])
   }, [step, usarVoz])
   const panelVoz = usarVoz && vozPaso && (
     <div className={'escucha ' + escucha.estado} role="status">
@@ -681,8 +866,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     </div>
   )
   /** Flechas: siempre si no hay voz; con voz, escondidas detrás de un link. */
+  // En el modo espejo el anillo se dibuja invertido (para que el reflejo se vea derecho): si toca mirando la pantalla
+  // de frente, lo que ve está invertido y la flecha se corrige.
   const flechas = (onAnswer: (d: Dir | 'none') => void) => !porVoz || verFlechas || volvioAlCel
-    ? <DPad onAnswer={onAnswer} />
+    ? <DPad onAnswer={step === 2 && espejo ? (d) => onAnswer(d === 'none' ? d : ESPEJADA[d]) : onAnswer} />
     : <button className="btn ghost block" onClick={() => setVerFlechas(true)}>Responder tocando</button>
   function answerE(a: Dir | 'none') {
     const val = escalera(ac, setAc, a)
@@ -691,10 +878,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     if (eye === 'R') {
       setEye('L')
       setAc(escaleraNueva())
-      if (vozLejos) hablar('Muy bien. Ahora destapá el ojo izquierdo y tapate el derecho. Seguimos.')
+      if (vozLejos) hablar(espejo ? 'Muy bien. Ahora pasá el celular al otro ojo: tapate el derecho y mirá el reflejo con el izquierdo. Seguimos.' : 'Muy bien. Ahora destapá el ojo izquierdo y tapate el derecho. Seguimos.')
     } else {
       setCt(escaleraNueva())
-      if (vozLejos) hablar('Terminaste la visión de lejos. Ya podés volver al celular.')
+      if (vozLejos) hablar(espejo ? 'Terminaste la visión de lejos. Ya podés mirar el celular de frente.' : 'Terminaste la visión de lejos. Ya podés volver al celular.')
       go(3)
     }
   }
@@ -715,16 +902,32 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
     }
   }
 
+  // ---------- rojo y verde (duocromo a 40 cm, ojo por ojo) ----------
+  function irDuo() {
+    setEye('R')
+    if (usarVoz) hablar('Anotado.')
+    go(9)
+  }
+  function answerDuo(d: Duo) {
+    setS((s) => ({ ...s, duo: { ...s.duo, [eye]: d } }))
+    if (eye === 'R') {
+      setEye('L')
+      if (usarVoz) hablar('Ahora tapate el ojo derecho. ¿Rojo, verde o iguales?')
+      return
+    }
+    void finish(d)
+  }
+
   // ---------- contraste ----------
   function answerC(a: Dir | 'none') {
     const hits = ct.hits + (a === ct.dir ? 1 : 0)
     const trial = ct.trial + 1
-    if (trial < 2) return setCt({ ...ct, trial, hits, dir: rndDir() })
+    if (trial < 2) return setCt({ ...ct, trial, hits, dir: rndDir(ct.dir) })
     let best = ct.best
     if (hits === 2) {
       best = ct.lvl
       const lvl = ct.lvl + 1
-      if (lvl < CLEVELS.length) return setCt({ lvl, trial: 0, hits: 0, best, dir: rndDir() })
+      if (lvl < CLEVELS.length) return setCt({ lvl, trial: 0, hits: 0, best, dir: rndDir(ct.dir) })
     }
     setS((s) => ({ ...s, contrast: best >= 0 ? CLEVELS[best] : null }))
     setEye('R')
@@ -772,12 +975,15 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   }
 
   // ---------- informe ----------
-  async function finish() {
-    const final: Resultados = { ...S, near }
+  /** `duoOI`: la última respuesta del duocromo llega antes de que se actualice el estado. */
+  async function finish(duoOI?: Duo) {
+    const final: Resultados = { ...S, near, duo: duoOI ? { ...S.duo, L: duoOI } : S.duo }
     setS(final)
     const inf = evaluar(final, edadNum, usa, nombreT)
     setInforme(inf)
     setCode(null)
+    setPrevios(leerHistorial())
+    guardarEnHistorial(final)
     go(PASO_INFORME)
     const ticketProvisorio = armarTicket(final, inf, 'ORB-····-····', nombreT, edadNum, usa)
     const { data, error } = await supabase.rpc('pretest_guardar', {
@@ -791,10 +997,17 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         score: inf.score, indice: inf.indice, semaforo: inf.semaforo, ticket: ticketProvisorio,
       },
     })
-    setCode(!error && typeof data === 'string' ? data : codigoLocal())
+    const cod = !error && typeof data === 'string' ? data : null
+    setCode(cod ?? codigoLocal())
+    guardarExtras(cod, {
+      espejo: final.espejo, duo: final.duo, dp: final.dp, habitos,
+      sugerencias: sugerenciasHabitos(habitos, edadNum).length ? sugerenciasHabitos(habitos, edadNum) : undefined,
+    })
   }
 
   const ticket = informe && code ? armarTicket(S, informe, code, nombreT, edadNum, usa) : ''
+  const qrUrl = informe && code ? urlProfesional(compactar(S, code, edadNum, usa, informe.indice, informe.semaforo, dom)) : null
+  const consejos = sugerenciasHabitos(habitos, edadNum)
 
   function copyTicket() {
     const fb = () => {
@@ -829,8 +1042,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   }
 
   function restart() {
-    setS(resultadosIniciales(pxPerMm))
+    setS(resultadosIniciales(pxPerMm, S.dp))
     setNear(null)
+    setDom(null)
+    setFatiga(null)
     setInforme(null)
     setCode(null)
     setCopiado('no')
@@ -901,6 +1116,9 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               {usa === 'si' && <div className="note"><Glasses size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Hacé las pruebas de lejos con tus anteojos puestos: así vemos si tu graduación actual todavía te sirve.</div>}
             </div>
 
+            <Alarmas marcadas={alarmas} set={setAlarmas} />
+            {alarmas.length === 0 && <CuestionarioHabitos h={habitos} set={setHabitos} />}
+
             <div className="legal-box">
               <b><Info size={16} />Antes de empezar</b>
               <ul>
@@ -914,14 +1132,25 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               </label>
             </div>
 
-            <button className="btn block" onClick={() => go(1)} disabled={!acepta}>Comenzar la guía</button>
+            <button className="btn block" onClick={() => { setFaseCal('pantalla'); go(1) }} disabled={!acepta || alarmas.length > 0}>Comenzar la guía</button>
             <div style={{ textAlign: 'center' }}>
               <button className="link" onClick={() => go(PASO_BUSCAR)}><MapPin size={15} />Solo quiero buscar una óptica u oftalmólogo</button>
             </div>
           </section>
         )}
 
-        {step === 1 && (
+        {step === 1 && faseCal === 'frente' && (
+          <section className="step">
+            <div>
+              <div className="kicker"><ScanFace size={15} />Opcional · 30 segundos</div>
+              <h2>Ahora, la tarjeta en la frente</h2>
+              <p>Con la misma tarjeta medimos la <b>distancia entre tus pupilas</b>. Hace más precisa la medición de distancia de las pruebas y es la medida que te piden para hacer anteojos recetados.</p>
+            </div>
+            <MedirDP onListo={dpMedida} onSaltear={empezarPruebas} />
+          </section>
+        )}
+
+        {step === 1 && faseCal === 'pantalla' && (
           <section className="step calibstep">
             <div>
               <h2>Calibrá tu pantalla</h2>
@@ -958,8 +1187,15 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <button className="mode rec" onClick={() => elegirLejos(DIST_LEJOS_MM)}>
               <span className="badge">Recomendado</span>
               <b>{usarVoz ? 'A 3 metros, con guía de voz' : 'A 3 metros, con ayuda'}</b>
-              <span>Apoyá el celular a la altura de tus ojos (contra un libro o una taza) y alejate 3 metros{usarCam ? ': el celular te avisa cuándo frenar' : ', unos 4 pasos largos'}. {usarVoz ? 'Respondés en voz alta hacia dónde apunta la E: el celular te escucha y pasa solo a la siguiente. No hace falta ayudante.' : 'Vos decís en voz alta hacia dónde apunta la E y la otra persona lo toca en la pantalla.'}</span>
+              <span>Apoyá el celular a la altura de tus ojos (contra un libro o una taza) y alejate 3 metros{usarCam ? ': el celular te avisa cuándo frenar' : ', unos 4 pasos largos'}. {usarVoz ? 'Decís en voz alta dónde está la abertura del anillo: el celular te escucha y pasa solo a la siguiente. No hace falta ayudante.' : 'Vos decís en voz alta dónde está la abertura del anillo y la otra persona lo toca en la pantalla.'}</span>
             </button>
+            {puedeEscuchar() && (
+              <button className="mode" onClick={() => elegirLejos(DIST_LEJOS_MM, true)}>
+                <span className="badge">Sin ayudante ni 3 metros</span>
+                <b>Frente a un espejo, a 1,5 m</b>
+                <span>Te parás frente a un espejo y mirás el reflejo de la pantalla: por el reflejo equivale a 3 metros. Te tapás un ojo con el mismo celular y respondés en voz alta.</span>
+              </button>
+            )}
             <button className="mode" onClick={() => elegirLejos(DIST_MM)}>
               <b>Sin ayuda, a 50 cm</b>
               <span>Con el brazo estirado. Es menos preciso para la visión de lejos: el informe lo va a marcar como estimado.</span>
@@ -978,27 +1214,39 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         )}
 
         {step === 2 && modoLejos !== null && usarCam && lock === null && (
-          <Ubicarse d={dist} objetivo={modoLejos} tol={0.1} onListo={listoLejos} onManual={() => { setUsarCam(false); setLock(modoLejos) }} />
+          <Ubicarse d={dist} objetivo={modoLejos} tol={0.1} onListo={listoLejos} espejo={espejo} onManual={() => {
+            setUsarCam(false)
+            setLock(modoLejos)
+            if (espejo) hablar('Parate a un metro y medio del espejo, unos 2 pasos largos. ' + instrVoz(true).replace('Listo, quedate ahí. ', ''))
+          }} />
         )}
 
         {step === 2 && modoLejos !== null && (!usarCam || lock !== null) && (
           <section className="step">
             <div>
-              <h2>¿Hacia dónde apunta la E?</h2>
-              <p>{vozLejos
-                ? 'Decí en voz alta hacia dónde apuntan las patas: “arriba”, “abajo”, “derecha” o “izquierda”. Si no la distinguís, decí “no la veo”. El celular pasa solo a la siguiente.'
+              <h2>¿Dónde está la abertura del anillo?</h2>
+              <p>{espejo
+                ? 'Mirá el reflejo de la pantalla en el espejo y decí en voz alta dónde está la abertura: “arriba”, “derecha”… o en diagonal, como “abajo a la izquierda”. Si no la distinguís, decí “no la veo”.'
+                : vozLejos
+                ? 'Decí en voz alta dónde está la abertura: “arriba”, “derecha”… o en diagonal, como “abajo a la izquierda”. Si no la distinguís, decí “no la veo”. El celular pasa solo al siguiente.'
                 : modoLejos >= 2000
-                ? 'Decí en voz alta hacia dónde apuntan las patas de la letra; tu ayudante toca esa flecha. Si no la distinguís, que toque “No la veo”.'
-                : 'Tocá la flecha hacia donde apuntan las patas de la letra. Si no la distinguís, tocá “No la veo”. Las letras se achican a medida que acertás.'}</p>
+                ? 'Decí en voz alta dónde está la abertura (puede estar en diagonal); tu ayudante toca esa flecha. Si no la distinguís, que toque “No la veo”.'
+                : 'Tocá la flecha que apunta a la abertura del anillo (puede estar en diagonal). Si no la distinguís, tocá “No la veo”. Los anillos se achican a medida que acertás.'}</p>
             </div>
-            <Ojos eye={eye} />
-            <Guia items={modoLejos >= 2000
+            <Ojos eye={eye} espejo={espejo} />
+            <Guia items={espejo
+              ? [[<Ruler size={14} />, '1,5 m del espejo · unos 2 pasos'], [<Eye size={14} />, 'Mirá el reflejo de la pantalla'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]
+              : modoLejos >= 2000
               ? [[<Ruler size={14} />, '3 m · unos 4 pasos largos'], [<Eye size={14} />, 'Celular a la altura de los ojos'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]
               : [[<Ruler size={14} />, '50 cm · brazo estirado'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de lejos' : 'Sin anteojos']]} />
             {panelVoz}
             {usarCam && <Indicador d={dist} objetivo={modoLejos} tol={0.15} />}
-            <Stage izq={`Nivel ${ac.lvl + 1} de 6 · ${S.distMm >= 1000 ? (S.distMm / 1000).toFixed(1).replace('.', ',') + ' m' : Math.round(S.distMm / 10) + ' cm'}`} der={`${letterMm(LEVELS[ac.lvl], S.distMm).toFixed(1)} mm`}>
-              <E dir={ac.dir} px={Math.max(6, letterMm(LEVELS[ac.lvl], S.distMm) * S.pxPerMm)} />
+            {usarCam && <AvisoLuz d={dist} />}
+            <Stage izq={`Nivel ${ac.lvl + 1} de 6 · ${espejo ? '3 m por espejo' : S.distMm >= 1000 ? (S.distMm / 1000).toFixed(1).replace('.', ',') + ' m' : Math.round(S.distMm / 10) + ' cm'}`} der={`${letterMm(LEVELS[ac.lvl], S.distMm).toFixed(1)} mm`}>
+              {/* en el espejo se dibuja invertido para que el reflejo se vea derecho */}
+              <div style={espejo ? { transform: 'scaleX(-1)' } : undefined}>
+                <Anillo dir={ac.dir} px={Math.max(6, letterMm(LEVELS[ac.lvl], S.distMm) * S.pxPerMm)} caja />
+              </div>
             </Stage>
             <Intentos n={ac.trial} />
             {flechas(answerE)}
@@ -1011,15 +1259,15 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         {step === 3 && (
           <section className="step">
             <div>
-              <h2>Contraste: la E se va aclarando</h2>
-              <p>{usarVoz ? 'Con los dos ojos. Decí hacia dónde apunta; cuando ya no la distingas del fondo, decí “no la veo”.' : 'Con los dos ojos. Tocá hacia dónde apunta; cuando ya no la distingas del fondo, tocá “No la veo”.'}</p>
+              <h2>Contraste: el anillo se va aclarando</h2>
+              <p>{usarVoz ? 'Con los dos ojos. Decí dónde está la abertura; cuando ya no distingas el anillo del fondo, decí “no la veo”.' : 'Con los dos ojos. Tocá la flecha que apunta a la abertura; cuando ya no distingas el anillo del fondo, tocá “No la veo”.'}</p>
             </div>
             <Guia items={[[<Eye size={14} />, 'Los dos ojos'], [<Ruler size={14} />, '50 cm'], [<Sun size={14} />, 'Brillo al máximo']]} />
             {usarCam && <Indicador d={dist} objetivo={DIST_MM} tol={0.2} />}
             <Stage izq={`Nivel ${ct.lvl + 1} de 6`} der={`Contraste ${CLEVELS[ct.lvl]}%`}>
               {(() => {
                 const g = Math.round(255 * (1 - CLEVELS[ct.lvl] / 100))
-                return <E dir={ct.dir} px={Math.max(24, letterMm(0.2) * S.pxPerMm)} color={`rgb(${g},${g},${g})`} />
+                return <Anillo dir={ct.dir} px={Math.max(24, letterMm(0.2) * S.pxPerMm)} color={`rgb(${g},${g},${g})`} />
               })()}
             </Stage>
             <Intentos n={ct.trial} />
@@ -1084,14 +1332,14 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         {step === 7 && (
           <section className="step">
             <div>
-              <h2>Visión de cerca: ¿hacia dónde apunta la E?</h2>
-              <p>Sostené el celular a <b>40 cm</b>, la distancia a la que leés un libro. {usarVoz ? 'Decí hacia dónde apuntan las patas de la letra; si no la distinguís, decí “no la veo”.' : 'Tocá hacia dónde apuntan las patas de la letra; si no la distinguís, tocá “No la veo”.'}</p>
+              <h2>Visión de cerca: ¿dónde está la abertura?</h2>
+              <p>Sostené el celular a <b>40 cm</b>, la distancia a la que leés un libro. {usarVoz ? 'Decí dónde está la abertura del anillo; si no la distinguís, decí “no la veo”.' : 'Tocá la flecha que apunta a la abertura del anillo; si no la distinguís, tocá “No la veo”.'}</p>
             </div>
             <Ojos eye={eye} />
             <Guia items={[[<Ruler size={14} />, '40 cm · distancia de lectura'], [<Glasses size={14} />, usa === 'si' ? 'Con anteojos de lectura si usás' : 'Sin anteojos']]} />
             {usarCam && <Indicador d={dist} objetivo={DIST_CERCA_MM} tol={0.2} />}
             <Stage izq={`Nivel ${na.lvl + 1} de 6 · 40 cm`} der={`${letterMm(LEVELS[na.lvl], DIST_CERCA_MM).toFixed(1)} mm`}>
-              <E dir={na.dir} px={Math.max(4, letterMm(LEVELS[na.lvl], DIST_CERCA_MM) * S.pxPerMm)} />
+              <Anillo dir={na.dir} px={Math.max(4, letterMm(LEVELS[na.lvl], DIST_CERCA_MM) * S.pxPerMm)} caja />
             </Stage>
             <Intentos n={na.trial} />
             {panelVoz}
@@ -1120,7 +1368,28 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
                 <button key={n.id} role="radio" aria-checked={near === n.id} className={near === n.id ? 'sel' : ''} onClick={() => setNear(n.id)}>{n.id === 'J14' ? 'Ninguno' : n.id}</button>
               ))}
             </div>
-            <button className="btn block" onClick={finish} disabled={!near}>Ver mi informe</button>
+            <button className="btn block" onClick={irDuo} disabled={!near}>Seguir</button>
+          </section>
+        )}
+
+        {step === 9 && (
+          <section className="step">
+            <div>
+              <h2>¿Dónde se ven más nítidos los anillos?</h2>
+              <p>Sostené el celular a <b>40 cm</b>. Mirá los anillos negros: ¿se ven más marcados y negros sobre el <b>rojo</b>, sobre el <b>verde</b>, o <b>iguales</b>? Respondé rápido, con la primera impresión.</p>
+            </div>
+            <Ojos eye={eye} />
+            <Guia items={[[<Ruler size={14} />, '40 cm · distancia de lectura'], [<Glasses size={14} />, usa === 'si' ? 'Con tus anteojos de cerca si usás' : 'Sin anteojos'], [<Sun size={14} />, 'Brillo al máximo']]} />
+            {usarCam && <Indicador d={dist} objetivo={DIST_CERCA_MM} tol={0.2} />}
+            <Stage izq="Duocromo" der="Rojo · verde">
+              <Duocromo px={Math.max(28, letterMm(0.25, DIST_CERCA_MM) * S.pxPerMm)} />
+            </Stage>
+            {panelVoz}
+            <div className="choices duo-resp">
+              <button className="r" onClick={() => answerDuo('rojo')}>Rojo</button>
+              <button onClick={() => answerDuo('iguales')}>Iguales</button>
+              <button className="g" onClick={() => answerDuo('verde')}>Verde</button>
+            </div>
           </section>
         )}
 
@@ -1162,6 +1431,23 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
                 (pantalla calibrada con tarjeta, {(S.pxPerMm * 25.4).toFixed(0)} ppi). Solo un médico oftalmólogo puede examinar, diagnosticar
                 e indicar anteojos. Un resultado normal no descarta enfermedades oculares: hacé tu control periódico igual.
               </div>
+              {qrUrl && <QRProfesional url={qrUrl} />}
+            </div>
+            <AsiVes S={S} usa={usa} />
+
+            <div className={'card flat extra' + (S.dp ? '' : ' no-print')}>
+              <div className="hd"><b>Tus medidas para anteojos</b>{S.dp && <span className="tag">Con tarjeta</span>}</div>
+              {S.dp ? (
+                <>
+                  <div className="dp-res" style={{ textAlign: 'left' }}>
+                    <span className="muted small">Distancia entre pupilas (DP)</span>
+                    <span className="num big">{S.dp.lejos.toFixed(1).replace('.', ',')} mm</span>
+                    <span className="muted small">de lejos · {S.dp.cerca.toFixed(1).replace('.', ',')} mm de cerca. Es la medida que te piden para hacer anteojos recetados; el óptico la confirma.</span>
+                  </div>
+                </>
+              ) : (
+                <MedirDP compacto onListo={(dp) => { setS((s) => ({ ...s, dp })); guardarExtras(code, { dp }) }} />
+              )}
             </div>
             {(S.amsler.R === false || S.amsler.L === false) && (
               <div className="urgent no-print"><Info size={18} /><span><b>Consultá pronto.</b> Si las líneas onduladas o las zonas faltantes aparecieron de golpe o empeoran, no esperes el turno: andá a una guardia oftalmológica.</span></div>
@@ -1176,11 +1462,29 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               <summary><Info size={15} />Ver el resumen técnico para el profesional</summary>
               <div className="ticket" ref={ticketRef}>{ticket || 'Generando código…'}</div>
             </details>
+            <div className="no-print"><Recordatorio meses={informe.semaforo === 'verde' ? 12 : 6} /></div>
+
+            <div className="no-print"><Evolucion previos={previos} S={S} /></div>
+
+            <div className="no-print" style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+              <div>
+                <h2>Más chequeos</h2>
+                <p className="muted small" style={{ margin: 0 }}>Opcionales, de 1 minuto. Se suman a tu informe.</p>
+              </div>
+              <TestFatiga valor={fatiga} onListo={(f) => { setFatiga(f); guardarExtras(code, { fatiga: f }) }} />
+              <OjoDominante valor={dom} onListo={(o) => { setDom(o); guardarExtras(code, { dominante: o }) }} />
+            </div>
 
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Armazones recomendados para vos</h2>
               <p className="muted small">Según la graduación conviene un tamaño, una forma y un material de armazón: así el cristal queda más fino, liviano y ves mejor.</p>
               <Marcos S={S} edad={edadNum} usa={usa} code={code} />
+              {consejos.length > 0 && (
+                <div className="note" style={{ marginTop: 12 }}>
+                  <b style={{ display: 'block', marginBottom: 4, color: 'var(--ink)' }}>Según tu día a día</b>
+                  {consejos.map((c) => <div key={c}>· {c}</div>)}
+                </div>
+              )}
             </div>
 
             <div className="no-print" style={{ marginTop: 12 }}>

@@ -177,3 +177,15 @@ returns void language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.pretest_obra_social(text, text) from public;
 grant execute on function public.pretest_obra_social(text, text) to anon, authenticated;
+
+-- Extras del pretest (2026-10-02): DP con tarjeta en la frente, duocromo, modo espejo, hábitos, cansancio por
+-- pantallas y ojo dominante. Se van sumando a medida que la persona los hace (mismo plazo de 2 días que el resto).
+alter table public.pretests add column if not exists extras jsonb not null default '{}'::jsonb;
+create or replace function public.pretest_extras(p_code text, p jsonb)
+returns void language sql security definer set search_path = public as $$
+  update pretests set extras = coalesce(extras, '{}'::jsonb) || jsonb_strip_nulls(p)
+  where code = p_code and created_at > now() - interval '2 days'
+    and jsonb_typeof(p) = 'object' and octet_length(p::text) < 4000;
+$$;
+revoke all on function public.pretest_extras(text, jsonb) from public;
+grant execute on function public.pretest_extras(text, jsonb) to anon, authenticated;

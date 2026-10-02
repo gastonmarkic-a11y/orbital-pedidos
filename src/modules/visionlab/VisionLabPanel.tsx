@@ -13,6 +13,13 @@ interface Lead {
   nombre: string | null; edad: number | null; usa: string | null; indice: number | null; semaforo: Semaforo | null
   ticket: string | null; localidad: string | null; obra_social: string | null
   optica_cod: string | null; optica_click_at: string | null; estado: Estado; nota: string | null
+  extras: Extras | null
+}
+
+// Extras del pretest (2026-10-02): DP con tarjeta, duocromo, espejo, hábitos, cansancio por pantallas, ojo dominante.
+interface Extras {
+  dp?: { lejos: number; cerca: number }; espejo?: boolean; dominante?: 'R' | 'L'
+  fatiga?: { parpadeos: number; sintomas: number }; sugerencias?: string[]
 }
 
 const ESTADOS: { k: Estado; t: string }[] = [
@@ -172,6 +179,15 @@ export default function VisionLabPanel() {
             {abierto === l.id && (
               <div className="mt-3 space-y-2">
                 {l.ticket && <pre className="text-[11px] font-mono whitespace-pre-wrap bg-neutral-50 rounded-lg p-2 border border-black/5">{l.ticket}</pre>}
+                {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias) && (
+                  <div className="text-[12px] text-neutral-700 bg-amber-50/60 rounded-lg p-2 border border-black/5 space-y-0.5">
+                    {l.extras.dp && <div><b>DP</b> {l.extras.dp.lejos} mm de lejos · {l.extras.dp.cerca} de cerca (tarjeta en la frente): lista para venta online</div>}
+                    {l.extras.espejo && <div>Visión de lejos hecha frente a un espejo</div>}
+                    {l.extras.dominante && <div><b>Ojo dominante</b> {l.extras.dominante === 'R' ? 'derecho' : 'izquierdo'}</div>}
+                    {l.extras.fatiga && <div><b>Pantallas</b> {l.extras.fatiga.parpadeos} parpadeos/min · {l.extras.fatiga.sintomas}/3 síntomas</div>}
+                    {l.extras.sugerencias?.map((s) => <div key={s}>· {s}</div>)}
+                  </div>
+                )}
                 <textarea
                   defaultValue={l.nota ?? ''}
                   onBlur={(e) => { if (e.target.value !== (l.nota ?? '')) guardar(l, { nota: e.target.value }) }}

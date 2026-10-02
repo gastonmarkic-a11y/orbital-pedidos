@@ -104,17 +104,13 @@ const ESCENAS: { titulo: string; texto: string; svg: JSX.Element }[] = [
     ),
   },
   {
-    titulo: 'Decí hacia dónde apunta la E',
-    texto: '“Derecha”, “arriba”… el celular te escucha y pasa solo a la siguiente. Si no la ves, decí “no la veo”.',
+    titulo: 'Decí dónde está la abertura',
+    texto: '“Derecha”, “arriba a la izquierda”… el celular te escucha y pasa solo al siguiente. Si no la ves, decí “no la veo”.',
     svg: (
       <svg viewBox="0 0 160 110" aria-hidden="true">
         <Cel x={22} y={10} w={46} h={86} e={false} />
-        <g fill={tinta}>
-          <rect x="36" y="30" width="18" height="3.6" />
-          <rect x="36" y="37.2" width="18" height="3.6" />
-          <rect x="36" y="44.4" width="18" height="3.6" />
-          <rect x="36" y="30" width="3.6" height="18" />
-        </g>
+        {/* anillo de Landolt con la abertura a la derecha (diámetro 18, trazo y abertura 3,6) */}
+        <path d="M53.82 40.8 A9 9 0 1 1 53.82 37.2 L50.09 37.2 A5.4 5.4 0 1 0 50.09 40.8 Z" fill={tinta} />
         <g fill="none" stroke={linea} strokeWidth="1.5">
           <rect x="39" y="58" width="12" height="9" rx="2" />
           <rect x="27" y="68" width="12" height="9" rx="2" />

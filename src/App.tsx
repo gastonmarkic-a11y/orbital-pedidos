@@ -89,6 +89,7 @@ import PreciosML from './modules/mercadolibre/PreciosML'
 import FinanzasHub from './modules/finanzas/FinanzasHub'
 import Pretest from './modules/visionlab/Pretest'
 import VisionLabPanel from './modules/visionlab/VisionLabPanel'
+import InformeProfesional from './modules/visionlab/InformeProfesional'
 
 interface NavItem {
   to: string
@@ -885,6 +886,10 @@ export default function App() {
   // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>) y /lab/buscar (solo ópticas / oftalmólogos).
   if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(window.location.pathname)) {
     return <Pretest />
+  }
+  // /lab/informe#…: lo que ve el óptico u oftalmólogo al escanear el QR del informe (datos en el fragmento, sin nombre).
+  if (typeof window !== 'undefined' && /^\/lab\/informe\/?$/.test(window.location.pathname)) {
+    return <InformeProfesional />
   }
   // Colaboradores (influencers): panel por clave (Orbital / administrador / promotor).
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/colab')) {

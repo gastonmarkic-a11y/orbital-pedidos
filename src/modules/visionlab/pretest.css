@@ -337,3 +337,78 @@
 .ovl .oschips button.sel{border-color:var(--ink);background:var(--ink);color:#fff}
 .ovl .opt select,.ovl .opt input[type=text]{margin-top:8px}
 .ovl .oscard{display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+
+/* ---------- así ves vos (simulación según la agudeza) ---------- */
+.ovl .asives{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);display:grid;gap:14px;break-inside:avoid}
+.ovl .asives-hd{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 16px;align-items:flex-start}
+.ovl .asives-hd h3{margin:0 0 2px}
+.ovl .asives-hd p{margin:0}
+.ovl .asives-ctl{display:flex;gap:8px;flex-wrap:wrap}
+.ovl .seg2{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden}
+.ovl .seg2 button{font:inherit;font-size:13px;font-weight:600;padding:8px 12px;min-height:38px;border:0;background:var(--surface);color:var(--muted);cursor:pointer}
+.ovl .seg2 button+button{border-left:1px solid var(--line-2)}
+.ovl .seg2 button.sel{background:var(--ink);color:#fff}
+.ovl .asives-par{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ovl .asives-par figure{margin:0;display:grid;gap:6px}
+.ovl .asives-par svg{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line)}
+.ovl .asives-par figcaption{font-size:12px;font-weight:600;color:var(--muted);text-align:center}
+@media (max-width:520px){.ovl .asives-par{grid-template-columns:1fr}}
+@media print{.ovl .asives{box-shadow:none;border-color:#ccc;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* ---------- inicio: síntomas de alarma y hábitos ---------- */
+.ovl .alarmas{display:grid;gap:6px}
+.ovl .alarmas button{font:inherit;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer;min-height:44px}
+.ovl .alarmas button .box{width:18px;height:18px;border-radius:5px;border:2px solid var(--line-2);display:grid;place-items:center;flex:none;color:#fff}
+.ovl .alarmas button.sel{border-color:var(--bad);background:var(--bad-bg)}
+.ovl .alarmas button.sel .box{background:var(--bad);border-color:var(--bad)}
+.ovl .urgent .btn{display:inline-flex;background:var(--bad);border-color:var(--bad)}
+.ovl .chips2{display:flex;flex-wrap:wrap;gap:6px}
+.ovl .chips2 button{font:inherit;font-size:14px;font-weight:600;padding:8px 14px;min-height:40px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink-2);cursor:pointer}
+.ovl .chips2 button.sel{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ---------- distancia entre pupilas con la tarjeta ---------- */
+.ovl .dp{display:grid;gap:12px}
+.ovl .dp-pasos{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center}
+.ovl .dp-pasos ol{margin:0;padding-left:18px;display:grid;gap:6px;font-size:14px;color:var(--ink-2)}
+.ovl .dp-ilus{width:100%;height:auto}
+@media (max-width:480px){.ovl .dp-pasos{grid-template-columns:1fr}.ovl .dp-ilus{max-width:180px;margin:0 auto}}
+.ovl .dp-cam{position:relative;border-radius:var(--r);overflow:hidden;background:#000;aspect-ratio:3/4;max-height:60vh;margin:0 auto;width:100%}
+.ovl .dp-cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.ovl .dp-guia{position:absolute;inset:0;pointer-events:none}
+.ovl .dp-guia .t{position:absolute;left:22%;right:22%;top:20%;height:14%;border:2px dashed rgba(255,255,255,.85);border-radius:6px}
+.ovl .dp-guia .o{position:absolute;top:42%;left:33%;width:9%;aspect-ratio:1;border:2px solid rgba(255,255,255,.7);border-radius:50%}
+.ovl .dp-guia .o.d{left:auto;right:33%}
+.ovl .dp-aviso{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:center;justify-content:center;background:rgba(23,23,28,.78);color:#fff;font-size:14px;font-weight:600;border-radius:10px;padding:10px}
+.ovl .dp-foto{position:relative;touch-action:none;user-select:none;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.ovl .dp-foto canvas{display:block;width:100%;height:auto}
+.ovl .dp-foto .borde{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--gold);box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+.ovl .dp-foto .borde::after{content:"";position:absolute;top:50%;left:-11px;width:22px;height:22px;margin-top:-11px;border-radius:50%;background:var(--gold);border:2px solid #fff}
+.ovl .dp-foto .borde.on{width:3px;background:#e2a33a}
+.ovl .dp-foto .pupila{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:2px solid #fff;background:rgba(143,106,52,.85)}
+.ovl .dp-res{display:grid;gap:2px;text-align:center}
+.ovl .dp-res .big{font-size:28px;font-weight:800;color:var(--ink)}
+
+/* ---------- duocromo ---------- */
+.ovl .duo{display:grid;grid-template-columns:1fr 1fr;width:min(300px,80vw);border-radius:10px;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.ovl .duo .r{background:#d00000}.ovl .duo .g{background:#00a000}
+.ovl .duo-lado{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px 0;min-height:180px}
+.ovl .duo-resp{grid-template-columns:repeat(3,1fr)}
+.ovl .duo-resp button{font-size:16px}
+.ovl .duo-resp button.r{color:#b00000;border-color:#e6b3b3}
+.ovl .duo-resp button.g{color:#007a00;border-color:#b3dcb3}
+
+/* ---------- extras del informe ---------- */
+.ovl .extra{display:grid;gap:10px}
+.ovl .extra .hd{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.ovl .extra .hd b{font-size:16px;font-weight:700;line-height:1.3}
+.ovl .extra .tag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gold);background:var(--gold-soft);border-radius:6px;padding:3px 7px;white-space:nowrap}
+.ovl .extra .bar{height:4px;border-radius:4px;background:var(--line);overflow:hidden}
+.ovl .extra .bar i{display:block;height:100%;background:var(--ink);transition:width .5s linear}
+.ovl .lectura-fatiga{font-size:17px;line-height:1.7;color:var(--ink);max-height:40vh;overflow:auto;padding:4px 2px}
+.ovl .evo{width:100%;border-collapse:collapse;font-size:14px}
+.ovl .evo th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+.ovl .evo td{padding:8px 4px;border-bottom:1px solid var(--line)}
+.ovl .qrbox{display:flex;gap:14px;align-items:center;padding:14px 16px;border-top:1px solid var(--line)}
+.ovl .qrbox img{width:112px;height:112px;flex:none;image-rendering:pixelated}
+.ovl .qrbox>div{display:grid;gap:4px}
+.ovl .qrbox b{font-size:15px}
