@@ -35,6 +35,24 @@ export function EscaleraResumen({ calc, subtotal, contado, onContado, children }
           🎁 ¡Completaste el escalón! Ganaste <b>{PREMIO_DIAS} días más</b>: pagás a {calc.plazo}.
         </p>
       )}
+      {(calc.material || calc.materialProximo) && (
+        <div className="rounded-lg bg-white border border-black/10 p-2 text-[12px] leading-snug space-y-2">
+          {calc.material && (
+            <div className="flex items-center gap-2.5">
+              {calc.material.img && <img src={calc.material.img} alt={calc.material.nombre} className="w-12 h-14 object-cover object-top rounded-md shrink-0" />}
+              <p>📦 Te llevás para la vidriera: <b>{calc.material.detalle}</b>.</p>
+            </div>
+          )}
+          {calc.materialProximo && (
+            <div className="flex items-center gap-2.5">
+              {calc.materialProximo.img && <img src={calc.materialProximo.img} alt={calc.materialProximo.nombre} className="w-12 h-14 object-cover object-top rounded-md shrink-0 opacity-90" />}
+              <p className="text-neutral-600">
+                Sumá <b>{calc.faltanMaterial} {calc.faltanMaterial === 1 ? 'anteojo' : 'anteojos'}</b> y te llevás también <b className="text-[#0004FF]">{calc.materialProximo.nombre}</b>.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       {children}
       <div className="text-sm space-y-0.5">
         <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>{kAr(subtotal)}</span></div>

@@ -1,5 +1,5 @@
 // Bloque de condiciones por volumen para las landings (misma tabla que el carrito del catálogo).
-import { ESCALERA, CONTADO_PCT, PREMIO_DIAS } from '../catalogo/escalera'
+import { ESCALERA, MATERIAL, CONTADO_PCT, PREMIO_DIAS } from '../catalogo/escalera'
 
 const AZUL = '#0004FF'
 
@@ -16,6 +16,20 @@ export default function CondicionesVolumen({ kicker, titulo, bajada }: { kicker:
             <p className="text-[10px] text-black/45 uppercase tracking-wider">desde {e.desde} u.</p>
             <p className="text-2xl font-black mt-0.5" style={{ color: AZUL }}>{e.pct}%</p>
             <p className="text-[10px] text-black/45">bonificación</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] font-semibold tracking-[0.2em] uppercase mt-6 mb-2 text-black/50">Material para tu vidriera</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {MATERIAL.map((m) => (
+          <div key={m.desde} className="rounded-xl bg-white border border-black/10 overflow-hidden">
+            {m.img
+              ? <img src={m.img} alt={m.nombre} className="w-full h-36 object-cover object-top" />
+              : <div className="w-full h-36 bg-black/5 flex items-center justify-center text-center text-xs text-black/50 px-3">Gráficas a medida para tu espacio</div>}
+            <div className="p-3">
+              <p className="text-[10px] text-black/45 uppercase tracking-wider">desde {m.desde} u.</p>
+              <p className="text-[13px] font-bold mt-0.5 leading-snug">{m.detalle}</p>
+            </div>
           </div>
         ))}
       </div>

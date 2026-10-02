@@ -15,6 +15,18 @@ export const ESCALERA: Escalon[] = [
   { desde: 100, pct: 12, plazo: '30/60/90/120' },
   { desde: 200, pct: 15, plazo: '30/60/90/120' },
 ]
+// Material de exhibición para el PDV según piezas de la compra (Condiciones Ópticas Q4 2026).
+// Cortes propios del PDF, no coinciden con los escalones de descuento.
+// img: la pieza nueva de ese escalón (public/pdv, sacadas del PDF de condiciones).
+export interface Material { desde: number; nombre: string; detalle: string; img: string | null }
+export const MATERIAL: Material[] = [
+  { desde: 24,  nombre: 'POP para vidriera', detalle: 'POP para vidriera', img: '/pdv/pop-vidriera.webp' },
+  { desde: 36,  nombre: 'exhibidor de vidriera', detalle: 'Exhibidor de vidriera + POP', img: '/pdv/exhibidor-vidriera.webp' },
+  { desde: 61,  nombre: 'exhibidor de pie', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP', img: '/pdv/exhibidor-pie.webp' },
+  { desde: 101, nombre: 'gráficas a medida', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP + gráficas a medida para la óptica', img: null },
+]
+export const materialDe = (u: number) => [...MATERIAL].reverse().find((m) => u >= m.desde) ?? null
+
 export const CONTADO_PCT = 15
 export const PREMIO_DIAS = 30
 export const PLAZO_TOPE = 150
@@ -38,6 +50,9 @@ export interface EscaleraCalc {
   premio: boolean             // ya completó un escalón en el checkout
   plazo: string               // plazo final (con premio si lo ganó)
   plazoProximo: string        // plazo que tendría al llegar al próximo escalón
+  material: Material | null           // material de exhibición que se lleva
+  materialProximo: Material | null    // próximo material
+  faltanMaterial: number              // unidades para el próximo material
 }
 
 /** `unidadesAlAbrir`: lo que tenía el carrito al abrirlo; si sube de escalón desde ahí, gana el premio.
@@ -49,6 +64,7 @@ export function calcularEscalera(unidades: number, subtotal: number, unidadesAlA
   const descuento = Math.round((subtotal - cerrado) * actual.pct / 100)
   const neto = subtotal - descuento
   const contado = Math.round((neto - cerrado) * CONTADO_PCT / 100)
+  const materialProx = MATERIAL.find((m) => m.desde > unidades) ?? null
   return {
     unidades, actual, proximo,
     faltan: proximo ? proximo.desde - unidades : 0,
@@ -56,6 +72,9 @@ export function calcularEscalera(unidades: number, subtotal: number, unidadesAlA
     premio,
     plazo: premio ? estirar(actual.plazo) : actual.plazo,
     plazoProximo: proximo ? estirar(proximo.plazo) : '',
+    material: materialDe(unidades),
+    materialProximo: materialProx,
+    faltanMaterial: materialProx ? materialProx.desde - unidades : 0,
   }
 }
 
@@ -63,5 +82,6 @@ export function calcularEscalera(unidades: number, subtotal: number, unidadesAlA
 export function escaleraObs(c: EscaleraCalc, pagaContado: boolean): string {
   return `📊 ESCALERA ${c.unidades} u. — comercial ${c.actual.pct}%` +
     (pagaContado ? ` · PAGA CONTADO/TRANSFERENCIA ${CONTADO_PCT}% (NC al cobrar)`
-      : ` · plazo ${c.plazo}` + (c.premio ? ` (🎁 +${PREMIO_DIAS} días por completar escalón en el checkout)` : ''))
+      : ` · plazo ${c.plazo}` + (c.premio ? ` (🎁 +${PREMIO_DIAS} días por completar escalón en el checkout)` : '')) +
+    (c.material ? ` · 📦 MATERIAL PDV: ${c.material.detalle}` : '')
 }

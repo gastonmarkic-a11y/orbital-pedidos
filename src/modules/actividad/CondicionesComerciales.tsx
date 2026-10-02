@@ -1,4 +1,4 @@
-import { ESCALERA, CONTADO_PCT, PREMIO_DIAS, PLAZO_TOPE, estirar } from '../catalogo/escalera'
+import { ESCALERA, MATERIAL, CONTADO_PCT, PREMIO_DIAS, PLAZO_TOPE, estirar } from '../catalogo/escalera'
 
 // Condiciones comerciales 2026 (escalera por volumen del catálogo).
 // Lee la misma tabla que usa el carrito: si cambia ESCALERA, cambia acá.
@@ -30,6 +30,27 @@ export default function CondicionesComerciales() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-bold text-brandDark mb-2">📦 Material de exhibición incluido (PDV)</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {MATERIAL.map((m, i) => {
+            const hasta = MATERIAL[i + 1] ? MATERIAL[i + 1].desde - 1 : null
+            return (
+              <div key={m.desde} className="rounded-xl border border-black/10 overflow-hidden bg-white">
+                {m.img
+                  ? <img src={m.img} alt={m.nombre} className="w-full h-36 object-cover object-top" />
+                  : <div className="w-full h-36 bg-black/5 flex items-center justify-center text-center text-xs text-black/50 px-3">Gráficas a medida para el espacio de la óptica</div>}
+                <div className="p-2.5">
+                  <p className="text-[10px] uppercase tracking-wider text-black/45">{hasta ? `${m.desde}–${hasta}` : `${m.desde}+`} piezas</p>
+                  <p className="text-[13px] font-semibold leading-snug mt-0.5">{m.detalle}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-xs text-black/50 mt-1.5">El carrito le avisa a la óptica cuántas piezas le faltan para el próximo material, y el pedido llega con el material anotado en observaciones.</p>
       </div>
 
       <ul className="text-sm space-y-2">
