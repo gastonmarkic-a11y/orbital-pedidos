@@ -166,8 +166,9 @@ export async function exportarPedidosTango(pedidos: Pedido[], cfg: ConfigTango):
       .filter((it) => it.codigo && it.cantidad)
       .map((it) => {
         const precioBase = stockMap.get(it.codigo) ?? 0
-        const bruto = brutoUnitario(it, precioBase, nroLista, esShopify)
-        const bonif = descuentoItemPct(it, dc, df, esShopify) // solo comercial
+        // Promo (Día de la Madre): a Tango va el neto exacto con bonif 0; con el % (22,8) Tango redondearía a otro importe.
+        const bruto = it.precio_promo != null ? Math.round(it.precio_promo) : brutoUnitario(it, precioBase, nroLista, esShopify)
+        const bonif = it.precio_promo != null ? 0 : descuentoItemPct(it, dc, df, esShopify) // solo comercial
         const precio = precioNetoUnitario(it, stockMap, nroLista, dc, df, esShopify) // neto comercial (para repartir por monto)
         return { it, bruto, bonif, precio, monto: precio * it.cantidad }
       })

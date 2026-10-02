@@ -24,6 +24,11 @@ export function getPrecioLista(precioBase: number, nroLista: number | null): num
   return Math.round(precioBase) // óptico (lista 5) para todos los demás
 }
 
+// % de descuento de una promo sobre la lista (1 decimal), p. ej. 62.162 → 48.000 = 22,8%.
+export function promoPct(precioPromo: number, lista: number): number {
+  return lista > 0 ? Math.round((1 - precioPromo / lista) * 1000) / 10 : 0
+}
+
 // Precio BRUTO unitario (antes de descuentos): lista, o preventa, o Shopify-neto. Sin cargo = 0.
 // `esShopify` viene del pedido (pedido.origen === 'shopify'); solo entonces item.precio es un precio cerrado.
 // Ojo: los pedidos de catálogo (origen='catalogo') también traen item.precio pero NO son Shopify → van por lista.
@@ -38,9 +43,11 @@ export function brutoUnitario(item: PedidoItem, precioBase: number, nroLista: nu
 // Descuento COMERCIAL del ítem, en %. Es el único que se hornea en el precio (define el neto a remitir/facturar).
 // El financiero NO entra acá: va aparte como NC "Diferencia de Precios" (ver financieroUnitario).
 // Reglas: sin cargo = 100%; preventa = 0 (precio fijo, sin comercial); lista = comercial; Shopify = 0.
-export function descuentoItemPct(item: PedidoItem, dc: number, _df: number, esShopify = false): number {
+// Promo: el % que lleva la lista (`bruto`) al precio promo, para que el descuento se vea en el pedido.
+export function descuentoItemPct(item: PedidoItem, dc: number, _df: number, esShopify = false, bruto?: number): number {
   if (item.regalo) return 100
   if (item.precio_esp != null) return 0 // precio especial: sin descuentos
+  if (item.precio_promo != null) return bruto ? promoPct(item.precio_promo, bruto) : 0
   if (esShopify && item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado
   if (item.preventa && item.precio_pv != null) return 0 // preventa: precio fijo, sin comercial
   return Math.round(dc)
@@ -52,6 +59,7 @@ export function descuentoItemPct(item: PedidoItem, dc: number, _df: number, esSh
 export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, _df: number, esShopify = false): number {
   if (item.regalo) return 0
   if (item.precio_esp != null) return Math.round(item.precio_esp) // precio especial por cliente (neto final, sin dtos)
+  if (item.precio_promo != null) return Math.round(item.precio_promo) // promo (Día de la Madre): neto cerrado, sin comercial
   if (esShopify && item.precio !== undefined && item.precio !== null) return Math.round(item.precio / 1.21) // Shopify (ya con IVA, sin dtos)
   if (item.preventa && item.precio_pv != null) return Math.round(item.precio_pv) // preventa: precio fijo
   const precioLista = precioBase > 0 ? getPrecioLista(precioBase, nroLista ?? 5) : 0
@@ -65,6 +73,7 @@ export function netoUnitario(item: PedidoItem, precioBase: number, nroLista: num
 export function financieroUnitario(item: PedidoItem, precioBase: number, nroLista: number | null, dc: number, df: number, esShopify = false): number {
   if (df <= 0 || item.regalo) return 0
   if (item.precio_esp != null) return 0 // precio especial: final, sin financiero
+  if (item.precio_promo != null) return 0 // promo: precio cerrado, sin financiero
   if (esShopify && item.precio !== undefined && item.precio !== null) return 0 // Shopify: precio cerrado, sin financiero
   const netoCom = netoUnitario(item, precioBase, nroLista, dc, df, esShopify)
   return Math.round(netoCom * (df / 100))

@@ -150,6 +150,10 @@ export interface PedidoItem {
   /** Precio NETO especial pactado con el cliente (lista especial por cliente, ej. GAFAS LUXURY).
    *  Es FINAL: reemplaza la lista, sin comercial/financiero, con IVA aparte. */
   precio_esp?: number | null
+  /** Promo por modelo (ej. Día de la Madre): precio NETO cerrado, snapshot al cargar. Se muestra como
+   *  descuento sobre la lista (`promo` = etiqueta); sin comercial/financiero encima. */
+  precio_promo?: number | null
+  promo?: string | null
 }
 
 export type EstadoPedido =

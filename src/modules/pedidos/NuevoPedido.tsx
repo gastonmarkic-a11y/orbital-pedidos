@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
-import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, calcFinanciero, netoUnitario, descuentoItemPct } from './calc'
+import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, calcFinanciero, netoUnitario, descuentoItemPct, getPrecioLista, promoPct } from './calc'
 
 interface Cuota {
   dias: number
@@ -64,6 +64,10 @@ export default function NuevoPedido() {
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
   // Precios especiales del cliente (lista especial por cliente). Clave = modelo en MAYÚSCULAS.
   const [preciosEsp, setPreciosEsp] = useState<Record<string, number>>({})
+  // Promos por modelo con vigencia (tabla promo_precio, ej. Día de la Madre). Precio neto cerrado.
+  const [promos, setPromos] = useState<{ modelo: string; precio: number; promo: string; desde: string; hasta: string }[]>([])
+  // Fecha de referencia de la promo: la del pedido web (si la óptica lo armó en promo, se respeta aunque se cargue después).
+  const [webCreado, setWebCreado] = useState<string | null>(null)
   const [busquedaStock, setBusquedaStock] = useState('')
   const [filtroModelo, setFiltroModelo] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -190,6 +194,11 @@ export default function NuevoPedido() {
     }
   }, [cliente?.cod])
 
+  useEffect(() => {
+    supabase.from('promo_precio').select('modelo, precio, promo, desde, hasta').eq('activo', true)
+      .then(({ data }) => setPromos(((data ?? []) as typeof promos).map((p) => ({ ...p, precio: Number(p.precio) }))))
+  }, [])
+
   // Precios especiales del cliente (lista especial por cliente): reemplazan la lista al cotizar.
   useEffect(() => {
     if (!cliente?.cod) { setPreciosEsp({}); return }
@@ -268,6 +277,7 @@ export default function NuevoPedido() {
     for (const it of w.items || []) if (it.codigo) nuevo[it.codigo] = (nuevo[it.codigo] || 0) + (it.cantidad || 1)
     setCart(nuevo)
     setPrecargaWebId(w.id)
+    setWebCreado(w.created_at)
     setPrecargaFotoId(null)
     setWebs((prev) => prev.filter((x) => x.id !== w.id))
     // Condiciones que la óptica eligió en el carrito (escalera por volumen / compra digital): se precargan.
@@ -491,17 +501,32 @@ export default function NuevoPedido() {
   // Precio especial del cliente para un modelo (o undefined si no tiene lista especial para ese modelo).
   const espDe = (modelo: string | null | undefined): number | undefined =>
     modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined
+  // Promo vigente para el modelo, solo si baja el precio que pagaría el cliente (lista o especial).
+  // Distribuidores (lista 1) ya pagan menos → no les aplica. La venta de consigna no entra en promos.
+  const promoDe = (modelo: string | null | undefined, precioBase: number | null | undefined): { precio: number; promo: string } | undefined => {
+    if (!modelo || esConsigna || !promos.length) return undefined
+    const ref = new Date(precargaWebId && webCreado ? webCreado : Date.now())
+    const m = modelo.trim().toUpperCase()
+    const p = promos.find((x) => x.modelo === m && ref >= new Date(x.desde) && ref < new Date(x.hasta))
+    if (!p) return undefined
+    const base = espDe(modelo) ?? (precioBase ? getPrecioLista(precioBase, cliente?.nro_lista ?? 5) : 0)
+    return p.precio < base ? { precio: p.precio, promo: p.promo } : undefined
+  }
+  // Precio especial o promo de la línea (la promo, si baja el precio, reemplaza al especial).
+  const extraPrecio = (pr: { precio: number; promo: string } | undefined, esp: number | undefined, esRegalo: boolean) =>
+    esRegalo ? {} : pr ? { precio_promo: pr.precio, promo: pr.promo } : esp != null ? { precio_esp: esp } : {}
 
   const itemsPreview: PedidoItem[] = cartKeys.map((k) => {
     const info = stock.find((x) => x.codigo === k)
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
     const esp = espDe(info?.modelo)
+    const pr = esPreventa ? undefined : promoDe(info?.modelo, info?.precio)
     return {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
       ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
-      ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
+      ...extraPrecio(pr, esp, esRegalo),
     }
   })
   // Este builder arma pedidos B2B / catálogo / consigna (nunca Shopify) → esShopify = false: item.precio no cierra el precio.
@@ -515,17 +540,22 @@ export default function NuevoPedido() {
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
     const esp = espDe(info?.modelo)
+    const pr = esPreventa ? undefined : promoDe(info?.modelo, info?.precio)
     const item: PedidoItem = {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
       ...(esRegalo ? { regalo: true, precio: 0 } : {}),
       ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
-      ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
+      ...extraPrecio(pr, esp, esRegalo),
     }
     // El precio neto de la línea lleva SOLO el descuento comercial (el financiero es una NC condicional aparte).
     const net = netoUnitario(item, info?.precio || 0, cliente?.nro_lista ?? 5, dcN, dfN, false)
     const pct = descuentoItemPct(item, dcN, dfN, false) // comercial
     let tag: string
     if (esRegalo) tag = 'sin cargo (100% bonif.)'
+    else if (item.precio_promo != null) {
+      const lista = getPrecioLista(info?.precio || 0, cliente?.nro_lista ?? 5)
+      tag = `♥ −${promoPct(item.precio_promo, esp ?? lista).toLocaleString('es-AR')}% ${item.promo} (lista ${formatPrecio(esp ?? lista)})`
+    }
     else if (esp != null) tag = '★ precio especial'
     else if (esPreventa) tag = 'preventa (precio fijo)'
     else tag = pct > 0 ? `−${pct}% comercial` : 'precio de lista'
@@ -665,6 +695,7 @@ export default function NuevoPedido() {
         const esRegalo = regaloSel.has(k)
         const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
         const esp = espDe(p?.modelo ?? info?.modelo)
+        const pr = esPreventa ? undefined : promoDe(p?.modelo ?? info?.modelo, info?.precio)
         return {
           codigo: k,
           modelo: p?.modelo ?? info?.modelo ?? k,
@@ -673,7 +704,7 @@ export default function NuevoPedido() {
           ...(pendiente > 0 ? { pendiente } : {}),
           ...(esRegalo ? { regalo: true, precio: 0 } : {}),
           ...(esPreventa ? { preventa: true, precio_pv: info!.precio_preventa! } : {}),
-          ...(esp != null && !esRegalo ? { precio_esp: esp } : {}),
+          ...extraPrecio(pr, esp, esRegalo),
         }
       })
       let totalPendiente = items.reduce((a, i) => a + (i.pendiente ?? 0), 0)

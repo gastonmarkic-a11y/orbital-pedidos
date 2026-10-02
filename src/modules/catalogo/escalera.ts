@@ -40,14 +40,15 @@ export interface EscaleraCalc {
   plazoProximo: string        // plazo que tendría al llegar al próximo escalón
 }
 
-/** `unidadesAlAbrir`: lo que tenía el carrito al abrirlo; si sube de escalón desde ahí, gana el premio. */
-export function calcularEscalera(unidades: number, subtotal: number, unidadesAlAbrir: number): EscaleraCalc {
+/** `unidadesAlAbrir`: lo que tenía el carrito al abrirlo; si sube de escalón desde ahí, gana el premio.
+ *  `cerrado`: importe a precio cerrado (promo Día de la Madre): suma unidades al escalón pero no lleva comercial ni contado. */
+export function calcularEscalera(unidades: number, subtotal: number, unidadesAlAbrir: number, cerrado = 0): EscaleraCalc {
   const actual = escalonDe(unidades)
   const proximo = ESCALERA.find((e) => e.desde > unidades) ?? null
   const premio = actual.desde > escalonDe(unidadesAlAbrir).desde
-  const descuento = Math.round(subtotal * actual.pct / 100)
+  const descuento = Math.round((subtotal - cerrado) * actual.pct / 100)
   const neto = subtotal - descuento
-  const contado = Math.round(neto * CONTADO_PCT / 100)
+  const contado = Math.round((neto - cerrado) * CONTADO_PCT / 100)
   return {
     unidades, actual, proximo,
     faltan: proximo ? proximo.desde - unidades : 0,

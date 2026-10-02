@@ -6,7 +6,7 @@ import { useToast } from '../../lib/toast'
 import { EstadoPedido, Pedido, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { addDias, formatFecha } from '../../lib/dates'
-import { importeDe, calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario, esPedidoShopify } from './calc'
+import { importeDe, calcImporte, calcImporteConIVA, calcFinanciero, estadoLabel, ESTADO_COLORS, labelMedios, parseFP, qtyClass, netoUnitario, brutoUnitario, esPedidoShopify, promoPct } from './calc'
 import { aNacional, abrirWhatsApp, abrirMail } from '../../lib/telefono'
 import { fetchPaged } from '../../lib/fetchAll'
 import { exportarPedidosTango, esElegibleTango } from './exportTango'
@@ -812,6 +812,9 @@ export default function Pedidos() {
                             {i.regalo ? <span className="text-emerald-700"> · sin cargo</span>
                               : pu > 0 ? <span className="text-muted"> · {bu > pu ? <span className="text-faint line-through mr-0.5">{formatPrecio(bu)}</span> : null}{formatPrecio(pu)}/u · <b className="text-emerald-600">{formatPrecio(pu * i.cantidad)}</b></span>
                               : ''}
+                            {i.precio_promo != null && bu > pu && (
+                              <span className="block text-[10px] font-semibold text-pink-700">♥ −{promoPct(pu, bu).toLocaleString('es-AR')}% {i.promo}</span>
+                            )}
                             {(i.pendiente ?? 0) > 0 && (
                               <span className="block text-[10px] text-violet-700 font-medium">
                                 {i.cantidad - (i.pendiente ?? 0)} listas · 🏭 {i.pendiente} en producción

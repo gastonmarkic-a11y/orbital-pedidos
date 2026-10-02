@@ -33,7 +33,8 @@ interface Variante {
   clasificacion: string | null; precio: number; precio_lista: number; tiene_preventa: boolean
   caliente: boolean; imagen: string | null; stock: number; proyectado?: boolean
 }
-interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean }
+// precio_lista: solo en ítems en promo (Día de la Madre) → se muestra tachado y el ahorro
+interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean; precio_lista?: number }
 // o = la foto es del propio color (false = genérica del modelo, heredada por un color sin foto)
 interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean }
 interface HomeModelo extends Modelo {
@@ -370,8 +371,25 @@ const esZN = (m: HomeModelo) => m.clasificaciones.includes('zaira nara') || /\bZ
 // Cápsula ETHEREA (ultralivianos 9g)
 const ETHEREA_MODELOS = ['SUBLIME', 'PLUMA', 'MICRA', 'BRISSA']
 const esEtherea = (m: HomeModelo) => ETHEREA_MODELOS.includes(m.modelo)
+// Especial Día de la Madre (domingo 18/10/2026): los modelos de la colección "Para Ellas" de la
+// tienda (orbitaleyewear.com.ar/collections/para-ellas), a precio mayorista normal. Se apaga solo el 19/10.
+const DIA_MADRE_MODELOS = ['LOS HAMPTON', 'BRERA', 'CHARLOTTE', 'VENICE', 'CRETA', 'PARIS', 'SOPHIA', 'REBECCA', 'ROMA', 'ATLANTIC CITY', 'WYNWOOD', 'PALERMO', 'BROOKLYN']
+const DIA_MADRE_ACTIVO = new Date() < new Date('2026-10-20T00:00:00-03:00')
+const DIA_MADRE_PRECIO = 48000
+// El precio promo lo pone la base (tabla promo_precio): acá solo se detecta para mostrar el descuento.
+const enPromo = (modelo: string, precio: number | null | undefined, lista: number | null | undefined) =>
+  DIA_MADRE_MODELOS.includes(modelo) && !!precio && !!lista && precio < lista
+const pctOff = (precio: number, lista: number) => Math.round((1 - precio / lista) * 100)
+// Importe a precio cerrado (promo) y ahorro del carrito: la promo no suma escalera / bono / contado.
+const importePromo = (items: CartItem[]) => items.reduce((a, c) => a + (c.precio_lista && c.precio_lista > c.precio ? c.cantidad * c.precio : 0), 0)
+const ahorroPromo = (items: CartItem[]) => items.reduce((a, c) => a + (c.precio_lista && c.precio_lista > c.precio ? c.cantidad * (c.precio_lista - c.precio) : 0), 0)
+function PromoTag({ precio, lista, chico }: { precio: number; lista: number; chico?: boolean }) {
+  return <span className={`${chico ? 'text-[8px] px-1.5' : 'text-[10px] px-2'} font-bold rounded-full py-0.5 bg-pink-100 text-pink-700 whitespace-nowrap`}>−{pctOff(precio, lista)}% Día de la Madre</span>
+}
 // ZN y ETHEREA son exclusivos de su sección; el resto los excluye
 const matchGrupo = (g: Grupo, m: HomeModelo) => {
+  // Día de la Madre es transversal: el modelo sigue apareciendo también en su sección de siempre
+  if (g.key === 'diamadre') return g.match(m)
   // ETHEREA y ZN son secciones exclusivas por modelo (aunque el modelo sea solo receta, como Brissa)
   if (esEtherea(m)) return g.key === 'etherea'
   if (esZN(m)) return g.key === 'zn'
@@ -379,8 +397,9 @@ const matchGrupo = (g: Grupo, m: HomeModelo) => {
   if (!tieneSolFoto(m)) return g.key === 'bluecut'
   return (g.match(m) && !esZN(m) && !esEtherea(m))
 }
-type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea'; match: (m: HomeModelo) => boolean }
+type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea' | 'madre'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
+  ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => DIA_MADRE_MODELOS.includes(m.modelo) }] : []),
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
@@ -397,10 +416,12 @@ const ACCENT: Record<Grupo['accent'], string> = {
   red: 'bg-gradient-to-r from-[#dc2626] to-[#f05252] text-white',
   dark: 'bg-[#0a0a0a] text-white',
   etherea: 'bg-gradient-to-r from-[#64748b] via-[#94a3b8] to-[#e2e8f0] text-white',
+  madre: 'bg-gradient-to-r from-[#9d174d] via-[#db2777] to-[#f472b6] text-white',
 }
 
 // Contenido explicativo (pop-up tipo frontpage) por grupo
 const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: string[]; link?: { href: string; texto: string } }> = {
+  diamadre: { titulo: 'Especial Día de la Madre', bajada: 'La selección Para Ellas para armar la vidriera del Día de la Madre (domingo 18 de octubre): los modelos femeninos de sol que más regalan.', puntos: ['13 modelos de sol pensados para ellas', 'Tu precio mayorista de siempre en cada anteojo', 'Pedí con tiempo: llegás con stock a la semana fuerte'], link: { href: 'https://www.orbitaleyewear.com.ar/collections/para-ellas', texto: 'Ver la colección Para Ellas en la tienda →' } },
   destacados: { titulo: 'Destacados', bajada: 'Lo más elegido por las ópticas: los modelos que más rotan y mejor funcionan en vidriera.', puntos: ['Curados por el equipo comercial', 'Alta rotación y demanda comprobada', 'Ideales para arrancar o reponer stock'] },
   triple: { titulo: 'Triple Protección', bajada: 'La tecnología Orbital que protege de la luz infrarroja, la luz azul y los rayos UV en un solo cristal.', puntos: ['Filtro Infrarrojo (IR) — confort térmico', 'Filtro Blue Cut — pantallas y luz artificial', 'Protección UV400 — sol', 'Visión más nítida y menos fatiga'], link: { href: '/proteccion', texto: 'Ver la página de Triple Protección →' } },
   urbano: { titulo: 'Urbanos', bajada: 'Diseño para el día a día en la ciudad. Livianos, versátiles y con impronta de marca.', puntos: ['Estilo para uso diario', 'Materiales livianos y resistentes', 'Combinan con todo'] },
@@ -445,6 +466,31 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
   )
 }
 
+// Banner de campaña: Especial Día de la Madre (home y sección). Los precios no cambian.
+function DiaMadreBanner({ onVer, enSeccion, promo }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean }) {
+  const sinPrecios = useSinPrecios()
+  const Tag = onVer ? 'button' : 'div'
+  // Foto de campaña (madre e hija con anteojos). La mitad izquierda es pared clara: ahí va el texto en desktop;
+  // en el celu la foto se recorta sobre ellas y el texto pasa abajo.
+  return (
+    <Tag onClick={onVer} className="relative w-full text-left overflow-hidden rounded-2xl mb-5 bg-[#e9edf5] text-[#0a0a0a] block">
+      <img src="/banners/dia-madre-modern-mom.webp" alt="Modern Mom — Especial Día de la Madre"
+        className="w-full aspect-[4/3] sm:aspect-[5/2] object-cover object-[78%_center] sm:object-center" />
+      <div className="px-5 py-5 sm:absolute sm:inset-y-0 sm:left-0 sm:w-[48%] sm:flex sm:flex-col sm:justify-center sm:px-10">
+        <p className="text-[10px] tracking-[0.3em] uppercase font-semibold text-neutral-600">Especial Día de la Madre · Domingo 18/10</p>
+        <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold uppercase tracking-tight leading-[0.95] mt-2">Modern<br />Mom</h2>
+        <p className="text-sm text-neutral-700 mt-3 max-w-sm leading-relaxed">
+          La selección <b>Para Ellas</b>: {DIA_MADRE_MODELOS.length} modelos de sol para armar la vidriera del regalo
+          {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
+        </p>
+        {onVer && !enSeccion && (
+          <span className="self-start inline-block mt-4 bg-[#0a0a0a] text-white text-[12px] font-bold uppercase tracking-wide rounded-full px-5 py-2.5">Ver la selección →</span>
+        )}
+      </div>
+    </Tag>
+  )
+}
+
 // Badge azul: "Triple Protección" (si tiene Infrarrojo + Blue cut) o "Blue cut"
 function ProtBadge({ triple }: { triple: boolean }) {
   return <span className="absolute top-2 right-2 z-10 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-2 py-0.5 tracking-wide shadow whitespace-nowrap">{triple ? 'TRIPLE PROT.' : 'BLUE CUT'}</span>
@@ -465,7 +511,13 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
         <p className="text-[11px] text-neutral-400">{m.n_colores} color{m.n_colores !== 1 ? 'es' : ''}</p>
         {sinPrecios
           ? <p className="text-[11px] font-semibold mt-1 text-emerald-600">Disponible</p>
-          : <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>}
+          : enPromo(m.modelo, m.precio_desde, m.precio_lista_desde) ? (
+            <div className="mt-1">
+              <PromoTag precio={m.precio_desde!} lista={m.precio_lista_desde!} chico />
+              <p className="text-[11px] text-neutral-400 line-through mt-1 leading-none">{kAr(m.precio_lista_desde ?? null)}</p>
+              <p className="text-base font-bold text-pink-700 leading-tight">{kAr(m.precio_desde)}</p>
+            </div>
+          ) : <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>}
       </button>
       <button onClick={onQuick} className="mx-3 mb-3 rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
         <Plus size={14} /> Agregar
@@ -902,6 +954,8 @@ export default function CatalogoPublico() {
   const buscando = qn.length > 0
   const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn))), [todos, qn])
   const grupoObj = GRUPOS.find((g) => g.key === grupoActivo) || null
+  // La promo de precio está prendida en la base si algún modelo de la selección viene con descuento
+  const promoActiva = todos.some((m) => enPromo(m.modelo, m.precio_desde, m.precio_lista_desde))
   const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
@@ -1020,7 +1074,7 @@ export default function CatalogoPublico() {
   // Bono en % (Diferenciarte v2) convive con el pack: se calcula sobre lo que se factura.
   const bonoPct = esBonoPct(bono)
   const bonoCalc = useMemo(
-    () => calcularBono(cartTotal, bono, cartCount, packCalc && bonoPct ? importeSinCargo(Object.values(cart), packCalc.eligio) : 0),
+    () => calcularBono(cartTotal, bono, cartCount, (packCalc && bonoPct ? importeSinCargo(Object.values(cart), packCalc.eligio) : 0) + importePromo(Object.values(cart))),
     [cartTotal, bono, cartCount, packCalc, bonoPct, cart])
 
   // Al cruzar un escalón, cartel de celebración (una sola vez por escalón).
@@ -1038,7 +1092,7 @@ export default function CatalogoPublico() {
     setCart((c) => {
       const prev = c[v.codigo]
       const cantidad = Math.min((prev?.cantidad ?? 0) + 1, v.stock)
-      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, stock: v.stock, cantidad, oportunidad: esOportunidad(v.clasificacion) } }
+      return { ...c, [v.codigo]: { codigo: v.codigo, modelo, descripcion: v.descripcion, precio: v.precio, imagen: v.imagen, stock: v.stock, cantidad, oportunidad: esOportunidad(v.clasificacion), ...(enPromo(modelo, v.precio, v.precio_lista) ? { precio_lista: v.precio_lista } : {}) } }
     })
   }
   function setQty(codigo: string, cantidad: number) {
@@ -1182,6 +1236,7 @@ export default function CatalogoPublico() {
           </div>
         ) : grupoObj ? (
           <>
+            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} />}
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
               <button onClick={() => setInfoGrupo(grupoObj.key)} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupoObj.nombre}`}>
                 <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupoObj.nombre}</span>
@@ -1199,10 +1254,11 @@ export default function CatalogoPublico() {
           (() => {
             // Dedup de arriba para abajo: cada modelo se muestra en la sección más alta que le toca (no repetir tapas)
             const usados = new Set<string>()
-            return GRUPOS.map((g) => {
+            const secciones = GRUPOS.map((g) => {
               const items = conFoto(todos.filter((m) => matchGrupo(g, m)))
               // "Cuando baja la luz" es transversal (por color de cristal): muestra su set completo con su tapa ocre/naranja/rojo, sin dedup
-              if (g.key === 'bajaluz') {
+              // Día de la Madre también: no le saca los modelos a su sección de siempre
+              if (g.key === 'bajaluz' || g.key === 'diamadre') {
                 if (!items.length) return null
                 return <SectionRow key={g.key} grupo={g} items={items} row={items}
                   onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
@@ -1213,6 +1269,12 @@ export default function CatalogoPublico() {
               return <SectionRow key={g.key} grupo={g} items={items} row={row}
                 onOpen={(m) => setSel(m)} onQuick={(m) => setQuick(m)} onInfo={() => setInfoGrupo(g.key)} />
             })
+            return (
+              <>
+                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} />}
+                {secciones}
+              </>
+            )
           })()
         )}
       </main>
@@ -1307,7 +1369,7 @@ function QuickAdd({ modelo, clave, cart, onAdd, onSetQty, onClose, onVerDetalle 
                     </div>
                     <div className="p-2">
                       <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
-                      <div className="flex items-center gap-1 flex-wrap">{sinPrecios ? <p className="text-[10px] font-semibold text-emerald-600 mt-0.5">Disponible</p> : <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>}{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
+                      <div className="flex items-center gap-1 flex-wrap">{sinPrecios ? <p className="text-[10px] font-semibold text-emerald-600 mt-0.5">Disponible</p> : enPromo(modelo.modelo, v.precio, v.precio_lista) ? <p className="text-[12px] font-bold text-pink-700 mt-0.5"><span className="text-[10px] font-normal text-neutral-400 line-through mr-1">{kAr(v.precio_lista)}</span>{kAr(v.precio)}</p> : <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>}{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
                       {q === 0 ? (
                         <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
@@ -1565,8 +1627,9 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, onAdd, onSe
                 </div>
               ) : (
                 <div className="flex items-baseline gap-2 mt-3">
-                  <span className="text-2xl font-bold text-[#0004FF]">{kAr(v.precio)}</span>
-                  {v.tiene_preventa && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
+                  <span className={`text-2xl font-bold ${enPromo(modelo.modelo, v.precio, v.precio_lista) ? 'text-pink-700' : 'text-[#0004FF]'}`}>{kAr(v.precio)}</span>
+                  {(v.tiene_preventa || enPromo(modelo.modelo, v.precio, v.precio_lista)) && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
+                  {enPromo(modelo.modelo, v.precio, v.precio_lista) && <PromoTag precio={v.precio} lista={v.precio_lista} />}
                   <span className="text-[11px] text-neutral-400">+ IVA</span>
                 </div>
               )}
@@ -1753,7 +1816,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   const bonoPct = esBonoPct(bono)
   const sinCargoUnidades = packCalc && bonoPct ? packCalc.eligio : 0
   const sinCargoImp = sinCargoUnidades > 0 ? importeSinCargo(items, sinCargoUnidades) : 0
-  const bonoCalc = calcularBono(total, bono ?? null, unidades, sinCargoImp)
+  const promoImp = importePromo(items)
+  const ahorro = ahorroPromo(items)
+  const bonoCalc = calcularBono(total, bono ?? null, unidades, sinCargoImp + promoImp)
   const digital = bonoPct && bonoCalc && !bonoCalc.vencido ? { bono: bono!, calc: bonoCalc } : null
   const [contado, setContado] = useState<boolean | null>(null)
   const [enviado, setEnviado] = useState<{ neto: number; bono: number; contado: boolean; totalContado: number } | null>(null)
@@ -1767,9 +1832,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   // Escalera por volumen: solo ópticas con precios, sin pack ni bono de campaña (esos traen sus condiciones)
   // unidades al abrir el carrito: si desde acá completa un escalón, gana el premio de +30 días
   const [unidadesAlAbrir] = useState(unidades)
-  const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir) : null
+  const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
   // Compra digital (Diferenciarte): el bono sigue igual; plazo con premio y % por volumen que aplica el vendedor
-  const escDigital = digital ? calcularEscalera(unidades, total, unidadesAlAbrir) : null
+  const escDigital = digital ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
   const [razon, setRazon] = useState('')
@@ -1880,7 +1945,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
                     <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">{colorLegible(c.descripcion)}</p>
                     <div className="flex items-center justify-between gap-2 mt-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        {!sinPrecios && <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>}
+                        {!sinPrecios && (c.precio_lista && c.precio_lista > c.precio
+                          ? <p className="text-sm font-bold text-pink-700"><span className="text-[11px] font-normal text-neutral-400 line-through mr-1">{kAr(c.precio_lista)}</span>{kAr(c.precio)}</p>
+                          : <p className="text-sm font-bold text-[#0004FF]">{kAr(c.precio)}</p>)}
                         {packCalc && (
                           <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${c.oportunidad ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0004FF]/10 text-[#0004FF]'}`}>
                             {c.oportunidad ? 'Oportunidad' : 'Línea'}
@@ -1901,6 +1968,12 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
               {sinPrecios
                 ? <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">Total del pedido</span><span className="font-bold text-lg">{unidades} unidades</span></div>
                 : <div className="flex justify-between text-sm mb-3"><span className="text-neutral-500">{unidades} unidades · subtotal</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>}
+              {!sinPrecios && ahorro > 0 && (
+                <div className="flex justify-between text-sm -mt-2 mb-3 text-pink-700">
+                  <span>♥ Ahorro Día de la Madre <span className="text-[11px] text-pink-500">(precio cerrado, sin otros descuentos)</span></span>
+                  <span className="font-semibold whitespace-nowrap">− {kAr(ahorro)}</span>
+                </div>
+              )}
               {packCalc && <PackResumen calc={packCalc} />}
               {escalera && (
                 <EscaleraResumen calc={escalera} subtotal={total} contado={contado} onContado={setContado}>
