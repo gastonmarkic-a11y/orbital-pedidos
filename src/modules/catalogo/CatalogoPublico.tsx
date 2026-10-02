@@ -380,6 +380,23 @@ const DIA_MADRE_PRECIO = 48000
 // El precio promo lo pone la base (tabla promo_precio): acá solo se detecta para mostrar el descuento.
 const enPromo = (modelo: string, precio: number | null | undefined, lista: number | null | undefined) =>
   DIA_MADRE_MODELOS.includes(modelo) && !!precio && !!lista && precio < lista
+// Tapas de la sección Día de la Madre: foto de producto de la tienda (orbitaleyewear.com.ar/collections/para-ellas),
+// la de mejor calidad entre los colores en promo con stock. c = color tal como figura en stock.
+const SHOP = 'https://cdn.shopify.com/s/files/1/0675/1544/9581/files/'
+const DIA_MADRE_TAPA: Record<string, { c: string; u: string }> = {
+  'BRERA': { c: 'Negro Brillo / Gris', u: SHOP + 'Brera_Ngb-Ng_Frontal-scaled.jpg' },
+  'BROOKLYN': { c: 'Carey - Gris', u: SHOP + 'Brooklyn_Ca-Gr_Frontal-scaled.jpg' },
+  'CHARLOTTE': { c: 'Negro Brillo / Rosa', u: SHOP + 'charlotte-sunglasses-shiny-black-pink-front-000050A27900114_1fb0e696-ca36-45ad-90f7-6e267d046107.jpg' },
+  'CRETA': { c: 'Negro Brillo / Rosa', u: SHOP + 'Creta_Ngb-Rs_Frontal-scaled_43f9043b-dd18-4691-83ba-931da8707563.jpg' },
+  'LOS HAMPTON': { c: 'Negro Brillo / Gris Degrade', u: SHOP + 'LOS_HAMPTONS_NEG_BRILL_GRIS_DEG.jpg' },
+  'PALERMO': { c: 'Beige Pastel Mate / Habano', u: SHOP + 'Palermo-Be-Ha_Frente-scaled.jpg' },
+  'PARIS': { c: 'Habano Brillo Clear / Celeste', u: SHOP + 'paris-sunglasses-habano-light-blue-front-002050964900212_76aba1ff-f41d-4ecf-824b-ffe3027d242d.jpg' },
+  'REBECCA': { c: 'Dorado Brillo / Verde', u: SHOP + 'Rebecca-3-Cenital-Do-Ve.png' },
+  'ROMA': { c: 'Negro Mate / Espejo Oro', u: SHOP + 'ROMA_NEG_MAT_AMARILLO_ESP.jpg' },
+  'SOPHIA': { c: 'Carey Mate / Rosa', u: SHOP + 'sophia-sunglasses-carey-pink-front-000050A29905414_c0ce9e9a-5163-4470-8144-6f2f69635a42.jpg' },
+  'VENICE': { c: 'Bordeux Mate / Rosa', u: SHOP + 'VENICE_BORDO_ROSA..jpg' },
+  'WYNWOOD': { c: 'Negro Brillo / Rosa', u: SHOP + 'Wynwood_Ngb-Rs_Frontal-scaled_0d82cad9-42f5-42ae-aeab-227f8cd914d4.jpg' },
+}
 // Modelo con algún color en promo (la base marca cada color con pm; solo colores con stock)
 const tienePromo = (m: HomeModelo) => (m.fotos || []).some((f) => f.pm)
 const pctOff = (precio: number, lista: number) => Math.round((1 - precio / lista) * 100)
@@ -509,12 +526,17 @@ function ProtBadge({ triple }: { triple: boolean }) {
 function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () => void; onQuick: () => void; grupo?: string }) {
   const sinPrecios = useSinPrecios()
   // En la sección Día de la Madre la tarjeta muestra solo los colores que están en la promo
-  const fotos = grupo === 'diamadre' && tienePromo(m) ? m.fotos.filter((f) => f.pm) : m.fotos
+  const enMadre = grupo === 'diamadre' && tienePromo(m)
+  let fotos = enMadre ? m.fotos.filter((f) => f.pm) : m.fotos
   const nColores = fotos === m.fotos ? m.n_colores : fotos.length
+  // Tapa con la foto de la tienda (Shopify) en ese color, si el color sigue con stock
+  const tapa = enMadre ? DIA_MADRE_TAPA[m.modelo] : undefined
+  const iTapa = tapa ? fotos.findIndex((f) => norm(f.c) === norm(tapa.c)) : -1
+  if (iTapa >= 0) fotos = fotos.map((f, i) => (i === iTapa ? { ...f, u: tapa!.u + '?width=700', o: true } : f))
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
-        <CardCarousel fotos={fotos} alt={m.modelo} onOpen={onOpen} initial={coverIndex(fotos, grupo, m.modelo)} />
+        <CardCarousel fotos={fotos} alt={m.modelo} onOpen={onOpen} initial={iTapa >= 0 ? iTapa : coverIndex(fotos, grupo, m.modelo)} />
         {m.caliente && <span className="absolute top-2 left-2 bg-[#0004FF] text-white text-[9px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5 z-10"><Star size={9} />TOP</span>}
         {m.has_bluecut && <ProtBadge triple={m.tratamientos.includes('Infrarrojo + Blue cut')} />}
       </div>
