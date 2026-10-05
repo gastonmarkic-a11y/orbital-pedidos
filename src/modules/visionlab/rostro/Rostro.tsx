@@ -10,7 +10,8 @@ import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
 import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
-import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, resultado, z } from './medidas'
+import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, ordenarSeleccion, resultado, z } from './medidas'
+import { VISITANTE_KEY } from '../../colab/colabUtil'
 import '../pretest.css'
 import './rostro.css'
 
@@ -110,6 +111,62 @@ function Analizando({ cap, r, onFin }: { cap: Captura; r: Resultado; onFin: () =
 
 const precioAR = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
+function Frame({ m, href, motivos, externo }: { m: Marco; href: string; motivos: string[]; externo?: boolean }) {
+  return (
+    <a className="frame" href={href} {...(externo ? { target: '_blank', rel: 'noopener' } : {})}>
+      <div className="ph">{m.foto ? <img src={m.foto} alt={'Armazón ' + m.modelo} loading="lazy" /> : <Glasses size={28} />}</div>
+      <div className="fb">
+        <b>{m.modelo}</b>
+        {motivos.length > 0 && <span className="why">{motivos.slice(0, 2).join(' · ')}</span>}
+        {m.precio_desde ? <span className="price num">Desde {precioAR(m.precio_desde)}</span> : null}
+      </div>
+    </a>
+  )
+}
+
+// ── Link de un influencer o de Zaira (?r=<codigo de uno de sus links>) ─────────────────────────────
+// colab-click 'ver' da su nombre y sus anteojos (su catálogo, o la colección ZN) con el link que les atribuye la
+// venta: /r/<codigo> (con su cupón) o la ficha de la tienda con sus UTM (promotor sin cupón). Con la forma y las
+// medidas de cada modelo (rostro_medidas) se le muestran a la persona los de esa selección que le van a su cara.
+// La visita cuenta como un toque de ese link, igual que la landing /r/.
+type MarcoRef = Marco & { href: string }
+type Seleccion = { nombre: string; marcos: MarcoRef[] }
+type Ver = {
+  ok: boolean; modelo?: string; influencer?: string; pct?: number; directo?: string | null; tienda?: string
+  colores?: { imagen: string | null; price: number | null }[]
+  coleccion?: { modelo: string; imagen: string | null; price: number | null; url: string }[]
+  catalogo?: { codigo: string; modelo: string; imagen: string | null; price: number | null }[]
+}
+function visitante() {
+  try {
+    let v = localStorage.getItem(VISITANTE_KEY)
+    if (!v) { v = crypto.randomUUID(); localStorage.setItem(VISITANTE_KEY, v) }
+    return v
+  } catch { return null }
+}
+async function cargarSeleccion(codigo: string): Promise<Seleccion | null> {
+  const { data } = await supabase.functions.invoke('colab-click', { body: { codigo, visitante: visitante(), accion: 'ver' } })
+  const d = data as Ver | null
+  if (!d?.ok || !d.influencer || !d.modelo) return null
+  const items: { modelo: string; foto: string | null; precio: number | null; href: string }[] = [
+    { modelo: d.modelo, foto: d.colores?.find((c) => c.imagen)?.imagen ?? null, precio: d.colores?.[0]?.price ?? null,
+      href: d.pct === 0 ? (d.directo ?? d.tienda ?? '') : `/r/${codigo}` },
+    ...(d.coleccion ?? []).map((c) => ({ modelo: c.modelo, foto: c.imagen, precio: c.price, href: c.url })),
+    ...(d.catalogo ?? []).map((c) => ({ modelo: c.modelo, foto: c.imagen, precio: c.price, href: `/r/${c.codigo}` })),
+  ]
+  const unicos = items.filter((x, i) => x.href && items.findIndex((y) => y.modelo.toUpperCase() === x.modelo.toUpperCase()) === i)
+  const { data: med } = await supabase.rpc('rostro_medidas', { p_modelos: unicos.map((x) => x.modelo) })
+  const porModelo = new Map(((med ?? []) as { modelo: string; formato: string | null; ancho_mm: number | null; alto_mm: number | null }[]).map((m) => [m.modelo, m]))
+  return {
+    nombre: d.influencer,
+    marcos: unicos.map((x) => {
+      const m = porModelo.get(x.modelo.toUpperCase().trim())
+      return { modelo: x.modelo, foto: x.foto ?? '', precio_desde: x.precio, href: x.href,
+        formato: m?.formato ?? null, ancho_mm: m?.ancho_mm ?? null, alto_mm: m?.alto_mm ?? null, frente: null, para: null }
+    }),
+  }
+}
+
 export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const debug = params.has('debug')
@@ -126,6 +183,10 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
   const info = f ? FORMAS[f] : null
   const recomendados = info ? info.si.map((x) => x.e) : []
   const sugeridos = useMemo(() => (marcos && r && f ? marcosParaVos(marcos, r, f) : null), [marcos, r, f])
+  const ref = useMemo(() => (params.get('r') ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || null, [params])
+  const [sel, setSel] = useState<Seleccion | null>(null)
+  useEffect(() => { if (ref) cargarSeleccion(ref).then(setSel).catch(() => setSel(null)) }, [ref])
+  const deSel = useMemo(() => (sel && r && f ? ordenarSeleccion(sel.marcos, r, f) : null), [sel, r, f])
 
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 4)
@@ -155,7 +216,7 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
           <section className="step">
             <div className="rs-hero">
               <div>
-                <div className="kicker"><ScanFace size={15} />Análisis facial con la cámara</div>
+                <div className="kicker"><ScanFace size={15} />{sel ? <>Te lo comparte <b style={{ marginLeft: 3 }}>{sel.nombre}</b></> : 'Análisis facial con la cámara'}</div>
                 <h1>Descubrí qué anteojos le quedan mejor a tu cara.</h1>
                 <p>Escaneamos tu rostro con la cámara en 10 segundos: medimos sus proporciones, identificamos su forma y calculamos el ancho de armazón que te corresponde. Después te los probás en vivo.</p>
                 <div className="trust"><span><Check size={14} />Gratis</span><span><Check size={14} />Sin registrarte</span><span><Lock size={14} />Tu imagen no sale del celular</span></div>
@@ -308,26 +369,33 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
               <ArrowRight size={20} />
             </button>
 
-            <div>
+            {sel && deSel && (
+              <div>
+                <div className="rs-h"><h3>La selección de {sel.nombre} para vos</h3><small className="muted">{deSel.van.length ? 'Los que le van a tu cara' : 'Sus anteojos'}</small></div>
+                {deSel.van.length === 0 && <p className="muted small" style={{ margin: '0 0 8px' }}>Ninguno cumple justo forma y medida para tu rostro: probátelos en vivo o consultá en tu óptica Orbital.</p>}
+                <div className="fgrid">
+                  {(deSel.van.length ? deSel.van : deSel.resto).map((m) => <Frame key={m.modelo} m={m} href={m.href} motivos={'motivos' in m ? (m.motivos as string[]) : []} externo={!m.href.startsWith('/')} />)}
+                </div>
+                {deSel.van.length > 0 && deSel.resto.length > 0 && (
+                  <>
+                    <div className="rs-h" style={{ marginTop: 14 }}><h3>Más de su selección</h3></div>
+                    <div className="fgrid">{deSel.resto.map((m) => <Frame key={m.modelo} m={m} href={m.href} motivos={[]} externo={!m.href.startsWith('/')} />)}</div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {!sel && <div>
               <div className="rs-h"><h3>Modelos Orbital para vos</h3><small className="muted">Forma ideal y a tu medida, con stock</small></div>
               {!sugeridos && <div className="empty">Buscando armazones…</div>}
               {sugeridos && sugeridos.length === 0 && <div className="empty">Por ahora no hay modelos con stock que cumplan forma y medida. Consultá en tu óptica Orbital.</div>}
               {sugeridos && sugeridos.length > 0 && (
                 <div className="fgrid">
-                  {sugeridos.map((m) => (
-                    <a className="frame" key={m.modelo} href={link(m.modelo)} target="_blank" rel="noopener">
-                      <div className="ph"><img src={m.foto} alt={'Armazón ' + m.modelo} loading="lazy" /></div>
-                      <div className="fb">
-                        <b>{m.modelo}</b>
-                        <span className="why">{m.motivos.slice(0, 2).join(' · ')}</span>
-                        {m.precio_desde ? <span className="price num">Desde {precioAR(m.precio_desde)}</span> : null}
-                      </div>
-                    </a>
-                  ))}
+                  {sugeridos.map((m) => <Frame key={m.modelo} m={m} href={link(m.modelo)} motivos={m.motivos} externo />)}
                 </div>
               )}
               <p className="muted small" style={{ margin: '8px 0 0' }}>En la página de cada modelo podés probártelo con la cámara en todos sus colores.</p>
-            </div>
+            </div>}
 
             <div className="rs-next">
               <a className="btn" href="/lab/buscar"><MapPin size={16} />Encontrá tu óptica Orbital</a>

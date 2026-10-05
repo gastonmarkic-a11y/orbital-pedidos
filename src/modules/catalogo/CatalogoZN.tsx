@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase'
 import { Search, X, Check, ChevronLeft, ChevronRight, Sparkles, AlertTriangle, Layers, Copy, Link2, BarChart3 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import ColabAnteojos from '../colab/ColabAnteojos'
+import { EstudioRostro } from '../colab/ColabFichas'
 import { MisLinks as ColabMisLinks } from '../colab/Colab'
 import ColabDashboard from '../colab/ColabDashboard'
 
@@ -436,7 +437,7 @@ const PCT_ZN = 20
 
 function MisLinks({ clave }: { clave: string }) {
   const [colab, setColab] = useState<{ clave: string; pct: number } | null | undefined>(undefined)
-  const [vista, setVista] = useState<'links' | 'anteojos'>('links')
+  const [vista, setVista] = useState<'links' | 'anteojos' | 'rostro'>('links')
   const [version, setVersion] = useState(0)
   useEffect(() => {
     supabase.rpc('zn_colab_clave', { p_clave: clave }).then(({ data }) => setColab((data as { clave: string; pct: number } | null) ?? null))
@@ -448,13 +449,14 @@ function MisLinks({ clave }: { clave: string }) {
   return (
     <>
       <div className="flex gap-2 mb-4">
-        {([['links', 'Mis links'], ['anteojos', 'Generar link']] as const).map(([k, lbl]) => (
+        {([['links', 'Mis links'], ['anteojos', 'Generar link'], ['rostro', 'Estudio de rostro']] as const).map(([k, lbl]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`rounded-full px-3 py-1.5 text-[11px] font-semibold border ${vista === k ? 'text-white border-transparent' : 'bg-white border-black/10'}`}
             style={vista === k ? { background: AZUL } : undefined}>{lbl}</button>
         ))}
       </div>
-      {vista === 'anteojos'
+      {vista === 'rostro' ? <EstudioRostro clave={colab.clave} onLink={() => setVersion((v) => v + 1)} />
+        : vista === 'anteojos'
         ? <ColabAnteojos clave={colab.clave} pct={0} puedeLink onLink={() => setVersion((v) => v + 1)} coleccion="orbital-x-zaira" />
         : <ColabMisLinks key={version} clave={colab.clave} pct={Number(colab.pct) || PCT_ZN} irAnteojos={() => setVista('anteojos')} />}
     </>

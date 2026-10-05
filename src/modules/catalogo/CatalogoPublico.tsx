@@ -492,6 +492,27 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
   )
 }
 
+// Estudio de rostro (Vision Lab /lab/rostro): la óptica lo prueba y le pasa el link a sus clientes.
+const LINK_ROSTRO = 'https://ver.orbitaleyewear.com.ar/lab/rostro'
+function EstudioRostroBanner() {
+  const [copiado, setCopiado] = useState(false)
+  const copiar = () => navigator.clipboard?.writeText(LINK_ROSTRO).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1800) }).catch(() => {})
+  return (
+    <div className="mb-6 rounded-2xl border border-black/10 bg-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="text-3xl leading-none" aria-hidden>🪞</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#0004FF]">Nuevo · Vision Lab</div>
+        <div className="text-[15px] font-bold mt-0.5">Estudio de rostro</div>
+        <p className="text-[12px] text-neutral-500 mt-0.5">Tu cliente escanea su cara con el celular: forma del rostro, talle de armazón y qué modelos Orbital le quedan mejor.</p>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <a href="/lab/rostro" target="_blank" rel="noopener" className="rounded-xl bg-[#0004FF] text-white px-3.5 py-2 text-[12px] font-semibold">Probarlo</a>
+        <button onClick={copiar} className="rounded-xl border border-black/15 px-3.5 py-2 text-[12px] font-semibold">{copiado ? '¡Copiado!' : 'Copiar link para clientes'}</button>
+      </div>
+    </div>
+  )
+}
+
 // Banner de campaña: Especial Día de la Madre (home y sección). Los precios no cambian.
 function DiaMadreBanner({ onVer, enSeccion, promo, modelos }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean; modelos?: number }) {
   const sinPrecios = useSinPrecios()
@@ -1311,6 +1332,7 @@ export default function CatalogoPublico() {
             return (
               <>
                 {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosPromo} />}
+                <EstudioRostroBanner />
                 {secciones}
               </>
             )

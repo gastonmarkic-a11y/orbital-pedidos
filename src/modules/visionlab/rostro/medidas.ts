@@ -301,7 +301,7 @@ export function resultado(m: Medidas): Resultado {
 }
 
 // ── Armazones del catálogo que cumplen la forma y la medida ──────────────────────────────────
-export function marcosParaVos(marcos: Marco[], r: Resultado, forma: Forma) {
+export function marcosParaVos<T extends Marco>(marcos: T[], r: Resultado, forma: Forma, max = 6) {
   const info = FORMAS[forma]
   const si = new Set(info.si.map((x) => x.e)), no = new Set(info.no.map((x) => x.e))
   return marcos
@@ -321,7 +321,14 @@ export function marcosParaVos(marcos: Marco[], r: Resultado, forma: Forma) {
       } else motivos.push('Medidas a confirmar en la óptica')
       return { ...m, score, motivos }
     })
-    .filter((m): m is Marco & { score: number; motivos: string[] } => !!m && m.score > 0)
+    .filter((m): m is T & { score: number; motivos: string[] } => !!m && m.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
+    .slice(0, max)
+}
+
+// Selección de un influencer / colección (link ?r=): todos sus modelos, primero los que cumplen forma y medida.
+export function ordenarSeleccion<T extends Marco>(marcos: T[], r: Resultado, forma: Forma) {
+  const van = marcosParaVos(marcos, r, forma, Infinity)
+  const ids = new Set(van.map((m) => m.modelo))
+  return { van, resto: marcos.filter((m) => !ids.has(m.modelo)) }
 }
