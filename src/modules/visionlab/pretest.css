@@ -426,3 +426,35 @@
 .ovl .rx-subir label.btn.disabled{opacity:.5;pointer-events:none}
 .ovl .rx-subir .ok{display:flex;gap:8px;align-items:flex-start;background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:10px 12px;font-size:14px}
 .ovl .rx-subir .ok svg{flex:none;margin-top:2px}
+
+/* Perfil visual: el estudio de rostro dentro del informe */
+.ovl .pv-rostro{display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:start;padding:10px 12px;border-radius:12px;background:var(--gold-soft);color:var(--gold);margin-bottom:10px}
+.ovl .pv-rostro b{display:block;color:var(--ink);font-size:14px}
+.ovl .pv-rostro small{display:block;color:var(--ink-2);font-size:13px;margin-top:2px}
+.ovl .rtable.pro td:first-child{width:44%;padding-right:12px}
+.ovl .frame .medido{font-size:12px;font-weight:700;color:#1f8a5b}
+.ovl .frame .medir{font-size:12px;font-weight:700;color:var(--gold);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.ovl .opt .senal{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#1f8a5b}
+.ovl .opt .tag.gold{background:var(--gold);color:#fff}
+
+/* Grosor de los cristales */
+.ovl .grosor{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:4px}
+.ovl .gr-h{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;color:var(--gold)}
+.ovl .gr-h b{display:block;color:var(--ink);font-size:15px}
+.ovl .gr-h small{color:var(--muted);font-size:12.5px}
+.ovl .gr-corte{width:100%;height:auto;background:#fafaf8;border-radius:10px}
+.ovl .gr-lista{display:grid;gap:4px}
+.ovl .gr-lista button{display:grid;grid-template-columns:86px 1fr 62px 46px;gap:8px;align-items:center;border:1px solid transparent;background:none;border-radius:10px;padding:6px 8px;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer;text-align:left}
+.ovl .gr-lista button.sel{border-color:#3f78c9;background:rgba(63,120,201,.07);color:var(--ink)}
+.ovl .gr-lista .nm{font-weight:800;display:flex;gap:6px;align-items:center}
+.ovl .gr-lista .nm i{font-style:normal;font-size:10px;font-weight:800;background:var(--gold);color:#fff;border-radius:99px;padding:1px 6px}
+.ovl .gr-lista .bar{height:8px;border-radius:4px;background:#efece6;overflow:hidden}
+.ovl .gr-lista .bar em{display:block;height:100%;background:#3f78c9;border-radius:4px}
+.ovl .gr-lista .v{text-align:right;font-weight:700}
+.ovl .gr-lista .pc{text-align:right;color:#1f8a5b;font-weight:700;font-size:12px}
+.ovl .gr-tip{margin:0;font-size:13px;background:var(--gold-soft);border-radius:10px;padding:8px 10px;color:var(--ink-2)}
+.ovl .lab-rx{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.ovl .lab-rx label{display:grid;gap:3px}
+.ovl .lab-rx small{font-size:11px;color:var(--muted);font-weight:700}
+.ovl .lab-rx input{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit;font-size:15px}
+@media (max-width:420px){.ovl .lab-rx{grid-template-columns:repeat(2,1fr)}}

@@ -12,6 +12,9 @@ import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
 import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, ordenarSeleccion, resultado, z } from './medidas'
 import { VISITANTE_KEY } from '../../colab/colabUtil'
+import { QRProfesional, urlPerfil } from '../extras'
+import { Perfil, compactarCalces, compactarRostro, guardarRostro, leerPerfil, rostroDe } from '../perfil'
+import Calce from './Calce'
 import '../pretest.css'
 import './rostro.css'
 
@@ -177,8 +180,14 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
   const [probar, setProbar] = useState<Estilo | null>(null)
   const [marcos, setMarcos] = useState<Marco[] | null>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [perfil, setPerfil] = useState<Perfil>(leerPerfil)
+  const [calce, setCalce] = useState(false)
 
   const r = useMemo(() => (cap ? resultado(cap.medidas) : null), [cap])
+  // Perfil visual: el resultado del escaneo (la forma detectada, no la que se esté mirando) queda en el celular y,
+  // si ya hizo el chequeo visual, se suma a ese informe para la óptica.
+  useEffect(() => { if (r) setPerfil(guardarRostro(rostroDe(r, r.forma))) }, [r])
+  const dpTarjeta = perfil.vision?.dp ?? null
   const f: Forma | null = forma ?? r?.forma ?? null
   const info = f ? FORMAS[f] : null
   const recomendados = info ? info.si.map((x) => x.e) : []
@@ -256,7 +265,7 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
             </div>
 
             <button className="btn block" onClick={() => setPaso('escaneo')}><ScanFace size={18} />Escanear mi rostro</button>
-            <div className="disclaimer"><ShieldCheck size={16} /><span>La imagen se procesa en tu dispositivo y no se guarda ni se envía. Es una guía de estilo y talle: las medidas son aproximadas (±5 mm) y conviene confirmarlas en la óptica.</span></div>
+            <div className="disclaimer"><ShieldCheck size={16} /><span>La imagen se procesa en tu dispositivo y no se guarda ni se envía; solo las medidas quedan en tu celular para sumarlas a tu chequeo visual. Es una guía de estilo y talle: las medidas son aproximadas (±5 mm) y conviene confirmarlas en la óptica.</span></div>
           </section>
         )}
 
@@ -329,10 +338,12 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
               </div>
               <div className="rs-mini">
                 <div><small>Ancho de rostro</small><b className="num">{r.mm.pomulos} mm</b></div>
-                <div><small>Distancia pupilar</small><b className="num">≈ {r.mm.dp} mm</b></div>
+                <div><small>Distancia pupilar</small><b className="num">{dpTarjeta ? dpTarjeta.lejos.toFixed(1).replace('.', ',') : '≈ ' + r.mm.dp} mm</b></div>
                 <div><small>Proporción</small><b className="num">{(r.prop.largo).toFixed(2).replace('.', ',')}</b></div>
               </div>
-              <p className="muted small" style={{ margin: '10px 0 0' }}>La DP es aproximada. Para pedir anteojos con receta medila con la tarjeta en el <a href="/lab/pretest">chequeo visual</a> o en la óptica.</p>
+              <p className="muted small" style={{ margin: '10px 0 0' }}>{dpTarjeta
+                ? <>DP medida con la tarjeta en tu chequeo visual <b className="num">{perfil.vision!.code}</b>: es la que sirve para pedir anteojos con receta.</>
+                : <>La DP es aproximada. Para pedir anteojos con receta medila con la tarjeta en el <a href="/lab/pretest?desde=rostro">chequeo visual</a> o en la óptica.</>}</p>
             </div>
 
             <div className="rs-idea"><Info size={18} /><span>{info.idea}</span></div>
@@ -397,19 +408,42 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
               <p className="muted small" style={{ margin: '8px 0 0' }}>En la página de cada modelo podés probártelo con la cámara en todos sus colores.</p>
             </div>}
 
+            <div className="card rs-perfil">
+              <div className="rs-h"><h3>Tu perfil visual</h3><small className="muted">{1 + Number(!!perfil.calces?.length) + Number(!!perfil.vision)} de 3 listos</small></div>
+              <ol className="rs-pv">
+                <li className="ok"><span><Check size={14} /></span><div><b>Estudio de rostro</b><small>{info.nombre} · talle {r.talle} · {r.ideal} mm</small></div></li>
+                {perfil.calces?.length ? (
+                  <li className="ok"><span><Check size={14} /></span><div><b>Medición de calce</b><small>{perfil.calces.length} armazón{perfil.calces.length > 1 ? 'es' : ''} medido{perfil.calces.length > 1 ? 's' : ''} · {perfil.calces.map((c) => `${c.modelo} ${c.calce} %`).slice(0, 3).join(' · ')}</small></div></li>
+                ) : (
+                  <li><span>2</span><div><b>Medición de calce</b><small>1 minuto. Te ponés el armazón y medimos marco vs. rostro y dónde cae tu pupila.</small></div></li>
+                )}
+                {perfil.vision ? (
+                  <li className="ok"><span><Check size={14} /></span><div><b>Chequeo visual <span className="num">{perfil.vision.code}</span></b><small>Le sumamos tu rostro: la óptica ve los dos con ese código.</small></div></li>
+                ) : (
+                  <li><span>3</span><div><b>Chequeo visual</b><small>10 minutos. Mide tu DP con tarjeta y tu informe sale con estos armazones.</small></div></li>
+                )}
+              </ol>
+              <div className="rs-next">
+                <button className={'btn' + (perfil.calces?.length ? ' ghost' : '')} onClick={() => setCalce(true)}><Glasses size={16} />{perfil.calces?.length ? 'Medir otro armazón' : 'Medir el calce'}</button>
+                {!perfil.vision && <a className="btn ghost" href="/lab/pretest?desde=rostro"><Eye size={16} />Chequeo visual</a>}
+              </div>
+              <QRProfesional url={urlPerfil({ c: perfil.vision?.code, ro: compactarRostro(rostroDe(r, r.forma)), ca: compactarCalces(perfil.calces) })} titulo="Para tu óptica"
+                texto="Mostrale este código: ve tu forma, tu talle, tus medidas y los armazones que te mediste. Sin foto ni nombre." />
+            </div>
             <div className="rs-next">
               <a className="btn" href="/lab/buscar"><MapPin size={16} />Encontrá tu óptica Orbital</a>
-              <a className="btn ghost" href="/lab/pretest"><Eye size={16} />Hacé el chequeo visual</a>
+              {perfil.vision && <a className="btn ghost" href="/lab/pretest"><Eye size={16} />Repetir el chequeo visual</a>}
             </div>
             <button className="link" onClick={() => { setCap(null); setForma(null); setPaso('escaneo') }}><RotateCcw size={14} />Escanear de nuevo</button>
 
             {debug && (
-              <pre className="ticket">{JSON.stringify({ prop: r.prop, z: z(r.prop), pct: r.pct, mm: r.mm, iris: cap.medidas.iris }, (_, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v), 2)}</pre>
+              <pre className="ticket">{JSON.stringify({ prop: r.prop, z: z(r.prop), pct: r.pct, mm: r.mm, iris: cap.medidas.iris, k: [cap.medidas.kPom, cap.medidas.kFrente, cap.medidas.kMand] }, (_, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v), 2)}</pre>
             )}
             <div className="disclaimer"><ShieldCheck size={16} /><span>Guía de estilo y talle basada en proporciones del rostro; no es una indicación médica. Las medidas son aproximadas (±5 mm). Con receta alta, el óptico puede sugerirte un lente más chico para que el cristal quede fino.</span></div>
           </section>
         )}
       </div>
+      {calce && <Calce onCerrar={() => { setCalce(false); setPerfil(leerPerfil()) }} />}
       {probar && r && (
         <ProbarFormas ideal={r.ideal} recomendados={recomendados} inicial={probar} onCerrar={() => setProbar(null)} />
       )}

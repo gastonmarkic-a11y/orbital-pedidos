@@ -108,8 +108,18 @@
 .ovl .rs-cta .ic{width:48px;height:48px;border-radius:14px;background:rgba(214,178,110,.18);color:#d6b26e;display:grid;place-items:center}
 .ovl .rs-cta b{display:block;font-size:17px}
 .ovl .rs-cta small{display:block;font-size:13px;color:rgba(255,255,255,.7);line-height:1.4;margin-top:2px}
-.ovl .rs-next{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media (max-width:420px){.ovl .rs-next{grid-template-columns:1fr}.ovl .rs-bars button{grid-template-columns:22px 80px 1fr 40px;gap:8px}}
+.ovl .rs-next{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px}
+/* Perfil visual: rostro + chequeo visual, un solo QR para la óptica */
+.ovl .rs-perfil{display:grid;gap:12px}
+.ovl .rs-perfil .rs-h{margin:0}
+.ovl .rs-pv{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ovl .rs-pv li{display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:start}
+.ovl .rs-pv li>span{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;border:1.5px solid var(--line);color:var(--muted)}
+.ovl .rs-pv li.ok>span{background:var(--gold);border-color:var(--gold);color:#fff}
+.ovl .rs-pv b{display:block;font-size:15px}
+.ovl .rs-pv small{color:var(--muted);font-size:13px}
+.ovl .rs-perfil .qrbox{margin:0;padding:12px 0 0}
+@media (max-width:420px){.ovl .rs-next{grid-auto-flow:row}.ovl .rs-bars button{grid-template-columns:22px 80px 1fr 40px;gap:8px}}
 
 /* ---------- probador de formas (pantalla completa, oscuro) ---------- */
 .rs-try,.rs-comp{position:fixed;inset:0;z-index:60;background:#0b0b0e;color:#fff;display:flex;flex-direction:column;font-family:Manrope,ui-sans-serif,system-ui,sans-serif}
@@ -152,3 +162,76 @@
 .rs-comp figcaption b{display:block;color:#fff;font-size:13px}
 .rs-comp figure button{position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;cursor:pointer}
 @media (min-width:900px){.rs-comp-grid{grid-template-columns:repeat(4,1fr)}.rs-try-stage{max-width:760px;width:100%;margin:0 auto}}
+
+/* Medición de calce (tipo tablet JINS, en el celular) */
+.rs-try.ca .rs-try-panel{gap:10px}
+.ca-sweep{position:absolute;left:0;right:0;top:0;height:22%;background:linear-gradient(180deg,rgba(214,178,110,0),rgba(214,178,110,.16));border-bottom:1px solid rgba(214,178,110,.55);animation:ca-sweep 3.2s ease-in-out infinite;pointer-events:none}
+@keyframes ca-sweep{0%{transform:translateY(-100%)}60%,100%{transform:translateY(470%)}}
+@media (prefers-reduced-motion:reduce){.ca-sweep{display:none}}
+.ca-hud{position:absolute;bottom:10px;right:10px;background:rgba(11,11,14,.72);backdrop-filter:blur(8px);border-radius:14px;padding:6px 8px 8px;border:1px solid rgba(255,255,255,.12)}
+.ca-hud.justo{border-color:rgba(60,207,142,.7)}
+.ca-hud.grande,.ca-hud.chico{border-color:rgba(255,184,77,.7)}
+.ca-gauge{display:grid;justify-items:center;width:80px}
+.ca-gauge svg{width:100%;height:auto}
+.ca-gauge b{font-size:22px;font-weight:800;line-height:1;margin-top:-6px}
+.ca-gauge b small{font-size:13px;margin-left:1px}
+.ca-gauge span{font-size:10.5px;white-space:nowrap;font-weight:700;color:rgba(255,255,255,.75);margin-top:3px}
+.ca-hud.justo .ca-gauge span{color:#3ccf8e}
+.ca-hud.grande .ca-gauge span,.ca-hud.chico .ca-gauge span{color:#ffb84d}
+.ca-metricas{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 12px}
+.ca-metricas>div{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:7px 8px;display:grid;gap:2px}
+.ca-metricas small{display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.ca-metricas b{font-size:19px;font-weight:800}
+.ca-metricas b i{font-style:normal;font-size:11px;font-weight:700;color:rgba(255,255,255,.55);margin-left:2px}
+.ca-metricas .alerta{border-color:rgba(255,184,77,.6)}
+.ca-modelos{display:flex;gap:8px;overflow-x:auto;padding:0 12px;scrollbar-width:none}
+.ca-modelos::-webkit-scrollbar{display:none}
+.ca-modelos button{position:relative;flex:none;width:96px;display:grid;justify-items:center;gap:2px;padding:6px 4px 7px;border-radius:14px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;font:inherit;cursor:pointer}
+.ca-modelos button.sel{border-color:#d6b26e;background:rgba(214,178,110,.14)}
+.ca-modelos .ph{width:84px;height:40px;border-radius:9px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#111}
+.ca-modelos .ph img{width:100%;height:100%;object-fit:contain}
+.ca-modelos b{font-size:11.5px;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ca-modelos small{font-size:10.5px;color:rgba(255,255,255,.6)}
+.ca-modelos i{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:#3ccf8e;color:#0b0b0e;display:grid;place-items:center}
+.ca-guardar{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;background:#fff;color:#111;font:inherit;font-weight:800;font-size:14px;padding:12px 18px;cursor:pointer;flex:none}
+.ca-guardar:disabled{opacity:.45}
+.ca-nota{margin:0;padding:0 16px;font-size:11.5px;color:rgba(255,255,255,.5)}
+@media (max-width:380px){.ca-metricas b{font-size:16px}}
+
+/* Tu perfil visual (/lab): las tres herramientas */
+.ovl .lab-hero{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.ovl .lab-ring{position:relative;width:96px;height:96px}
+.ovl .lab-ring svg{width:100%;height:100%}
+.ovl .lab-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800}
+.ovl .lab-ring b small{font-size:13px;color:var(--muted)}
+.ovl .lab-pasos{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.ovl .lab-pasos li{position:relative;display:grid;grid-template-columns:48px 1fr;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
+.ovl .lab-pasos li.ok{border-color:rgba(143,106,52,.45)}
+.ovl .lab-ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--gold-soft);color:var(--gold)}
+.ovl .lab-pasos li.ok .lab-ic{background:var(--gold);color:#fff}
+.ovl .lab-tx{display:grid;gap:6px;justify-items:start}
+.ovl .lab-tx p{margin:0;font-size:14px;color:var(--ink-2)}
+.ovl .lab-h{display:flex;gap:8px;align-items:baseline;justify-content:space-between;width:100%}
+.ovl .lab-h b{font-size:16px}
+.ovl .lab-h small{font-size:12px;color:var(--muted);white-space:nowrap}
+.ovl .lab-da{display:flex;gap:5px;align-items:flex-start;font-size:12.5px;color:var(--gold)}
+.ovl .lab-da svg{flex:none;margin-top:2px}
+.ovl .lab-tx .btn{margin-top:4px}
+.ovl .lab-link{position:absolute;left:39px;bottom:-13px;width:2px;height:14px;background:var(--gold);opacity:.5}
+.ovl .lab-tabla{width:100%;border-collapse:collapse;font-size:14px}
+.ovl .lab-tabla th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 4px;border-bottom:1px solid var(--line)}
+.ovl .lab-tabla td{padding:8px 4px;border-bottom:1px solid var(--line)}
+.ovl .lab-pill{display:inline-block;border-radius:999px;padding:2px 9px;font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
+.ovl .lab-pill.justo{background:#e3f6ec;color:#1f8a5b}
+.ovl .lab-pill.grande,.ovl .lab-pill.chico{background:#fff1dc;color:#a8650a}
+@media (max-width:420px){.ovl .lab-hero{grid-template-columns:1fr}.ovl .lab-ring{display:none}}
+.ovl .lab-tx p b{white-space:nowrap}
+.ovl .card>.qrbox{border-top:0;padding:0}
+.ca-donde{margin:0 12px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;padding:10px;background:rgba(214,178,110,.16);border:1px solid rgba(214,178,110,.5);color:#fff;font-weight:700;font-size:13px;text-decoration:none}
+.ovl .lab-camino{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.ovl .lab-camino li{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.ovl .lab-camino li>span{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--gold-soft);color:var(--gold)}
+.ovl .lab-camino li.ok>span{background:var(--gold);color:#fff}
+.ovl .lab-camino b{display:block;font-size:15px}
+.ovl .lab-camino small{color:var(--muted);font-size:13px;line-height:1.4;display:block}
+.ovl .lab-camino .btn{grid-column:2;justify-self:start}

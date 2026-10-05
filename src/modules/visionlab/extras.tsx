@@ -5,6 +5,7 @@ import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { CalendarPlus, Check, History, QrCode } from 'lucide-react'
 import { acuityLabel, Duo, Eye as Ojo, Habitos, NearId, Resultados, Usa } from './logic'
+import type { CalceCompacto, RostroCompacto } from './perfil'
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 /** Cuestionario de hábitos (como el "Vision Profile" de Zeiss). Todo opcional. */
@@ -95,21 +96,28 @@ export interface Compacto {
   a: [number | null, number | null]; n: [number | null, number | null]; k: number | null
   s: [boolean | null, boolean | null]; o: number; m: [boolean | null, boolean | null]; j: NearId | null
   du: [Duo | null, Duo | null]; dp: [number, number] | null; i: number; se: string; dom: Ojo | null; ppi: number
+  /** Estudio de rostro (/lab/rostro), si la persona lo hizo: forma, talle y medidas para elegir el armazón. */
+  ro?: RostroCompacto
+  /** Armazones medidos en vivo (/lab/calce): [modelo, ancho, calce %, pupila %]. */
+  ca?: CalceCompacto[]
 }
 
-export function compactar(S: Resultados, code: string, edad: number | null, usa: Usa, indice: number, semaforo: string, dom: Ojo | null): Compacto {
+export function compactar(S: Resultados, code: string, edad: number | null, usa: Usa, indice: number, semaforo: string, dom: Ojo | null, ro?: RostroCompacto, ca?: CalceCompacto[]): Compacto {
   return {
     c: code, f: new Date().toISOString().slice(0, 10), e: edad, u: usa, x: S.espejo ? 1 : 0, d: S.distMm,
     a: [S.acuity.R, S.acuity.L], n: [S.acuityNear.R, S.acuityNear.L], k: S.contrast, s: [S.astig.R, S.astig.L],
     o: S.colorHits, m: [S.amsler.R, S.amsler.L], j: S.near, du: [S.duo.R, S.duo.L],
-    dp: S.dp ? [S.dp.lejos, S.dp.cerca] : null, i: indice, se: semaforo, dom, ppi: Math.round(S.pxPerMm * 25.4),
+    dp: S.dp ? [S.dp.lejos, S.dp.cerca] : null, i: indice, se: semaforo, dom, ppi: Math.round(S.pxPerMm * 25.4), ro, ca,
   }
 }
 const b64url = (s: string) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 export const deB64url = (s: string) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))))
 export const urlProfesional = (c: Compacto) => `${window.location.origin}/lab/informe#${b64url(JSON.stringify(c))}`
+/** Perfil visual sin el chequeo completo (rostro y/o calces, más el código del chequeo si lo hizo): misma vista profesional. */
+export const urlPerfil = (p: { c?: string; ro?: RostroCompacto; ca?: CalceCompacto[] }) => `${window.location.origin}/lab/informe#${b64url(JSON.stringify({ f: new Date().toISOString().slice(0, 10), ...p }))}`
+export const urlRostro = (ro: RostroCompacto) => urlPerfil({ ro })
 
-export function QRProfesional({ url }: { url: string }) {
+export function QRProfesional({ url, titulo = 'Para tu óptico u oftalmólogo', texto = 'Que escanee este código: ve el resultado completo, prueba por prueba, en su celular. No incluye tu nombre.' }: { url: string; titulo?: string; texto?: string }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: 'M', color: { dark: '#17171c', light: '#ffffff' } }).then(setSrc).catch(() => setSrc(null))
@@ -118,8 +126,8 @@ export function QRProfesional({ url }: { url: string }) {
     <div className="qrbox">
       {src ? <img src={src} alt="Código QR con el resultado para el profesional" /> : <QrCode size={64} />}
       <div>
-        <b>Para tu óptico u oftalmólogo</b>
-        <span className="muted small">Que escanee este código: ve el resultado completo, prueba por prueba, en su celular. No incluye tu nombre.</span>
+        <b>{titulo}</b>
+        <span className="muted small">{texto}</span>
         <a className="inline-link small no-print" href={url} target="_blank" rel="noopener">Ver cómo lo ve el profesional</a>
       </div>
     </div>

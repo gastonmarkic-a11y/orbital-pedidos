@@ -27,6 +27,9 @@ import {
   Recordatorio, Registro, urlProfesional,
 } from './extras'
 import { Marco, Receta, recetaVacia, recomendar } from './marcos'
+import { Perfil, PerfilCalce, PerfilRostro, compactarCalces, compactarRostro, dpDelPerfil, guardarReceta, guardarVision, leerPerfil, marcoDelPerfil } from './perfil'
+import Grosor from './Grosor'
+import { FORMAS, afinidadRostro } from './rostro/medidas'
 import { OBRAS, ObraSocial, PRINCIPALES } from './obras'
 import './pretest.css'
 
@@ -41,7 +44,16 @@ interface Optica {
   barrio: string | null
   telefono: string | null
   whatsapp: string | null
-  coincide: 'barrio' | 'localidad' | 'provincia'
+  coincide: 'barrio' | 'localidad' | 'provincia' | 'pais'
+  /** Solo en la búsqueda por modelo: lo tiene en exhibición (consignación) o lo trabaja (lo compró en 2025–2026). */
+  senal?: 'exhibe' | 'trabaja'
+}
+/** Oftalmólogo de la red Orbital (tabla oftalmologos, RPC oftalmologos_cercanos). */
+interface Oftalmo {
+  id: number; nombre: string; centro: string | null; subespecialidad: string | null
+  direccion: string | null; localidad: string | null; provincia: string | null; barrio: string | null
+  telefono: string | null; whatsapp: string | null; web: string | null; turnos_url: string | null
+  rating: number | null; resenas: number | null; atiende_obra: boolean; recomendado: boolean; coincide: string
 }
 
 // Zona detectada con el GPS: solo barrio / ciudad / provincia, nunca se guardan coordenadas.
@@ -101,7 +113,7 @@ const LEGALES: [string, ReactNode][] = [
   ['Cuándo ir a una guardia', 'Si tenés pérdida de visión repentina, dolor ocular, ojo rojo con dolor, destellos de luz, una "cortina" o manchas nuevas en la visión, visión doble repentina o un golpe en el ojo, no hagas esta guía: consultá de inmediato en una guardia oftalmológica.'],
   ['Menores de edad', 'Las personas menores de 18 años deben hacer la guía acompañadas por un adulto responsable. Los chicos necesitan controles oftalmológicos periódicos aunque no tengan síntomas.'],
   ['Armazones y ópticas sugeridos', 'Las sugerencias de armazones son recomendaciones comerciales generales de Orbital Eyewear según criterios ópticos habituales, no una indicación médica. Los anteojos recetados se confeccionan únicamente con la receta de un profesional matriculado; el óptico confirma medidas y calce. Los oftalmólogos del buscador provienen de Google Maps: Orbital Eyewear no tiene relación con ellos ni responde por su atención.'],
-  ['Tus datos', <>La cámara (medición de distancia, distancia entre pupilas con la tarjeta y conteo de parpadeos) se usa solo dentro de tu celular: las imágenes y la foto no se guardan ni se envían. El código QR del informe lleva tus resultados sin tu nombre, y solo los ve quien lo escanee. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
+  ['Tus datos', <>La cámara (medición de distancia, distancia entre pupilas con la tarjeta y conteo de parpadeos) se usa solo dentro de tu celular: las imágenes y la foto no se guardan ni se envían. El código QR del informe lleva tus resultados sin tu nombre, y solo los ve quien lo escanee. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, la forma y las medidas de tu cara si hiciste el estudio de rostro (nunca la imagen), y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
   ['Responsabilidad', 'Al usar la guía aceptás que es informativa y que las decisiones sobre tu salud visual las tomás con un profesional. Orbital Eyewear no se responsabiliza por decisiones tomadas solo en base a estos resultados.'],
 ]
 
@@ -388,8 +400,13 @@ function AsiVes({ S, usa }: { S: Resultados; usa: Usa }) {
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // Buscador de ópticas Orbital y oftalmólogos: al final del informe y solo en /lab/buscar.
-function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: string | null; inicial?: 'opticas' | 'oftalmo'; recetaFoto?: boolean }) {
+// Red Orbital: con el modelo que eligió (calce / ?m=) busca las ópticas cliente que lo tienen; en oftalmólogos muestra
+// primero los de nuestra red (con acuerdo y que atienden su cartilla) y registra cada derivación para negociar acuerdos.
+function Buscador({ code, inicial = 'opticas', recetaFoto = false, modelo = null }: { code: string | null; inicial?: 'opticas' | 'oftalmo'; recetaFoto?: boolean; modelo?: string | null }) {
   const [tab, setTab] = useState<'opticas' | 'oftalmo'>(inicial)
+  const [conModelo, setConModelo] = useState(!!modelo)
+  const [sinModeloCerca, setSinModeloCerca] = useState(false)
+  const [red, setRed] = useState<Oftalmo[] | null>(null)
   const [zona, setZona] = useState<Zona | null>(null)
   const [geo, setGeo] = useState<string | null>(null)
   const [geoBusy, setGeoBusy] = useState(false)
@@ -443,7 +460,8 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
   // Busca ópticas por barrio / ciudad / provincia (con un respiro al tipear).
   useEffect(() => {
     const q = loc.trim()
-    if (q.length < 3 && !zona) {
+    const porModelo = conModelo && !!modelo
+    if (q.length < 3 && !zona && !porModelo) {
       setOpticas(null)
       return
     }
@@ -454,6 +472,17 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
         ((await supabase.rpc('opticas_cercanas', {
           p_q: texto, p_barrio: zona?.barrio ?? null, p_provincia: zona?.provincia ?? null, p_limite: 6,
         })).data as Optica[] | null) ?? []
+      setSinModeloCerca(false)
+      if (porModelo) {
+        const conM = ((await supabase.rpc('opticas_con_modelo', {
+          p_modelo: modelo, p_q: q.length >= 3 ? q : null, p_barrio: zona?.barrio ?? null, p_provincia: zona?.provincia ?? null, p_limite: 6,
+        })).data as Optica[] | null) ?? []
+        if (conM.length || (q.length < 3 && !zona)) {
+          if (vivo) { setOpticas(conM); setBuscando(false) }
+          return
+        }
+        setSinModeloCerca(true) // ninguna de su zona lo tiene: las de la zona se lo pueden pedir
+      }
       let rows = await buscar(q || null)
       // Nada en la ciudad → probar con el partido antes de mostrar las de la provincia.
       if (zona?.partido && (!rows.length || rows.every((o) => o.coincide === 'provincia'))) {
@@ -469,7 +498,25 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
       vivo = false
       clearTimeout(t)
     }
-  }, [zona, loc])
+  }, [zona, loc, conModelo, modelo])
+
+  // Oftalmólogos de la red Orbital para su zona y su obra social.
+  useEffect(() => {
+    if (tab !== 'oftalmo' || !hayZona) { setRed(null); return }
+    let vivo = true
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc('oftalmologos_cercanos', {
+        p_q: loc.trim().length >= 3 ? loc.trim() : null, p_barrio: zona?.barrio ?? null, p_provincia: zona?.provincia ?? null,
+        p_obra: os?.id ?? null, p_limite: 5,
+      })
+      if (vivo) setRed((data as Oftalmo[] | null) ?? [])
+    }, 400)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [tab, hayZona, loc, zona, os])
+  const derivar = (o: Oftalmo, accion: 'whatsapp' | 'telefono' | 'mapa' | 'web') => {
+    supabase.rpc('oftalmo_derivar', { p_id: o.id, p_accion: accion, p_code: code, p_obra: os?.id ?? null, p_localidad: zonaTexto || null }).then(() => {})
+    if (code) supabase.rpc('pretest_red', { p_code: code, p_oftalmologo: o.id }).then(() => {})
+  }
 
   // Guarda la zona en el lead (una vez que dejó de tipear).
   useEffect(() => {
@@ -491,10 +538,11 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
 
   const elegirOptica = (o: Optica) => {
     if (code) supabase.rpc('pretest_actualizar', { p_code: code, p_optica_cod: o.cod }).then(() => {})
+    if (code && modelo && conModelo) supabase.rpc('pretest_red', { p_code: code, p_modelo: modelo }).then(() => {})
   }
 
   // Si no hay ninguna en su ciudad, la RPC devuelve las de la provincia: avisarlo.
-  const soloProvincia = !!opticas?.length && opticas.every((o) => o.coincide === 'provincia')
+  const soloProvincia = !!opticas?.length && hayZona && opticas.every((o) => o.coincide === 'provincia' || o.coincide === 'pais')
   const qOftalmo = (que: string) => que + (hayZona ? ' en ' + zonaTexto : ' cerca de mí')
 
   return (
@@ -515,6 +563,14 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
 
       {tab === 'opticas' && (
         <div className="opts">
+          {modelo && (
+            <div className="oschips" role="radiogroup" aria-label="Qué ópticas mostrar">
+              <button role="radio" aria-checked={conModelo} className={conModelo ? 'sel' : ''} onClick={() => setConModelo(true)}><Glasses size={14} style={{ verticalAlign: -2, marginRight: 4 }} />Con tu {modelo}</button>
+              <button role="radio" aria-checked={!conModelo} className={!conModelo ? 'sel' : ''} onClick={() => setConModelo(false)}>Todas las ópticas Orbital</button>
+            </div>
+          )}
+          {conModelo && modelo && !hayZona && opticas !== null && opticas.length > 0 && <div className="note">Ópticas Orbital que trabajan el <b>{modelo}</b>. Escribí tu localidad para ver las más cercanas.</div>}
+          {sinModeloCerca && <div className="note">Ninguna óptica de {zonaTexto || 'tu zona'} tiene hoy el <b>{modelo}</b>. Estas son las ópticas Orbital de tu zona: te lo pueden pedir.</div>}
           {opticas === null && !buscando && (
             <div className="empty"><MapPin size={28} />Escribí tu localidad o usá tu ubicación para ver las ópticas Orbital más cercanas.</div>
           )}
@@ -526,14 +582,16 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
           {opticas?.map((o) => {
             const wa = telefonosCliente(o.whatsapp, null).find((n) => n.tipo === 'celular')
             const tel = o.telefono || o.whatsapp
+            const mod = conModelo && modelo ? ` con el armazón ${modelo}` : ''
             const msg = code
-              ? `Hola, hice el chequeo visual Orbital (código ${code})${recetaFoto ? ', ya subí mi receta' : ''} y quiero pedir turno para hacer mis anteojos`
-              : 'Hola, los encontré en Orbital Vision Lab y quiero consultar por anteojos'
+              ? `Hola, hice el chequeo visual Orbital (código ${code})${recetaFoto ? ', ya subí mi receta' : ''} y quiero hacer mis anteojos${mod}`
+              : `Hola, los encontré en Orbital Vision Lab y quiero consultar por anteojos${mod}`
             const dir = [o.nombre, o.direccion, o.localidad, o.provincia].filter(Boolean).join(', ')
             const verMapa = mapaDe === o.cod
             return (
               <div className="opt" key={o.cod}>
                 <div className="hd"><b>{o.nombre}</b>{o.barrio && <span className="tag">{o.barrio}</span>}</div>
+                {o.senal && <div className="senal"><Check size={14} />{o.senal === 'exhibe' ? `Tiene el ${modelo} en exhibición` : `Trabaja el ${modelo}`}</div>}
                 <div className="ln"><MapPin size={16} /><span>{[o.direccion, [o.localidad, o.provincia].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</span></div>
                 {tel && <div className="ln"><Phone size={16} /><a href={`tel:${tel.replace(/[^\d+]/g, '')}`}>{tel}</a></div>}
                 {verMapa && <iframe className="map sm" title={'Mapa de ' + o.nombre} src={mapaEmbed(dir)} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />}
@@ -582,6 +640,34 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
               </div>
             )}
           </div>
+          {red && red.length > 0 && (
+            <>
+              <div className="hd" style={{ marginTop: 4 }}><b>Oftalmólogos de la red Orbital</b></div>
+              {red.map((o) => {
+                const wa = telefonosCliente(o.whatsapp, null).find((n) => n.tipo === 'celular')
+                const tel = o.telefono || o.whatsapp
+                const dir = [o.centro ?? o.nombre, o.direccion, o.localidad, o.provincia].filter(Boolean).join(', ')
+                const porObra = os && os.id !== 'particular' && os.id !== 'otra' ? ` por ${os.corto ?? os.nombre}` : ''
+                const msg = `Hola, quiero pedir un turno de oftalmología${porObra}. Me recomendaron desde Orbital Vision Lab${code ? ` (chequeo ${code})` : ''}.`
+                const turnos = o.turnos_url || o.web
+                return (
+                  <div className="opt" key={o.id}>
+                    <div className="hd"><b>{o.nombre}</b>{o.recomendado && <span className="tag gold">Recomendado por Orbital</span>}</div>
+                    {(o.centro || o.subespecialidad) && <div className="muted small">{[o.centro, o.subespecialidad].filter(Boolean).join(' · ')}</div>}
+                    {o.atiende_obra && os && <div className="senal"><Check size={14} />Atiende {os.id === 'particular' ? 'particulares' : os.corto ?? os.nombre}</div>}
+                    <div className="ln"><MapPin size={16} /><span>{[o.direccion, [o.localidad, o.provincia].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</span></div>
+                    {o.rating ? <div className="muted small">★ {Number(o.rating).toFixed(1).replace('.', ',')}{o.resenas ? ` · ${o.resenas} reseñas` : ''}</div> : null}
+                    <div className="row">
+                      {wa && <a className="btn sm wa" target="_blank" rel="noopener" href={`${wa.waHref}?text=${encodeURIComponent(msg)}`} onClick={() => derivar(o, 'whatsapp')}>Pedir turno</a>}
+                      {!wa && tel && <a className="btn sm" href={`tel:${tel.replace(/[^\d+]/g, '')}`} onClick={() => derivar(o, 'telefono')}><Phone size={15} />Llamar</a>}
+                      {turnos && <a className="btn sm ghost" target="_blank" rel="noopener" href={turnos} onClick={() => derivar(o, 'web')}>Turnos online</a>}
+                      <a className="btn sm ghost" target="_blank" rel="noopener" href={mapaAbrir(dir)} onClick={() => derivar(o, 'mapa')}><Navigation size={15} />Cómo llegar</a>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
           {/* El mapa embebido sin API key muestra un solo punto, no la lista: se abre la búsqueda en Google Maps. */}
           <div className="opt">
             <div className="hd"><b>Oftalmólogos {hayZona ? 'en ' + zonaTexto : 'cerca tuyo'}</b></div>
@@ -606,9 +692,13 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false }: { code: str
 // chequeo; con la receta (valores o foto) se ordenan por las reglas de armazón y la óptica la recibe con el código.
 const precioAR = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 
-function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recetaFoto: boolean; onRecetaFoto: (path: string) => void }) {
+function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: string | null; recetaFoto: boolean; onRecetaFoto: (path: string) => void; rostro?: PerfilRostro; calces?: PerfilCalce[] }) {
   const [marcos, setMarcos] = useState<Marco[] | null>(null)
-  const [rec, setRec] = useState<Receta>(recetaVacia)
+  // La receta queda en el perfil visual (solo en el celular): la usan el grosor de los cristales y el perfil.
+  const [rec, setRecLocal] = useState<Receta>(() => leerPerfil().receta ?? recetaVacia)
+  const setRec = (r: Receta) => { setRecLocal(r); guardarReceta(r) }
+  const pf = useMemo(() => leerPerfil(), [calces, rostro])
+  const ref = marcoDelPerfil(pf)
   const [abrir, setAbrir] = useState(false)
   const [subiendo, setSubiendo] = useState<'no' | 'si' | 'error'>('no')
 
@@ -629,7 +719,9 @@ function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recet
     setSubiendo('no')
   }
 
-  const r = useMemo(() => (marcos ? recomendar(marcos, rec) : null), [marcos, rec])
+  // Perfil visual: con el estudio de rostro, los armazones se ordenan también por su forma y su ancho ideal.
+  const medidos = useMemo(() => new Map((calces ?? []).map((c) => [c.modelo, c])), [calces])
+  const r = useMemo(() => (marcos ? recomendar(marcos, rec, rostro ? (m) => afinidadRostro(m, rostro.ideal, rostro.forma) : undefined) : null), [marcos, rec, rostro])
   const campo = (k: keyof Receta, lbl: string, ph: string) => (
     <div>
       <label htmlFor={'rx-' + k}>{lbl}</label>
@@ -675,6 +767,13 @@ function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recet
       {!r && <div className="empty">Buscando armazones…</div>}
       {r && (
         <>
+          {rostro && (
+            <div className="profile">
+              <div className="muted small">Según tu estudio de rostro</div>
+              <div className="lvl">Rostro {FORMAS[rostro.forma].nombre.toLowerCase()} · talle {rostro.talle}</div>
+              <p className="muted small" style={{ margin: '4px 0 0' }}>Primero los de forma que te favorece y frente cerca de <b className="num">{rostro.ideal} mm</b> ({rostro.rango[0]}–{rostro.rango[1]}).{r.fuente === 'receta' ? ' Siempre dentro de lo que pide tu receta.' : ''}</p>
+            </div>
+          )}
           {r.fuente === 'receta' && (
             <div className="profile">
               <div className="muted small">Según tu receta</div>
@@ -699,12 +798,16 @@ function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recet
                   {(m.formato || m.ancho_mm) && (
                     <span className="dim num">{[m.formato && m.formato.charAt(0).toUpperCase() + m.formato.slice(1), m.ancho_mm && m.alto_mm ? `${m.ancho_mm} × ${m.alto_mm} mm` : null].filter(Boolean).join(' · ')}</span>
                   )}
-                  {r.fuente === 'receta' && <span className="why">{m.motivos.slice(0, 2).join(' · ')}</span>}
+                  {r.fuente !== 'catalogo' && <span className="why">{m.motivos.slice(0, 2).join(' · ')}</span>}
                   {m.precio_desde ? <span className="price num">Desde {precioAR(m.precio_desde)}</span> : null}
+                  {medidos.get(m.modelo)
+                    ? <span className="medido num">Te lo mediste · calce {medidos.get(m.modelo)!.calce} %</span>
+                    : <span className="medir" role="link" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(`/lab/calce?m=${encodeURIComponent(m.modelo)}`, '_blank', 'noopener') }}>Medir el calce</span>}
                 </div>
               </a>
             ))}
           </div>
+          {r.fuente === 'receta' && <Grosor rec={rec} marco={ref.ancho} modelo={ref.modelo} dp={dpDelPerfil(pf)} />}
           {r.lentes.length > 0 && (
             <div className="note">
               <b style={{ display: 'block', marginBottom: 4, color: 'var(--ink)' }}>Para tus cristales</b>
@@ -712,7 +815,9 @@ function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recet
             </div>
           )}
           <p className="muted small" style={{ margin: 0 }}>Armazones para receta del catálogo Orbital con stock. Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.</p>
-          <a className="btn ghost block" href="/lab/rostro" target="_blank" rel="noopener"><ScanFace size={16} />¿Qué forma le va a tu cara? Escaneá tu rostro</a>
+          {rostro
+            ? <a className="btn ghost block" href="/lab/rostro?desde=pretest" target="_blank" rel="noopener"><ScanFace size={16} />Ver tu estudio de rostro y probártelos en vivo</a>
+            : <a className="btn ghost block" href="/lab/rostro?desde=pretest" target="_blank" rel="noopener"><ScanFace size={16} />¿Qué forma le va a tu cara? Escaneá tu rostro y se suma a este informe</a>}
         </>
       )}
     </div>
@@ -764,6 +869,22 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const [fatiga, setFatiga] = useState<Fatiga | null>(null)
   const [previos, setPrevios] = useState<Registro[]>([])
   const [recetaFoto, setRecetaFoto] = useState<string | null>(null)
+  // Perfil visual compartido con el estudio de rostro (/lab/rostro): se relee al volver a esta pestaña.
+  const [perfil, setPerfil] = useState<Perfil>(leerPerfil)
+  useEffect(() => {
+    const f = () => setPerfil(leerPerfil())
+    window.addEventListener('focus', f)
+    window.addEventListener('storage', f)
+    return () => { window.removeEventListener('focus', f); window.removeEventListener('storage', f) }
+  }, [])
+  const rostro = perfil.rostro
+  // Modelo elegido: el del link (?m=) o el que mejor le calzó de los que se midió (sin "tu talle ideal").
+  const modeloElegido = useMemo(() => {
+    const m = params.get('m')
+    if (m) return m.trim().toUpperCase()
+    const reales = (perfil.calces ?? []).filter((c) => c.modelo !== 'Tu talle ideal')
+    return reales.length ? [...reales].sort((a, b) => Math.abs(a.calce - 100) - Math.abs(b.calce - 100))[0].modelo : null
+  }, [params, perfil.calces])
   const verLegales = () => { setVolverA(step); go(PASO_LEGAL) }
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1033,15 +1154,18 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
       },
     })
     const cod = !error && typeof data === 'string' ? data : null
-    setCode(cod ?? codigoLocal())
+    const codigo = cod ?? codigoLocal()
+    setCode(codigo)
+    const pf = leerPerfil()
+    setPerfil(guardarVision({ code: codigo, semaforo: inf.semaforo, indice: inf.indice, dp: final.dp ? { lejos: final.dp.lejos, cerca: final.dp.cerca } : null }))
     guardarExtras(cod, {
-      espejo: final.espejo, duo: final.duo, dp: final.dp, habitos,
+      espejo: final.espejo, duo: final.duo, dp: final.dp, habitos, rostro: pf.rostro, calces: pf.calces?.length ? pf.calces : undefined,
       sugerencias: sugerenciasHabitos(habitos, edadNum).length ? sugerenciasHabitos(habitos, edadNum) : undefined,
     })
   }
 
   const ticket = informe && code ? armarTicket(S, informe, code, nombreT, edadNum, usa) : ''
-  const qrUrl = informe && code ? urlProfesional(compactar(S, code, edadNum, usa, informe.indice, informe.semaforo, dom)) : null
+  const qrUrl = informe && code ? urlProfesional(compactar(S, code, edadNum, usa, informe.indice, informe.semaforo, dom, rostro ? compactarRostro(rostro) : undefined, compactarCalces(perfil.calces))) : null
   const consejos = sugerenciasHabitos(habitos, edadNum)
 
   function copyTicket() {
@@ -1117,7 +1241,9 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         {step === 0 && (
           <section className="step">
             <div>
-              <div className="kicker"><ShieldCheck size={15} />Guía previa a tu consulta oftalmológica</div>
+              {rostro
+                ? <div className="kicker"><ScanFace size={15} />Tu rostro ya está: rostro {FORMAS[rostro.forma].nombre.toLowerCase()}, talle {rostro.talle}. Sumale tu visión.</div>
+                : <div className="kicker"><ShieldCheck size={15} />Guía previa a tu consulta oftalmológica</div>}
               <h1>Prepará tu visita al oftalmólogo en 10 minutos.</h1>
               <p>Siete pruebas de autoevaluación, de lejos y de cerca, basadas en las que usan los profesionales de la visión, adaptadas a tu pantalla. Al final recibís un informe orientativo para llevar a la consulta y te mostramos dónde atenderte cerca tuyo.</p>
               <div className="trust"><span><Check size={14} />Gratis</span><span><Check size={14} />Sin registrarte</span><span><Check size={14} />Informe en PDF</span></div>
@@ -1485,8 +1611,15 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             </div>
             <AsiVes S={S} usa={usa} />
 
-            <div className={'card flat extra' + (S.dp ? '' : ' no-print')}>
+            <div className={'card flat extra' + (S.dp || rostro ? '' : ' no-print')}>
               <div className="hd"><b>Tus medidas para anteojos</b>{S.dp && <span className="tag">Con tarjeta</span>}</div>
+              {rostro && (
+                <div className="pv-rostro">
+                  <ScanFace size={18} />
+                  <span><b>Rostro {FORMAS[rostro.forma].nombre.toLowerCase()} · talle {rostro.talle}</b>
+                    <small>Frente de armazón ideal {rostro.ideal} mm ({rostro.rango[0]}–{rostro.rango[1]}) · ancho de rostro {rostro.mm.pomulos} mm. Va en el QR para tu óptica.</small></span>
+                </div>
+              )}
               {S.dp ? (
                 <>
                   <div className="dp-res" style={{ textAlign: 'left' }}>
@@ -1496,7 +1629,10 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
                   </div>
                 </>
               ) : (
-                <MedirDP compacto onListo={(dp) => { setS((s) => ({ ...s, dp })); guardarExtras(code, { dp }) }} />
+                <MedirDP compacto onListo={(dp) => {
+                  setS((s) => ({ ...s, dp })); guardarExtras(code, { dp })
+                  if (code && informe) setPerfil(guardarVision({ code, semaforo: informe.semaforo, indice: informe.indice, dp: { lejos: dp.lejos, cerca: dp.cerca } }))
+                }} />
               )}
             </div>
             {(S.amsler.R === false || S.amsler.L === false) && (
@@ -1528,7 +1664,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Tu receta y armazones</h2>
               <p className="muted small">Si el oftalmólogo te indica anteojos, subí la receta y elegí el armazón en una óptica Orbital.</p>
-              <Marcos code={code} recetaFoto={!!recetaFoto} onRecetaFoto={setRecetaFoto} />
+              <Marcos code={code} recetaFoto={!!recetaFoto} onRecetaFoto={setRecetaFoto} rostro={rostro} calces={perfil.calces} />
               {consejos.length > 0 && (
                 <div className="note" style={{ marginTop: 12 }}>
                   <b style={{ display: 'block', marginBottom: 4, color: 'var(--ink)' }}>Según tu día a día</b>
@@ -1540,7 +1676,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Dónde atenderte</h2>
               <p className="muted small">Pedí turno con un oftalmólogo y, si te indica anteojos, hacelos en una óptica Orbital: con tu código tenés el chequeo registrado y atención prioritaria.</p>
-              <Buscador code={code} recetaFoto={!!recetaFoto} inicial={informe.semaforo === 'verde' ? 'opticas' : 'oftalmo'} />
+              <Buscador code={code} recetaFoto={!!recetaFoto} inicial={informe.semaforo === 'verde' ? 'opticas' : 'oftalmo'} modelo={modeloElegido} />
             </div>
             <div className="no-print" style={{ textAlign: 'center' }}>
               <button className="link" onClick={restart}>Repetir el chequeo</button>
@@ -1555,7 +1691,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
               <h1>Encontrá una óptica u oftalmólogo cerca tuyo.</h1>
               <p>Ópticas asociadas a Orbital y oftalmólogos de tu zona, con cómo llegar y turno por WhatsApp.</p>
             </div>
-            <Buscador code={null} />
+            <Buscador code={perfil.vision?.code ?? null} inicial={params.has('oftalmo') ? 'oftalmo' : 'opticas'} modelo={modeloElegido} />
             <div className="card flat" style={{ display: 'grid', gap: 10 }}>
               <h3>¿Todavía no revisaste tu visión?</h3>
               <p className="muted small" style={{ margin: 0 }}>Hacé la guía visual en 10 minutos y llevá el informe a la consulta.</p>

@@ -26,7 +26,7 @@ export const recetaVacia: Receta = { esfOD: '', esfOI: '', cil: '', add: '' }
 
 export interface Criterio { id: string; t: string; por: string }
 export interface Recomendacion {
-  fuente: 'receta' | 'catalogo'
+  fuente: 'receta' | 'rostro' | 'catalogo'
   nivel: string                 // "Miopía alta", "Graduación baja", …
   criterios: Criterio[]
   lentes: string[]              // consejos de cristal
@@ -41,6 +41,8 @@ const num = (s: string) => {
 
 export function recomendar(
   marcos: Marco[], rec: Receta,
+  /** Perfil visual: si hizo el estudio de rostro, suma (o resta) por forma y ancho del armazón. */
+  afinidad?: (m: Marco) => { score: number; motivos: string[] } | null,
 ): Recomendacion {
   const esfs = [num(rec.esfOD), num(rec.esfOI)].filter((v): v is number => v !== null)
   const cil = num(rec.cil)
@@ -112,6 +114,8 @@ export function recomendar(
         if (m.alto_mm < 30) return null
         if (m.alto_mm >= 45) { score += 2; motivos.push(`Lente alto (${m.alto_mm} mm)`) } else score += 1
       }
+      const af = afinidad?.(m)
+      if (af) { score += af.score; motivos.unshift(...af.motivos.filter((t) => !motivos.includes(t))) }
       if (!motivos.length) motivos.push('Apto receta')
       return { ...m, motivos, score }
     })
@@ -120,5 +124,5 @@ export function recomendar(
     .slice(0, conReceta ? 4 : 8)
     .map(({ score: _s, ...m }) => m)
 
-  return { fuente: conReceta ? 'receta' : 'catalogo', nivel, criterios, lentes, marcos: ranked }
+  return { fuente: conReceta ? 'receta' : afinidad ? 'rostro' : 'catalogo', nivel, criterios, lentes, marcos: ranked }
 }

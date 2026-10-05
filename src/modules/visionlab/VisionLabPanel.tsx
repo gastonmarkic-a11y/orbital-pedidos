@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, QrCode, Copy, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import type { PerfilCalce, PerfilRostro } from './perfil'
+import { FORMAS } from './rostro/medidas'
 import { nombreObraSocial } from './obras'
 
 type Estado = 'nuevo' | 'contactado' | 'turno' | 'vendido' | 'descartado'
@@ -12,6 +14,8 @@ interface Lead {
   id: string; code: string; created_at: string; origen: string; optica_origen: string | null
   nombre: string | null; edad: number | null; usa: string | null; indice: number | null; semaforo: Semaforo | null
   ticket: string | null; localidad: string | null; obra_social: string | null
+  /** Red (2026-10-05): oftalmólogo de la red al que se lo derivó y modelo que buscó en las ópticas. */
+  oftalmologo_id?: number | null; modelo_buscado?: string | null
   optica_cod: string | null; optica_click_at: string | null; estado: Estado; nota: string | null
   extras: Extras | null
 }
@@ -22,6 +26,10 @@ interface Extras {
   fatiga?: { parpadeos: number; sintomas: number }; sugerencias?: string[]
   /** Foto de la receta en el bucket privado `recetas`. */
   receta?: string
+  /** Estudio de rostro (perfil visual): forma, talle y medidas para elegir el armazón. */
+  rostro?: PerfilRostro
+  /** Armazones que se midió en vivo (medición de calce). */
+  calces?: PerfilCalce[]
 }
 
 const ESTADOS: { k: Estado; t: string }[] = [
@@ -113,6 +121,15 @@ export default function VisionLabPanel() {
           </p>
         </div>
         <div className="flex gap-2">
+          <a href="/vision-lab/perfil" className="rounded-lg bg-black text-white px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+            Perfil visual (las 3)
+          </a>
+          <a href="/vision-lab/calce" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+            Medición de calce
+          </a>
+          <a href="/vision-lab/red" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+            Red oftalmológica
+          </a>
           <a href="/lab/pretest?src=suite" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
             <ExternalLink size={12} /> Abrir pretest
           </a>
@@ -192,8 +209,12 @@ export default function VisionLabPanel() {
             {abierto === l.id && (
               <div className="mt-3 space-y-2">
                 {l.ticket && <pre className="text-[11px] font-mono whitespace-pre-wrap bg-neutral-50 rounded-lg p-2 border border-black/5">{l.ticket}</pre>}
-                {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias || l.extras.receta) && (
+                {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias || l.extras.receta || l.extras.rostro || l.extras.calces?.length || l.modelo_buscado || l.oftalmologo_id) && (
                   <div className="text-[12px] text-neutral-700 bg-amber-50/60 rounded-lg p-2 border border-black/5 space-y-0.5">
+                    {l.extras.rostro && <div><b>Rostro</b> {FORMAS[l.extras.rostro.forma]?.nombre.toLowerCase() ?? l.extras.rostro.forma} · talle {l.extras.rostro.talle} · frente ideal {l.extras.rostro.ideal} mm ({l.extras.rostro.rango[0]}–{l.extras.rostro.rango[1]}) · ancho de cara {l.extras.rostro.mm.pomulos} mm</div>}
+                    {l.modelo_buscado && <div><b>Buscó en ópticas</b> {l.modelo_buscado}</div>}
+                    {l.oftalmologo_id && <div><b>Derivado</b> a un oftalmólogo de la red (#{l.oftalmologo_id}) · <a href="/vision-lab/red" className="underline">ver red</a></div>}
+                    {l.extras.calces?.length ? <div><b>Calce</b> {l.extras.calces.map((c) => `${c.modelo} ${c.calce} % (pupila ${c.pupila} %)`).join(' · ')}</div> : null}
                     {l.extras.dp && <div><b>DP</b> {l.extras.dp.lejos} mm de lejos · {l.extras.dp.cerca} de cerca (tarjeta en la frente): lista para venta online</div>}
                     {l.extras.espejo && <div>Visión de lejos hecha frente a un espejo</div>}
                     {l.extras.dominante && <div><b>Ojo dominante</b> {l.extras.dominante === 'R' ? 'derecho' : 'izquierdo'}</div>}

@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNaviga
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye, Search,
+  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye, Search, Briefcase,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
@@ -33,6 +33,7 @@ import AdminMarketing from './modules/actividad/AdminMarketing'
 
 import NuevoPedido from './modules/pedidos/NuevoPedido'
 import Escanear from './modules/pedidos/Escanear'
+import Muestrario from './modules/pedidos/Muestrario'
 import Pedidos from './modules/pedidos/Pedidos'
 import Devoluciones from './modules/pedidos/Devoluciones'
 import Envios from './modules/envios/Envios'
@@ -91,6 +92,8 @@ import Pretest from './modules/visionlab/Pretest'
 import VisionLabPanel from './modules/visionlab/VisionLabPanel'
 import InformeProfesional from './modules/visionlab/InformeProfesional'
 import Rostro from './modules/visionlab/rostro/Rostro'
+import Lab, { CalcePagina } from './modules/visionlab/Lab'
+import RedOftalmo from './modules/visionlab/RedOftalmo'
 
 interface NavItem {
   to: string
@@ -128,6 +131,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/consignas': Package,
   '/red-opticas': Store,
   '/marca-blanca-pedidos': Tag,
+  '/pedidos/muestrario': Briefcase,
 }
 
 function iconoDe(to: string, label: string) {
@@ -245,6 +249,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   ]
   const secundarios: NavItem[] = [
     { to: '/gestion-clientes', label: 'Mis clientes' },
+    { to: '/pedidos/muestrario', label: 'Muestrario' },
     { to: '/resultados', label: 'Asistente' },
     { to: '/envios-ecom', label: 'Envíos' },
     { to: '/marketing', label: 'Marketing' },
@@ -285,7 +290,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/influencers', label: 'Influencers de Instagram', grupo: M },
       { to: '/opticas-instagram', label: 'Ópticas de Instagram', grupo: M },
       { to: '/prospeccion-social', label: 'Cola de prospección social', grupo: M },
-      { to: '/vision-lab', label: 'Vision Lab (pretest visual)', grupo: M },
+      { to: '/vision-lab', label: 'Vision Lab (rostro · calce · visión)', grupo: M },
       { to: '/produccion', label: 'Producción (órdenes y costos)', grupo: P },
       { to: '/tienda', label: 'Tienda Shopify', grupo: P },
       { to: '/mercadolibre/precios', label: 'Precios Mercado Libre', grupo: P },
@@ -690,6 +695,7 @@ function Layout() {
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/pedidos/nuevo" element={<NuevoPedido />} />
               <Route path="/pedidos/escanear" element={<Escanear />} />
+              <Route path="/pedidos/muestrario" element={<Muestrario />} />
               <Route path="/envios" element={<Envios />} />
               <Route path="/gestion-clientes" element={<GestionClientes />} />
             </>
@@ -739,6 +745,9 @@ function Layout() {
           {rol === 'admin' && <Route path="/vision-lab" element={<div className="max-w-4xl mx-auto px-4 py-6"><VisionLabPanel /></div>} />}
           {rol === 'admin' && <Route path="/vision-lab/pretest" element={<Pretest origen="suite" />} />}
           {rol === 'admin' && <Route path="/vision-lab/rostro" element={<Rostro enSuite />} />}
+          {rol === 'admin' && <Route path="/vision-lab/perfil" element={<Lab enSuite />} />}
+          {rol === 'admin' && <Route path="/vision-lab/calce" element={<CalcePagina enSuite />} />}
+          {rol === 'admin' && <Route path="/vision-lab/red" element={<div className="max-w-4xl mx-auto px-4 py-6"><RedOftalmo /></div>} />}
           {rol === 'admin' && <Route path="/opticas-instagram" element={<div className="max-w-4xl mx-auto px-4 py-6"><OpticasInstagram /></div>} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
@@ -888,6 +897,14 @@ export default function App() {
   // Orbital Vision Lab · Estudio de rostro: escaneo facial → forma del rostro, talle y armazones que le van (público).
   if (typeof window !== 'undefined' && /^\/lab\/rostro\/?$/.test(window.location.pathname)) {
     return <Rostro />
+  }
+  // Orbital Vision Lab · Tu perfil visual: /lab sin parámetros = las tres herramientas (rostro, calce, chequeo);
+  // /lab/calce = la medición de calce sola. /lab?o=… (QR de las ópticas) y ?src= siguen abriendo el chequeo visual.
+  if (typeof window !== 'undefined' && /^\/lab\/?$/.test(window.location.pathname) && !window.location.search) {
+    return <Lab />
+  }
+  if (typeof window !== 'undefined' && /^\/lab\/calce\/?$/.test(window.location.pathname)) {
+    return <CalcePagina />
   }
   // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>) y /lab/buscar (solo ópticas / oftalmólogos).
   if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(window.location.pathname)) {

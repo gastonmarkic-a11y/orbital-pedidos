@@ -32,6 +32,8 @@ export const OVALO = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
 // frontales (Wikimedia Commons, 2026-10-02) la DP mediana daba 59,3 mm contra ~62,5 mm de promedio adulto.
 // Se corrige la escala +5 % (equivale a un iris "efectivo" de 12,3 mm).
 export const IRIS_MM = 11.7 * 1.05
+/** Para quien mide en vivo (calce): factor de perspectiva del ancho de pómulos. */
+export const perspectivaPomulos = (lm: P3[]) => profundidad(lm, L.pomuloD, L.pomuloI)
 
 const d2 = (a: P3, b: P3) => Math.hypot(a.x - b.x, a.y - b.y)
 const angulo = (a: P3, v: P3, b: P3) => {
@@ -43,6 +45,27 @@ const angulo = (a: P3, v: P3, b: P3) => {
 export interface Medidas {
   largo: number; pomulos: number; frente: number; mandibula: number; menton: number
   anguloMand: number; iris: number; dp: number
+  /** Corrección de perspectiva de cada ancho (≥ 1): ver profundidad(). */
+  kPom: number; kFrente: number; kMand: number
+}
+
+// ── Perspectiva (2026-10-05) ────────────────────────────────────────────────────────────────
+// La escala en mm sale del iris, que está adelante de la cara; los pómulos, la frente y la mandíbula están varios cm
+// más atrás y por perspectiva se ven más chicos (a 40 cm del celular, ≈ 10–15 % menos: un adulto de 140 mm daba
+// 127 mm y talle S). MediaPipe da la profundidad z de cada punto en la misma escala que x (fracción del ancho de la
+// imagen); con la distancia focal de una cámara frontal (≈ 0,75 × ancho, ~67° horizontales) la corrección del par
+// a–b es 1 + Δz / f. Sin z (o valores raros) se usa el promedio medido, 1,12.
+const FOCAL = 0.75
+const K_DEFECTO = 1.12
+function profundidad(lm: P3[], a: number, b: number): number {
+  const z = (i: number) => lm[i]?.z
+  const ojos = [33, 263, 133, 362].map(z)
+  if ([z(a), z(b), ...ojos].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return K_DEFECTO
+  const zOjo = (ojos as number[]).reduce((x, y) => x + y, 0) / 4
+  const dz = ((z(a) as number) + (z(b) as number)) / 2 - zOjo
+  const k = 1 + dz / FOCAL
+  // Un cuadro raro (cara muy cerca o z ruidosa) no puede agrandar más de 25 % ni achicar
+  return Math.min(1.25, Math.max(1, k))
 }
 
 export function medir(lm: P3[], W: number, H: number): Medidas {
@@ -56,6 +79,9 @@ export function medir(lm: P3[], W: number, H: number): Medidas {
     anguloMand: (angulo(p(L.sobreMandD), p(L.mandD), p(L.bajoMandD)) + angulo(p(L.sobreMandI), p(L.mandI), p(L.bajoMandI))) / 2,
     iris: (d2(p(L.irisD_d), p(L.irisD_i)) + d2(p(L.irisI_d), p(L.irisI_i))) / 2,
     dp: d2(p(L.irisD), p(L.irisI)),
+    kPom: profundidad(lm, L.pomuloD, L.pomuloI),
+    kFrente: profundidad(lm, L.frenteD, L.frenteI),
+    kMand: profundidad(lm, L.mandD, L.mandI),
   }
 }
 
@@ -289,45 +315,55 @@ export function resultado(m: Medidas): Resultado {
   const k = IRIS_MM / m.iris
   const prop = proporciones(m)
   const { forma, pct } = clasificar(prop)
-  const pom = m.pomulos * k
+  // Medidas en el plano del armazón (corregidas por perspectiva); las proporciones de la forma siguen con los px crudos.
+  const kP = m.kPom ?? K_DEFECTO, kF = m.kFrente ?? K_DEFECTO, kM = m.kMand ?? K_DEFECTO
+  const pom = m.pomulos * k * kP
   // El ancho de sien a sien de la malla es ≈ el ancho del frente del armazón que queda bien (igual que en el probador).
   const ideal = Math.round(pom)
   return {
     forma, pct, prop,
-    mm: { pomulos: Math.round(pom), largo: Math.round(m.largo * k), frente: Math.round(m.frente * k), mandibula: Math.round(m.mandibula * k), dp: Math.round(m.dp * k * 1.03) },
+    mm: { pomulos: Math.round(pom), largo: Math.round(m.largo * k), frente: Math.round(m.frente * k * kF), mandibula: Math.round(m.mandibula * k * kM), dp: Math.round(m.dp * k * 1.03) },
     ideal, rango: [ideal - 4, ideal + 4],
     talle: ideal < 136 ? 'S' : ideal <= 144 ? 'M' : 'L',
   }
 }
 
 // ── Armazones del catálogo que cumplen la forma y la medida ──────────────────────────────────
-export function marcosParaVos<T extends Marco>(marcos: T[], r: Resultado, forma: Forma, max = 6) {
+/** Cuánto le va un armazón a este rostro (forma + ancho). null = envolvente/deportivo o sin formato. También lo usa el
+ *  recomendador del chequeo visual cuando la persona hizo el estudio de rostro (perfil visual). */
+export function afinidadRostro(m: Marco, ideal: number, forma: Forma): { score: number; motivos: string[] } | null {
   const info = FORMAS[forma]
-  const si = new Set(info.si.map((x) => x.e)), no = new Set(info.no.map((x) => x.e))
+  const es = estilosDelFormato(m.formato)
+  if (!es.length) return null
+  let score = 0
+  const motivos: string[] = []
+  const ok = es.find((e) => info.si.some((x) => x.e === e))
+  if (ok) { score += 3; motivos.push(`${nombreEstilo(ok)} · ideal para rostro ${info.nombre.toLowerCase()}`) }
+  else if (es.some((e) => info.no.some((x) => x.e === e))) score -= 4
+  // Oversize (Kobe, Phoenix): forma propia, solo para rostros grandes (talle L, ancho ideal > 144 mm).
+  if (/oversize/i.test(m.formato ?? '')) {
+    if (ideal > 144) { score += 1; motivos.push('Oversize · para rostros grandes') }
+    else score -= 10 // fuera, aunque la forma y la medida le sumen
+  }
+  if (m.ancho_mm !== null) {
+    const d = Math.abs(m.ancho_mm - ideal)
+    if (d <= 4) { score += 2; motivos.push(`${m.ancho_mm} mm · a tu medida`) }
+    else if (d <= 8) { score += 0.5; motivos.push(`${m.ancho_mm} mm · ${m.ancho_mm > ideal ? 'un poco grande' : 'un poco chico'}`) }
+    else score -= 2
+  } else motivos.push('Medidas a confirmar en la óptica')
+  return { score, motivos }
+}
+
+export function marcosParaVos<T extends Marco>(marcos: T[], r: Pick<Resultado, 'ideal'>, forma: Forma, max = 6) {
   return marcos
-    .map((m) => {
-      const es = estilosDelFormato(m.formato)
-      if (!es.length) return null // envolventes / deportivos o sin formato
-      let score = 0
-      const motivos: string[] = []
-      const ok = es.find((e) => si.has(e))
-      if (ok) { score += 3; motivos.push(`${nombreEstilo(ok)} · ideal para rostro ${info.nombre.toLowerCase()}`) }
-      else if (es.some((e) => no.has(e))) score -= 4
-      if (m.ancho_mm !== null) {
-        const d = Math.abs(m.ancho_mm - r.ideal)
-        if (d <= 4) { score += 2; motivos.push(`${m.ancho_mm} mm · a tu medida`) }
-        else if (d <= 8) { score += 0.5; motivos.push(`${m.ancho_mm} mm · ${m.ancho_mm > r.ideal ? 'un poco grande' : 'un poco chico'}`) }
-        else score -= 2
-      } else motivos.push('Medidas a confirmar en la óptica')
-      return { ...m, score, motivos }
-    })
+    .map((m) => { const a = afinidadRostro(m, r.ideal, forma); return a ? { ...m, ...a } : null })
     .filter((m): m is T & { score: number; motivos: string[] } => !!m && m.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, max)
 }
 
 // Selección de un influencer / colección (link ?r=): todos sus modelos, primero los que cumplen forma y medida.
-export function ordenarSeleccion<T extends Marco>(marcos: T[], r: Resultado, forma: Forma) {
+export function ordenarSeleccion<T extends Marco>(marcos: T[], r: Pick<Resultado, 'ideal'>, forma: Forma) {
   const van = marcosParaVos(marcos, r, forma, Infinity)
   const ids = new Set(van.map((m) => m.modelo))
   return { van, resto: marcos.filter((m) => !ids.has(m.modelo)) }
