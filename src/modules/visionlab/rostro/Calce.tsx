@@ -14,7 +14,7 @@ import type { Marco } from '../marcos'
 import { Perfil, PerfilCalce, guardarCalce, leerPerfil } from '../perfil'
 import { BISAGRA_MM, COLORES, Color, PUENTE_MM, dibujar } from './armazon'
 import { altoDe, anchoDe, useCaraEnVivo } from './camara'
-import { Estilo, IRIS_MM, L, OVALO, P3, afinidadRostro, estilosDelFormato, perspectivaPomulos, postura } from './medidas'
+import { Estilo, IRIS_MM, L, MALLA, P3, afinidadRostro, contorno, estilosDelFormato, perspectivaPomulos, postura } from './medidas'
 
 interface Opcion { modelo: string; ancho: number; estilo: Estilo; foto: string | null; motivo?: string }
 interface Lectura { cara: number; dp: number; yaw: number; ok: boolean }
@@ -90,7 +90,7 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     const pD = p(L.pomuloD), pI = p(L.pomuloI)
     const obj = {
       x: (iD.x + iI.x) / 2, y: (iD.y + iI.y) / 2, giro: Math.atan2(iI.y - iD.y, iI.x - iD.x), px: pxMm, yaw: (pos.yaw * Math.PI) / 180,
-      cara: (Math.hypot(pD.x - pI.x, pD.y - pI.y) / pxMm) * perspectivaPomulos(lm), dp: (Math.hypot(iD.x - iI.x, iD.y - iI.y) / pxMm) * 1.03,
+      cara: (Math.hypot(pD.x - pI.x, pD.y - pI.y) / pxMm) * perspectivaPomulos(lm) * MALLA, dp: (Math.hypot(iD.x - iI.x, iD.y - iI.y) / pxMm) * 1.03,
     }
     const s = suave.current, k = 0.55
     suave.current = s ? {
@@ -107,7 +107,7 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     ctx.fillStyle = 'rgba(214,178,110,.55)'
     for (let i = 0; i < 468; i += 6) { const q = p(i); ctx.beginPath(); ctx.arc(q.x, q.y, 1.1 * u, 0, 7); ctx.fill() }
     ctx.strokeStyle = 'rgba(214,178,110,.35)'; ctx.lineWidth = 0.8 * u
-    ctx.beginPath(); OVALO.forEach((i, j) => { const q = p(i); if (j) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y) }); ctx.closePath(); ctx.stroke()
+    ctx.beginPath(); contorno(lm).puntos.forEach((q, j) => { if (j) ctx.lineTo(q.x * W, q.y * H); else ctx.moveTo(q.x * W, q.y * H) }); ctx.closePath(); ctx.stroke()
 
     // Armazón a escala real
     ctx.save()

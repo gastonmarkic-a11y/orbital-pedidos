@@ -28,6 +28,32 @@ export const L = {
 /** Contorno de la cara en orden (para dibujarlo). */
 export const OVALO = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
 
+// ── Contorno real (2026-10-05, pedido de Gastón: "no toma el total de la cara") ─────────────────────────────
+// La malla de MediaPipe sigue la piel y queda unos mm adentro de la silueta visible (en una foto frontal, ≈ 7 % del
+// ancho entre pómulos y mandíbula), y su punto más alto (10) está a media frente, no en el nacimiento del pelo.
+// Para dibujar y medir el total de la cara:
+//  · anchos: cada punto del contorno se abre MALLA desde el eje vertical de la cara.
+//  · arriba: nacimiento del pelo por la regla de los tercios (glabela→subnasal ≈ subnasal→mentón, Farkas) y la
+//    parte alta del contorno se estira hasta ahí.
+// Las proporciones de la forma (MEDIA / DESVIO) siguen con la malla cruda, que es con lo que se calibraron.
+export const MALLA = 1.07
+const GLABELA = 9, SUBNASAL = 2
+export interface Contorno { puntos: P3[]; arriba: P3; abajo: P3; ejeX: number }
+export function contorno(lm: P3[]): Contorno {
+  const ejeX = (lm[10].x + lm[152].x + lm[GLABELA].x + lm[1].x) / 4
+  const yG = lm[GLABELA].y, yTop = lm[10].y
+  // tercio superior = tercio inferior (subnasal → mentón); nunca menos que lo que ya da la malla
+  const yPelo = Math.min(yTop, yG - (lm[152].y - lm[SUBNASAL].y))
+  const s = yG - yTop > 1e-4 ? (yG - yPelo) / (yG - yTop) : 1
+  const puntos = OVALO.map((i) => {
+    const p = lm[i]
+    const x = ejeX + (p.x - ejeX) * MALLA
+    const y = p.y < yG ? yG - (yG - p.y) * s : p.y
+    return { x, y, z: p.z }
+  })
+  return { puntos, arriba: { x: ejeX + (lm[10].x - ejeX) * MALLA, y: yPelo }, abajo: { x: ejeX + (lm[152].x - ejeX) * MALLA, y: lm[152].y }, ejeX }
+}
+
 // El iris mide ≈ 11,7 mm, pero el anillo de MediaPipe sale un poco más grande que el iris real: con 34 retratos
 // frontales (Wikimedia Commons, 2026-10-02) la DP mediana daba 59,3 mm contra ~62,5 mm de promedio adulto.
 // Se corrige la escala +5 % (equivale a un iris "efectivo" de 12,3 mm).
@@ -44,6 +70,8 @@ const angulo = (a: P3, v: P3, b: P3) => {
 /** Medidas de un cuadro, en px de la imagen. */
 export interface Medidas {
   largo: number; pomulos: number; frente: number; mandibula: number; menton: number
+  /** Largo total del rostro: nacimiento del pelo (estimado) → mentón. Solo para los mm; la forma usa `largo`. */
+  largoTotal: number
   anguloMand: number; iris: number; dp: number
   /** Corrección de perspectiva de cada ancho (≥ 1): ver profundidad(). */
   kPom: number; kFrente: number; kMand: number
@@ -70,8 +98,10 @@ function profundidad(lm: P3[], a: number, b: number): number {
 
 export function medir(lm: P3[], W: number, H: number): Medidas {
   const p = (i: number) => ({ x: lm[i].x * W, y: lm[i].y * H })
+  const c = contorno(lm)
   return {
     largo: d2(p(L.frenteArriba), p(L.menton)),
+    largoTotal: d2({ x: c.arriba.x * W, y: c.arriba.y * H }, { x: c.abajo.x * W, y: c.abajo.y * H }),
     pomulos: d2(p(L.pomuloD), p(L.pomuloI)),
     frente: d2(p(L.frenteD), p(L.frenteI)),
     mandibula: d2(p(L.mandD), p(L.mandI)),
@@ -315,14 +345,15 @@ export function resultado(m: Medidas): Resultado {
   const k = IRIS_MM / m.iris
   const prop = proporciones(m)
   const { forma, pct } = clasificar(prop)
-  // Medidas en el plano del armazón (corregidas por perspectiva); las proporciones de la forma siguen con los px crudos.
+  // Medidas en el plano del armazón (corregidas por perspectiva y abiertas de la malla a la silueta real, MALLA);
+  // las proporciones de la forma siguen con los px crudos.
   const kP = m.kPom ?? K_DEFECTO, kF = m.kFrente ?? K_DEFECTO, kM = m.kMand ?? K_DEFECTO
-  const pom = m.pomulos * k * kP
-  // El ancho de sien a sien de la malla es ≈ el ancho del frente del armazón que queda bien (igual que en el probador).
+  const pom = m.pomulos * k * kP * MALLA
+  // El ancho de sien a sien es ≈ el ancho del frente del armazón que queda bien (igual que en el probador).
   const ideal = Math.round(pom)
   return {
     forma, pct, prop,
-    mm: { pomulos: Math.round(pom), largo: Math.round(m.largo * k), frente: Math.round(m.frente * k * kF), mandibula: Math.round(m.mandibula * k * kM), dp: Math.round(m.dp * k * 1.03) },
+    mm: { pomulos: Math.round(pom), largo: Math.round((m.largoTotal ?? m.largo) * k), frente: Math.round(m.frente * k * kF * MALLA), mandibula: Math.round(m.mandibula * k * kM * MALLA), dp: Math.round(m.dp * k * 1.03) },
     ideal, rango: [ideal - 4, ideal + 4],
     talle: ideal < 136 ? 'S' : ideal <= 144 ? 'M' : 'L',
   }

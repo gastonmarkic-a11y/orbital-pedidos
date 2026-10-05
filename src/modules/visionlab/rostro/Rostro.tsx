@@ -10,7 +10,7 @@ import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
 import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
-import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, ordenarSeleccion, resultado, z } from './medidas'
+import { Estilo, FORMAS, Forma, L, MALLA, P3, Resultado, contorno, marcosParaVos, ordenarSeleccion, resultado, z } from './medidas'
 import { VISITANTE_KEY } from '../../colab/colabUtil'
 import { QRProfesional, urlPerfil } from '../extras'
 import { Perfil, compactarCalces, compactarRostro, guardarRostro, leerPerfil, rostroDe } from '../perfil'
@@ -46,14 +46,20 @@ type Linea = (typeof LINEAS)[number]['id']
 /** Foto capturada con el contorno y las medidas dibujadas (espejada, como la persona se vio). */
 function MapaRostro({ cap, r, sel, animar }: { cap: Captura; r: Resultado; sel: Linea | null; animar?: boolean }) {
   const { W, H, lm } = cap
-  const P = (i: number) => ({ x: (1 - lm[i].x) * W, y: lm[i].y * H })
+  // Contorno real (malla abierta a la silueta + nacimiento del pelo), espejado como la foto.
+  const con = contorno(lm)
+  const esp = (p: P3) => ({ x: (1 - p.x) * W, y: p.y * H })
+  const pts = con.puntos.map(esp)
+  const arriba = esp(con.arriba), abajo = esp(con.abajo)
+  // Extremos de cada ancho, abiertos igual que el contorno
+  const P = (i: number) => esp({ x: con.ejeX + (lm[i].x - con.ejeX) * MALLA, y: lm[i].y })
   // recorte alrededor de la cara
-  const xs = OVALO.map((i) => P(i).x), ys = OVALO.map((i) => P(i).y)
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
   const lado = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 1.45
   const vb = `${cx - lado / 2} ${cy - lado / 2 - lado * 0.02} ${lado} ${lado}`
   const u = lado / 100
-  const ovalo = OVALO.map((i) => { const p = P(i); return `${p.x},${p.y}` }).join(' ')
+  const ovalo = pts.map((p) => `${p.x},${p.y}`).join(' ')
   return (
     <div className={'rs-map' + (animar ? ' anim' : '')}>
       <svg viewBox={vb} preserveAspectRatio="xMidYMid slice">
@@ -63,9 +69,9 @@ function MapaRostro({ cap, r, sel, animar }: { cap: Captura; r: Resultado; sel: 
         <image href={cap.foto} x={0} y={0} width={W} height={H} transform={`translate(${W},0) scale(-1,1)`} preserveAspectRatio="none" />
         <rect x={cx - lado} y={cy - lado} width={lado * 2} height={lado * 2} fill="rgba(12,12,16,.28)" />
         <polygon points={ovalo} className="ov" fill="none" stroke="#fff" strokeWidth={0.45 * u} strokeLinejoin="round" pathLength={100} filter="url(#rs-sh)" />
-        {OVALO.map((i) => { const p = P(i); return <circle key={i} cx={p.x} cy={p.y} r={0.45 * u} fill="#d6b26e" className="pt" /> })}
+        {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={0.45 * u} fill="#d6b26e" className="pt" />)}
         {LINEAS.map((l) => {
-          const a = P(l.a), b = P(l.b)
+          const a = l.id === 'largo' ? arriba : P(l.a), b = l.id === 'largo' ? abajo : P(l.b)
           const on = sel === null || sel === l.id
           const mm = r.mm[l.id]
           const vert = l.id === 'largo'
