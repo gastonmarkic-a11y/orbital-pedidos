@@ -1,6 +1,7 @@
 // Recibe el pedido de marca blanca que cierra el cliente desde ver.orbitaleyewear.com.ar/marca-blanca.
 // Recalcula precios del lado servidor, guarda el logo en Storage, inserta la precarga
 // en marca_blanca_pedidos y avisa al grupo Ojo de Telegram con el detalle y el logo.
+// cuenta: 'plenorius' = con IVA/factura · 'brubank' (valor interno) = efectivo / sin IVA, cuenta a definir si transfiere.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -24,6 +25,11 @@ const TIERS = [
   { n: "color clear mate", p: 13.5 },
   { n: "clear brillo / brillo / degradé / vetas", p: 14.5 },
 ];
+// Condiciones por cliente (link ?c=<codigo>): precio del negro mate, mínimo por modelo+color
+// y rec = recargo sobre cada tramo de marco (después de aplicar su precio del negro). Igual que en la página.
+const CLIENTES: Record<string, { nombre: string; negro: number; min: number; rec?: number }> = {
+  omar: { nombre: "Omar", negro: 12.5, min: 100, rec: 0.15 },
+};
 const isClear = (c: string) => /clear/i.test(c) || c === "Cristal";
 const isCustom = (c: string) => c.startsWith("A medida"); // "A medida (mate|clear|brillo)" + descripción del cliente
 const tierOf = (c: string, fin: string) =>
@@ -76,7 +82,7 @@ async function subirComprobante(b: Record<string, unknown>) {
     const mitad = Number(p.total_usd) / 2;
     const fd = new FormData();
     fd.append("chat_id", String(await grupo()));
-    fd.append("caption", `💸 Comprobante de ${tipo === "saldo" ? "SALDO (contra entrega)" : "ADELANTO 50 %"} · marca blanca #${p.id} ${p.marca}\nUSD ${mitad.toFixed(2)}${dol ? ` ≈ $ ${Math.round(mitad * dol.venta).toLocaleString("es-AR")} (dólar ${dol.venta})` : ""} · ${p.cuenta === "plenorius" ? "Plenorius" : "Brubank"}\nVerificar el ingreso y pasar el pedido en la Suite: Marca blanca`);
+    fd.append("caption", `💸 Comprobante de ${tipo === "saldo" ? "SALDO (contra entrega)" : "ADELANTO 50 %"} · marca blanca #${p.id} ${p.marca}\nUSD ${mitad.toFixed(2)}${dol ? ` ≈ $ ${Math.round(mitad * dol.venta).toLocaleString("es-AR")} (dólar ${dol.venta})` : ""} · ${p.cuenta === "plenorius" ? "Plenorius (con IVA)" : "Efectivo / sin IVA"}\nVerificar el ingreso y pasar el pedido en la Suite: Marca blanca`);
     fd.append("document", new Blob([bytes], { type }), nombre);
     const r = await fetch(`${TG}/sendDocument`, { method: "POST", body: fd });
     if (!r.ok) console.error("sendDocument comp", r.status, await r.text());
@@ -106,7 +112,9 @@ Deno.serve(async (req) => {
   if (b.accion === "comprobante") return await subirComprobante(b);
 
   const str = (k: string, max = 200) => String(b[k] ?? "").trim().slice(0, max);
-  const marca = str("marca"), razon = str("razon_social"), email = str("email").toLowerCase(), tel = str("telefono", 40), obs = str("obs", 1000);
+  const marca = str("marca"), razon = str("razon_social"), email = str("email").toLowerCase(), tel = str("telefono", 40), obsCli = str("obs", 1000);
+  const cli = CLIENTES[str("cliente", 40).toLowerCase()] ?? null;
+  const obs = [cli ? `[Link ${cli.nombre}: negro mate USD ${cli.negro}${cli.rec ? ` · +${Math.round(cli.rec * 100)} % en cada tramo de marco` : ""} · mínimo ${cli.min} u por modelo y color]` : "", obsCli].filter(Boolean).join("\n");
   const cuenta = b.cuenta === "plenorius" ? "plenorius" : "brubank";
   if (!marca || !razon) return json({ ok: false, error: "Completá la marca y la razón social." }, 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ ok: false, error: "Revisá el mail." }, 400);
@@ -121,11 +129,13 @@ Deno.serve(async (req) => {
   });
   if (!valid.length || valid.some((x) => !x)) return json({ ok: false, error: "El pedido no tiene líneas válidas." }, 400);
   const its = valid as NonNullable<(typeof valid)[number]>[];
+  if (cli && its.some((l) => l.q < cli.min)) return json({ ok: false, error: `El mínimo es ${cli.min} unidades por modelo y color.` }, 400);
   const cajas = its.reduce((a, l) => a + (l.caja ? l.q : 0), 0);
   if (cajas > 0 && cajas < CAJA_MIN) return json({ ok: false, error: `La caja de alta calidad tiene mínimo ${CAJA_MIN} unidades.` }, 400);
 
   const lines = its.map((l) => {
-    const t = tierOf(l.col, l.fin), marco = TIERS[t].p, est = l.est ? EST : 0, caja = l.caja ? cajaP(cajas) : 0;
+    const t = tierOf(l.col, l.fin), base = t === 0 && cli ? cli.negro : TIERS[t].p;
+    const marco = cli?.rec ? Math.round(base * (1 + cli.rec) * 100 + 1e-6) / 100 : base, est = l.est ? EST : 0, caja = l.caja ? cajaP(cajas) : 0;
     const unit = +(marco + est + caja).toFixed(2);
     const color = (isCustom(l.col) ? `Color a medida ${l.col.slice(10, -1)}` : l.col) + (isClear(l.col) ? ` ${l.fin}` : "") + (isCustom(l.col) ? `: ${l.desc}` : "");
     const pack = [l.est ? "estuche" : "", l.caja ? "caja alta calidad" : ""].filter(Boolean).join(" + ") || "sin packaging";
@@ -175,7 +185,7 @@ Deno.serve(async (req) => {
     const ars = (v: number) => "$ " + Math.round(v).toLocaleString("es-AR");
     const usd = (v: number) => "USD " + v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const texto = [
-      `🏷️ <b>Marca blanca · precarga #${ins.id}</b>`,
+      `🏷️ <b>Marca blanca · precarga #${ins.id}</b>${cli ? ` · link ${esc(cli.nombre)}` : ""}`,
       `<b>${esc(marca)}</b> · ${esc(razon)}`,
       `✉️ ${esc(email)} · 📞 ${esc(tel)}`,
       "",
@@ -183,7 +193,7 @@ Deno.serve(async (req) => {
       "",
       `${unidades} u · ${usd(subtotal)}${iva ? ` + IVA ${usd(iva)} = ${usd(total)}` : ""}`,
       dol && total_ars ? `Dólar vendedor ${dol.fecha.split("-").reverse().join("/")}: ${ars(dol.venta)} → <b>${ars(total_ars)}</b>` : "Dólar del día: no disponible",
-      `Pago directo por transferencia a ${cuenta === "plenorius" ? "Plenorius S.A. (+IVA)" : "Brubank ($)"} · 50 % adelanto / 50 % contra entrega`,
+      `Pago: ${cuenta === "plenorius" ? "transferencia a Plenorius S.A. (+IVA)" : "efectivo / sin IVA (si transfiere, definir cuenta)"} · 50 % adelanto / 50 % contra entrega`,
       "Ver en la Suite: Marca blanca",
       obs ? `\n📝 ${esc(obs)}` : "",
       logo_path ? "" : "\n⚠️ No adjuntó logo",

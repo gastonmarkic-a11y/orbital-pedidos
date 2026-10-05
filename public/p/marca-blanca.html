@@ -219,7 +219,8 @@ const isClear=c=>/clear/i.test(c)||c==="Cristal";
 const tierOf=(c,fin)=>isClear(c)?(fin==="brillo"?3:2):c==="Negro mate"?0:c==="Negro brillo"?1:/brillo|degradé|vetas|veteado/i.test(c)?3:1;
 const EST=0.7,CAJA_MIN=100,cajaP=n=>n>=1000?0.45:1.3;
 // Clientes con condiciones propias (link ?c=<codigo>). La edge marca-blanca-pedido repite estos valores.
-const CLIENTES={omar:{nombre:"Omar",negro:12.5,min:100}};
+// rec = recargo sobre cada tramo de marco (después de aplicar su precio del negro).
+const CLIENTES={omar:{nombre:"Omar",negro:12.5,min:100,rec:0.15}};
 // Tinte de la foto del marco por color: [color, color2 (degradé/vetas), opacidad (clear), tipo g=brillo d=degradé v=vetas]
 const TINT={"Negro brillo":["#141517",0,1,"g"],"Blanco marfil":["#efe7d4"],"Habano":["#6b3a1e"],"Bordó mate":["#5c1a26"],"Verde militar":["#56603a"],"Azul mate":["#22407e"],
  "Cristal":["#dfe4e8",0,.4],"Gris clear":["#5a5f64",0,.65],"Habano clear":["#7a4620",0,.7],"Rosa clear":["#eb8ca5",0,.6],"Verde clear":["#3c8246",0,.6],"Azul clear":["#23469b",0,.65],
@@ -233,9 +234,10 @@ S.lines=(S.lines||[]).filter(l=>typeof l.est==="boolean"&&MODELS[l.m-1]&&COL[l.c
 let logoFile=null,sending=false,okId=null;
 // Link de cliente ?c=<codigo>: precio del negro y mínimo por línea (la edge valida lo mismo).
 let CLI=null;{let c=new URLSearchParams(location.search).get("c");try{if(c)localStorage.setItem("mb-cli",c);else c=localStorage.getItem("mb-cli")}catch(e){}
- if(c&&CLIENTES[c.toLowerCase()]){CLI={k:c.toLowerCase(),...CLIENTES[c.toLowerCase()]};TIERS[0].p=CLI.negro;COLGROUPS[0].pr=CLI.negro.toFixed(2).replace(".",",");
+ if(c&&CLIENTES[c.toLowerCase()]){CLI={k:c.toLowerCase(),...CLIENTES[c.toLowerCase()]};TIERS[0].p=CLI.negro;if(CLI.rec)TIERS.forEach(t=>t.p=Math.round(t.p*(1+CLI.rec)*100+1e-6)/100);
+  const pf=v=>v.toFixed(2).replace(".",",");COLGROUPS[0].pr=pf(TIERS[0].p);COLGROUPS[1].pr=pf(TIERS[1].p);COLGROUPS[2].pr=pf(TIERS[2].p);COLGROUPS[2].sub=`transparente · mate ${pf(TIERS[2].p)} · brillo ${pf(TIERS[3].p)}`;
   // Mismo precio que el compacto: el negro mate entra en ese bloque.
-  if(CLI.negro===TIERS[1].p){const g=COLGROUPS.shift();COLGROUPS[0].items.unshift(...g.items);COLGROUPS[0].sub="color lleno · incluye negro mate y brillo"}}}
+  if(TIERS[0].p===TIERS[1].p){const g=COLGROUPS.shift();COLGROUPS[0].items.unshift(...g.items);COLGROUPS[0].sub="color lleno · incluye negro mate y brillo"}}}
 const MINQ=CLI?CLI.min:1;S.q=Math.max(S.q,MINQ);
 // Foto del marco teñida con el color elegido (canvas sobre la foto en negro; cache por foto+color).
 const TCACHE={},TIMG={};
@@ -302,7 +304,7 @@ const SCREENS={
   <div class="carousel" id="car">${MODELS.map(x=>`<button class="mc" type="button" data-m="${x.id}" aria-pressed="${x.id===S.m}"><img src="${IMG}BR${x.id}_frente.webp" alt=""><img class="lat" src="${IMG}BR${x.id}_lateral.webp" alt=""><b>${x.name}</b></button>`).join("")}</div>
   <div><div class="sec-l">Logo en la patilla</div><div class="seg">${LOGOS.map(l=>`<button type="button" data-l="${l.k}" aria-pressed="${l.k===S.logo}">${l.n}<small>${l.d}</small></button>`).join("")}</div></div>
   <div class="card"><div class="cprev" aria-hidden="true">${(()=>{const src=`${IMG}BR${m.id}_frente.webp`;return `<img src="${tsrc(src,S.col)}" data-src="${src}" data-col="${esc(S.col)}" alt="">`})()}<span>${m.name} · ${esc(colTxt(cur()))}</span></div><div class="sec-l">Color del marco <em>${esc(colTxt(cur()))}</em></div>
-   <p class="legend" style="margin:0 0 12px">El precio lo marca el tono: negro, compacto o clear.</p>${CLI?`<p class="legend" style="margin:-6px 0 12px"><b>Condiciones para ${esc(CLI.nombre)}:</b> negro mate a ${usd(CLI.negro)} · mínimo ${CLI.min} u por modelo y color.</p>`:""}
+   <p class="legend" style="margin:0 0 12px">El precio lo marca el tono: negro, compacto o clear.</p>${CLI?`<p class="legend" style="margin:-6px 0 12px"><b>Condiciones para ${esc(CLI.nombre)}:</b> negro mate a ${usd(TIERS[0].p)} · mínimo ${CLI.min} u por modelo y color.</p>`:""}
    <div class="groups">${COLGROUPS.map((g,gi)=>`<div class="tone${g.items.some(([n])=>n===S.col)?" on":""}"><div class="tone-h"><div><b>${g.g}</b><small>${g.sub}</small></div><div class="tone-p">${g.g==="Clear"?"<small>desde</small>":""}USD ${g.pr}</div></div><div class="grid-sw">${g.items.map(([n,c])=>`<button class="sw" type="button" data-c="${esc(n)}" aria-pressed="${n===S.col}"><i style="background:${c}"></i>${isCustom(n)?"A medida":n}</button>`).join("")}</div>${g.items.some(([n])=>n===S.col)?extras():""}</div>`).join("")}</div>
    <p class="legend" style="margin-top:12px">Cualquier modelo en cualquier color. ¿No está el tuyo? Elegí «A medida» en el tono que quieras.</p></div>`},
  estuche(){const l=cur(),t=selTxt(l),cu=cajaUnits(S.caja?S.q:0),chk=v=>`<b style="font-size:22px;line-height:1">${v?"☑":"☐"}</b>`;return `${head("Paso 2 de 2","Packaging","Se cotiza aparte del marco. Elegí qué sumás a cada armazón.")}
