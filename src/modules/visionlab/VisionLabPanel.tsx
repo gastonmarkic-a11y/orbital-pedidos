@@ -116,6 +116,9 @@ export default function VisionLabPanel() {
           <a href="/lab/pretest?src=suite" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
             <ExternalLink size={12} /> Abrir pretest
           </a>
+          <a href="/lab/rostro" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+            <ExternalLink size={12} /> Estudio de rostro
+          </a>
           <button
             onClick={() => { navigator.clipboard.writeText(PUBLICO).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }) }}
             className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">

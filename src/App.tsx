@@ -90,6 +90,7 @@ import FinanzasHub from './modules/finanzas/FinanzasHub'
 import Pretest from './modules/visionlab/Pretest'
 import VisionLabPanel from './modules/visionlab/VisionLabPanel'
 import InformeProfesional from './modules/visionlab/InformeProfesional'
+import Rostro from './modules/visionlab/rostro/Rostro'
 
 interface NavItem {
   to: string
@@ -737,6 +738,7 @@ function Layout() {
           {rol === 'admin' && <Route path="/influencers" element={<div className="max-w-4xl mx-auto px-4 py-6"><ColabInfluencers /></div>} />}
           {rol === 'admin' && <Route path="/vision-lab" element={<div className="max-w-4xl mx-auto px-4 py-6"><VisionLabPanel /></div>} />}
           {rol === 'admin' && <Route path="/vision-lab/pretest" element={<Pretest origen="suite" />} />}
+          {rol === 'admin' && <Route path="/vision-lab/rostro" element={<Rostro enSuite />} />}
           {rol === 'admin' && <Route path="/opticas-instagram" element={<div className="max-w-4xl mx-auto px-4 py-6"><OpticasInstagram /></div>} />}
           {(rol === 'admin' || codigoEfectivo === 'Corporativo') && (
             <Route path="/actividad-admin" element={<AdminActividad />} />
@@ -882,6 +884,10 @@ export default function App() {
         </ToastProvider>
       )
     }
+  }
+  // Orbital Vision Lab · Estudio de rostro: escaneo facial → forma del rostro, talle y armazones que le van (público).
+  if (typeof window !== 'undefined' && /^\/lab\/rostro\/?$/.test(window.location.pathname)) {
+    return <Rostro />
   }
   // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>) y /lab/buscar (solo ópticas / oftalmólogos).
   if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(window.location.pathname)) {

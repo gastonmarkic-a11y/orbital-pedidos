@@ -712,6 +712,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto }: { code: string | null; recet
             </div>
           )}
           <p className="muted small" style={{ margin: 0 }}>Armazones para receta del catálogo Orbital con stock. Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.</p>
+          <a className="btn ghost block" href="/lab/rostro" target="_blank" rel="noopener"><ScanFace size={16} />¿Qué forma le va a tu cara? Escaneá tu rostro</a>
         </>
       )}
     </div>
