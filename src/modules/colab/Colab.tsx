@@ -19,6 +19,7 @@ import ColabPropuestas from './ColabPropuestas'
 import ColabInfluencers from './ColabInfluencers'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from './ColabInspiracion'
+import AscariPopColab from './AscariPopColab'
 import './colab-oscuro.css'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
@@ -157,6 +158,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-5">
+        {ent.rol === 'influencer' && <AscariPopColab onVerAnteojos={() => setTab('anteojos')} />}
         {ent.rol === 'orbital' && (tab === 'dashboard' || tab === 'liquidacion' || tab === 'links') && admins && admins.length > 0 && (
           <select value={adminSel ?? ''} onChange={(e) => setAdminSel(e.target.value ? Number(e.target.value) : null)}
             className="mb-4 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px]">
