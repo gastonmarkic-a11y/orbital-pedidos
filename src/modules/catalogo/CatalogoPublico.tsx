@@ -492,6 +492,60 @@ function InfoModal({ grupoKey, onClose }: { grupoKey: string; onClose: () => voi
   )
 }
 
+// Pop-up de lanzamiento ASCARI: sale una vez por dispositivo, hasta la fecha de fin. No aparece si el link
+// viene a recuperar el carrito. "Quiero ASCARI" abre la ficha del modelo. ?ver=ascari (link del WhatsApp
+// de la campaña) lo abre siempre.
+const ASCARI_POP_HASTA = new Date('2026-11-15T00:00:00-03:00')
+const ASCARI_POP_KEY = 'pop_ascari_2026'
+function useAscariPop() {
+  const [abierto, setAbierto] = useState(false)
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    if (new Date() >= ASCARI_POP_HASTA || sp.has('carrito') || sp.get('ver') === 'ascari') return
+    try { if (localStorage.getItem(ASCARI_POP_KEY)) return } catch { /* sin storage: se muestra igual */ }
+    const t = window.setTimeout(() => setAbierto(true), 1500)
+    return () => window.clearTimeout(t)
+  }, [])
+  const cerrar = () => { setAbierto(false); try { localStorage.setItem(ASCARI_POP_KEY, new Date().toISOString()) } catch { /* nada */ } }
+  return { abierto, cerrar, abrir: () => setAbierto(true) }
+}
+function AscariPop({ onClose, onVer }: { onClose: () => void; onVer: () => void }) {
+  const vid = useRef<HTMLVideoElement>(null)
+  const [mudo, setMudo] = useState(true)
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center orb-tienda">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+        <div className="relative h-[46vh] max-h-[380px] bg-black sm:rounded-t-2xl overflow-hidden">
+          <video ref={vid} src="/banners/ascari-teaser.mp4" poster="/banners/ascari-poster.jpg" muted={mudo} autoPlay loop playsInline
+            className="w-full h-full object-cover object-[center_40%]" />
+          <button onClick={onClose} aria-label="Cerrar" className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/45 text-white flex items-center justify-center"><X size={18} /></button>
+          <span className="absolute left-3.5 bottom-3.5 bg-[#ff5a00] text-white text-[10px] font-bold tracking-[0.14em] uppercase rounded-full px-2.5 py-1.5">Temporada 2026 · Ya disponible</span>
+          <button onClick={() => setMudo((m) => !m)} className="absolute right-3.5 bottom-3.5 bg-black/50 text-white text-[11px] rounded-full px-2.5 py-1.5">{mudo ? '🔇 Sonido' : '🔊 Sonido'}</button>
+        </div>
+        <div className="p-5">
+          <h2 className="text-[34px] font-extrabold tracking-[0.18em] leading-none">ASCARI</h2>
+          <p className="text-sm text-neutral-500 mt-1.5">El ícono de la temporada ya está en Orbital.</p>
+          <p className="text-[13.5px] text-neutral-800 leading-relaxed mt-3">Una silueta protagonista, moderna y sofisticada, inspirada en una de las tendencias más fuertes de la moda eyewear internacional.</p>
+          <p className="text-[11px] font-extrabold tracking-[0.12em] uppercase mt-4">🛡️ Protección VSL™ en todos sus colores</p>
+          <div className="flex flex-wrap gap-1.5 mt-2 text-[11.5px]">
+            {['☀️ UV400', '💻 Blue Cut 98%', '🪶 Ultra liviano'].map((c) => <span key={c} className="border border-black/10 bg-neutral-50 rounded-full px-2.5 py-1.5">{c}</span>)}
+            <span className="border border-[#ff5a00] bg-neutral-50 rounded-full px-2.5 py-1.5">🔥 + Infrarrojo en sus versiones Triple Protección</span>
+          </div>
+          <div className="mt-4 bg-[#141414] text-neutral-100 rounded-xl px-3.5 py-3 text-[12.5px] leading-relaxed">
+            🌙 <b className="text-[#ff8a3d]">Del sol a la noche.</b> Luz cálida que suaviza pantallas, LEDs y reflejos: descanso visual y un look de noche que nadie más tiene.
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 mt-4">
+            {[1, 2, 3].map((i) => <img key={i} src={`/banners/ascari-${i}.webp`} alt="" loading="lazy" className="w-full h-28 object-cover rounded-lg" style={i === 1 ? { objectPosition: 'center 25%' } : undefined} />)}
+          </div>
+          <button onClick={onVer} className="mt-5 w-full bg-[#0a0a0a] text-white rounded-xl py-3.5 text-sm font-bold">Quiero ASCARI ahora</button>
+          <a href="https://www.orbitaleyewear.com.ar/pages/vsl-technology" target="_blank" rel="noreferrer" className="block text-center text-[13px] underline mt-2 py-1.5">Conocé la tecnología VSL™ →</a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Estudio de rostro (Vision Lab /lab/rostro): la óptica lo prueba y le pasa el link a sus clientes.
 const LINK_ROSTRO = 'https://ver.orbitaleyewear.com.ar/lab/rostro'
 function EstudioRostroBanner() {
@@ -955,6 +1009,7 @@ export default function CatalogoPublico() {
   const abrir = (m: Modelo, promo = false) => { setSoloPromo(promo); setSel(m) }
   const rapido = (m: Modelo, promo = false) => { setSoloPromo(promo); setQuick(m) }
   const [infoGrupo, setInfoGrupo] = useState<string | null>(null)
+  const ascariPop = useAscariPop()
   const [carritoOpen, setCarritoOpen] = useState(false)
   const [cart, setCart] = useState<Record<string, CartItem>>(() => {
     try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}') } catch { return {} }
@@ -1087,6 +1142,7 @@ export default function CatalogoPublico() {
     else if (ver === 'contenido' || ver === 'publicaciones') { setContenidoSolapa(ver === 'publicaciones' ? 'publicaciones' : 'crear'); setContenido(true) }
     else if (ver === 'postventa') setPostventa(true)
     else if (ver === 'compras') setCompras(true)
+    else if (ver === 'ascari') ascariPop.abrir()
   }, [claveOk, clave])
 
   // Link del WhatsApp de carrito sin cerrar (?carrito=1): puede abrirlo en otro equipo, así que
@@ -1341,6 +1397,7 @@ export default function CatalogoPublico() {
       </main>
 
       {infoGrupo && <InfoModal grupoKey={infoGrupo} onClose={() => setInfoGrupo(null)} />}
+      {ascariPop.abierto && !sel && !carritoOpen && <AscariPop onClose={ascariPop.cerrar} onVer={() => { ascariPop.cerrar(); abrirModelo('ASCARI') }} />}
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {comoPagar && <MediosPagoCatalogo onClose={() => setComoPagar(false)} />}
