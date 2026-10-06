@@ -10,6 +10,7 @@ export interface TemaMeta {
 }
 
 export const TEMAS: TemaMeta[] = [
+  { key: 'lanzamientos', icono: '🚀', label: 'Lanzamientos', desc: 'Kits de lanzamiento: video, fotos y texto listos para mandar por WhatsApp' },
   { key: 'bienvenida', icono: '🤝', label: 'Propuesta Bienvenida', desc: 'Todo para sumar ópticas nuevas: copy, guión, propuesta y video' },
   { key: 'canje', icono: '↩', label: 'Plan Canje', desc: 'Material para clientes activos con stock parado' },
   { key: 'preventa', icono: '🕶', label: 'Preventa Colección', desc: 'Copy, guión y catálogo de la preventa 2026' },

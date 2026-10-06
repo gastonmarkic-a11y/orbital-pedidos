@@ -5,6 +5,7 @@ import { useToast } from '../../lib/toast'
 import { PiezaMarketing } from '../../lib/types'
 import { TEMAS, TEMAS_ENGANCHE, metaTema } from './temasMarketing'
 import { RUBROS, mensajePara } from '../../lib/guiones'
+import KitEnviar, { piezasDelKit } from './KitEnviar'
 
 const CATEGORIAS: Record<string, string> = {
   copy: '✏️ Copy', guion: '🎙️ Guión', propuesta: '📄 Propuesta', imagen: '🖼️ Imagen',
@@ -203,7 +204,11 @@ export default function Marketing() {
           })() : (() => {
             const p = activas.find((x) => `pieza:${x.id}` === sel)
             if (!p) return null
+            const kit = piezasDelKit(activas, p)
+            const pub = p.url_publica || (p.url?.startsWith('http') ? p.url : null)
             return (
+              <div className="space-y-3">
+              {kit.length > 0 && <KitEnviar key={p.tema + p.titulo.split(' · ')[0]} kit={kit} />}
               <div className="bg-white rounded-2xl border border-black/10 p-5 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -214,6 +219,8 @@ export default function Marketing() {
                   {puedeEditar && <button onClick={() => abrirEdicion(p)} className="text-xs font-medium text-amber-600 shrink-0">✏️ Editar</button>}
                 </div>
                 {previewUrl && <img src={previewUrl} alt={p.titulo} className="w-full max-h-[60vh] object-contain rounded-lg border border-black/10" />}
+                {!previewUrl && pub && p.categoria === 'imagen' && <img src={pub} alt={p.titulo} className="w-full max-h-[60vh] object-contain rounded-lg border border-black/10" />}
+                {pub && p.categoria === 'video' && <video src={pub} controls playsInline className="w-full max-h-[60vh] rounded-lg border border-black/10 bg-black" />}
                 {p.contenido_texto && (
                   <p className="text-[13px] text-ink bg-[#F1EDE4] rounded-lg p-3 whitespace-pre-wrap max-h-[50vh] overflow-y-auto">{p.contenido_texto}</p>
                 )}
@@ -223,6 +230,7 @@ export default function Marketing() {
                   {p.contenido_texto && <a href={`mailto:?body=${encodeURIComponent(limpioEnvio(p.contenido_texto))}`} className="text-xs font-medium text-brandDark">✉️ Mail</a>}
                   {p.url && <button onClick={() => abrirArchivo(p.url!)} className="text-xs font-medium text-brandDark">Abrir / Descargar →</button>}
                 </div>
+              </div>
               </div>
             )
           })()}
