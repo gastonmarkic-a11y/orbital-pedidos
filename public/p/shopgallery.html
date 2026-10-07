@@ -301,7 +301,8 @@ const OVER=[["Alaska","Bariloche 35 · Bodega 10 · Aeroparque 9 · Córdoba 5 �
 const SB="https://towcgvphxeqilpdnboki.supabase.co", KEY="sb_publishable_YhNbcs63Zx6na8pfEsQgCw_C3iKSk-A", K="314ca7e0565cedb69d";
 const SUCID={"Aeroparque":17,"Córdoba":18,"Iguazú":19,"Bariloche":20,"Mendoza":21,"Bodega / Web":22};
 const IMG={mod:{},col:{}}, norm=t=>(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
-const imgDe=(m,d)=>IMG.col[norm(m)+"|"+norm(d)]||IMG.mod[norm(m)]||null;
+const chica=(u,w)=>u&&/cdn.shopify.com/.test(u)?u+(u.includes("?")?"&":"?")+"width="+w:u;
+const imgDe=(m,d,w=160)=>chica(IMG.col[norm(m)+"|"+norm(d)]||IMG.mod[norm(m)]||null,w);
 const th=(m,d,c="th")=>{const u=imgDe(m,d);return u?`<img class="${c}" src="${u}" alt="${m}" loading="lazy">`:`<span class="${c} e" aria-hidden="true"></span>`};
 const $=s=>document.querySelector(s), fmt=n=>n.toLocaleString("es-AR"), pesos=n=>"$"+Math.round(n/1e5)/10+" M";
 const tv=SUC.reduce((a,s)=>a+s.m[0]+s.m[1]+s.m[2],0), ti=SUC.reduce((a,s)=>a+s.imp,0), ts=SUC.reduce((a,s)=>a+s.st,0);
@@ -320,7 +321,7 @@ drawMods();
 
 const NM=["Ascari","Civic Center","Casa Blanca","5th Avenue"];
 function drawNuevos(){$("#nuevos").innerHTML=NM.map(m=>{const rs=R.filter(r=>r.m===m);const by={};rs.forEach(r=>by[r.s]=(by[r.s]||0)+r.q);const cols=[...new Set(rs.map(r=>r.d))];
- return `<div class="newcard">${imgDe(m,"")?`<img class="big" src="${imgDe(m,"")}" alt="${m}" loading="lazy">`:""}<h3>${m}</h3><div class="tot">${rs.reduce((a,r)=>a+r.q,0)} u · ${cols.length} colores</div><ul>${Object.entries(by).map(([s,q])=>`<li>${s} <span class="num" style="float:right">${q}</span></li>`).join("")}</ul><div class="tot">${cols.join(" · ")}</div></div>`}).join("")}
+ return `<div class="newcard">${imgDe(m,"",400)?`<img class="big" src="${imgDe(m,"",400)}" alt="${m}" loading="lazy">`:""}<h3>${m}</h3><div class="tot">${rs.reduce((a,r)=>a+r.q,0)} u · ${cols.length} colores</div><ul>${Object.entries(by).map(([s,q])=>`<li>${s} <span class="num" style="float:right">${q}</span></li>`).join("")}</ul><div class="tot">${cols.join(" · ")}</div></div>`}).join("")}
 drawNuevos();
 
 const LAB={nuevo:"Nuevo",reemplazo:"Reemplazo",repone:"Repone",bodega:"Desde su bodega"};
