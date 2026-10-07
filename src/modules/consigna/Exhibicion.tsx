@@ -150,7 +150,7 @@ export default function Exhibicion({ clave, suc, editable, quien }: { clave: str
                         return <CeldaVitrina key={c} f={f} c={c} codigo={p?.codigo ?? null} desconocido={p?.desconocido} info={info} ventas={ventas} />
                       }
                       const l = plan.lugares.find((x) => x.f === f && x.c === c)!
-                      return <CeldaVitrina key={c} f={f} c={c} codigo={l.codigo} cambia={l.cambia} siSeVende={l.siSeVende} info={info} ventas={ventas} />
+                      return <CeldaVitrina key={c} f={f} c={c} codigo={l.codigo} cambia={l.cambia} antes={hoy.get(k(f, c)) ?? null} siSeVende={l.siSeVende} info={info} ventas={ventas} />
                     })}
                   </div>
                 ))}
@@ -252,13 +252,14 @@ function Kpi({ label, valor, sub, tono = '' }: { label: string; valor: string; s
   )
 }
 
-function CeldaVitrina({ f, c, codigo, desconocido, cambia, siSeVende, info, ventas }: {
-  f: number; c: number; codigo: string | null; desconocido?: boolean; cambia?: boolean
+function CeldaVitrina({ f, c, codigo, desconocido, cambia, antes, siSeVende, info, ventas }: {
+  f: number; c: number; codigo: string | null; desconocido?: boolean; cambia?: boolean; antes?: Pos | null
   siSeVende?: { codigo: string; mismo: boolean } | null; info: Map<string, LineaStock>; ventas: Map<string, VentaCod>
 }) {
   const s = codigo ? info.get(codigo) : null
   const v = codigo ? ventas.get(codigo) : null
   const sig = siSeVende && !siSeVende.mismo ? info.get(siSeVende.codigo) : null
+  const sale = antes?.codigo ? info.get(antes.codigo) : null
   return (
     <div title={lugar(f, c)} className={`rounded-md px-1.5 py-1.5 min-w-0 flex flex-col items-center text-center ${cambia ? 'bg-[#FBF3DC] ring-2 ring-gold' : desconocido ? 'bg-red-50 ring-1 ring-red-300' : ''}`}>
       <div className="w-full flex justify-between text-[9px] text-faint tabular-nums leading-none">
@@ -266,6 +267,17 @@ function CeldaVitrina({ f, c, codigo, desconocido, cambia, siSeVende, info, vent
         {cambia && <span className="font-bold text-[#8A6A1E] uppercase">cambiar</span>}
         {!cambia && v?.u90 ? <span>{v.u90} vend.</span> : null}
       </div>
+      {/* Lo que hay que sacar de este lugar (según la última foto) */}
+      {cambia && (
+        <div className="w-full mt-1 mb-0.5 flex items-center gap-1 rounded bg-red-50 border border-red-200 px-1 py-0.5 text-left">
+          {sale && <Miniatura src={sale.imagen} alt="" color={sale.descripcion} size="sm" />}
+          <div className="min-w-0 text-[9.5px] leading-tight text-red-800">
+            <b className="uppercase">Sacá</b>{' '}
+            {antes?.desconocido ? 'el que no está en stock' : sale ? <span className="line-clamp-2">{sale.modelo} · {sale.descripcion}</span> : 'nada (está vacío)'}
+          </div>
+        </div>
+      )}
+      {cambia && s && <div className="w-full text-left text-[9.5px] font-bold uppercase text-emerald-800 mt-0.5">Poné</div>}
       {s ? (
         <>
           <Miniatura src={s.imagen} alt={s.modelo ?? ''} color={s.descripcion} />
@@ -325,30 +337,46 @@ function Revisar({ rev, setRev, filas, columnas, stock, info, antes, onConfirmar
 }) {
   const [elegir, setElegir] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
+  // No hace falta confirmar uno por uno: «guardar» acepta lo que propone la IA en todo lo que no se tocó.
+  // Las dudas quedan marcadas solo para que el local mire esas primero (y las elige con un toque).
+  const total = filas * columnas
   const dudas = Object.values(rev.conf).filter((p) => !p.ok).length
-  // Dudas donde la IA igual propone un código: se pueden aceptar todas juntas y revisar solo el resto.
-  // (Los repetidos de más no: ahí hay que mirar cuál es cuál.)
   const repetidos = excedidos(rev.conf, info)
-  const conPropuesta = Object.entries(rev.conf).filter(([, p]) => !p.ok && p.codigo && !repetidos.has(p.codigo))
-  const aceptarPropuestas = () => setRev({ ...rev, conf: { ...rev.conf, ...Object.fromEntries(conPropuesta.map(([key, p]) => [key, { ...p, ok: true }])) } })
   const ahora = Object.values(rev.conf)
   const faltan = faltantes(antes, ahora)
   const poner = (key: string, p: Partial<Pos>) => setRev({ ...rev, conf: { ...rev.conf, [key]: { ...rev.conf[key], codigo: null, desconocido: false, ...p, ok: true } } })
+  const guardar = async () => {
+    setGuardando(true)
+    await onConfirmar({ ...rev, conf: Object.fromEntries(Object.entries(rev.conf).map(([key, p]) => [key, { ...p, ok: true }])) })
+    setGuardando(false)
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center sm:p-4">
       <div className="bg-[#F6F4EF] w-full sm:max-w-3xl max-h-[95vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
         <div className="sticky top-0 z-10 bg-white border-b border-black/10 px-4 py-3 flex items-center gap-3">
           <div className="mr-auto min-w-0">
-            <h2 className="font-semibold">Revisá la vitrina</h2>
+            <h2 className="font-semibold">Así leyó la IA tu vitrina</h2>
             <p className="text-[12px] text-muted">
-              {rev.error ? 'La IA no pudo leer la foto: cargá cada lugar tocándolo.' : dudas ? `La IA tiene ${dudas} duda${dudas > 1 ? 's' : ''}: tocá cada lugar en ámbar y elegí cuál es.` : 'Todo reconocido. Revisá y confirmá.'}
+              {rev.error ? 'La IA no pudo leer la foto: tocá cada lugar para cargarlo.' : `Reconoció ${total - dudas} de ${total} lugares sin dudas.`}
             </p>
           </div>
           <button onClick={() => setRev(null)} aria-label="Cerrar" className="p-1.5 rounded-md hover:bg-black/5"><X size={18} /></button>
         </div>
 
         <div className="p-4 flex flex-col gap-3">
+          {!rev.error && (
+            <div className="bg-white border border-black/10 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+              <div className="mr-auto min-w-0 text-[13px] leading-snug">
+                <b>¿Se parece a lo que hay en la vitrina?</b> Guardá así y listo.
+                <div className="text-[12px] text-muted">{dudas ? `Si querés, corregí antes los ${dudas} marcados en ámbar: tocá la opción correcta dentro de la tarjeta.` : 'Si algo no coincide, tocá ese lugar para corregirlo.'}</div>
+              </div>
+              <button disabled={guardando} onClick={guardar}
+                className="text-sm font-semibold bg-emerald-700 text-white rounded-lg px-4 py-2.5 inline-flex items-center gap-2 disabled:opacity-50">
+                <Check size={16} /> {guardando ? 'Guardando…' : 'Está bien, guardar todo'}
+              </button>
+            </div>
+          )}
           {rev.nota && <p className="text-[12px] bg-white border border-black/10 rounded-lg px-3 py-2"><b>La IA avisa:</b> {rev.nota}</p>}
           {faltan.length > 0 && (
             <p className="text-[12px] bg-sky-50 border border-sky-200 text-sky-900 rounded-lg px-3 py-2">
@@ -361,33 +389,45 @@ function Revisar({ rev, setRev, filas, columnas, stock, info, antes, onConfirmar
               const p = rev.conf[k(f, c)]
               const l = rev.leido.find((x) => x.f === f && x.c === c)
               const s = p.codigo ? info.get(p.codigo) : null
+              // Opciones de un toque: lo que propuso la IA y sus alternativas.
+              const ops = !p.ok ? [...new Set([...(l?.codigo ? [l.codigo] : []), ...(l?.opciones ?? [])])].filter((x) => info.has(x)).slice(0, 3) : []
               return (
-                <button key={i} onClick={() => setElegir(k(f, c))}
-                  className={`text-left bg-white rounded-lg border p-1.5 flex flex-col gap-1 ${p.ok ? 'border-black/10' : 'border-amber-500 ring-2 ring-amber-300'}`}>
-                  <div className="flex justify-between text-[10px] text-muted"><span>{f}·{c}</span>{!p.ok && <span className="font-bold text-amber-700 flex items-center gap-0.5"><HelpCircle size={11} /> {p.codigo && repetidos.has(p.codigo) ? `repetido (hay ${info.get(p.codigo)?.cantidad ?? 0})` : '¿cuál es?'}</span>}</div>
-                  <div className="flex gap-1">
-                    {rev.foto && l?.caja && <Recorte foto={rev.foto} caja={l.caja} ancho={rev.ancho} alto={rev.alto} />}
-                    {s && <Miniatura src={s.imagen} alt="" color={s.descripcion} size="sm" />}
-                  </div>
-                  <div className="text-[11px] leading-tight">
-                    {s ? <><b>{s.modelo}</b> <span className="text-muted">{s.descripcion}</span></> : <span className="text-muted">{p.desconocido ? 'No está en el stock' : 'Vacío'}</span>}
-                  </div>
-                </button>
+                <div key={i} className={`bg-white rounded-lg border p-1.5 flex flex-col gap-1 ${p.ok ? 'border-black/10' : 'border-amber-500 ring-2 ring-amber-300'}`}>
+                  <button onClick={() => setElegir(k(f, c))} className="text-left flex flex-col gap-1">
+                    <div className="flex justify-between text-[10px] text-muted"><span>{f}·{c}</span>{!p.ok && <span className="font-bold text-amber-700 flex items-center gap-0.5"><HelpCircle size={11} /> {p.codigo && repetidos.has(p.codigo) ? `repetido (hay ${info.get(p.codigo)?.cantidad ?? 0})` : 'duda'}</span>}</div>
+                    <div className="flex gap-1">
+                      {rev.foto && l?.caja && <Recorte foto={rev.foto} caja={l.caja} ancho={rev.ancho} alto={rev.alto} />}
+                      {s && !ops.length && <Miniatura src={s.imagen} alt="" color={s.descripcion} size="sm" />}
+                    </div>
+                    <div className="text-[11px] leading-tight">
+                      {s ? <><b>{s.modelo}</b> <span className="text-muted">{s.descripcion}</span></> : <span className="text-muted">{p.desconocido ? 'No está en el stock' : 'Vacío'}</span>}
+                    </div>
+                  </button>
+                  {ops.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-t border-black/5 pt-1">
+                      {ops.map((x) => {
+                        const o = info.get(x)!
+                        return (
+                          <button key={x} onClick={() => poner(k(f, c), { codigo: x })} title={`${o.modelo} · ${o.descripcion}`}
+                            className={`rounded-md border p-0.5 ${p.codigo === x ? 'border-ink ring-1 ring-ink' : 'border-black/10 hover:border-gold'}`}>
+                            <Miniatura src={o.imagen} alt={o.modelo ?? ''} color={o.descripcion} size="sm" />
+                          </button>
+                        )
+                      })}
+                      <button onClick={() => setElegir(k(f, c))} className="text-[10px] text-muted underline px-1">otro</button>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-black/10 px-4 py-3 flex items-center gap-3">
-          <span className="text-[12px] text-muted mr-auto">{dudas ? `Faltan ${dudas} por confirmar` : 'Listo para guardar'}</span>
-          {conPropuesta.length > 0 && (
-            <button onClick={aceptarPropuestas} className="text-xs font-semibold border border-amber-400 bg-amber-50 text-amber-900 rounded-lg px-3 py-2">
-              Aceptar lo que propone la IA ({conPropuesta.length})
-            </button>
-          )}
-          <button disabled={!!dudas || guardando} onClick={async () => { setGuardando(true); await onConfirmar(rev); setGuardando(false) }}
-            className="text-sm font-semibold bg-ink text-white rounded-lg px-4 py-2 inline-flex items-center gap-2 disabled:opacity-40">
-            <Check size={15} /> {guardando ? 'Guardando…' : 'Confirmar vitrina'}
+          <span className="text-[12px] text-muted mr-auto">{dudas ? `${dudas} en ámbar: se guardan como propuso la IA` : 'Listo para guardar'}</span>
+          <button disabled={guardando} onClick={guardar}
+            className="text-sm font-semibold bg-emerald-700 text-white rounded-lg px-4 py-2 inline-flex items-center gap-2 disabled:opacity-40">
+            <Check size={15} /> {guardando ? 'Guardando…' : 'Guardar vitrina'}
           </button>
         </div>
       </div>
