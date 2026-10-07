@@ -2,6 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
+import { registrarAutoria } from './lib/autoria'
+
+registrarAutoria()
 
 // Aplicar el tema guardado antes del primer render
 if (localStorage.getItem('orbital_theme') === 'dark') {

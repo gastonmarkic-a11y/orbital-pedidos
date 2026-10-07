@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Memoria descriptiva · Orbital Suite</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  body { font: 11pt/1.5 Georgia, 'Times New Roman', serif; color: #111; max-width: 170mm; margin: 0 auto; }
+  h1 { font-size: 18pt; margin: 0 0 4pt; }
+  h2 { font-size: 12.5pt; margin: 18pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 2pt; }
+  .sub { color: #444; margin: 0 0 16pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  td { border: 1px solid #bbb; padding: 4pt 6pt; vertical-align: top; }
+  td:first-child { width: 34%; background: #f3f3f3; }
+  code { font: 9pt Consolas, monospace; word-break: break-all; }
+  ul { margin: 4pt 0; padding-left: 16pt; }
+  .firma { margin-top: 40pt; display: flex; gap: 30pt; }
+  .firma div { flex: 1; border-top: 1px solid #111; padding-top: 4pt; font-size: 10pt; }
+  .completar { background: #fff3b0; }
+</style>
+</head>
+<body>
+<h1>Orbital Suite</h1>
+<p class="sub">Memoria descriptiva · Depósito en custodia de obra inédita software · Dirección Nacional del Derecho de Autor</p>
+
+<h2>1. Identificación de la obra</h2>
+<table>
+  <tr><td>Título</td><td>Orbital Suite</td></tr>
+  <tr><td>Género</td><td>Programa de computación (software) inédito — aplicación web y servicios en la nube</td></tr>
+  <tr><td>Versión depositada</td><td>Paquete del {{FECHA}} · commit <code>{{COMMIT}}</code></td></tr>
+  <tr><td>Contenido del soporte</td><td>Código fuente: {{ARCHIVOS}} archivos, {{LINEAS}} líneas (archivo <code>orbital-suite-fuente-{{FECHA}}.zip</code> y <code>MANIFIESTO-SHA256.txt</code>)</td></tr>
+  <tr><td>SHA-256 del paquete</td><td><code>{{SHA_PAQUETE}}</code></td></tr>
+  <tr><td>SHA-256 del archivo .zip</td><td><code>{{SHA_ZIP}}</code></td></tr>
+  <tr><td>Huella de autoría embebida en el código</td><td><code>{{HUELLA}}</code></td></tr>
+  <tr><td>Lenguajes y tecnologías</td><td>TypeScript, JavaScript, SQL (PostgreSQL / PL/pgSQL), HTML, CSS</td></tr>
+</table>
+
+<h2>2. Autores y titulares</h2>
+<table>
+  <tr><td>Autor</td><td>Gastón Markic · CUIL <span class="completar">[COMPLETAR]</span> · DNI <span class="completar">[COMPLETAR]</span></td></tr>
+  <tr><td>Titular de los derechos patrimoniales</td><td><span class="completar">[COMPLETAR: razón social de Orbital Eyewear o persona humana titular]</span> · CUIT <span class="completar">[COMPLETAR]</span> · 100 %</td></tr>
+  <tr><td>Domicilio</td><td><span class="completar">[COMPLETAR]</span></td></tr>
+  <tr><td>Contacto</td><td>gastonmarkic@gmail.com · <span class="completar">[teléfono]</span></td></tr>
+</table>
+
+<h2>3. Descripción funcional</h2>
+<p>Orbital Suite es un sistema integral de gestión comercial, operativa y de atención para una empresa fabricante y distribuidora de anteojos (marca Orbital Eyewear). Integra en una única aplicación web, con módulos por rol, la operación de ventas mayoristas, la red de ópticas, la consignación, el canal digital y la atención automatizada.</p>
+<ul>
+  <li><b>Pedidos y depósito:</b> carga de pedidos, stock, escaneo de códigos, preparación, facturación, despacho, devoluciones y producción (cristales, órdenes, costeo).</li>
+  <li><b>Actividad comercial:</b> agenda de campo, ruta real a partir de fotos con geolocalización, check-in en ópticas, cartera por zona, prospección, tandas diarias, seguimiento y panel de resultados.</li>
+  <li><b>Catálogo mayorista para ópticas:</b> catálogo con precios por cliente, carrito, checkout, medios de pago, postventa, publicaciones y medidas.</li>
+  <li><b>Consignación por sucursales:</b> central de consigna, stock por sucursal, transferencias, pedidos, devoluciones, liquidación, lista de precios y exhibición con croquis de vitrina reconocido por inteligencia artificial.</li>
+  <li><b>Vision Lab:</b> pretest visual, perfil visual, medición de rostro y calce, informe profesional, derivación a una red de oftalmólogos y búsqueda de ópticas cercanas.</li>
+  <li><b>Colaboradores e influencers:</b> links de venta, liquidación de comisiones, colecciones, inspiración y seguimiento de prospectos de Instagram.</li>
+  <li><b>Atención automatizada ("Ojo"):</b> bots y avisos por WhatsApp y Telegram, derivaciones por tema, resúmenes, reuniones y escalamiento.</li>
+  <li><b>Canales y marketing:</b> integración con MercadoLibre y Shopify, campañas, carrito abandonado, landings de modelo con 3D y realidad aumentada, reconocimiento de anteojos por imagen.</li>
+  <li><b>Finanzas y administración:</b> cobros, cheques, gastos y viáticos con tickets y check-in, liquidaciones, comisiones y tableros.</li>
+</ul>
+
+<h2>4. Arquitectura</h2>
+<ul>
+  <li><b>Interfaz:</b> aplicación React + TypeScript (carpeta <code>src/</code>), compilada con Vite y publicada como sitio web instalable.</li>
+  <li><b>Lógica de servidor:</b> funciones en la nube (carpeta <code>supabase/functions/</code>) para integraciones, bots y procesamiento de imágenes.</li>
+  <li><b>Base de datos:</b> PostgreSQL con más de 300 tablas y más de 450 funciones y procedimientos propios que contienen las reglas de negocio (precios, comisiones, ruteo, tandas, consignación).</li>
+  <li><b>Páginas públicas complementarias:</b> landings y widgets (carpeta <code>public/</code>).</li>
+</ul>
+
+<h2>5. Elementos originales que se protegen</h2>
+<p>El código fuente y su estructura, organización y secuencia; el diseño de la base de datos y de sus funciones; los algoritmos de asignación de zonas y ruteo, de armado de tandas diarias, de cálculo de precios y comisiones, de reconocimiento de exhibición y de derivación de consultas; y la interfaz y los textos propios de la aplicación.</p>
+<p>El código lleva embebida la huella <code>{{HUELLA}}</code> y un aviso de derechos en cada archivo publicado, que permiten identificar copias totales o parciales.</p>
+
+<h2>6. Excluido del depósito</h2>
+<p>Bibliotecas de terceros de código abierto (React, Supabase, Three.js y otras, bajo sus propias licencias), datos de clientes y archivos de imagen.</p>
+
+<div class="firma">
+  <div>Firma del autor / titular</div>
+  <div>Aclaración y DNI</div>
+  <div>Fecha</div>
+</div>
+</body>
+</html>
