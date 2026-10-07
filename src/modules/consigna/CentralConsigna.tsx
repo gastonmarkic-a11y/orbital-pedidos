@@ -24,6 +24,7 @@ import Instructivo from './Instructivo'
 import VentasConsigna from './VentasConsigna'
 import MarketingConsigna from './MarketingConsigna'
 import ListaPrecios from './ListaPrecios'
+import Exhibicion, { ExhibicionResumen, type ExhibidorSuc } from './Exhibicion'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
 const DEV_KEY = 'orbital_consigna_dev'
@@ -61,7 +62,7 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number; imagen: string | null
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing' | 'precios'
+type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing' | 'precios' | 'exhibicion'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
@@ -102,6 +103,8 @@ export default function CentralConsigna() {
   const [selSuc, setSelSuc] = useState<number | null>(() => Number(params.get('suc')) || null)
   const [quien, setQuien] = useState(() => leer(QUIEN_KEY) ?? '')
   const [dispo, setDispo] = useState<{ ok: boolean; habilitados?: number; tope?: number } | null>(null)
+  // Sucursales con el mueble relevado: solo esas tienen la pestaña de exhibición.
+  const [exhibidores, setExhibidores] = useState<ExhibidorSuc[]>([])
 
   // Candado de terminales: la central admite 8 y cada sucursal 4. Si se pasa, no se pide usuario ni
   // contraseña: queda pendiente, avisamos por Telegram y se activa desde la Suite.
@@ -109,6 +112,7 @@ export default function CentralConsigna() {
     if (!clave) return
     supabase.rpc('consigna_dispositivo_ok', { p_k: clave, p_device: deviceId(), p_ua: navigator.userAgent })
       .then(({ data, error }) => { if (!error) setDispo(data as { ok: boolean; habilitados?: number; tope?: number }) })
+    supabase.rpc('consigna_exhibidores', { p_k: clave }).then(({ data, error }) => { if (!error) setExhibidores((data as ExhibidorSuc[]) ?? []) })
   }, [clave])
 
   useEffect(() => {
@@ -188,9 +192,11 @@ export default function CentralConsigna() {
 
   // Dos juegos de pestañas: el de una sucursal (lo que ve el local, y la central cuando entra a un local)
   // y el de la central en el Total. Devolución y links son solo de la central.
+  const conVitrina = !!suc && exhibidores.some((e) => e.sucursal_id === suc.id)
   const tabs: [Vista, string, string][] = suc
     ? [
         ['tablero', esCentral ? `Panel de ${suc.nombre}` : 'Mi local', `${fmt(tot(vis, 'cantidad'))} u`],
+        ...(conVitrina ? [['exhibicion', '◫ Exhibición', ''] as [Vista, string, string]] : []),
         ['pedir', 'Pedir a Orbital · stock virtual', ''],
         ['pedidos', 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
         ['camino', 'Envíos', tot(vis, 'en_camino') ? `${fmt(tot(vis, 'en_camino'))} u` : ''],
@@ -202,6 +208,7 @@ export default function CentralConsigna() {
     : [
         ['ventas', 'Resumen y ventas', ''],
         ['stock', 'Stock por sucursal', `${fmt(tot(data, 'cantidad'))} u`],
+        ...(exhibidores.length ? [['exhibicion', '◫ Exhibición', ''] as [Vista, string, string]] : []),
         ['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''],
         ['camino', 'En camino', tot(data, 'en_camino') ? `${fmt(tot(data, 'en_camino'))} u` : ''],
         ['repo', 'Reposición por venta', ''],
@@ -309,6 +316,11 @@ export default function CentralConsigna() {
         {vistaOk === 'tablero' && suc && (
           <PanelSucursal data={vis} todas={data} suc={suc} editable={editable} operar={operar}
             onVista={setVista} />
+        )}
+        {vistaOk === 'exhibicion' && suc && <Exhibicion key={suc.id} clave={clave} suc={suc} editable={editable} quien={quien} />}
+        {vistaOk === 'exhibicion' && !suc && (
+          <ExhibicionResumen exhibidores={exhibidores} sucursales={sucs}
+            onVer={(id) => { setSelSuc(id); setVista('exhibicion'); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
         )}
         {vistaOk === 'ventas' && <VentasConsigna key={suc?.id ?? 'todas'} clave={clave} data={vis} fija={suc?.id} />}
         {vistaOk === 'precios' && esCentral && !suc && <ListaPrecios clave={clave} cliente={data.madre?.nombre ?? 'Cliente'} />}
