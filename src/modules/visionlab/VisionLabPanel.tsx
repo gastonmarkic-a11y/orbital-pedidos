@@ -17,6 +17,8 @@ interface Lead {
   /** Red (2026-10-05): oftalmólogo de la red al que se lo derivó y modelo que buscó en las ópticas. */
   oftalmologo_id?: number | null; modelo_buscado?: string | null
   optica_cod: string | null; optica_click_at: string | null; estado: Estado; nota: string | null
+  /** Nota que deja la óptica desde Vision Lab Pro (catálogo). */
+  nota_optica?: string | null
   extras: Extras | null
 }
 
@@ -208,6 +210,7 @@ export default function VisionLabPanel() {
             </div>
             {abierto === l.id && (
               <div className="mt-3 space-y-2">
+                {l.nota_optica && <div className="text-[12px] rounded-lg p-2 border border-[#0004FF]/20 bg-[#0004FF]/[0.04]"><b>Nota de la óptica</b> {l.nota_optica}</div>}
                 {l.ticket && <pre className="text-[11px] font-mono whitespace-pre-wrap bg-neutral-50 rounded-lg p-2 border border-black/5">{l.ticket}</pre>}
                 {l.extras && (l.extras.dp || l.extras.fatiga || l.extras.dominante || l.extras.sugerencias || l.extras.receta || l.extras.rostro || l.extras.calces?.length || l.modelo_buscado || l.oftalmologo_id) && (
                   <div className="text-[12px] text-neutral-700 bg-amber-50/60 rounded-lg p-2 border border-black/5 space-y-0.5">

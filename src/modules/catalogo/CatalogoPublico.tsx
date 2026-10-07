@@ -15,6 +15,8 @@ import { copiesDe, partesColor } from '../colab/colabUtil'
 import { BotonCopiar } from '../colab/ColabAnteojos'
 import PostventaOptica, { MisAnteojos, MisPublicaciones, MisCompras, PublicarLink } from './MiOptica'
 import { MediosPagoCatalogo } from '../cobros/MediosPagoCatalogo'
+import MarcaKit from './MarcaKit'
+import VisionLabPro from './VisionLabPro'
 import { indice3D, type Indice3D } from '../landings/ar3d'
 // Destacados con 3D: visor (girar / ver en la mesa) y probador en la cara; three.js solo si se abren
 const Visor3D = lazy(() => import('../landings/Visor3D'))
@@ -997,6 +999,10 @@ export default function CatalogoPublico() {
   const [conoce, setConoce] = useState(false)
   const [postventa, setPostventa] = useState(false)
   const [comoPagar, setComoPagar] = useState(false)
+  // Marca: manual de marca + logo, fotos (producto, en cara, estuche), videos y campaña de la tienda
+  const [marca, setMarca] = useState(false)
+  // Vision Lab Pro: pacientes del pretest de la óptica + QR y herramientas del Vision Lab
+  const [labPro, setLabPro] = useState(false)
   const [compras, setCompras] = useState(false)
   // Crear contenido: buscador de modelos que abre la ficha sin precio ni carrito
   const [contenido, setContenido] = useState(false)
@@ -1133,7 +1139,7 @@ export default function CatalogoPublico() {
     }
   }, [claveOk, clave])
 
-  // ?ver=inspiracion|triple|contenido|publicaciones|postventa: abre directo esa sección (links del panel de consigna).
+  // ?ver=inspiracion|triple|contenido|publicaciones|postventa|marca|visionlab: abre directo esa sección (links del panel de consigna).
   const [contenidoSolapa, setContenidoSolapa] = useState<'crear' | 'publicaciones'>('crear')
   useEffect(() => {
     if (!claveOk || !clave) return
@@ -1142,6 +1148,8 @@ export default function CatalogoPublico() {
     else if (ver === 'contenido' || ver === 'publicaciones') { setContenidoSolapa(ver === 'publicaciones' ? 'publicaciones' : 'crear'); setContenido(true) }
     else if (ver === 'postventa') setPostventa(true)
     else if (ver === 'compras') setCompras(true)
+    else if (ver === 'marca') setMarca(true)
+    else if (ver === 'visionlab') setLabPro(true)
     else if (ver === 'ascari') ascariPop.abrir()
   }, [claveOk, clave])
 
@@ -1246,6 +1254,16 @@ export default function CatalogoPublico() {
         <button onClick={() => setContenido(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-fuchsia-300 bg-white text-fuchsia-700 hover:border-fuchsia-500">
           Crear contenido
+        </button>
+      )}
+      <button onClick={() => setMarca(true)}
+        className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black bg-[#0a0a0a] text-white hover:bg-black">
+        Marca
+      </button>
+      {!sinPrecios && acceso?.tipo !== 'campana' && (
+        <button onClick={() => setLabPro(true)}
+          className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-[#0004FF]/40 bg-[#0004FF]/[0.06] text-[#0004FF] hover:border-[#0004FF]">
+          Vision Lab <span className="text-[9px] rounded-full bg-[#0004FF] text-white px-1.5 py-px ml-0.5 align-middle">PRO</span>
         </button>
       )}
       {!sinPrecios && acceso?.tipo !== 'campana' && (
@@ -1401,6 +1419,8 @@ export default function CatalogoPublico() {
 
       {quick && <QuickAdd modelo={quick} clave={clave} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setQuick(null)} onVerDetalle={() => { setSel(quick); setQuick(null) }} />}
       {comoPagar && <MediosPagoCatalogo onClose={() => setComoPagar(false)} />}
+      {marca && <MarcaKit onClose={() => setMarca(false)} />}
+      {labPro && <VisionLabPro clave={clave} cod={esOptica ? acceso!.cod_cliente! : null} onClose={() => setLabPro(false)} />}
       {postventa && !esOptica && <SinOptica onClose={() => setPostventa(false)} />}
       {postventa && esOptica && <PostventaOptica clave={clave} onClose={() => setPostventa(false)} />}
       {compras && esOptica && <MisCompras clave={clave} onClose={() => setCompras(false)} />}
