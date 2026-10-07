@@ -387,37 +387,46 @@ function TarjetaSuc({ activa, titulo, sub, cant, dev, cam, onClick, total }: {
 
 type Operar = (fn: string, args: Record<string, unknown>, ok: string) => Promise<Central | null>
 
-// ── Panel de una sucursal: lo que le llega y lo que tiene, en detalle y con foto ────
+// ── Panel de una sucursal: todos los estados en una sola lista, con foto y filtros ────
+// Cada producto del local en una fila: cuánto hay, cuánto llega y cuánto hay que devolver.
+// Las tarjetas de arriba son también los filtros (En el local · Llega · Para devolver).
+type FiltroSuc = 'todo' | 'local' | 'llega' | 'devolver'
+
 function PanelSucursal({ data, todas, suc, editable, operar, onVista }: {
   data: Central; todas: Central; suc: Sucursal; editable: boolean; operar: Operar; onVista: (v: Vista) => void
 }) {
   const [busca, setBusca] = useState('')
-  const [filtro, setFiltro] = useState<'todo' | 'libre' | 'devolver'>('todo')
+  const [filtro, setFiltro] = useState<FiltroSuc>('todo')
   const [mover, setMover] = useState<string | null>(null)
   const lineas = data.stock
-  const envio = lineas.filter((l) => l.en_camino > 0).sort((a, b) => (a.modelo ?? '').localeCompare(b.modelo ?? ''))
-  const totCamino = envio.reduce((s, l) => s + l.en_camino, 0)
+  const totCamino = lineas.reduce((s, l) => s + l.en_camino, 0)
   const totLocal = lineas.reduce((s, l) => s + l.cantidad, 0)
   const totDev = lineas.reduce((s, l) => s + l.devolver, 0)
-  const enLocal = lineas.filter((l) => l.cantidad > 0)
-  const modelosN = new Set(enLocal.map((l) => l.modelo)).size
+  const modelosN = new Set(lineas.filter((l) => l.cantidad > 0).map((l) => l.modelo)).size
   const pedidosPend = data.pedidos.filter((p) => p.estado === 'solicitado').length
+  const cuenta = {
+    todo: lineas.length,
+    local: lineas.filter((l) => l.cantidad > 0).length,
+    llega: lineas.filter((l) => l.en_camino > 0).length,
+    devolver: lineas.filter((l) => l.devolver > 0).length,
+  }
 
-  // Agrupado por modelo: una tarjeta por modelo con sus colores, cada uno con foto.
+  // Agrupado por modelo; cada color en una fila con sus tres estados.
   const grupos = useMemo(() => {
     const q = busca.trim().toLowerCase()
     const m = new Map<string, Linea[]>()
-    for (const l of enLocal) {
+    for (const l of lineas) {
       if (q && !`${l.modelo} ${l.descripcion} ${l.codigo}`.toLowerCase().includes(q)) continue
+      if (filtro === 'local' && l.cantidad <= 0) continue
+      if (filtro === 'llega' && l.en_camino <= 0) continue
       if (filtro === 'devolver' && l.devolver <= 0) continue
-      if (filtro === 'libre' && l.cantidad - l.devolver <= 0) continue
       const k = l.modelo ?? '—'
       m.set(k, [...(m.get(k) ?? []), l])
     }
     return [...m.entries()].map(([modelo, ls]) => ({ modelo, ls: ls.sort((a, b) => (a.descripcion ?? '').localeCompare(b.descripcion ?? '')) }))
       .sort((a, b) => a.modelo.localeCompare(b.modelo))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineas, busca, filtro])
+  const filas = grupos.reduce((s, g) => s + g.ls.length, 0)
 
   // Para mover, los productos con el stock de todas las sucursales (destino) del cliente.
   const productos = useMemo<Producto[]>(() => {
@@ -431,118 +440,116 @@ function PanelSucursal({ data, todas, suc, editable, operar, onVista }: {
       .sort((a, b) => a.modelo.localeCompare(b.modelo) || a.descripcion.localeCompare(b.descripcion))
   }, [todas.stock, suc.id])
 
+  const tarjetas: { k: FiltroSuc; label: string; valor: string; sub: string; tono: string; act: string }[] = [
+    { k: 'todo', label: 'Todo', valor: `${cuenta.todo}`, sub: 'productos en el panel', tono: '', act: 'border-ink ring-1 ring-ink' },
+    { k: 'local', label: 'En el local', valor: `${fmt(totLocal)} u`, sub: `${modelosN} modelos`, tono: '', act: 'border-ink ring-1 ring-ink' },
+    { k: 'llega', label: 'Tiene que ingresar', valor: `${fmt(totCamino)} u`, sub: totCamino ? `${cuenta.llega} productos · marcalos al recibir` : 'Nada en camino', tono: 'text-emerald-700', act: 'border-emerald-600 ring-1 ring-emerald-600 bg-emerald-50/60' },
+    { k: 'devolver', label: 'Para devolver', valor: `${fmt(totDev)} u`, sub: totDev ? `${cuenta.devolver} productos · lo junta la central` : 'Nada pendiente', tono: 'text-amber-700', act: 'border-amber-600 ring-1 ring-amber-600 bg-amber-50/60' },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Resumen en grande: lo primero que hay que leer */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="En el local" valor={`${fmt(totLocal)} u`} sub={`${modelosN} modelos`} />
-        <Kpi label="Llega de Orbital" valor={`${fmt(totCamino)} u`} sub={totCamino ? 'Marcalo al recibir' : 'Nada en camino'} tono="text-emerald-700" />
-        <Kpi label="Para devolver" valor={`${fmt(totDev)} u`} sub={totDev ? 'Lo junta la central' : 'Nada pendiente'} tono="text-amber-700" />
-        <button onClick={() => onVista('pedidos')} className="text-left">
-          <Kpi label="Pedidos" valor={`${data.pedidos.length}`} sub={pedidosPend ? `${pedidosPend} esperando autorización` : 'Ver pedidos →'} />
-        </button>
+      {/* Las tarjetas son los filtros */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {tarjetas.map((t) => (
+          <button key={t.k} onClick={() => setFiltro(t.k)} aria-pressed={filtro === t.k}
+            className={`text-left bg-white border rounded-xl px-4 py-3 transition-colors ${filtro === t.k ? t.act : 'border-black/10 hover:border-gold'}`}>
+            <div className="text-[11px] uppercase tracking-wider text-muted flex items-center justify-between">
+              {t.label}{filtro === t.k && <Check size={13} className="text-ink" />}
+            </div>
+            <div className={`text-2xl font-semibold tabular-nums leading-tight mt-0.5 ${t.tono}`}>{t.valor}</div>
+            <div className="text-[11px] text-faint mt-0.5">{t.sub}</div>
+          </button>
+        ))}
       </div>
 
-      {/* Lo que llega */}
-      <section className="bg-white border border-emerald-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 bg-emerald-50/70 border-b border-emerald-200 flex flex-wrap items-center gap-3">
-          <h2 className="font-semibold flex items-center gap-2 mr-auto"><Truck size={17} className="text-emerald-700" /> Llega de Orbital <span className="text-emerald-700 tabular-nums">{fmt(totCamino)} u</span></h2>
-          {editable && totCamino > 0 && (
+      <section className="bg-white border border-black/10 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-2">
+          <h2 className="font-semibold mr-auto">
+            {{ todo: 'Todo el local', local: 'Lo que hay en el local', llega: 'Lo que tiene que ingresar', devolver: 'Lo que hay que devolver' }[filtro]}
+            <span className="tabular-nums text-muted font-normal ml-2">{filas} {filas === 1 ? 'producto' : 'productos'}</span>
+          </h2>
+          <label className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+            <input id="suc-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo o color"
+              className="w-full bg-white border border-black/15 rounded-lg pl-8 pr-3 py-1.5 text-sm" />
+          </label>
+          {editable && filtro === 'llega' && totCamino > 0 && (
             <button
               onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: null }, `${suc.nombre} recibió el envío`)}
-              className="text-xs bg-emerald-700 text-white font-semibold rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5"
+              className="text-xs bg-emerald-700 text-white font-semibold rounded-lg px-3 py-2 inline-flex items-center gap-1.5"
             >
-              <Check size={14} /> Recibí todo
+              <Check size={14} /> Recibí todo ({fmt(totCamino)} u)
             </button>
           )}
+          {pedidosPend > 0 && (
+            <button onClick={() => onVista('pedidos')} className="text-xs text-amber-800 bg-amber-100 rounded-lg px-3 py-2">{pedidosPend} pedido{pedidosPend > 1 ? 's' : ''} esperando autorización →</button>
+          )}
         </div>
-        {envio.length === 0 ? (
-          <p className="text-sm text-muted px-4 py-5">No hay envíos en camino. Cuando Orbital despache, aparece acá con foto para controlarlo al abrir la caja.</p>
+
+        {/* Encabezado de columnas (en compu) */}
+        <div className="hidden md:grid grid-cols-[minmax(0,1fr)_88px_88px_96px_76px] gap-2 px-4 py-2 text-[10px] uppercase tracking-wider text-muted border-b border-black/5 bg-black/[0.02]">
+          <span>Producto</span><span className="text-center">En el local</span><span className="text-center text-emerald-700">Ingresa</span><span className="text-center text-amber-700">Devolver</span><span />
+        </div>
+
+        {grupos.length === 0 ? (
+          <p className="text-sm text-muted px-4 py-6">
+            {busca ? 'No hay productos con esa búsqueda.' : { todo: 'Todavía no hay stock cargado en este local.', local: 'No hay stock en el local.', llega: 'No hay nada en camino. Cuando Orbital despache, aparece acá con foto para controlar la caja.', devolver: 'No hay nada para devolver.' }[filtro]}
+          </p>
         ) : (
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {envio.map((l) => (
-              <div key={l.codigo} className="flex items-center gap-3 border border-black/5 rounded-lg px-2.5 py-2">
-                <Miniatura src={l.imagen} alt={`${l.modelo} ${l.descripcion ?? ''}`} color={l.descripcion} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold tracking-wide uppercase truncate">{l.modelo}</div>
-                  <div className="text-xs text-muted truncate" title={l.descripcion ?? ''}>{l.descripcion}</div>
+          <div>
+            {grupos.map((g) => (
+              <div key={g.modelo} className="border-b border-black/5 last:border-0">
+                <div className="px-4 pt-3 pb-1 flex items-baseline gap-2">
+                  <h3 className="text-[13px] font-semibold tracking-wide uppercase">{g.modelo}</h3>
+                  <span className="text-[11px] text-muted">{g.ls.length} {g.ls.length === 1 ? 'color' : 'colores'}</span>
                 </div>
-                <span className="text-base font-semibold tabular-nums text-emerald-700">+{l.en_camino}</span>
-                {editable && (
-                  <button
-                    onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: l.codigo }, `Recibido ${l.modelo}`)}
-                    title="Marcar recibido"
-                    aria-label={`Marcar recibido ${l.modelo}`}
-                    className="text-emerald-700 border border-emerald-200 rounded-md p-1.5 hover:bg-emerald-50"
-                  >
-                    <Check size={15} />
-                  </button>
-                )}
+                {g.ls.map((l) => {
+                  const libre = l.cantidad - l.devolver
+                  return (
+                    <div key={l.codigo} className={`grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_88px_88px_96px_76px] items-center gap-x-2 gap-y-1 px-4 py-2 ${l.devolver > 0 && filtro !== 'llega' ? 'bg-amber-50/40' : ''}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Miniatura src={l.imagen} alt={`${l.modelo} ${l.descripcion ?? ''}`} color={l.descripcion} />
+                        <div className="min-w-0">
+                          <div className="text-sm leading-snug line-clamp-2" title={l.codigo}>{l.descripcion || l.codigo}</div>
+                          {/* En celular los tres estados van debajo del nombre */}
+                          <div className="md:hidden text-[11px] flex flex-wrap gap-x-3 mt-0.5 tabular-nums">
+                            <span className={l.cantidad ? 'text-ink' : 'text-black/30'}>Local <b>{l.cantidad}</b></span>
+                            {l.en_camino > 0 && <span className="text-emerald-700">Ingresa <b>+{l.en_camino}</b></span>}
+                            {l.devolver > 0 && <span className="text-amber-700">Devolver <b>{l.devolver}</b></span>}
+                          </div>
+                        </div>
+                      </div>
+                      <Celda n={l.cantidad} />
+                      <Celda n={l.en_camino} signo="+" tono="text-emerald-700" />
+                      <Celda n={l.devolver} tono="text-amber-700" />
+                      <div className="flex items-center justify-end gap-1.5">
+                        {editable && l.en_camino > 0 && (
+                          <button
+                            onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: l.codigo }, `Recibido ${l.modelo}`)}
+                            title="Marcar recibido" aria-label={`Marcar recibido ${l.modelo}`}
+                            className="text-emerald-700 border border-emerald-300 bg-emerald-50 rounded-md p-1.5 hover:bg-emerald-100"
+                          >
+                            <Check size={15} />
+                          </button>
+                        )}
+                        {editable && libre > 0 && todas.sucursales.length > 1 && (
+                          <button onClick={() => setMover(l.codigo)} title="Mover a otra sucursal" aria-label={`Mover ${l.modelo}`}
+                            className="text-muted hover:text-ink border border-black/10 rounded-md p-1.5">
+                            <ArrowRight size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Lo que tiene */}
-      <section className="bg-white border border-black/10 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold flex items-center gap-2 mr-auto"><Store size={17} className="text-gold" /> Lo que hay en el local <span className="tabular-nums text-muted font-normal">{fmt(totLocal)} u</span></h2>
-          <label className="relative w-full sm:w-64">
-            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
-            <input id="suc-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo o color"
-              className="w-full bg-white border border-black/15 rounded-lg pl-8 pr-3 py-1.5 text-sm" />
-          </label>
-          <div className="flex gap-1 bg-black/5 rounded-lg p-1">
-            {([['todo', 'Todo'], ['libre', 'Para vender'], ['devolver', `Para devolver${totDev ? ` · ${totDev}` : ''}`]] as const).map(([k, l]) => (
-              <button key={k} onClick={() => setFiltro(k)} className={`text-xs rounded-md px-2.5 py-1 whitespace-nowrap ${filtro === k ? 'bg-white shadow-sm font-semibold' : 'text-muted'}`}>{l}</button>
-            ))}
-          </div>
-        </div>
-        {grupos.length === 0 ? (
-          <p className="text-sm text-muted px-4 py-6">{enLocal.length ? 'No hay productos con ese filtro.' : 'Todavía no hay stock cargado en este local.'}</p>
-        ) : (
-          <div className="divide-y divide-black/5">
-            {grupos.map((g) => {
-              const u = g.ls.reduce((s, l) => s + l.cantidad, 0)
-              return (
-                <div key={g.modelo} className="px-4 py-3">
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <h3 className="text-sm font-semibold tracking-wide uppercase">{g.modelo}</h3>
-                    <span className="text-xs text-muted tabular-nums">{u} u · {g.ls.length} {g.ls.length === 1 ? 'color' : 'colores'}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-                    {g.ls.map((l) => {
-                      const libre = l.cantidad - l.devolver
-                      return (
-                        <div key={l.codigo} className={`flex items-center gap-3 rounded-lg border px-2.5 py-2 ${l.devolver > 0 ? 'border-amber-200 bg-amber-50/40' : 'border-black/5'}`}>
-                          <Miniatura src={l.imagen} alt={`${l.modelo} ${l.descripcion ?? ''}`} color={l.descripcion} />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs leading-snug line-clamp-2" title={`${l.descripcion ?? ''} · ${l.codigo}`}>{l.descripcion || l.codigo}</div>
-                            <div className="text-[10px] flex gap-2 mt-0.5 tabular-nums">
-                              {l.devolver > 0 && <span className="text-amber-700 font-medium">↩ {l.devolver} devolver</span>}
-                              {l.en_camino > 0 && <span className="text-emerald-700 font-medium">+{l.en_camino} llega</span>}
-                            </div>
-                          </div>
-                          <span className="text-lg font-semibold tabular-nums">{l.cantidad}</span>
-                          {editable && libre > 0 && (
-                            <button onClick={() => setMover(l.codigo)} title="Mover a otra sucursal" aria-label={`Mover ${l.modelo}`}
-                              className="text-muted hover:text-ink border border-black/10 rounded-md p-1.5">
-                              <ArrowRight size={14} />
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {mover && todas.sucursales.length > 1 && (
+      {mover && (
         <MoverStock productos={productos} sucursales={todas.sucursales} inicial={{ codigo: mover, desde: suc.id }} miSuc={suc.id}
           onCerrar={() => setMover(null)}
           onMover={async (args, texto) => { if (await operar('consigna_transferir', args, texto)) setMover(null) }} />
@@ -551,13 +558,11 @@ function PanelSucursal({ data, todas, suc, editable, operar, onVista }: {
   )
 }
 
-function Kpi({ label, valor, sub, tono = '' }: { label: string; valor: string; sub?: string; tono?: string }) {
+function Celda({ n, signo = '', tono = '' }: { n: number; signo?: string; tono?: string }) {
   return (
-    <div className="bg-white border border-black/10 rounded-xl px-4 py-3 h-full">
-      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
-      <div className={`text-2xl font-semibold tabular-nums leading-tight mt-0.5 ${tono}`}>{valor}</div>
-      {sub && <div className="text-[11px] text-faint mt-0.5">{sub}</div>}
-    </div>
+    <span className={`hidden md:block text-center tabular-nums ${n ? `text-base font-semibold ${tono}` : 'text-black/20'}`}>
+      {n ? `${signo}${n}` : '—'}
+    </span>
   )
 }
 
