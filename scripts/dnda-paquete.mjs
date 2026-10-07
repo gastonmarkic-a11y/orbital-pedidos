@@ -4,11 +4,11 @@
 //   - orbital-suite-fuente-<fecha>.zip   código fuente de la obra (lo que va al pendrive)
 //   - MANIFIESTO-SHA256.txt              huella de cada archivo + huella total del paquete
 //   - memoria-descriptiva.html / .pdf    descripción de la obra para el sobre y el TAD
-// Solo incluye código propio versionado en git: deja afuera datos de clientes,
+// Toma el código del último commit (HEAD), no la copia de trabajo. Solo código propio: deja afuera datos de clientes,
 // planillas, fotos, PDFs y dependencias de terceros (node_modules).
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const HUELLA = 'ORB-B91CD0154E96'
@@ -30,10 +30,10 @@ const INCLUIR = [
 ]
 const EXCLUIR = /\.(png|jpe?g|webp|gif|svg|ico|mp4|mov|glb|gltf|usdz|pdf|xlsx|csv|zip|bin|onnx|woff2?)$/i
 
-const archivos = execFileSync('git', ['ls-files'], { encoding: 'utf8' })
+const archivos = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf8' })
   .split('\n')
   .map((f) => f.trim())
-  .filter((f) => f && INCLUIR.some((r) => r.test(f)) && !EXCLUIR.test(f) && existsSync(f))
+  .filter((f) => f && INCLUIR.some((r) => r.test(f)) && !EXCLUIR.test(f))
   .sort()
 
 rmSync(salida, { recursive: true, force: true })
@@ -43,12 +43,12 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex')
 const lineas = []
 let lineasCodigo = 0
 for (const f of archivos) {
-  const buf = readFileSync(f)
+  const buf = execFileSync('git', ['show', `HEAD:${f}`], { maxBuffer: 64 * 1024 * 1024 })
   lineas.push(`${sha(buf)}  ${f}`)
   lineasCodigo += buf.toString('utf8').split('\n').length
   const destino = join(staging, f)
   mkdirSync(dirname(destino), { recursive: true })
-  copyFileSync(f, destino)
+  writeFileSync(destino, buf)
 }
 const huellaTotal = sha(lineas.join('\n'))
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
@@ -85,14 +85,19 @@ const memoria = plantilla
 const memoriaHtml = join(salida, 'memoria-descriptiva.html')
 writeFileSync(memoriaHtml, memoria)
 
+// Edge headless vuelve antes de terminar de escribir el PDF: se espera a que aparezca.
 const edge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+const pdf = join(salida, 'memoria-descriptiva.pdf')
 if (existsSync(edge)) {
   try {
-    execFileSync(edge, ['--headless', '--disable-gpu', '--no-pdf-header-footer', `--print-to-pdf=${join(salida, 'memoria-descriptiva.pdf')}`, 'file:///' + memoriaHtml.replaceAll('\\', '/')], { stdio: 'ignore', timeout: 60000 })
+    execFileSync(edge, ['--headless', '--disable-gpu', '--no-pdf-header-footer', `--user-data-dir=${join(salida, '.edge')}`, `--print-to-pdf=${pdf}`, 'file:///' + memoriaHtml.replaceAll('\\', '/')], { stdio: 'ignore', timeout: 60000 })
+    for (let i = 0; i < 60 && !existsSync(pdf); i++) await new Promise((r) => setTimeout(r, 500))
   } catch { /* queda el HTML para imprimir a mano */ }
 }
+if (!existsSync(pdf)) console.log('  (No se pudo generar el PDF: abrí memoria-descriptiva.html e imprimilo a PDF.)')
 
 rmSync(staging, { recursive: true, force: true })
+try { rmSync(join(salida, '.edge'), { recursive: true, force: true }) } catch { /* Edge puede tenerla abierta un momento */ }
 console.log(`Listo: ${salida}`)
 console.log(`  ${archivos.length} archivos · ${lineasCodigo} líneas`)
 console.log(`  SHA-256 paquete: ${huellaTotal}`)
