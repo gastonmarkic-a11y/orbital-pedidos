@@ -68,6 +68,25 @@ const PAQUETES = [
 ] as const
 type PaqueteSlug = (typeof PAQUETES)[number]['slug']
 
+// Herramientas para la óptica dentro de su catálogo (mismo token): se abren directo con ?ver=.
+const HERRAMIENTAS_OPTICA = [
+  {
+    slug: 'visionlab',
+    emoji: '👁️',
+    titulo: 'Vision Lab Pro',
+    nota: 'Su QR del pretest visual a nombre de la óptica y los pacientes que la eligieron, con su resultado, rostro y calce.',
+    linea: '👁️ Además tenés *Vision Lab Pro*: tu QR del chequeo visual para el mostrador y los pacientes que te eligen, con su resultado y los armazones que se midieron:',
+  },
+  {
+    slug: 'marca',
+    emoji: '◼️',
+    titulo: 'Marca',
+    nota: 'Manual de marca, logo, fotos de producto, en cara y estuche, videos y campaña para sus redes y su vidriera.',
+    linea: '◼️ Y todo el material de *marca* para tus redes y tu vidriera: logo, fotos de producto y en cara, videos y el manual de uso:',
+  },
+] as const
+type HerramientaSlug = (typeof HERRAMIENTAS_OPTICA)[number]['slug']
+
 /** Tema de piezas de marketing asociado a cada propuesta */
 export function temaDePropuesta(nombre: string): string {
   const n = nombre.toLowerCase()
@@ -159,6 +178,9 @@ export default function PreparacionEnvio({
   const [prepFecha, setPrepFecha] = useState('')
   const [prepHora, setPrepHora] = useState('')
   const [prepAbierto, setPrepAbierto] = useState(false)
+  // Vision Lab Pro / Marca elegidos para este envío (link del catálogo con token y ?ver=).
+  const [herramientas, setHerramientas] = useState<Partial<Record<HerramientaSlug, string>>>({})
+  const [herramientaBusy, setHerramientaBusy] = useState<HerramientaSlug | null>(null)
   // Catálogo B2B para PEDIR (con token): distinto de los catálogos visuales PDF.
   // El link lleva token del cliente → precios propios y sin clave. Registra actividad propia.
   const [tokenCat, setTokenCat] = useState(false)
@@ -322,7 +344,34 @@ export default function PreparacionEnvio({
 
   // Cierre fijo de TODOS los mensajes: invitar a bajar el catálogo como app.
   function conDescarga(msg: string) {
-    return `${msg}\n\n${TXT_APP}`
+    return `${conHerramientas(msg, herramientas)}\n\n${TXT_APP}`
+  }
+
+  const bloqueHerramienta = (slug: HerramientaSlug, link: string) =>
+    `${HERRAMIENTAS_OPTICA.find((h) => h.slug === slug)!.linea}\n${link}`
+  function conHerramientas(msg: string, elegidas: Partial<Record<HerramientaSlug, string>>) {
+    return HERRAMIENTAS_OPTICA.reduce((out, h) => (elegidas[h.slug] ? `${out}\n\n${bloqueHerramienta(h.slug, elegidas[h.slug]!)}` : out), msg)
+  }
+
+  // Vision Lab Pro / Marca: se suman o se sacan del mensaje tal como está (respeta lo que editó el
+  // vendedor), antes del cierre de "bajate la app".
+  async function toggleHerramienta(slug: HerramientaSlug) {
+    const actual = herramientas[slug]
+    if (actual) {
+      const { [slug]: _x, ...resto } = herramientas
+      setHerramientas(resto)
+      setPrepMensaje((m) => m.replace(`\n\n${bloqueHerramienta(slug, actual)}`, ''))
+      return
+    }
+    setHerramientaBusy(slug)
+    const cod = await asegurarCodigo()
+    setHerramientaBusy(null)
+    if (!cod) return
+    const link = `${URL_LANDINGS}/catalogo?k=${cod}&ver=${slug}`
+    setHerramientas({ ...herramientas, [slug]: link })
+    const bloque = `\n\n${bloqueHerramienta(slug, link)}`
+    const cierre = `\n\n${TXT_APP}`
+    setPrepMensaje((m) => (m.includes(cierre) ? m.replace(cierre, bloque + cierre) : m + bloque))
   }
 
   // Los paquetes van con el token del cliente, si no la visita queda anónima
@@ -801,6 +850,35 @@ export default function PreparacionEnvio({
                   </p>
                 </div>
               </button>
+            )}
+
+            {!esAgenda && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-muted">Para su óptica</p>
+                {HERRAMIENTAS_OPTICA.map((h) => {
+                  const puesto = !!herramientas[h.slug]
+                  const cargando = herramientaBusy === h.slug
+                  return (
+                    <button
+                      key={h.slug}
+                      type="button"
+                      onClick={() => void toggleHerramienta(h.slug)}
+                      disabled={cargando}
+                      className={`w-full text-left rounded-lg border p-2.5 flex items-start gap-2.5 transition-colors ${
+                        puesto ? 'border-brandDark bg-brandDark/5' : 'border-black/10 hover:border-black/25'
+                      }`}
+                    >
+                      <input type="checkbox" checked={puesto} readOnly className="mt-0.5 pointer-events-none" />
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-ink">
+                          {h.emoji} {h.titulo} <span className="font-normal text-brandDark">· con token del cliente</span>
+                        </p>
+                        <p className="text-[10px] text-faint leading-snug mt-0.5">{cargando ? 'Generando link…' : h.nota}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             )}
 
             {!esAgenda && (

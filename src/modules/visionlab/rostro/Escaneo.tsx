@@ -2,7 +2,7 @@
 // distancia, luz) y captura automática cuando todo está bien durante ~1,5 s (mediana de 36 cuadros).
 import { useRef, useState } from 'react'
 import { Check, Loader2, Sun } from 'lucide-react'
-import { Medidas, OVALO, P3, medianaMedidas, medir, postura } from './medidas'
+import { Medidas, P3, contorno, medianaMedidas, medir, postura } from './medidas'
 import { altoDe, anchoDe, luz, useCaraEnVivo } from './camara'
 
 export interface Captura {
@@ -84,12 +84,13 @@ export default function Escaneo({ onListo }: { onListo: (c: Captura) => void }) 
     ctx.fillStyle = `rgba(${col},0.55)`
     const rad = Math.max(1.5, W / 420)
     for (let i = 0; i < 468; i += 2) { const p = lm[i]; ctx.fillRect(p.x * W - rad * 0.7, p.y * H - rad * 0.7, rad * 1.4, rad * 1.4) }
+    const con = contorno(lm)
     ctx.beginPath()
-    OVALO.forEach((i, k) => { const p = lm[i]; if (k) ctx.lineTo(p.x * W, p.y * H); else ctx.moveTo(p.x * W, p.y * H) })
+    con.puntos.forEach((p, k) => { if (k) ctx.lineTo(p.x * W, p.y * H); else ctx.moveTo(p.x * W, p.y * H) })
     ctx.closePath()
     ctx.strokeStyle = `rgba(${col},0.9)`; ctx.lineWidth = 2 * rad; ctx.stroke()
     // barrido de arriba abajo dentro del contorno
-    const top = lm[10].y * H, bot = lm[152].y * H
+    const top = con.arriba.y * H, bot = con.abajo.y * H
     const y = top + ((t / 1600) % 1) * (bot - top)
     ctx.save(); ctx.clip()
     const g = ctx.createLinearGradient(0, y - 40 * rad, 0, y)
