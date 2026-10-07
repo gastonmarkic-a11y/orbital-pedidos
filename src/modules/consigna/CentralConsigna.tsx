@@ -23,6 +23,7 @@ import EnviosRepos from './EnviosRepos'
 import Instructivo from './Instructivo'
 import VentasConsigna from './VentasConsigna'
 import MarketingConsigna from './MarketingConsigna'
+import ListaPrecios from './ListaPrecios'
 
 const CLAVE_KEY = 'orbital_consigna_clave'
 const DEV_KEY = 'orbital_consigna_dev'
@@ -60,7 +61,7 @@ type Producto = {
   codigo: string; modelo: string; descripcion: string; precio: number; imagen: string | null
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
-type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing'
+type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing' | 'precios'
 
 const leer = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const guardar = (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { /* sin storage */ } }
@@ -206,6 +207,7 @@ export default function CentralConsigna() {
         ['repo', 'Reposición por venta', ''],
         ['pedidos', 'Pedidos a autorizar', porAutorizar ? `${porAutorizar}` : ''],
         ['pedir', 'Stock virtual Orbital', ''],
+        ['precios', 'Lista de precios', ''],
         ['marketing', '✦ Marketing y redes', ''],
         ['postventa', 'Postventa', ''],
         ['consultas', 'Consultas IRIS', ''],
@@ -309,6 +311,7 @@ export default function CentralConsigna() {
             onVista={setVista} />
         )}
         {vistaOk === 'ventas' && <VentasConsigna key={suc?.id ?? 'todas'} clave={clave} data={vis} fija={suc?.id} />}
+        {vistaOk === 'precios' && esCentral && !suc && <ListaPrecios clave={clave} cliente={data.madre?.nombre ?? 'Cliente'} />}
         {vistaOk === 'marketing' && <MarketingConsigna data={vis} esCentral={esCentral && !suc} onVista={setVista} />}
         {vistaOk === 'consultas' && <Consultas clave={clave} data={vis} quien={quien} />}
         {(vistaOk === 'camino' || vistaOk === 'repo') && <EnviosRepos clave={clave} data={vis} modo={vistaOk === 'camino' ? 'camino' : 'repo'} />}
