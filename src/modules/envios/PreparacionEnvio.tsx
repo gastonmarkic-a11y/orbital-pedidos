@@ -7,7 +7,7 @@ import { siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 import { nombreDePila } from '../../lib/operadores'
 import { TXT_APP } from '../../lib/mensajes'
-import { compartirMediaKit, kitsActivos, linkCatalogoKit, textoKit, urlDe } from '../actividad/KitEnviar'
+import { compartirKit, kitsActivos, linkCatalogoKit, precargarMediaKit, textoKit, urlDe } from '../actividad/KitEnviar'
 
 // Modal de preparación de contacto. Vive acá (y no dentro de Envios) para poder
 // abrirlo también desde Cartera sin salir de la página: enviar es la acción más
@@ -108,6 +108,13 @@ export function telWhatsApp(raw: string | null): string | null {
 // Al abrir WhatsApp/mail el celular sale de la app y al volver el navegador suele recargar
 // la página, perdiendo el estado de React: el contacto quedaba sin confirmar y había que
 // empezar de nuevo. Guardamos la acción en curso para poder retomarla exactamente donde quedó.
+// "1 video + 3 fotos"
+function detalleMedia(m: PiezaMarketing[]) {
+  const vids = m.filter((x) => x.categoria === 'video').length
+  const fotos = m.length - vids
+  return [vids ? `${vids} video${vids > 1 ? 's' : ''}` : '', fotos ? `${fotos} foto${fotos > 1 ? 's' : ''}` : ''].filter(Boolean).join(' + ')
+}
+
 const CLAVE_PENDIENTE = 'orbital_envio_pendiente'
 
 export interface EnvioPendiente {
@@ -443,8 +450,10 @@ export default function PreparacionEnvio({
     setPrepMensaje(armarMensaje(cliente, prop, []))
   }
 
-  function abrirCanal() {
-    if (prepCanal === 'llamada') {
+  async function abrirCanal() {
+    if (prepCanal === 'wa_me' && mediaKits.length) {
+      if (!(await compartirConArchivos())) return
+    } else if (prepCanal === 'llamada') {
       const nac = aNacional(cliente.whatsapp || cliente.telefono || '')
       if (nac.length < 10) {
         toast('Este cliente no tiene teléfono cargado', 'error')
@@ -749,6 +758,7 @@ export default function PreparacionEnvio({
     next.add(clave)
     setKitsSel(next)
     setMediaSel((m) => new Set([...m, ...ids]))
+    precargarMediaKit(kits.find((k) => k.clave === clave)?.piezas ?? [])
     recomponer({ kits: next, codigo: cod })
   }
 
@@ -762,10 +772,27 @@ export default function PreparacionEnvio({
     })
   }
 
-  async function mandarMediaKits() {
+  // Fotos y videos de los kits elegidos que van como archivo.
+  const mediaKits = kits.filter((k) => kitsSel.has(k.clave)).flatMap((k) => k.piezas).filter((x) => mediaSel.has(x.id))
+
+  // WhatsApp por link (wa.me) solo lleva texto: con archivos de un kit se usa la hoja de compartir del
+  // celu, que manda video + fotos + texto juntos. Devuelve false si no hay que seguir (canceló o falló).
+  async function compartirConArchivos(): Promise<boolean> {
     setKitAviso('Preparando archivos…')
-    const pzs = kits.filter((k) => kitsSel.has(k.clave)).flatMap((k) => k.piezas).filter((x) => mediaSel.has(x.id))
-    setKitAviso(await compartirMediaKit(pzs, prepMensaje))
+    const r = await compartirKit(mediaKits, prepMensaje)
+    if (r === 'compartido') {
+      setKitAviso('')
+      return true
+    }
+    if (r === 'descargado') {
+      // Compu: no comparte archivos. Se bajaron y el texto va por WhatsApp Web/escritorio.
+      const tel = telWhatsApp(cliente.whatsapp || cliente.telefono)
+      if (tel) abrirWhatsApp(tel, prepMensaje)
+      setKitAviso('📥 Se descargaron las fotos y el video: arrastralos al chat que se abrió con el texto.')
+      return true
+    }
+    setKitAviso(r === 'error' ? 'No se pudieron preparar los archivos. Esperá unos segundos y probá de nuevo.' : '')
+    return false
   }
 
   return (
@@ -981,30 +1008,14 @@ export default function PreparacionEnvio({
                     </div>
                   )
                 })}
-                {kitsSel.size > 0 && (() => {
-                  const n = kits.filter((k) => kitsSel.has(k.clave)).flatMap((k) => k.piezas).filter((x) => mediaSel.has(x.id))
-                  const vids = n.filter((x) => x.categoria === 'video').length
-                  const fotos = n.length - vids
-                  const detalle = [vids ? `${vids} video${vids > 1 ? 's' : ''}` : '', fotos ? `${fotos} foto${fotos > 1 ? 's' : ''}` : '']
-                    .filter(Boolean)
-                    .join(' + ')
-                  return (
-                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => void mandarMediaKits()}
-                        disabled={!n.length}
-                        className="w-full rounded-md border border-emerald-600 text-emerald-700 bg-white py-1.5 text-xs font-semibold disabled:opacity-40"
-                      >
-                        🎬 {n.length ? `Mandar ${detalle} como archivo` : 'Marcá al menos una foto o video'}
-                      </button>
-                      <p className="text-[10px] text-emerald-800 leading-snug">
-                        {kitAviso ||
-                          'Van como archivo, no como link. En el celu abre compartir con los archivos y el texto: elegí WhatsApp y la óptica. En la compu los descarga para arrastrarlos al chat.'}
-                      </p>
-                    </div>
-                  )
-                })()}
+                {kitsSel.size > 0 && (
+                  <p className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-[10px] text-emerald-800 leading-snug">
+                    {kitAviso ||
+                      (mediaKits.length
+                        ? `🎬 ${detalleMedia(mediaKits)} van como archivo junto con el texto. En el celu se abre compartir: elegí WhatsApp y la óptica. En la compu se descargan para arrastrarlos al chat.`
+                        : 'Sin fotos ni video marcados: va solo el texto con el link.')}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1121,11 +1132,13 @@ export default function PreparacionEnvio({
                 {guardando ? 'Agendando...' : '📅 Agendar reunión en la agenda'}
               </button>
             ) : !prepAbierto ? (
-              <button onClick={abrirCanal} className="w-full rounded-lg bg-brand text-white py-2.5 text-sm font-semibold">
+              <button onClick={() => void abrirCanal()} className="w-full rounded-lg bg-brand text-white py-2.5 text-sm font-semibold">
                 {prepCanal === 'llamada'
                   ? '📞 Llamar al cliente'
                   : prepCanal === 'wa_me'
-                    ? 'Abrir WhatsApp con el mensaje'
+                    ? mediaKits.length
+                      ? `📲 Mandar por WhatsApp con ${detalleMedia(mediaKits)}`
+                      : 'Abrir WhatsApp con el mensaje'
                     : 'Abrir mail con el mensaje'}
               </button>
             ) : (

@@ -54,25 +54,46 @@ export function textoKit(kit: PiezaMarketing[], nombre: string, link: string | n
 // En la compu no se pueden compartir archivos: se descargan para arrastrarlos al chat.
 // Devuelve el aviso a mostrar ('' si salió bien o se canceló).
 export async function compartirMediaKit(kit: PiezaMarketing[], texto: string): Promise<string> {
-  const media = kit.filter((x) => (x.categoria === 'video' || x.categoria === 'imagen') && urlDe(x))
+  const r = await compartirKit(kit, texto)
+  return r === 'descargado' ? 'Descargados: arrastralos al chat de WhatsApp.' : r === 'error' ? 'No se pudieron preparar los archivos.' : ''
+}
+
+// Archivos ya bajados, por pieza. Se precargan al elegir el kit: si se bajan recién al tocar
+// "compartir", el video tarda y el navegador ya no deja abrir la hoja de compartir (pide un toque reciente).
+const cacheArchivos = new Map<number, Promise<File>>()
+function archivoDe(m: PiezaMarketing): Promise<File> {
+  let p = cacheArchivos.get(m.id)
+  if (!p) {
+    p = fetch(urlDe(m)!)
+      .then((r) => r.blob())
+      .then((b) => new File([b], `${(prefijoKit(m.titulo) || 'orbital').toLowerCase()}-${m.id}.${m.categoria === 'video' ? 'mp4' : 'jpg'}`, { type: b.type }))
+    p.catch(() => cacheArchivos.delete(m.id))
+    cacheArchivos.set(m.id, p)
+  }
+  return p
+}
+const esMediaKit = (x: PiezaMarketing) => (x.categoria === 'video' || x.categoria === 'imagen') && !!urlDe(x)
+export function precargarMediaKit(kit: PiezaMarketing[]) {
+  kit.filter(esMediaKit).forEach((m) => void archivoDe(m).catch(() => {}))
+}
+
+// Comparte fotos/video + texto juntos. 'descargado' = el equipo no comparte archivos (compu):
+// se bajaron para arrastrarlos al chat y el texto hay que mandarlo aparte.
+export async function compartirKit(kit: PiezaMarketing[], texto: string): Promise<'compartido' | 'cancelado' | 'descargado' | 'error'> {
   try {
-    const files = await Promise.all(media.map(async (m, i) => {
-      const b = await (await fetch(urlDe(m)!)).blob()
-      const ext = m.categoria === 'video' ? 'mp4' : 'jpg'
-      return new File([b], `${prefijoKit(m.titulo).toLowerCase()}-${i + 1}.${ext}`, { type: b.type })
-    }))
-    if (navigator.canShare?.({ files })) {
+    const files = await Promise.all(kit.filter(esMediaKit).map(archivoDe))
+    if (navigator.canShare?.({ files, text: texto })) {
       await navigator.share({ files, text: texto })
-      return ''
+      return 'compartido'
     }
     for (const f of files) {
       const a = document.createElement('a')
       a.href = URL.createObjectURL(f); a.download = f.name; a.click()
       setTimeout(() => URL.revokeObjectURL(a.href), 4000)
     }
-    return 'Descargados: arrastralos al chat de WhatsApp.'
+    return 'descargado'
   } catch (e) {
-    return (e as Error)?.name === 'AbortError' ? '' : 'No se pudieron preparar los archivos.'
+    return (e as Error)?.name === 'AbortError' ? 'cancelado' : 'error'
   }
 }
 
@@ -86,6 +107,7 @@ export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
   const [estado, setEstado] = useState('')
   const [linkCat, setLinkCat] = useState<string | null>(null)
   const [linkBusy, setLinkBusy] = useState(false)
+  useEffect(() => precargarMediaKit(kit), [kit])
   // Fotos y videos que se mandan como archivo (arrancan todos marcados).
   const [sinMarcar, setSinMarcar] = useState<Set<number>>(new Set())
   const elegidas = media.filter((m) => !sinMarcar.has(m.id))
