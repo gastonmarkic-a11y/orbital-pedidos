@@ -45,6 +45,8 @@ if (paso === 'preparar') {
 } else if (paso === 'estado') out.estado = await llamar('tarea=estado')
 else if (paso === 'prueba') out.prueba = await llamar(`tarea=prueba&a=${arg ?? ''}`)
 else if (paso === 'telegram') out.telegram = await llamar('tarea=telegram')
+else if (paso === 'grupo') out.grupo = await llamar(`tarea=grupo&destino=${arg ?? ''}`)
+else if (paso === 'distribuidores') out.distribuidores = await llamar(`tarea=distribuidores${arg === 'prueba' ? '&prueba=1' : ''}`)
 else if (paso === 'enviar') out.enviar = await llamar(`tarea=enviar&max=${Number(arg) || 50}`)
 else { console.error('paso: preparar | estado | prueba <numero> | telegram | enviar <max>'); process.exit(1) }
 

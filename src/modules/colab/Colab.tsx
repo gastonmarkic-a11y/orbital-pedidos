@@ -19,6 +19,9 @@ import ColabPropuestas from './ColabPropuestas'
 import ColabInfluencers from './ColabInfluencers'
 import InstalarApp from '../../components/InstalarApp'
 import ColabInspiracion from './ColabInspiracion'
+import AscariPopColab from './AscariPopColab'
+import ColabVisionLab from './ColabVisionLab'
+import MarcaKit from '../catalogo/MarcaKit'
 import './colab-oscuro.css'
 
 const ROL_TXT = { orbital: 'Orbital', admin: 'Administrador', influencer: 'Promotor' } as const
@@ -93,12 +96,12 @@ export default function Colab() {
   return <Panel clave={clave} ent={ent} salir={() => { localStorage.removeItem(CLAVE_KEY); setClave(null); setEnt(null) }} />
 }
 
-type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' | 'inspiracion' | 'links' | 'fichas' | 'dashboard' | 'liquidacion'
-// Inspiración y Links son internos: el promotor ve solo sus anteojos y su dashboard.
+type Tab = 'admins' | 'promotores' | 'propuestas' | 'influencers' | 'anteojos' | 'inspiracion' | 'links' | 'fichas' | 'visionlab' | 'marca' | 'dashboard' | 'liquidacion'
+// Inspiración y Links son internos: el promotor ve sus anteojos, Vision Lab, Marca y su dashboard.
 const TABS: Record<Entrada['rol'], [Tab, string][]> = {
-  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['influencers', 'Influencers'], ['inspiracion', 'Inspiración'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  admin: [['promotores', 'Promotores'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
-  influencer: [['anteojos', 'Anteojos'], ['fichas', 'Cámara'], ['dashboard', 'Dashboard']],
+  orbital: [['admins', 'Administradores'], ['propuestas', 'Propuestas'], ['influencers', 'Influencers'], ['inspiracion', 'Inspiración'], ['visionlab', 'Vision Lab'], ['marca', 'Marca'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  admin: [['promotores', 'Promotores'], ['marca', 'Marca'], ['links', 'Links'], ['dashboard', 'Dashboard'], ['liquidacion', 'Liquidación']],
+  influencer: [['anteojos', 'Anteojos'], ['fichas', 'Cámara'], ['visionlab', 'Vision Lab'], ['marca', 'Marca'], ['dashboard', 'Dashboard']],
 }
 
 function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () => void }) {
@@ -157,6 +160,7 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-5">
+        {ent.rol === 'influencer' && <AscariPopColab onVerAnteojos={() => setTab('anteojos')} />}
         {ent.rol === 'orbital' && (tab === 'dashboard' || tab === 'liquidacion' || tab === 'links') && admins && admins.length > 0 && (
           <select value={adminSel ?? ''} onChange={(e) => setAdminSel(e.target.value ? Number(e.target.value) : null)}
             className="mb-4 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px]">
@@ -185,6 +189,8 @@ function Panel({ clave, ent, salir }: { clave: string; ent: Entrada; salir: () =
           </>
         )}
         {tab === 'fichas' && <ColabFichas clave={clave} onLink={() => setVersion((v) => v + 1)} />}
+        {tab === 'visionlab' && <ColabVisionLab clave={clave} onLink={() => setVersion((v) => v + 1)} />}
+        {tab === 'marca' && <div className="orb-tienda"><MarcaKit para="influencer" /></div>}
         {tab === 'links' && <LinksTodos key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} />}
         {tab === 'dashboard' && (
           <ColabDashboard key={`${adminSel}`} clave={clave} rol={ent.rol} adminId={adminSel} coleccion={ent.rol === 'influencer' && !!ent.coleccion}

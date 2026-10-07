@@ -1,4 +1,7 @@
 // bot-central — IRIS, asistente de atención de Orbital (multicanal).
+// v81 (2026-09-30): óptica sin cuenta a la que ya se le pasó un distribuidor ("Tu zona la maneja *X*" o lead asignado
+//   a un distribuidor en la cola): todo lo que sigue se contesta con el contacto del distribuidor, sin derivar a Gastón
+//   ni decir "tu vendedor de zona es Gastón" (caso Optione, Laguna Larga).
 // v74 (2026-09-25): chat de la tienda → consumidor final salvo que diga óptica/comercio (el saludo igual pregunta).
 // v73 (2026-09-25): tamaño/medidas de un modelo → SIEMPRE desde producto_medidas de la Suite (ancho, alto, largo de
 //      patilla, formato, material); si el modelo no está cargado no se inventa: link a la ficha. Consumidor final que
@@ -390,6 +393,31 @@ async function avisarDistribuidor(f: FlujoDif, tel: string | null, dist: Dist): 
   const t = telNorm(dist.telefono);
   const quien = dist.contacto ? `el número de contacto de *${dist.contacto}*` : "su número de contacto";
   return { texto: `¡Gracias${f.contacto_nombre ? ", " + f.contacto_nombre : ""}! 🙌 Tu zona la maneja *${dist.marca || dist.nombre}*. Te paso ${quien} para que te pongas en contacto con ellos: ${dist.telefono_legible || "+" + t} (wa.me/${t})` };
+}
+
+// v81: ¿a esta conversación ya le pasamos un distribuidor? (mensaje "Tu zona la maneja *X*" o lead de la
+// cola asignado a un distribuidor). Si sí, la óptica es del distribuidor y no se la derivamos a nadie de Orbital.
+async function distribuidorDeConversacion(conversacionId: string): Promise<Dist | null> {
+  const { data: m } = await supabase.from("at_mensajes").select("contenido").eq("conversacion_id", conversacionId)
+    .in("emisor", ["bot", "agente"]).ilike("contenido", "%zona la maneja%").order("created_at", { ascending: false }).limit(1);
+  let nombre = String((m ?? [])[0]?.contenido ?? "").match(/zona la maneja \*([^*]+)\*/)?.[1] ?? null;
+  if (!nombre) {
+    const { data: p } = await supabase.from("prospeccion_social").select("asignado_a").eq("conversacion_id", conversacionId).limit(1);
+    nombre = (p ?? [])[0]?.asignado_a ?? null;
+  }
+  if (!nombre) return null;
+  const { data: ds } = await supabase.from("distribuidores").select("nombre, telefono, marca, contacto, telefono_legible").eq("activo", true);
+  const n = nombre.trim().toLowerCase();
+  return ((ds ?? []) as Dist[]).find((d) => [d.nombre, d.marca].some((x) => (x ?? "").trim().toLowerCase() === n)) ?? null;
+}
+function textoDistribuidorSigue(d: Dist, texto: string): string {
+  const t = telNorm(d.telefono);
+  const tel = `${d.telefono_legible || "+" + t} (wa.me/${t})`;
+  const quien = d.contacto ? `a *${d.contacto}*` : "directamente";
+  if (texto.trim().split(/\s+/).length <= 3 && /^(ok|oka|okey|dale|listo|gracias|muchas gracias|genial|perfecto|buen[ií]simo|👍|🙌|🙏)[\s!.]*$/i.test(texto.trim())) {
+    return `¡De nada! 🙌 Cualquier cosa de Orbital en tu zona, escribile ${quien} de *${d.marca || d.nombre}*: ${tel}`;
+  }
+  return `Eso te lo resuelve directamente *${d.marca || d.nombre}*, nuestro distribuidor oficial en tu zona: catálogo, precios, condiciones y pedidos. Escribile ${quien} al ${tel} 🙌`;
 }
 
 // Ficha encontrada por nombre: si es de otra provincia que la que dijo el lead, no es la misma óptica;
@@ -1736,6 +1764,12 @@ async function handler(req: Request): Promise<Response> {
   if (esEscalamiento(texto) && !prueba) return responder(conversacionId, canal, modoDerivada ? acuseDerivada : await derivar("reclamo_excepcion", conversacionId, texto, contacto?.tipo_cliente ?? undefined, "Postventa", true), ultimasBot);
   if (RE_PAGOS.test(texto) && !prueba) return responder(conversacionId, canal, modoDerivada ? acuseDerivada : await derivar("pagos_cobranza", conversacionId, texto, contacto?.tipo_cliente ?? undefined, "Administracion"), ultimasBot);
   if (RE_ENTREGA.test(texto) && !prueba) return responder(conversacionId, canal, modoDerivada ? acuseDerivada : await derivar("entrega", conversacionId, texto, contacto?.tipo_cliente ?? undefined, "Administracion"), ultimasBot);
+  // v81: óptica sin cuenta a la que ya le dijimos que su zona la maneja un distribuidor → todo lo comercial
+  // (catálogo, precios, mínimo, pedido, "¿quién me atiende?") va al distribuidor. Nunca "te escribe Gastón".
+  if (!cod && contacto?.tipo_cliente !== "minorista" && !chatTienda) {
+    const dc = await distribuidorDeConversacion(conversacionId);
+    if (dc) return responder(conversacionId, canal, { texto: textoDistribuidorSigue(dc, texto) }, ultimasBot);
+  }
   if (modoDerivada) return responder(conversacionId, canal, acuseDerivada, ultimasBot);
 
   let tipoCliente = contacto?.tipo_cliente ?? (cod ? "mayorista" : "desconocido");

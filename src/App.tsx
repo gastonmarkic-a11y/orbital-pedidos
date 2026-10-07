@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNaviga
 import {
   CalendarDays, Users, Send, ShoppingCart, TrendingUp, Megaphone, Package, UserPlus,
   PieChart, Wallet, BookUser, Eye, Palette, Truck, ReceiptText, Menu as MenuIcon, Factory, Store,
-  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye, Search, Briefcase,
+  BarChart3, Banknote, Calculator, Tag, Landmark, ScanEye, Search, Briefcase, Car,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
@@ -55,6 +55,7 @@ import ColabInfluencers from './modules/colab/ColabInfluencers'
 import CreadoresSuite from './modules/colab/CreadoresSuite'
 import OpticasInstagram from './modules/colab/OpticasInstagram'
 import Liquidacion from './modules/liquidacion/Liquidacion'
+import GastosAuto from './modules/gastos/GastosAuto'
 import PanelCosteo from './modules/produccion/PanelCosteo'
 import GeneradorProduccion from './modules/produccion/GeneradorProduccion'
 import PedidosProduccion from './modules/produccion/PedidosProduccion'
@@ -132,6 +133,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/red-opticas': Store,
   '/marca-blanca-pedidos': Tag,
   '/pedidos/muestrario': Briefcase,
+  '/gastos': Car,
 }
 
 function iconoDe(to: string, label: string) {
@@ -229,6 +231,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
         { to: '/devoluciones', label: 'Devoluciones (NC)' },
         { to: '/conversaciones', label: 'Conversaciones' },
         { to: '/liquidacion', label: 'Liquidación' },
+        { to: '/gastos', label: 'Gastos de auto' },
         { to: '/consignas', label: 'Consignas' },
         { to: '/marca-blanca-pedidos', label: 'Marca blanca' },
         { to: '/red-opticas', label: 'Red de ópticas' },
@@ -269,6 +272,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'vendedor') secundarios.push({ to: '/pedidos/cobranzas', label: 'Cobranzas' }, { to: '/cobros', label: 'Cobros' }, { to: '/ventas-historico', label: 'Ventas' })
   // Cada vendedor abre su catálogo personal (su token): lo que arme ahí queda a su nombre.
   if (rol === 'vendedor') principales.push({ to: '/mi-catalogo', label: 'Catálogo' })
+  // Los de campo cargan nafta, peajes y estacionamiento contra sus check-ins.
+  if (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigo ?? '')) secundarios.push({ to: '/gastos', label: 'Gastos de auto' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
@@ -296,6 +301,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/mercadolibre/precios', label: 'Precios Mercado Libre', grupo: P },
       { to: '/finanzas', label: 'Finanzas (tesorería)', grupo: F },
       { to: '/cobros', label: 'Cobros (alias / QR propio)', grupo: F },
+      { to: '/gastos', label: 'Gastos de auto (campo)', grupo: F },
       { to: '/actividad-admin', label: 'Equipo', grupo: E },
       { to: '/accesos', label: 'Accesos y usuarios', grupo: E }
     )
@@ -764,6 +770,7 @@ function Layout() {
           {rol !== 'revendedor' && <Route path="/seguimiento" element={<Seguimiento />} />}
           {rol !== 'revendedor' && <Route path="/panel-resultados" element={<PanelResultados />} />}
           {rol === 'admin' && <Route path="/accesos" element={<Usuarios />} />}
+          {(rol === 'admin' || rol === 'administracion' || (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigoEfectivo))) && <Route path="/gastos" element={<GastosAuto />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/liquidacion" element={<Liquidacion />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/consignas" element={<Consignas />} />}
           {(rol === 'admin' || rol === 'administracion') && <Route path="/marca-blanca-pedidos" element={<MarcaBlancaPedidos />} />}

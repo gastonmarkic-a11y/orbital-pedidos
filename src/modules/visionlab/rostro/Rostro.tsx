@@ -10,7 +10,7 @@ import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
 import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
-import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, ordenarSeleccion, resultado, z } from './medidas'
+import { Estilo, FORMAS, Forma, L, OVALO, Resultado, marcosParaVos, ordenarSeleccion, resultado, z, COLECCION_TALLE, TALLES_PARA } from './medidas'
 import { VISITANTE_KEY } from '../../colab/colabUtil'
 import { QRProfesional, urlPerfil } from '../extras'
 import { Perfil, compactarCalces, compactarRostro, guardarRostro, leerPerfil, rostroDe } from '../perfil'
@@ -159,13 +159,13 @@ async function cargarSeleccion(codigo: string): Promise<Seleccion | null> {
   ]
   const unicos = items.filter((x, i) => x.href && items.findIndex((y) => y.modelo.toUpperCase() === x.modelo.toUpperCase()) === i)
   const { data: med } = await supabase.rpc('rostro_medidas', { p_modelos: unicos.map((x) => x.modelo) })
-  const porModelo = new Map(((med ?? []) as { modelo: string; formato: string | null; ancho_mm: number | null; alto_mm: number | null }[]).map((m) => [m.modelo, m]))
+  const porModelo = new Map(((med ?? []) as { modelo: string; formato: string | null; talle: Marco['talle']; ancho_mm: number | null; alto_mm: number | null }[]).map((m) => [m.modelo, m]))
   return {
     nombre: d.influencer,
     marcos: unicos.map((x) => {
       const m = porModelo.get(x.modelo.toUpperCase().trim())
       return { modelo: x.modelo, foto: x.foto ?? '', precio_desde: x.precio, href: x.href,
-        formato: m?.formato ?? null, ancho_mm: m?.ancho_mm ?? null, alto_mm: m?.alto_mm ?? null, frente: null, para: null }
+        formato: m?.formato ?? null, talle: m?.talle ?? null, ancho_mm: m?.ancho_mm ?? null, alto_mm: m?.alto_mm ?? null, frente: null, para: null }
     }),
   }
 }
@@ -335,6 +335,16 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
                     </>
                   )
                 })()}
+              </div>
+              <div className="rs-talles">
+                <small className="muted">En la tienda, para tu talle {r.talle}:</small>
+                <div>
+                  {TALLES_PARA[r.talle].map((t, i) => (
+                    <a key={t} className={'btn' + (i ? ' ghost' : '')} href={COLECCION_TALLE[t].url} target="_blank" rel="noopener">
+                      {COLECCION_TALLE[t].nombre}{i ? (t === 'XL' ? ' · más presencia' : ' · con presencia') : ''}<ArrowRight size={14} />
+                    </a>
+                  ))}
+                </div>
               </div>
               <div className="rs-mini">
                 <div><small>Ancho de rostro</small><b className="num">{r.mm.pomulos} mm</b></div>

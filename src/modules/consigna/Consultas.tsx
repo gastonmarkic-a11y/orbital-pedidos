@@ -43,7 +43,8 @@ export default function Consultas({ clave, data, quien }: { clave: string; data:
     setItems(data as Consulta[])
   }
 
-  const nuevas = items?.filter((c) => c.estado === 'nueva').length ?? 0
+  const propias = items?.filter((c) => data.sucursales.some((s) => s.id === c.sucursal_id)) ?? null
+  const nuevas = propias?.filter((c) => c.estado === 'nueva').length ?? 0
 
   return (
     <section className="bg-white border border-black/10 rounded-lg">
@@ -54,13 +55,13 @@ export default function Consultas({ clave, data, quien }: { clave: string; data:
       <p className="text-xs text-muted px-4 pt-3">
         Clientes que preguntaron por un modelo y IRIS mandó a la sucursal. Contactalos y marcá cómo terminó.
       </p>
-      {items == null ? (
+      {propias == null ? (
         <p className="text-sm text-muted px-4 py-6">Cargando…</p>
-      ) : items.length === 0 ? (
+      ) : propias.length === 0 ? (
         <p className="text-sm text-muted px-4 py-6">Todavía no hay consultas derivadas.</p>
       ) : (
         <ul className="divide-y divide-black/5 mt-2">
-          {items.map((c) => {
+          {propias.map((c) => {
             const tel = (c.cliente_tel ?? '').replace(/\D/g, '')
             return (
               <li key={c.id} className="px-4 py-3 flex flex-wrap items-start gap-x-4 gap-y-2 text-sm">

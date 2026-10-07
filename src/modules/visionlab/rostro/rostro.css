@@ -235,3 +235,8 @@
 .ovl .lab-camino b{display:block;font-size:15px}
 .ovl .lab-camino small{color:var(--muted);font-size:13px;line-height:1.4;display:block}
 .ovl .lab-camino .btn{grid-column:2;justify-self:start}
+
+/* Talle de la tienda (colecciones S · M · L · XL) debajo de la regla de talles */
+.rs .rs-talles { margin: 12px 0 4px; display: grid; gap: 6px; }
+.rs .rs-talles > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.rs .rs-talles .btn { padding: 8px 12px; font-size: 13px; gap: 6px; }

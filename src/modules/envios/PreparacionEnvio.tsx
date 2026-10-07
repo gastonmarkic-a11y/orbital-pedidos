@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
@@ -7,6 +7,7 @@ import { siguienteDiaHabil, ymd } from '../../lib/dates'
 import { aNacional, abrirWhatsApp } from '../../lib/telefono'
 import { nombreDePila } from '../../lib/operadores'
 import { TXT_APP } from '../../lib/mensajes'
+import { compartirMediaKit, kitsActivos, linkCatalogoKit, textoKit, urlDe } from '../actividad/KitEnviar'
 
 // Modal de preparación de contacto. Vive acá (y no dentro de Envios) para poder
 // abrirlo también desde Cartera sin salir de la página: enviar es la acción más
@@ -168,6 +169,14 @@ export default function PreparacionEnvio({
   // Paquetes comerciales elegidos para este envío.
   const [paquetes, setPaquetes] = useState<Set<PaqueteSlug>>(new Set())
   const [paqueteBusy, setPaqueteBusy] = useState<PaqueteSlug | null>(null)
+  // Kits de marketing (piezas "ASCARI · …" en Marketing) elegidos para este envío.
+  const kits = useMemo(() => kitsActivos(piezas), [piezas])
+  const [kitsSel, setKitsSel] = useState<Set<string>>(new Set())
+  const [kitBusy, setKitBusy] = useState<string | null>(null)
+  const [kitAviso, setKitAviso] = useState('')
+  // Fotos y videos del kit que se mandan como archivo (no como link). Al tildar el kit van todos.
+  const [mediaSel, setMediaSel] = useState<Set<number>>(new Set())
+  const esMedia = (x: PiezaMarketing) => (x.categoria === 'video' || x.categoria === 'imagen') && !!urlDe(x)
   // Cuántas veces entró el cliente al catálogo con token (y desde cuántos dispositivos).
   const [visitas, setVisitas] = useState<{ total: number; dispositivos: number; ultima: string | null } | null>(null)
   // Candado por dispositivo: cuántos equipos pidieron acceso (para autorizar).
@@ -328,10 +337,23 @@ export default function PreparacionEnvio({
     return out
   }
 
+  // Kits de marketing elegidos (ASCARI, …): su copy reemplaza al de la propuesta y cada uno
+  // lleva el link al catálogo del cliente abierto en ese modelo.
+  function bloqueKits(sel: Set<string>, codigo: string | null) {
+    const nombre = (cliente.nomcomerc?.trim() || cliente.razon || '').replace(/^\d+\s*-\s*/, '')
+    return kits
+      .filter((k) => sel.has(k.clave))
+      .map((k) => textoKit(k.piezas, nombre, codigo ? linkCatalogoKit(k.nombre, codigo) : null))
+      .join('\n\n')
+  }
+
   const armarMensaje = (c: Cliente, prop: Propuesta, sel: PiezaMarketing[]) =>
     conDescarga(
       conPaquetes(
-        conToken(armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''), tokenCat ? tokenLink : null),
+        conToken(
+          kitsSel.size ? bloqueKits(kitsSel, tokenCodigo) : armarMensajeCon(c, prop, sel, piezas, miNombre || vendedor?.nombre || ''),
+          tokenCat ? tokenLink : null,
+        ),
         paquetes,
         tokenCodigo,
       ),
@@ -431,7 +453,12 @@ export default function PreparacionEnvio({
       canal: prepCanal,
       telefono_remitente: miTelefono,
       mensaje: prepMensaje,
-      piezas: [...prepPiezas],
+      piezas: [
+        ...prepPiezas,
+        ...kits
+          .filter((k) => kitsSel.has(k.clave))
+          .flatMap((k) => k.piezas.filter((x) => !esMedia(x) || mediaSel.has(x.id)).map((x) => x.id)),
+      ],
       estado: 'enviado',
       fecha_envio: new Date().toISOString(),
     })
@@ -443,8 +470,11 @@ export default function PreparacionEnvio({
     const canalTxt = CANAL_TXT[prepCanal] ?? prepCanal
     const sig = SIGUIENTE_PASO[prepCanal] ?? { texto: 'Seguimiento', dias: 2 }
     const fechaSig = proximoHabil(sig.dias)
-    // Qué paquetes comerciales fueron en este envío, para que quede en la actividad.
-    const packsTxt = PAQUETES.filter((p) => paquetes.has(p.slug)).map((p) => p.titulo).join(' + ')
+    // Qué paquetes comerciales y kits de marketing fueron en este envío, para que quede en la actividad.
+    const packsTxt = [
+      ...PAQUETES.filter((p) => paquetes.has(p.slug)).map((p) => p.titulo),
+      ...kits.filter((k) => kitsSel.has(k.clave)).map((k) => `Kit ${k.nombre}`),
+    ].join(' + ')
     // Tipo de actividad propio para el catálogo B2B con token, separado del envío de propuesta.
     const desarrollo =
       prepCanal === 'llamada'
@@ -599,10 +629,13 @@ export default function PreparacionEnvio({
   // Rearma el mensaje entero con lo que esté elegido en este momento. Los estados
   // de React todavía no se actualizaron cuando se llama desde un toggle, así que
   // las selecciones se pasan por parámetro.
-  function recomponer(opts: { conCat?: boolean; linkCat?: string | null; packs?: Set<PaqueteSlug>; codigo?: string | null }) {
+  function recomponer(opts: { conCat?: boolean; linkCat?: string | null; packs?: Set<PaqueteSlug>; kits?: Set<string>; codigo?: string | null }) {
     if (!propSel) return
     const seleccionadas = piezas.filter((x) => prepPiezas.has(x.id))
-    const base = armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || '')
+    const ks = opts.kits ?? kitsSel
+    const base = ks.size
+      ? bloqueKits(ks, opts.codigo ?? tokenCodigo)
+      : armarMensajeCon(cliente, propSel, seleccionadas, piezas, miNombre || vendedor?.nombre || '')
     const cat = opts.conCat ?? tokenCat
     const link = opts.linkCat !== undefined ? opts.linkCat : tokenLink
     setPrepMensaje(conDescarga(conPaquetes(conToken(base, cat ? link : null), opts.packs ?? paquetes, opts.codigo ?? tokenCodigo)))
@@ -646,6 +679,44 @@ export default function PreparacionEnvio({
     next.add(slug)
     setPaquetes(next)
     recomponer({ packs: next, codigo: cod })
+  }
+
+  // Kit de marketing: necesita el token sí o sí, porque siempre va linkeado al catálogo del cliente.
+  async function toggleKit(clave: string) {
+    const next = new Set(kitsSel)
+    const ids = (kits.find((k) => k.clave === clave)?.piezas ?? []).filter(esMedia).map((x) => x.id)
+    setKitAviso('')
+    if (next.has(clave)) {
+      next.delete(clave)
+      setKitsSel(next)
+      setMediaSel((m) => new Set([...m].filter((id) => !ids.includes(id))))
+      recomponer({ kits: next })
+      return
+    }
+    setKitBusy(clave)
+    const cod = await asegurarCodigo()
+    setKitBusy(null)
+    if (!cod) return
+    next.add(clave)
+    setKitsSel(next)
+    setMediaSel((m) => new Set([...m, ...ids]))
+    recomponer({ kits: next, codigo: cod })
+  }
+
+  function toggleMedia(id: number) {
+    setKitAviso('')
+    setMediaSel((m) => {
+      const n = new Set(m)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  async function mandarMediaKits() {
+    setKitAviso('Preparando archivos…')
+    const pzs = kits.filter((k) => kitsSel.has(k.clave)).flatMap((k) => k.piezas).filter((x) => mediaSel.has(x.id))
+    setKitAviso(await compartirMediaKit(pzs, prepMensaje))
   }
 
   return (
@@ -760,6 +831,102 @@ export default function PreparacionEnvio({
                     </button>
                   )
                 })}
+              </div>
+            )}
+
+            {!esAgenda && kits.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-muted">Marketing · siempre con link a su catálogo</p>
+                {kits.map((k) => {
+                  const puesto = kitsSel.has(k.clave)
+                  const cargando = kitBusy === k.clave
+                  const media = k.piezas.filter(esMedia)
+                  const portada = media.find((x) => x.categoria === 'imagen') ?? media[0]
+                  return (
+                    <div key={k.clave} className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void toggleKit(k.clave)}
+                      disabled={cargando}
+                      className={`w-full text-left rounded-lg border p-2.5 flex items-start gap-2.5 transition-colors ${
+                        puesto ? 'border-brandDark bg-brandDark/5' : 'border-black/10 hover:border-black/25'
+                      }`}
+                    >
+                      <input type="checkbox" checked={puesto} readOnly className="mt-0.5 pointer-events-none" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-semibold text-ink">
+                          🎬 {k.nombre} <span className="font-normal text-brandDark">· con link a su catálogo</span>
+                        </p>
+                        <p className="text-[10px] text-faint leading-snug mt-0.5">
+                          {cargando
+                            ? 'Generando link…'
+                            : `Texto del lanzamiento + link que abre ${k.nombre} en su catálogo, con sus precios. Elegís qué fotos y video mandar como archivo.`}
+                        </p>
+                      </div>
+                      {portada && !puesto &&
+                        (portada.categoria === 'video' ? (
+                          <video src={urlDe(portada)!} muted playsInline className="w-12 h-12 object-cover rounded-md bg-black shrink-0" />
+                        ) : (
+                          <img src={urlDe(portada)!} alt="" className="w-12 h-12 object-cover rounded-md shrink-0" />
+                        ))}
+                    </button>
+                    {puesto && media.length > 0 && (
+                      <div className="grid grid-cols-4 gap-1.5 pl-6">
+                        {media.map((m) => {
+                          const on = mediaSel.has(m.id)
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => toggleMedia(m.id)}
+                              title={m.titulo}
+                              className={`relative rounded-md overflow-hidden border-2 transition ${
+                                on ? 'border-emerald-600' : 'border-transparent opacity-40'
+                              }`}
+                            >
+                              {m.categoria === 'video' ? (
+                                <video src={urlDe(m)!} muted playsInline loop autoPlay className="w-full h-16 object-cover bg-black" />
+                              ) : (
+                                <img src={urlDe(m)!} alt={m.titulo} className="w-full h-16 object-cover" />
+                              )}
+                              <span className="absolute top-1 left-1 w-4 h-4 rounded bg-white/90 text-[10px] font-bold text-emerald-700 flex items-center justify-center">
+                                {on ? '✓' : ''}
+                              </span>
+                              {m.categoria === 'video' && (
+                                <span className="absolute bottom-1 right-1 text-[9px] font-semibold bg-black/60 text-white rounded px-1">▶ video</span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    </div>
+                  )
+                })}
+                {kitsSel.size > 0 && (() => {
+                  const n = kits.filter((k) => kitsSel.has(k.clave)).flatMap((k) => k.piezas).filter((x) => mediaSel.has(x.id))
+                  const vids = n.filter((x) => x.categoria === 'video').length
+                  const fotos = n.length - vids
+                  const detalle = [vids ? `${vids} video${vids > 1 ? 's' : ''}` : '', fotos ? `${fotos} foto${fotos > 1 ? 's' : ''}` : '']
+                    .filter(Boolean)
+                    .join(' + ')
+                  return (
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => void mandarMediaKits()}
+                        disabled={!n.length}
+                        className="w-full rounded-md border border-emerald-600 text-emerald-700 bg-white py-1.5 text-xs font-semibold disabled:opacity-40"
+                      >
+                        🎬 {n.length ? `Mandar ${detalle} como archivo` : 'Marcá al menos una foto o video'}
+                      </button>
+                      <p className="text-[10px] text-emerald-800 leading-snug">
+                        {kitAviso ||
+                          'Van como archivo, no como link. En el celu abre compartir con los archivos y el texto: elegí WhatsApp y la óptica. En la compu los descarga para arrastrarlos al chat.'}
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 

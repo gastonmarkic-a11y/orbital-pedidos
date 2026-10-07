@@ -96,6 +96,10 @@ export default function NuevoPedido() {
   const [medios, setMedios] = useState<string[]>([])
   const [dtoFinanciero, setDtoFinanciero] = useState('')
   const [dtoComercial, setDtoComercial] = useState('')
+  // Revendedor autorizado (marca en la ficha): siempre 15% comercial, precargado.
+  useEffect(() => {
+    if (cliente?.nota?.includes('REVENDEDOR')) setDtoComercial((d) => d || '15')
+  }, [cliente?.cod])
   const [blancoPct, setBlancoPct] = useState(100)
   const [cuotas, setCuotas] = useState<Cuota[]>([{ dias: 0, pct: 100 }])
   const [otroPlazo, setOtroPlazo] = useState('')
@@ -265,6 +269,15 @@ export default function NuevoPedido() {
       .eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(20)
       .then(({ data }) => setWebs((data ?? []) as PrecargaWeb[]))
   }, [])
+
+  // Viene del muestrario RFID (o del escaneo) con la precarga recién generada: se abre sola.
+  const precargaAuto = useRef<number | null>(location.state?.precargaId ?? null)
+  useEffect(() => {
+    if (!precargaAuto.current) return
+    const w = webs.find((x) => x.id === precargaAuto.current)
+    if (w) { precargaAuto.current = null; cargarWeb(w) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webs])
 
   // Carga el pedido web en el formulario: cliente + carrito, listo para poner condiciones.
   async function cargarWeb(w: PrecargaWeb) {

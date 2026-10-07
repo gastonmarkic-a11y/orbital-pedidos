@@ -15,6 +15,8 @@ export interface Marco {
   alto_mm: number | null
   ancho_mm: number | null
   formato: string | null
+  /** Talle de la tienda (colecciones de talle): S · M · L · XL (oversize). */
+  talle?: 'S' | 'M' | 'L' | 'XL' | null
   frente: string | null
   para: string | null
   foto: string

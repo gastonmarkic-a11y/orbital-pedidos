@@ -324,13 +324,26 @@ export function resultado(m: Medidas): Resultado {
     forma, pct, prop,
     mm: { pomulos: Math.round(pom), largo: Math.round(m.largo * k), frente: Math.round(m.frente * k * kF), mandibula: Math.round(m.mandibula * k * kM), dp: Math.round(m.dp * k * 1.03) },
     ideal, rango: [ideal - 4, ideal + 4],
-    talle: ideal < 136 ? 'S' : ideal <= 144 ? 'M' : 'L',
+    talle: talleRostro(ideal),
   }
 }
 
 // ── Armazones del catálogo que cumplen la forma y la medida ──────────────────────────────────
 /** Cuánto le va un armazón a este rostro (forma + ancho). null = envolvente/deportivo o sin formato. También lo usa el
  *  recomendador del chequeo visual cuando la persona hizo el estudio de rostro (perfil visual). */
+export type Talle = 'S' | 'M' | 'L'
+export type TalleArmazon = Talle | 'XL'
+export const talleRostro = (ideal: number): Talle => (ideal < 136 ? 'S' : ideal <= 144 ? 'M' : 'L')
+// Colecciones de talle de la tienda (las mismas de la guía /pages/tu-calce).
+export const COLECCION_TALLE: Record<TalleArmazon, { nombre: string; url: string }> = {
+  S: { nombre: 'Talle chico (S)', url: 'https://www.orbitaleyewear.com.ar/collections/anteojos-de-sol-talle-chico' },
+  M: { nombre: 'Talle M', url: 'https://www.orbitaleyewear.com.ar/collections/anteojos-de-sol-talle-m' },
+  L: { nombre: 'Talle grande (L)', url: 'https://www.orbitaleyewear.com.ar/collections/anteojos-de-sol-talle-grande' },
+  XL: { nombre: 'Oversize (XL)', url: 'https://www.orbitaleyewear.com.ar/collections/anteojos-de-sol-oversize' },
+}
+// Qué talles de armazón le van a cada talle de rostro (en orden).
+export const TALLES_PARA: Record<Talle, TalleArmazon[]> = { S: ['S', 'M'], M: ['M', 'L'], L: ['L', 'XL'] }
+
 export function afinidadRostro(m: Marco, ideal: number, forma: Forma): { score: number; motivos: string[] } | null {
   const info = FORMAS[forma]
   const es = estilosDelFormato(m.formato)
@@ -340,10 +353,19 @@ export function afinidadRostro(m: Marco, ideal: number, forma: Forma): { score: 
   const ok = es.find((e) => info.si.some((x) => x.e === e))
   if (ok) { score += 3; motivos.push(`${nombreEstilo(ok)} · ideal para rostro ${info.nombre.toLowerCase()}`) }
   else if (es.some((e) => info.no.some((x) => x.e === e))) score -= 4
-  // Oversize (Kobe, Phoenix): forma propia, solo para rostros grandes (talle L, ancho ideal > 144 mm).
-  if (/oversize/i.test(m.formato ?? '')) {
-    if (ideal > 144) { score += 1; motivos.push('Oversize · para rostros grandes') }
-    else score -= 10 // fuera, aunque la forma y la medida le sumen
+  // Talle del armazón (el de la tienda: S · M · L · XL oversize) contra el talle del rostro.
+  //   rostro S → S y M · rostro M → M, y L "con presencia" · rostro L → L y XL. El XL solo para rostros L.
+  const tr = talleRostro(ideal)
+  const ta = m.talle ?? (/oversize/i.test(m.formato ?? '') ? 'XL' : null)
+  if (ta) {
+    const tabla: Record<Talle, Partial<Record<TalleArmazon, [number, string?]>>> = {
+      S: { S: [1, 'Talle S · tu talle'], M: [0], L: [-10], XL: [-10] },
+      M: { S: [0], M: [1, 'Talle M · tu talle'], L: [0.5, 'Talle L · con presencia'], XL: [-10] },
+      L: { S: [-10], M: [0], L: [1, 'Talle L · tu talle'], XL: [1, 'Oversize (XL) · para rostros grandes'] },
+    }
+    const [pts, txt] = tabla[tr][ta] ?? [0]
+    score += pts
+    if (txt) motivos.push(txt)
   }
   if (m.ancho_mm !== null) {
     const d = Math.abs(m.ancho_mm - ideal)

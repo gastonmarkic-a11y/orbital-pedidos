@@ -32,16 +32,32 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .num{font-variant-numeric:tabular-nums}
 
 /* barra superior */
-.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top{position:relative;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .top .wrap{display:flex;align-items:center;gap:14px;height:60px}
 .brand{display:flex;align-items:center;gap:8px;text-decoration:none}
 .brand img.c{height:26px} .brand img.w{height:17px}
 .ctx{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--rust);white-space:nowrap}
 .sp{flex:1}
-.demo-nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
-.demo-nav a{font-size:13px;text-decoration:none;padding:6px 10px;border-radius:99px;color:var(--ink2);white-space:nowrap}
-.demo-nav a[aria-current]{background:var(--ink);color:var(--bg)}
-@media(max-width:760px){.demo-nav{display:none}.ctx{display:none}}
+/* franja de muestra y selector de paneles (solo en la muestra) */
+.muestra{position:sticky;top:0;z-index:30;background:#a8441e;color:#fff;text-align:center;font-weight:700;font-size:14px;letter-spacing:.02em;padding:8px 16px;line-height:1.3}
+.muestra b{display:inline-block;background:#fff;color:#a8441e;border-radius:6px;padding:1px 8px;margin-right:8px;letter-spacing:.12em;font-size:13px}
+.quien{border-top:1px solid var(--line);background:var(--paper)}
+.quien .wrap{display:flex;gap:8px;overflow-x:auto;padding:10px 16px;scrollbar-width:thin}
+.qb{display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid var(--line2);background:var(--card);border-radius:12px;padding:8px 14px 8px 10px;white-space:nowrap;flex:none}
+.qb .qi{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--rust-soft);color:var(--rust);flex:none}
+.qb .qi svg{width:17px;height:17px}
+.qb small{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);line-height:1.2}
+.qb span.n{font-weight:700;font-size:15px;line-height:1.2}
+.qb[aria-current]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.qb[aria-current] small{color:var(--bg);opacity:.7}
+.qb[aria-current] .qi{background:var(--rust);color:#fff}
+.qb.min{padding:8px 12px}
+.vista{background:var(--esp);color:#f3eada}
+.vista .wrap{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px}
+.vista .who2{font-family:var(--serif);font-size:22px;line-height:1.1}
+.vista .who2 em{font-style:normal;color:#f0a77f}
+.vista p{margin:0;font-size:14px;color:#cbbfb1;flex:1;min-width:240px}
+@media(max-width:760px){.ctx{display:none}}
 
 /* bloques */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
@@ -179,17 +195,54 @@ input[type=range]{width:100%;accent-color:var(--rust)}
 .stepper span.on{background:var(--ok)}
 .qn{width:52px;border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 4px;text-align:center;font-variant-numeric:tabular-nums}
 .qn:not(:placeholder-shown){border-color:var(--ink);font-weight:700}
+/* stock y reposición */
+.stk{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:960px){.stk{grid-template-columns:1fr}.stk #rpSum{position:static!important}}
+.ia-av{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--rust);color:#fff;font-weight:700;font-size:13px;flex:none}
+.ia-d{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.ia-d li{display:flex;gap:9px;font-size:14px}.ia-d li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--rust);margin-top:8px;flex:none}
+.sug{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);cursor:pointer}
+.sug input{margin-top:4px;accent-color:var(--rust)}
+.chat{display:grid;gap:8px;max-height:360px;overflow:auto}
+.msg{padding:10px 12px;border-radius:12px;font-size:14px;max-width:94%}
+.msg.yo{justify-self:end;background:var(--ink);color:var(--bg)}
+.msg.ia{justify-self:start;background:var(--paper);border:1px solid var(--line)}
+.gr{display:grid;grid-template-columns:128px minmax(0,1fr) minmax(0,1.15fr) 118px 54px;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.gr.h{padding:8px 14px;background:var(--paper);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);font-weight:600;border-top:1px solid var(--line)}
+.gm{display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px}
+.gm .thumb{width:46px}
+.gc,.ga{display:flex;gap:7px;flex-wrap:wrap}
+.gf,.gl{display:flex;align-items:center;gap:6px}
+.mlab{display:none}
+.cd{position:relative;width:28px;height:28px;border-radius:50%;border:0;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);font-size:11px;font-weight:700;color:#fff}
+.cd.light{color:#201b17}
+.cd.z{background:transparent!important;box-shadow:none;border:2px dashed var(--warn)}
+.bc{position:absolute;bottom:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--ok);border:2px solid var(--card)}
+.bp{position:absolute;top:-8px;right:-8px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--rust);color:#fff;font-size:10px;line-height:18px;font-weight:700}
+.cc{position:relative;display:grid;justify-items:center;min-width:44px;padding:3px 6px;border:1px solid var(--line2);border-radius:9px;background:var(--card);font-variant-numeric:tabular-nums;line-height:1.2}
+.cc .al{font-size:10px;color:var(--ink3);font-weight:600}
+.cc b{font-size:15px}
+.cc.z{border-color:var(--warn);border-style:dashed}.cc.z b{color:var(--warn)}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink2);align-items:center}
+.leg .dot{width:10px;height:10px;vertical-align:-1px}
+.qi{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 3px 3px 9px;border-radius:99px;background:var(--paper);border:1px solid var(--line)}
+.qi .dot{width:9px;height:9px}
+.qi button{border:0;background:none;padding:0 5px;color:var(--ink3);font-size:15px;line-height:1}
+@media(max-width:760px){.gr{grid-template-columns:1fr 1fr}.gr.h{display:none}.gm,.gc,.ga{grid-column:1/-1}.mlab{display:inline}}
 .foot{padding:28px 0 40px;color:var(--ink3);font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--ink2)}
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap">
+<div class="muestra" role="note"><b>MUESTRA</b>Prototipo para mostrar cómo funciona beRabbit. Todos los datos son de ejemplo.</div>
+<header class="top">
+ <div class="wrap">
   <a class="brand" href="#/"><img class="c" src="/br/conejo.svg" alt=""><img class="w" src="/br/palabra.svg" alt="beRabbit"></a>
   <span class="ctx" id="ctx"></span>
-  <span class="sp"></span>
-  <nav class="demo-nav" id="dnav" aria-label="Vistas"></nav>
-</div></header>
+ </div>
+ <nav class="quien" aria-label="Paneles de la muestra"><div class="wrap" id="dnav"></div></nav>
+</header>
+<div class="vista" id="vista"></div>
 <main id="main"></main>
 <div id="layer"></div>
 <script>
@@ -301,18 +354,28 @@ function selector(st,{stockOf=null,showVirtual=true}={}){
   return `<div class="stack">
   <div><p class="lbl">1 · Elegí el modelo</p><div class="models">${MOD.map(m=>`<button class="mb" type="button" data-a="sel" data-k="m" data-v="${m.i}" aria-pressed="${st.m===m.i}">${fimg(m.i,st.c,"",200)}${m.i+1}</button>`).join("")}</div></div>
   <div><p class="lbl">2 · Elegí el color · <span style="text-transform:none;letter-spacing:0;color:var(--ink)">${COL[st.c].n}</span></p><div class="swatches">${COL.map((c,i)=>`<button class="sw" type="button" title="${c.n}" aria-label="${c.n}" data-a="sel" data-k="c" data-v="${i}" aria-pressed="${st.c===i}" style="background:${c.hex}"></button>`).join("")}</div></div>
-  <div><p class="lbl">3 · Elegí el aumento</p><div class="chips">${AUM.map((a,i)=>{const st2=stockOf?stockOf(i):null;return `<button class="chip ${FIS(i)?"":"virt"}" type="button" data-a="sel" data-k="a" data-v="${i}" aria-pressed="${st.a===i}" title="${FIS(i)?"":"Se pide como cristal virtual"}">${a}${st2!=null?`<span style="opacity:.6;font-weight:500"> · ${st2}</span>`:""}</button>`}).join("")}</div>
-  ${showVirtual?`<p class="tiny muted" style="margin:6px 0 0">0 y +0,5 no ocupan stock físico: se piden como cristal virtual.</p>`:""}</div></div>`;
+  <div><p class="lbl">3 · Elegí el aumento</p><div class="chips">${AUM.map((a,i)=>{const st2=stockOf?stockOf(i):null;return `<button class="chip ${FIS(i)?"":"virt"}" type="button" data-a="sel" data-k="a" data-v="${i}" aria-pressed="${st.a===i}" title="${FIS(i)?"":"Sale de los pares a favor"}">${a}${st2!=null?`<span style="opacity:.6;font-weight:500"> · ${st2}</span>`:""}</button>`}).join("")}</div>
+  ${showVirtual?`<p class="tiny muted" style="margin:6px 0 0">0 y +0,5 no van en el gabinete: salen de los pares a favor.</p>`:""}</div></div>`;
 }
 
 /* ---------------- router ---------------- */
 let R={};
 function parse(){const h=(location.hash||"#/").slice(2).split("?")[0].split("/");return {v:h[0]||"",id:h[1]||"",tab:h[2]||""}}
-const VISTAS=[["","Inicio"],["vendedor","Vendedor"],["optica/ejemplo","Panel óptica"],["p/ejemplo","Presentación"],["tienda","Tienda"]];
+// Paneles de la muestra: para quién es cada uno y cómo entra.
+const IC_USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+const IC_STORE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l2-5h14l2 5"/><path d="M4 9v11h16V9"/><path d="M3 9h18M9 20v-6h6v6"/></svg>';
+const IC_BAG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>';
+const VISTAS=[
+ {h:"tienda",k:"tienda",q:"Consumidor final",n:"Tienda",i:IC_USER,t:"Panel del <em>consumidor final</em>",d:"Lo que ve el paciente en la web y las redes de beRabbit: arma su anteojo, hace el test y elige retirar en una óptica, comprar online o ir al oftalmólogo."},
+ {h:"optica/ejemplo",k:"optica",q:"Óptica",n:"Panel de la óptica",i:IC_STORE,t:"Panel de la <em>óptica</em>",d:"Cada óptica entra con su link propio y ve solo lo suyo: ventas, stock, reposición, postventa, marketing, test visual y clientes de IRIS."},
+ {h:"vendedor",k:"vendedor",q:"Vendedor",n:"Panel del vendedor",i:IC_BAG,t:"Panel del <em>vendedor</em>",d:"Cada vendedor ve sus ópticas: a quién mandarle la presentación, el paquete de entrada de cada una y las alertas de sus exhibidores."},
+ {h:"p/ejemplo",k:"p",q:"La recibe la óptica",n:"Presentación",i:icon.doc,t:"Presentación que recibe la <em>óptica</em>",d:"La manda el vendedor por WhatsApp desde su panel, con el nombre de la óptica y su paquete. Cuando la abre, el vendedor se entera."},
+];
 function render(){
   R=parse();
-  const cur=R.v==="optica"?"optica/ejemplo":R.v==="p"?"p/ejemplo":R.v;
-  $("dnav").innerHTML=VISTAS.map(([h,n])=>`<a href="#/${h}" ${cur===h?'aria-current="page"':""}>${n}</a>`).join("");
+  const VA=VISTAS.find(x=>x.k===R.v);
+  $("dnav").innerHTML=`<a class="qb min" href="#/" ${R.v===""?'aria-current="page"':""}><span><small>Muestra</small><span class="n">Inicio</span></span></a>`+VISTAS.map(x=>`<a class="qb" href="#/${x.h}" ${VA===x?'aria-current="page"':""}><span class="qi">${x.i}</span><span><small>${x.q}</small><span class="n">${x.n}</span></span></a>`).join("");
+  $("vista").innerHTML=`<div class="wrap"><div class="who2">${VA?VA.t:"Inicio de la <em>muestra</em>"}</div><p>${VA?VA.d:"Elegí arriba qué panel querés ver: consumidor final, óptica o vendedor."}</p></div>`;
   const V={"":vHub,vendedor:vVendedor,optica:vOptica,p:vPres,tienda:vTienda}[R.v]||vHub;
   $("main").innerHTML=V();tintAll();
 }
@@ -330,17 +393,17 @@ function vHub(){
    <p class="lead muted" style="font-size:18px;max-width:700px;margin:0">Cuatro puertas, una sola base de datos. Cada óptica tiene su panel con link propio, el vendedor presenta y arma el paquete desde el suyo, y el paciente compra o reserva en la tienda y lo derivamos a la óptica o al oftalmólogo.</p>
   </section>
   <section class="wrap grid g2" style="padding-bottom:28px">
-   <a class="door" href="#/optica/${o.id}"><span class="eb">Para la óptica</span><h3>Panel de la óptica</h3><p class="muted" style="margin:0">Vender en el mostrador, stock de marcos y cristales, virtuales, reposición en un clic, postventa, marketing, test visual y consultas de IRIS.</p><span class="btn pri" style="justify-self:start">Abrir ${esc(o.nombre)}</span></a>
-   <a class="door" href="#/vendedor"><span class="eb">Para el vendedor</span><h3>Panel del vendedor</h3><p class="muted" style="margin:0">Su cartera de ópticas por etapa, presentación personalizada por WhatsApp, armado del paquete de entrada y alertas de cada exhibidor.</p><span class="btn pri" style="justify-self:start">Abrir panel</span></a>
-   <a class="door" href="#/p/${o.id}"><span class="eb">Lo que recibe la óptica</span><h3>Presentación con su nombre</h3><p class="muted" style="margin:0">La presentación del programa como página web: combinador de 343 opciones, calculadora de ganancia, su paquete y el botón para sumarse.</p><span class="btn pri" style="justify-self:start">Ver presentación</span></a>
-   <a class="door" href="#/tienda"><span class="eb">Para el paciente</span><h3>Tienda beRabbit</h3><p class="muted" style="margin:0">Arma su combinación, hace el test visual si no sabe el aumento y elige: retirar hoy en una óptica, comprar online o buscar oftalmólogo.</p><span class="btn pri" style="justify-self:start">Abrir tienda</span></a>
+   <a class="door" href="#/optica/${o.id}"><span class="eb">Óptica</span><h3>Panel de la óptica</h3><p class="muted" style="margin:0">Vender en el mostrador, stock y reposición con asistente, postventa, marketing, test visual y consultas de IRIS.</p><span class="btn pri" style="justify-self:start">Abrir ${esc(o.nombre)}</span></a>
+   <a class="door" href="#/vendedor"><span class="eb">Vendedor</span><h3>Panel del vendedor</h3><p class="muted" style="margin:0">Su cartera de ópticas por etapa, presentación personalizada por WhatsApp, armado del paquete de entrada y alertas de cada exhibidor.</p><span class="btn pri" style="justify-self:start">Abrir panel</span></a>
+   <a class="door" href="#/p/${o.id}"><span class="eb">La recibe la óptica</span><h3>Presentación con su nombre</h3><p class="muted" style="margin:0">La presentación del programa como página web: combinador de 343 opciones, calculadora de ganancia, su paquete y el botón para sumarse.</p><span class="btn pri" style="justify-self:start">Ver presentación</span></a>
+   <a class="door" href="#/tienda"><span class="eb">Consumidor final</span><h3>Tienda beRabbit</h3><p class="muted" style="margin:0">Arma su combinación, hace el test visual si no sabe el aumento y elige: retirar hoy en una óptica, comprar online o buscar oftalmólogo.</p><span class="btn pri" style="justify-self:start">Abrir tienda</span></a>
   </section>
   <section class="wrap" style="padding-bottom:20px">
    <div class="card pad">
     <div class="eb">Cómo se apoya en Orbital sin mezclar la marca</div>
     <h2 style="font-size:28px;margin:6px 0 14px">Misma infraestructura, otra marca.</h2>
     <div class="tw"><table class="arch"><thead><tr><th>beRabbit</th><th>Usa de Orbital</th><th>Qué cambia</th></tr></thead><tbody>
-     <tr><td><b>Panel de la óptica</b> con link propio</td><td>El modelo de acceso del catálogo y de consigna: clave en el link y dispositivo habilitado (<code>catalogo_entrar</code>, <code>consigna_dispositivo_ok</code>).</td><td>Tablas propias <code>br_opticas</code>, <code>br_stock_marcos</code>, <code>br_stock_cristales</code>, <code>br_virtuales</code>. No aparece en los catálogos de Orbital.</td></tr>
+     <tr><td><b>Panel de la óptica</b> con link propio</td><td>El modelo de acceso del catálogo y de consigna: clave en el link y dispositivo habilitado (<code>catalogo_entrar</code>, <code>consigna_dispositivo_ok</code>).</td><td>Tablas propias <code>br_opticas</code>, <code>br_stock_marcos</code>, <code>br_stock_cristales</code>, <code>br_a_favor</code>. No aparece en los catálogos de Orbital.</td></tr>
      <tr><td><b>Reposición y paquetes</b> (B2B)</td><td>El circuito de pedidos, el armado del envío, la facturación (Tango) y el remito PDF de marca blanca.</td><td>SKU <code>BR-m-c-a</code> con el aumento en una columna propia y una lista de precios beRabbit.</td></tr>
      <tr><td><b>Test visual</b></td><td>Vision Lab completo (<code>/lab/pretest?o=&lt;óptica&gt;</code>), el informe y el buscador de oftalmólogos y obras sociales.</td><td>Se abre con piel beRabbit (<code>src=berabbit</code>) y el resultado sugiere el aumento del auxilio.</td></tr>
      <tr><td><b>IRIS</b> y derivación</td><td><code>bot-central</code>, <code>bot_optica_cercana</code>, conversaciones y grupos de Ojo.</td><td>Cuentas y redes de beRabbit. Busca la óptica que tiene esa combinación en stock y no solo la más cercana.</td></tr>
@@ -361,15 +424,16 @@ let RP={id:null};                                  // pedido de reposición en a
 function vOptica(){
   const o=S.O[R.id];if(!o)return `<div class="wrap empty">No encontramos esa óptica.</div>`;
   $("ctx").textContent="Panel óptica";document.title=`${o.nombre} · beRabbit`;
-  const k=kp(o),tab=R.tab||"vender";
+  const k=kp(o),tab={marcos:"stock",cristales:"stock",virtuales:"stock",reposicion:"stock"}[R.tab]||R.tab||"vender";
   const nIris=o.consultas.filter(x=>x.est==="nueva").length;
-  const TABS=[["vender","Vender"],["marcos","Marcos",k.arm],["cristales","Cristales",k.cri],["virtuales","Virtuales",k.vir],["reposicion","Reposición"],["postventa","Postventa"],["marketing","Marketing"],["influencers","Influencers"],["inspiracion","Inspiración"],["test","Test visual",o.tests.length],["iris","IRIS",nIris||""]];
+  const pend=o.ventas.filter(v=>!v.rep).length;
+  const TABS=[["vender","Vender"],["stock","Stock y reposición",pend?pend+" a reponer":""],["postventa","Postventa"],["marketing","Marketing"],["influencers","Influencers"],["inspiracion","Inspiración"],["test","Test visual",o.tests.length],["iris","IRIS",nIris||""]];
   if(o.estado!=="activa")return `<div class="wrap" style="padding:40px 16px"><div class="card pad stack"><div class="eb">${esc(o.nombre)}</div><h2>El panel se activa cuando llega el exhibidor.</h2><p class="muted">Etapa actual: <b>${ESTADOS.find(e=>e[0]===o.estado)[1]}</b>.</p><div class="row"><a class="btn pri" href="#/p/${o.id}">Ver su presentación</a><button class="btn" data-a="activar" data-id="${o.id}">Simular instalación del exhibidor</button></div></div></div>`;
-  const body={vender:tVender,marcos:tMarcos,cristales:tCristales,virtuales:tVirtuales,reposicion:tRepo,postventa:tPost,marketing:tMkt,influencers:tInfl,inspiracion:tInsp,test:tTest,iris:tIris}[tab]||tVender;
+  const body={vender:tVender,stock:tStock,postventa:tPost,marketing:tMkt,influencers:tInfl,inspiracion:tInsp,test:tTest,iris:tIris}[tab]||tVender;
   return `<div class="wrap" style="padding-top:18px">
    <div class="card phead">
     <div class="who"><b>beRabbit</b><span class="eb">Panel óptica</span><h2>${esc(o.nombre)}</h2><div class="small muted">${esc(o.barrio)} · exhibidor beRabbit · vendedor ${esc(o.vend)}</div></div>
-    <div class="kpis"><div class="kpi"><div class="l">Armazones</div><div class="v num">${k.arm} u</div></div><div class="kpi"><div class="l">Cristales</div><div class="v num">${k.cri} pares</div></div><div class="kpi"><div class="l">Virtuales</div><div class="v acc num">${k.vir} a favor</div></div><div class="kpi"><div class="l">En camino</div><div class="v ok num">${k.cam} u</div></div></div>
+    <div class="kpis"><div class="kpi"><div class="l">Armazones</div><div class="v num">${k.arm} u</div></div><div class="kpi"><div class="l">Cristales</div><div class="v num">${k.cri} pares</div></div><div class="kpi"><div class="l">Pares a favor</div><div class="v acc num">${k.vir}</div></div><div class="kpi"><div class="l">En camino</div><div class="v ok num">${k.cam} u</div></div></div>
    </div>
    <nav class="tabs" aria-label="Secciones">${TABS.map(([h,n,c])=>`<a class="tab" href="#/optica/${o.id}/${h}" ${tab===h?'aria-current="page"':""}>${n}${c!==undefined&&c!==""?`<span class="n">${c}</span>`:""}</a>`).join("")}</nav>
    <div style="padding-bottom:40px">${body(o)}</div>
@@ -384,8 +448,8 @@ function tVender(o){
     const alt=[];
     if(!hayM){for(let cc=0;cc<7;cc++)if(cc!==c&&o.marcos[m][cc]>0)alt.push([m,cc]);for(let mm=0;mm<7;mm++)if(mm!==m&&o.marcos[mm][c]>0&&o.cris[mm][a]>0)alt.push([mm,c])}
     estado=`<div class="note warn stack" style="--x:0">${!hayM?`<div><b>Ese armazón no está.</b> ${o.camM[m][c]?"Viene uno en camino.":"Sumalo a la reposición."}</div>`:""}
-     ${!hayC?`<div><b>${FIS(a)?"No queda cristal "+AUM[a]+" para este modelo.":"El "+AUM[a]+" se pide como cristal virtual."}</b> ${o.virt[m]>0?`Tenés ${o.virt[m]} virtual${o.virt[m]>1?"es":""} a favor del ${MOD[m].n.toLowerCase()}.`:""}</div>
-       <div class="row"><button class="btn sm acc" data-a="pedirVirtual">${o.virt[m]>0?"Canjear virtual y reservar":"Pedir el cristal y reservar"}</button><span class="tiny">Llega en 24–72 h. Le avisamos al cliente.</span></div>`:""}
+     ${!hayC?`<div><b>${FIS(a)?"No queda cristal "+AUM[a]+" para este modelo.":"El "+AUM[a]+" sale de tus pares a favor."}</b> ${o.virt[m]>0?`Tenés ${o.virt[m]} par${o.virt[m]>1?"es":""} a favor del ${MOD[m].n.toLowerCase()}.`:""}</div>
+       <div class="row"><button class="btn sm acc" data-a="pedirVirtual">${o.virt[m]>0?"Usar 1 a favor y reservar":"Pedir el cristal y reservar"}</button><span class="tiny">Llega en 24–72 h. Le avisamos al cliente.</span></div>`:""}
      ${alt.length?`<div><b>Se puede armar otra:</b> ${alt.slice(0,4).map(([mm,cc])=>`<button class="btn sm" data-a="alt" data-m="${mm}" data-c="${cc}">${combo(mm,cc)}</button>`).join(" ")}</div>`:""}</div>`;
   }
   const precio=V.receta?P.pub-P.receta:P.pub;
@@ -400,7 +464,7 @@ function tVender(o){
     </div>
    </div>
    <div class="card pad stack">
-    ${selector(V,{stockOf:i=>FIS(i)?o.cris[m][i]:"virtual"})}
+    ${selector(V,{stockOf:i=>FIS(i)?o.cris[m][i]:"a favor"})}
     <hr class="sep">
     <label class="check"><input type="checkbox" data-a="receta" ${V.receta?"checked":""}><span><b>Doble venta: deja su receta</b><br><span class="small muted">Le descontás ${ars(P.receta)} y el auxilio le sale sin cargo a cuenta del anteojo definitivo, en el mismo marco.</span></span></label>
     ${V.receta?`<div class="grid g2"><div class="fld"><label for="vcli">Cliente</label><input class="in" id="vcli" data-f="cli" value="${esc(V.cli)}" placeholder="Nombre"></div><div class="fld"><label for="vtel">WhatsApp</label><input class="in" id="vtel" data-f="tel" value="${esc(V.tel)}" placeholder="11 …" inputmode="tel"></div></div>`:""}
@@ -412,98 +476,167 @@ function tVender(o){
    ${o.ventas.length?o.ventas.slice(0,8).map(v=>`<div class="li">${fimg(v.m,v.c,"thumb",200)}<div class="grow"><div class="t">${combo(v.m,v.c,v.a)}</div><div class="s">${esc(v.d)} · ${esc(v.cli||"Mostrador")}${v.receta?" · dejó receta":""}</div></div>${v.rep?'<span class="pill ok">Repuesto</span>':'<span class="pill">A reponer</span>'}</div>`).join(""):`<div class="empty">Todavía no hay ventas.</div>`}</div>`;
 }
 
-function tMarcos(o){
-  const falt=sum(o.marcos.map(r=>r.map(v=>v===0?1:0))),cam=sum(o.camM);
-  return `<div class="row between" style="margin-bottom:10px"><div class="small"><span style="color:var(--ok);font-weight:600">+${cam} en camino</span> · <span style="color:var(--warn);font-weight:600">${falt} a reponer</span></div><a class="btn pri" href="#/optica/${o.id}/reposicion">Pedir reposición →</a></div>
-  <div class="tw"><table><thead><tr><th>Modelo</th>${COL.map(c=>`<th><span class="dot" style="background:${c.hex};vertical-align:-2px;margin-right:5px"></span>${c.s}</th>`).join("")}<th>Total</th></tr></thead><tbody>
-  ${MOD.map(md=>`<tr><td>${md.n}</td>${COL.map((c,ci)=>{const v=o.marcos[md.i][ci],cm=o.camM[md.i][ci];return `<td class="${v?"":"z"}">${v}${cm?`<span class="cam">+${cm}</span>`:""}</td>`}).join("")}<td class="tot">${o.marcos[md.i].reduce((a,b)=>a+b,0)}</td></tr>`).join("")}
-  </tbody></table></div><p class="tiny muted">Un armazón por modelo y color es la base del exhibidor: 49 en total, incluidos los 7 probadores.</p>`;
+/* =================================================================
+   STOCK Y REPOSICIÓN
+   Un solo lugar para el gabinete: armazones (modelo × color) y cristales (modelo × aumento) en la
+   misma fila, porque se venden juntos. Los pares "a favor" son cristales que la óptica ya pagó y
+   quedan guardados en beRabbit: no ocupan el gabinete ni vencen, se usan para 0 y +0,5 o cuando un
+   aumento se agotó, y llegan cortados para ese modelo en 24–72 h. Por eso se cuentan por modelo.
+   El asistente lee el gabinete y las ventas, explica qué pasa y arma el pedido sugerido; en el
+   prototipo responde con reglas, en producción con Claude (edge function br-asistente) y los mismos datos.
+================================================================= */
+const AUMF=[2,3,4,5,6];
+const sinTilde=s=>String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+const enumera=a=>a.length<2?a.join(""):a.slice(0,-1).join(", ")+" y "+a[a.length-1];
+const COLK=[/cherry/,/musgo|verde/,/hielo|translu/,/petrol|azul/,/gris/,/marron/,/negro/];
+function rpNuevo(o){RP={id:o.id,arm:m7(0),par:m7(0),fav:Array(7).fill(0),ventas:[],sel:{},hechas:{},chat:[],selC:[],selM:[],selA:[],conCris:false,aumT:4}}
+function listas(o,m){const c=o.marcos[m].filter(v=>v>0).length,a=AUMF.filter(i=>o.cris[m][i]>0).length;return {c,a,n:c*a,fav:c*(o.virt[m]>0?7:a)}}
+function rotacion(o){const r=Array(7).fill(0);o.ventas.forEach(v=>r[v.a]+=2);topCombos().forEach(t=>r[t.a]+=t.n);return r}
+const aumTop=o=>{const r=rotacion(o);return AUMF.reduce((b,a)=>r[a]>r[b]?a:b,AUMF[0])};
+
+/* Pedido sugerido: lo vendido vuelve igual, después los huecos de armazón, los cristales en cero
+   (tira de 7 si faltan en 4 modelos o más) y, opcional, un par a favor para los modelos que no tienen. */
+function sugerir(o){
+  const L=[],cA=m7(0),cP=m7(0),rot=rotacion(o),top=aumTop(o);
+  // Repone hasta la base: un armazón por modelo y color, y los pares por aumento del paquete de la óptica.
+  o.ventas.forEach((v,i)=>{if(v.rep)return;
+    const arm=o.marcos[v.m][v.c]+o.camM[v.m][v.c]+cA[v.m][v.c]<1,par=FIS(v.a)&&o.cris[v.m][v.a]+o.camC[v.m][v.a]+cP[v.m][v.a]<Math.max(1,o.paq.aum[v.a]);
+    if(arm)cA[v.m][v.c]++;if(par)cP[v.m][v.a]++;
+    L.push({k:"v"+i,g:"Lo que vendiste",t:combo(v.m,v.c,v.a),w:`Vendido el ${v.d}: `+(arm&&par?"vuelve igual al gabinete.":arm?"vuelve el armazón; el par ya lo tenés.":par?"vuelve el par; el armazón ya lo tenés.":"ya está cubierto, no hace falta pedir nada."),arm:arm?[[v.m,v.c]]:[],par:par?[[v.m,v.a]]:[],fav:[],venta:i,def:true})});
+  for(let m=0;m<7;m++){const f=COL.map((_,c)=>c).filter(c=>o.marcos[m][c]===0&&!o.camM[m][c]&&!cA[m][c]);
+    if(f.length)L.push({k:"h"+m,g:"Huecos del gabinete",t:`${MOD[m].n}: ${enumera(f.map(c=>COL[c].s))}`,w:`Falta${f.length>1?"n":""} para tener los 7 colores de este modelo.`,arm:f.map(c=>[m,c]),par:[],fav:[],def:true})}
+  for(const a of AUMF){const ms=MOD.map(md=>md.i).filter(m=>o.cris[m][a]===0&&!o.camC[m][a]&&!cP[m][a]);if(!ms.length)continue;
+    const caliente=rot[a]>=rot[top]*.6;
+    if(ms.length>=4)L.push({k:"t"+a,g:"Cristales en cero",t:`Tira de ${AUM[a]} · un par para cada modelo`,w:`Quedó en cero en ${ms.length} modelos${a===top?" y es tu aumento más vendido":""}. La tira cuesta ${ars(7*P.par)}.`,arm:[],par:MOD.map(md=>[md.i,a]),fav:[],def:true});
+    else L.push({k:"c"+a,g:"Cristales en cero",t:`Pares ${AUM[a]} para el modelo ${enumera(ms.map(m=>String(m+1)))}`,w:caliente?`${AUM[a]} es de los que más salen: conviene tenerlo en el gabinete.`:`Rota poco: podés esperar o cubrirlo con un par a favor.`,arm:[],par:ms.map(m=>[m,a]),fav:[],def:caliente})}
+  const sinFav=MOD.map(md=>md.i).filter(m=>!o.virt[m]);
+  if(sinFav.length)L.push({k:"f",g:"A favor en beRabbit",t:`1 par a favor para el modelo ${enumera(sinFav.map(m=>String(m+1)))}`,w:"No ocupa lugar en el gabinete: cubre un 0, un +0,5 o un aumento agotado de ese modelo.",arm:[],par:[],fav:sinFav,def:false});
+  return L;
 }
-function tCristales(o){
-  return `<div class="row between" style="margin-bottom:10px"><div class="small muted">— se pide como virtual · <span style="color:var(--warn);font-weight:600">${sum(o.cris.map(r=>r.slice(2).map(v=>v===0?1:0)))} a reponer</span></div><a class="btn pri" href="#/optica/${o.id}/virtuales">Canjear virtual →</a></div>
-  <div class="tw"><table><thead><tr><th>Modelo</th>${AUM.map(a=>`<th>${a}</th>`).join("")}<th>Virtuales</th><th>Físicos</th></tr></thead><tbody>
-  ${MOD.map(md=>`<tr><td>${md.n}</td>${AUM.map((a,ai)=>{if(!FIS(ai))return `<td class="muted">—</td>`;const v=o.cris[md.i][ai],cm=o.camC[md.i][ai];return `<td class="${v?"":"z"}">${v}${cm?`<span class="cam">+${cm}</span>`:""}</td>`}).join("")}<td style="color:var(--rust);font-weight:600">${o.virt[md.i]}</td><td class="tot">${o.cris[md.i].reduce((a,b)=>a+b,0)}</td></tr>`).join("")}
-  </tbody></table></div><p class="tiny muted">Los cristales vienen precortados para cada modelo, con luz azul y antirreflejo.</p>`;
-}
-let CV={m:0,a:4};
-function tVirtuales(o){
-  return `<div class="grid g2">
-  <div class="card pad stack"><div class="eb">Cristales a favor</div><h3 style="font-size:26px">Quedan a favor de la óptica y no vencen.</h3>
-   <p class="muted small" style="margin:0">Cuando un cliente pide una combinación que no está en el gabinete, canjeás un virtual y te lo mandamos cortado para ese modelo.</p>
-   <div class="tw"><table><thead><tr><th>Modelo</th><th>A favor</th><th></th></tr></thead><tbody>${MOD.map(md=>`<tr><td>${md.n}</td><td class="num" style="color:var(--rust);font-weight:600">${o.virt[md.i]}</td><td style="text-align:right"><button class="btn sm" data-a="cvSel" data-m="${md.i}" ${o.virt[md.i]?"":"disabled"}>Canjear</button></td></tr>`).join("")}</tbody></table></div></div>
-  <div class="card pad stack"><div class="lbl" style="margin:0">Canjear</div>
-   <div class="fld"><label>Modelo</label><div class="chips">${MOD.map(md=>`<button class="chip" data-a="cv" data-k="m" data-v="${md.i}" aria-pressed="${CV.m===md.i}">${md.i+1}</button>`).join("")}</div></div>
-   <div class="fld"><label>Aumento</label><div class="chips">${AUM.map((a,i)=>`<button class="chip" data-a="cv" data-k="a" data-v="${i}" aria-pressed="${CV.a===i}">${a}</button>`).join("")}</div></div>
-   <div class="note">${MOD[CV.m].n} · cristal ${AUM[CV.a]} · te quedan <b>${o.virt[CV.m]}</b> a favor de este modelo.</div>
-   <button class="btn acc" data-a="canjear" ${o.virt[CV.m]?"":"disabled"}>Canjear y pedir</button>
-   <p class="tiny muted" style="margin:0">Sin cargo: el cristal ya está pago. Llega con la próxima reposición o en 24–72 h si hay un cliente esperando.</p></div></div>`;
+const sugOn=x=>RP.sel[x.k]??x.def;
+const unid=x=>[x.arm.length?`${x.arm.length} arm.`:"",x.par.length?`${x.par.length} par${x.par.length>1?"es":""}`:"",x.fav.length?`${x.fav.length} a favor`:""].filter(Boolean).join(" · ");
+
+function diagnostico(o){
+  const pend=o.ventas.filter(v=>!v.rep).length;let hoy=0,fav=0,peor=0;
+  for(let m=0;m<7;m++){const l=listas(o,m);hoy+=l.n;fav+=l.fav;if(l.n<listas(o,peor).n)peor=m}
+  const top=aumTop(o),lp=listas(o,peor),sinTop=MOD.filter(md=>!o.cris[md.i][top]).length;
+  return [
+   `Hoy armás <b>${hoy} de 245</b> combinaciones con lo que hay en el gabinete${fav>hoy?`; con tus pares a favor llegás a <b>${fav}</b> (en 24–72 h)`:""}.`,
+   pend?`Vendiste <b>${pend}</b> sin reponer: cada venta vuelve igual (armazón y par), salvo que la destildes.`:`No tenés ventas pendientes de reponer.`,
+   `El más flojo es el <b>${MOD[peor].n.toLowerCase()}</b>: ${lp.c} de 7 colores y ${lp.a} de 5 aumentos.`,
+   `Tu aumento más vendido es <b>${AUM[top]}</b>${sinTop?` y está en cero en ${sinTop} modelo${sinTop>1?"s":""}`:""}.`];
 }
 
-/* Reposición: un pedido editable de armazones (modelo × color) y pares (modelo × aumento).
-   Arranca con lo vendido (espejo): la óptica lo revisa venta por venta (reponer igual, otro color/aumento,
-   solo marco, solo par o no reponer) y lo confirma; recién ahí se suma al pedido.
-   Las tiras de 7 son atajos que suman al pedido y se pueden combinar.
-   El 10% del combinado se aplica a cada armazón que va con un par de su mismo modelo. */
-function rpNuevo(o){RP={id:o.id,arm:m7(0),par:m7(0),esp:false,selC:[],selM:[],selA:[],conCris:false,aumT:4,
-  aj:o.ventas.map((v,i)=>[v,i]).filter(([v])=>!v.rep).map(([v,i])=>({i,m:v.m,c:v.c,a:v.a,arm:true,par:FIS(v.a),ed:false}))}}
-// Suma (s=1) o resta (s=-1) del pedido lo confirmado en el espejo
-function rpEspejo(s){for(const x of RP.aj){if(x.arm)RP.arm[x.m][x.c]=Math.max(0,RP.arm[x.m][x.c]+s);if(x.par&&FIS(x.a))RP.par[x.m][x.a]=Math.max(0,RP.par[x.m][x.a]+s)}RP.esp=s>0}
-function ajCuenta(){return {a:RP.aj.filter(x=>x.arm).length,p:RP.aj.filter(x=>x.par&&FIS(x.a)).length,n:RP.aj.filter(x=>!x.arm&&!(x.par&&FIS(x.a))).length}}
-function rpCalc(){let comb=0,arm=0,par=0;for(let m=0;m<7;m++){const a=RP.arm[m].reduce((x,y)=>x+y,0),p=RP.par[m].reduce((x,y)=>x+y,0),k=Math.min(a,p);comb+=k;arm+=a-k;par+=p-k}
-  return {comb,arm,par,uA:sum(RP.arm),uP:sum(RP.par),tot:comb*P.comb+arm*P.arm+par*P.par}}
-function rpResumen(){const r=rpCalc(),fila=(t,q,v)=>q?`<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line)"><span class="small">${t} × ${q}</span><span class="num" style="font-weight:600">${ars(v)}</span></div>`:"";
-  return `<div class="row between"><div class="lbl" style="margin:0">Tu pedido</div><span class="pill">Sin IVA</span></div>
-  <div class="small muted">${r.uA} armazones · ${r.uP} pares de cristales</div>
-  <div>${fila("Combinado (armazón + par del mismo modelo) · "+ars(P.comb),r.comb,r.comb*P.comb)}${fila("Armazón solo · "+ars(P.arm),r.arm,r.arm*P.arm)}${fila("Par de cristales solo · "+ars(P.par),r.par,r.par*P.par)}${r.uA+r.uP?"":`<div class="empty">El pedido está vacío.</div>`}</div>
-  <div class="row between"><span class="small muted">Total</span><span class="big num">${ars(r.tot)}</span></div>
-  ${r.comb?`<div class="tiny" style="color:var(--ok);font-weight:600">Ahorrás ${ars(r.comb*(P.lista-P.comb))} con el 10% del combinado.</div>`:""}
-  ${RP.aj&&RP.aj.length&&!RP.esp?`<div class="note warn small">Tenés ${RP.aj.length} venta${RP.aj.length>1?"s":""} en el espejo sin confirmar: no están en este pedido.</div>`:""}
-  <button class="btn acc" data-a="confirmarRepo" ${r.uA+r.uP?"":"disabled"}>Confirmar pedido</button>
-  <button class="btn ghost sm" data-a="rpVaciar" ${r.uA+r.uP?"":"disabled"}>Vaciar</button>
-  <p class="tiny muted" style="margin:0">Sin mínimo de compra. Lo pedido aparece "en camino" en Marcos y Cristales.</p>`}
-function tRepo(o){
+/* Asistente: entiende "modelo 3 cherry +1,5", "qué me falta", "a favor", "qué sale más", precios. */
+function iaResp(o,q){
+  let t=sinTilde(q),m=null,a=null;
+  const mm=t.match(/\b(?:modelo|mod|m)\s*([1-7])\b/);if(mm){m=+mm[1]-1;t=t.replace(mm[0]," ")}
+  const ci=COLK.findIndex(r=>r.test(t));
+  const am=t.match(/(?:^|[^\d])(\+?\s?[0-3](?:[.,][05])?)(?!\d)/);
+  if(am){const v=parseFloat(am[1].replace(/[+\s]/g,"").replace(",","."));if(v*2===Math.round(v*2)&&v>=0&&v<=3)a=v*2}
+  const btns=b=>b.length?`<div class="row" style="margin-top:8px">${b.join("")}</div>`:"";
+  if(/favor|virtual/.test(t))return `Los pares <b>a favor</b> son cristales que ya pagaste y quedan guardados en beRabbit, no en tu gabinete. No vencen y no ocupan lugar.<br>Se usan cuando un cliente pide un aumento que no tenés: siempre el 0 y el +0,5 (rotan poco y no van en el gabinete) o uno que se agotó. Tocás <b>Usar</b>, elegís el aumento y te llega cortado para ese modelo en 24–72 h, sin cargo.<br>Se cuentan por modelo porque cada cristal se corta para la forma de ese marco. Hoy tenés: ${MOD.map(md=>`${md.i+1}: <b>${o.virt[md.i]}</b>`).join(" · ")}. Para sumar, tocá + en la columna A favor o tildalo en el pedido sugerido.`;
+  if(m!=null&&ci>=0&&a!=null){
+    const hayM=o.marcos[m][ci]>0,hayC=FIS(a)&&o.cris[m][a]>0,b=[];
+    let r=`<b>${combo(m,ci,a)}</b><br>`+(hayM?`Armazón: lo tenés.`:`Armazón: no está${o.camM[m][ci]?", viene uno en camino":""}.`)+" "+
+      (hayC?`Cristal ${AUM[a]}: tenés ${o.cris[m][a]} par${o.cris[m][a]>1?"es":""}.`:!FIS(a)?`El ${AUM[a]} no va en el gabinete: sale de tus pares a favor del modelo ${m+1} (te quedan ${o.virt[m]}).`:`Cristal ${AUM[a]}: en cero para este modelo${o.camC[m][a]?", viene en camino":""}.`);
+    if(hayM&&hayC){r+=" <b>Se arma ya.</b>";b.push(`<button class="btn sm acc" data-a="iaVender" data-m="${m}" data-c="${ci}" data-x="${a}">Ir a vender</button>`)}
+    else{
+      if(!hayC&&o.virt[m])b.push(`<button class="btn sm acc" data-a="iaFav" data-m="${m}" data-x="${a}">Usar 1 a favor · llega en 24–72 h</button>`);
+      if(!hayC&&FIS(a))b.push(`<button class="btn sm" data-a="iaAdd" data-t="par" data-m="${m}" data-i="${a}">Sumar el par al pedido</button>`);
+      if(!hayM)b.push(`<button class="btn sm" data-a="iaAdd" data-t="arm" data-m="${m}" data-i="${ci}">Sumar el armazón al pedido</button>`);
+      const altC=hayC?COL.map((_,cc)=>cc).filter(cc=>cc!==ci&&o.marcos[m][cc]>0).map(cc=>COL[cc].s):[];
+      const altM=FIS(a)?MOD.filter(md=>md.i!==m&&o.marcos[md.i][ci]>0&&o.cris[md.i][a]>0).map(md=>String(md.i+1)):[];
+      if(altC.length||altM.length)r+=`<br><b>Para que se lo lleve hoy:</b> ${[altC.length?`el mismo modelo y aumento en ${enumera(altC.slice(0,4))}`:"",altM.length?`el ${COL[ci].s.toLowerCase()} ${AUM[a]} en el modelo ${enumera(altM)}`:""].filter(Boolean).join(", o ")}.`}
+    return r+btns(b);
+  }
+  if(m!=null){const l=listas(o,m),f=COL.filter((_,c)=>!o.marcos[m][c]).map(c=>c.s),z=AUMF.filter(x=>!o.cris[m][x]).map(x=>AUM[x]);
+    return `<b>${MOD[m].n}</b>: ${7-f.length} de 7 colores${f.length?` (falta ${enumera(f)})`:""}, cristales en ${5-z.length} de 5 aumentos${z.length?` (en cero: ${enumera(z)})`:""} y ${o.virt[m]} par${o.virt[m]===1?"":"es"} a favor. Hoy armás <b>${l.n} de 35</b> combinaciones de este modelo.`}
+  if(ci>=0&&a!=null){const ms=FIS(a)?MOD.filter(md=>o.marcos[md.i][ci]>0&&o.cris[md.i][a]>0).map(md=>String(md.i+1)):[];
+    return ms.length?`${COL[ci].n} con ${AUM[a]}: lo armás ya en el modelo ${enumera(ms)}.`:`${COL[ci].n} con ${AUM[a]} no se arma hoy con el gabinete. ${FIS(a)?"Sumá el par al pedido o usá uno a favor.":`El ${AUM[a]} sale de tus pares a favor.`}`}
+  if(ci>=0){const si=MOD.filter(md=>o.marcos[md.i][ci]>0).map(md=>String(md.i+1)),no=MOD.filter(md=>!o.marcos[md.i][ci]).map(md=>String(md.i+1));
+    return `${COL[ci].n}: lo tenés en el modelo ${enumera(si)||"ninguno"}${no.length?`; falta en el ${enumera(no)}`:""}.`}
+  if(a!=null){if(!FIS(a))return `El ${AUM[a]} no va en el gabinete: lo pedís de tus pares a favor cuando un cliente lo necesita.`;
+    const si=MOD.filter(md=>o.cris[md.i][a]>0).map(md=>String(md.i+1)),no=MOD.filter(md=>!o.cris[md.i][a]).map(md=>String(md.i+1));
+    return `Cristal ${AUM[a]}: tenés en el modelo ${enumera(si)||"ninguno"}${no.length?`; en cero en el ${enumera(no)}`:""}.`}
+  if(/falt|pido|pedir|repon|suger|compr|hago/.test(t)){const L=sugerir(o).filter(x=>!RP.hechas[x.k]&&sugOn(x));
+    return L.length?`Te sugiero ${L.length} cosa${L.length>1?"s":""}: ${L.slice(0,5).map(x=>x.t).join("; ")}${L.length>5?"; …":""}.<br>Están tildadas arriba: destildá lo que no quieras y tocá <b>Pasar al pedido</b>.`+btns([`<button class="btn sm acc" data-a="iaAplicar">Pasar al pedido</button>`]):`Lo sugerido ya está en tu pedido. Revisalo a la derecha y confirmalo.`}
+  if(/precio|cuanto|cuesta|cobr|sale\s*\$/.test(t))return `Armazón ${ars(P.arm)} · par de cristales ${ars(P.par)} · combinado (armazón + par del mismo modelo) ${ars(P.comb)}, con 10% sobre lista. Todo sin IVA y sin mínimo. Los pares a favor se pagan como un par común.`;
+  if(/vend|sale|rota|lleva|elig/.test(t)){const r=rotacion(o),ord=[...AUMF].sort((x,y)=>r[y]-r[x]),cc=Array(7).fill(0);o.ventas.forEach(v=>cc[v.c]++);topCombos().forEach(x=>cc[x.c]+=x.n);const oc=COL.map((_,i)=>i).sort((x,y)=>cc[y]-cc[x]);
+    return `Lo que más sale: aumentos <b>${AUM[ord[0]]}</b> y <b>${AUM[ord[1]]}</b>; colores <b>${COL[oc[0]].s}</b> y <b>${COL[oc[1]].s}</b>. Conviene que esos nunca queden en cero; el ${AUM[ord[4]]} rota menos y lo podés cubrir con pares a favor.`}
+  if(/combinac|lista/.test(t))return `"Listas" son las combinaciones que armás hoy en el mostrador: colores que tenés × aumentos con cristal en el gabinete. Un modelo completo da 35 (7 × 5); los 7 modelos, 245. Con 0 y +0,5 desde los pares a favor llegás a las 343.`;
+  return `Puedo ayudarte con:<br>· una combinación: <i>"modelo 3 cherry +1,5"</i><br>· un modelo: <i>"modelo 7"</i><br>· <i>"¿qué me falta?"</i> o <i>"¿qué pido?"</i><br>· <i>"¿qué son los pares a favor?"</i><br>· <i>"¿qué es lo que más sale?"</i> o precios.`;
+}
+
+function tStock(o){
   if(RP.id!==o.id)rpNuevo(o);
-  const pend=o.ventas.filter(v=>!v.rep);
+  const L=sugerir(o),act=L.filter(x=>!RP.hechas[x.k]),on=act.filter(sugOn);
+  const uA=on.reduce((s,x)=>s+x.arm.length,0),uP=on.reduce((s,x)=>s+x.par.length+x.fav.length,0);
+  const grupos=[...new Set(act.map(x=>x.g))];
   const toggles=(k,items)=>`<div class="chips">${items.map(([v,n,hex])=>`<button class="chip" data-a="rpSel" data-k="${k}" data-v="${v}" aria-pressed="${RP[k].includes(v)}">${hex?`<span class="dot" style="background:${hex};vertical-align:-1px"></span> `:""}${n}</button>`).join("")}</div>`;
   const nTiraA=7*(RP.selC.length+RP.selM.length),nTiraP=(RP.conCris?nTiraA:0)+7*RP.selA.length;
-  const grilla=(g,cols,head)=>`<div class="tw"><table><thead><tr><th>Modelo</th>${head}</tr></thead><tbody>${MOD.map(md=>`<tr><td>${md.n}</td>${cols.map(i=>`<td style="padding:5px"><input class="qn" type="number" min="0" max="50" inputmode="numeric" value="${RP[g][md.i][i]||""}" placeholder="0" data-g="${g}" data-m="${md.i}" data-i="${i}" aria-label="${md.n} ${g==="arm"?COL[i].n:AUM[i]}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-  return `<div class="grid" style="grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);align-items:start" id="rpgrid">
-   <div class="stack">
-    ${tEspejo(o,pend)}
-    <div class="card pad stack"><div class="lbl" style="margin:0">2 · Tiras de 7 para reforzar</div>
-     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por color · un armazón de cada modelo (podés elegir varios)</div>${toggles("selC",COL.map((c,i)=>[i,c.s,c.hex]))}</div>
-     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por modelo · un armazón de cada color</div>${toggles("selM",MOD.map(m=>[m.i,"Modelo "+(m.i+1)]))}</div>
-     <label class="check"><input type="checkbox" data-rpc ${RP.conCris?"checked":""}><span><b>Sumar cristales a esos armazones</b> <span class="small muted">(opcional · combinado con 10%)</span><br><span class="small muted">Un par por armazón, en </span><select class="in" data-rpa style="width:auto;padding:3px 6px" aria-label="Aumento de los cristales">${AUM.map((a,i)=>FIS(i)?`<option value="${i}" ${RP.aumT===i?"selected":""}>${a}</option>`:"").join("")}</select></span></label>
-     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por aumento · un par para cada modelo (${ars(7*P.par)} la tira)</div>${toggles("selA",AUM.map((a,i)=>[i,a]).filter(([i])=>FIS(i)))}</div>
-     <div class="row between"><span class="small muted">${nTiraA+nTiraP?`Suma ${nTiraA} armazones y ${nTiraP} pares`:"Elegí uno o más colores, modelos o aumentos."}</span><button class="btn pri sm" data-a="rpTiras" ${nTiraA+nTiraP?"":"disabled"}>Sumar al pedido</button></div></div>
-    <div class="card pad stack"><div class="lbl" style="margin:0">3 · Armazones del pedido</div>${grilla("arm",[0,1,2,3,4,5,6],COL.map(c=>`<th><span class="dot" style="background:${c.hex};vertical-align:-2px;margin-right:4px"></span>${c.s}</th>`).join(""))}</div>
-    <div class="card pad stack"><div class="lbl" style="margin:0">4 · Cristales del pedido</div>${grilla("par",[2,3,4,5,6],AUM.slice(2).map(a=>`<th>${a}</th>`).join(""))}<p class="tiny muted" style="margin:0">0 y +0,5 se piden como virtuales desde la pestaña Virtuales.</p></div>
-    <div class="card"><div class="pad" style="padding-bottom:4px"><div class="lbl">Pedidos</div></div>${o.pedidos.length?o.pedidos.map(p=>`<div class="li"><div class="grow"><div class="t">#${p.n} · ${esc(p.items)}</div><div class="s">${p.f} · ${ars(p.tot)} sin IVA</div></div>${p.est==="en camino"?`<button class="btn sm" data-a="recibido" data-n="${p.n}">Marcar recibido</button>`:'<span class="pill ok">Recibido</span>'}</div>`).join(""):`<div class="empty">Sin pedidos todavía.</div>`}</div>
+  return `<div class="stk">
+  <div class="stack">
+   <div class="card pad stack ia">
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><span class="ia-av">IA</span><div><div style="font-weight:700">Asistente de reposición</div><div class="tiny muted">Lee tu gabinete y tus ventas, te explica qué pasa y arma el pedido. Vos decidís qué va.</div></div></div>
+    <ul class="ia-d">${diagnostico(o).map(t=>`<li><span>${t}</span></li>`).join("")}</ul>
+    ${act.length?`<div style="display:grid;gap:12px">${grupos.map(g=>`<div><div class="lbl">${g}</div><div style="display:grid;gap:6px">${act.filter(x=>x.g===g).map(x=>`<label class="sug"><input type="checkbox" data-sug="${x.k}" ${sugOn(x)?"checked":""}><span class="grow"><b>${x.t}</b><br><span class="small muted">${x.w}</span></span><span class="tiny muted num" style="white-space:nowrap">${unid(x)}</span></label>`).join("")}</div></div>`).join("")}
+      <div class="row between"><span class="small">${uA+uP?`Sumás <b>${uA} armazones</b> y <b>${uP} pares</b>`:"Tildá lo que quieras pedir."}</span><button class="btn acc sm" data-a="iaAplicar" ${uA+uP?"":"disabled"}>Pasar al pedido</button></div></div>`
+     :`<div class="note ok">Lo sugerido ya está en tu pedido. Revisalo y confirmalo.</div>`}
+    <hr class="sep" style="margin:4px 0">
+    <div class="chat" id="chat">${RP.chat.map(c=>`<div class="msg ${c.yo?"yo":"ia"}">${c.h}</div>`).join("")||`<div class="msg ia">Preguntame por una combinación que te pidan (<i>"modelo 3 cherry +1,5"</i>), qué te falta o qué son los pares a favor.</div>`}</div>
+    <div class="row" style="flex-wrap:nowrap"><input class="in" id="iaq" placeholder="Ej.: un cliente quiere el modelo 7 negro +2,0" autocomplete="off" aria-label="Preguntale al asistente"><button class="btn pri" data-a="iaEnviar">Preguntar</button></div>
+    <div class="chips">${["¿Qué me falta?","Modelo 7 negro +2,0","¿Qué son los pares a favor?","¿Qué es lo que más sale?"].map(q=>`<button class="chip" data-a="iaPreg" data-q="${esc(q)}" style="font-weight:500;font-size:13px">${esc(q)}</button>`).join("")}</div>
    </div>
-   <div class="card pad stack" style="position:sticky;top:76px" id="rpSum">${rpResumen()}</div></div>
-  <style>@media(max-width:900px){#rpgrid{grid-template-columns:1fr!important}}</style>`;
+
+   <div class="card"><div class="pad" style="padding-bottom:8px"><div class="row between"><div class="lbl" style="margin:0">Tu gabinete · armazones y cristales por modelo</div>
+     <div class="leg"><span><span class="dot" style="background:var(--ink3)"></span> hay</span><span><span class="dot" style="background:transparent;box-shadow:none;border:2px dashed var(--warn)"></span> falta</span><span><span class="dot" style="background:var(--ok)"></span> en camino</span><span><span class="dot" style="background:var(--rust)"></span> en tu pedido</span></div></div>
+     <p class="tiny muted" style="margin:6px 0 0">Tocá un color o un aumento para sumar uno al pedido. Los cristales vienen cortados para cada modelo: por eso se cuentan por modelo.</p></div>
+    <div class="gr h"><span>Modelo</span><span>Armazones · 7 colores</span><span>Cristales · pares por aumento</span><span>A favor</span><span>Listas</span></div>
+    ${MOD.map(md=>{const m=md.i,l=listas(o,m);return `<div class="gr">
+     <div class="gm">${fimg(m,6,"thumb",200)}<span>${md.n}</span></div>
+     <div class="gc">${COL.map((c,ci)=>{const v=o.marcos[m][ci],cm=o.camM[m][ci],p=RP.arm[m][ci];return `<button class="cd ${v?"":"z"} ${c.k==="hielo"?"light":""}" style="background:${c.hex}" data-a="gAdd" data-t="arm" data-m="${m}" data-i="${ci}" title="${c.n}: ${v?v+" en el gabinete":"falta"}${cm?" · "+cm+" en camino":""}${p?" · "+p+" en tu pedido":""}" aria-label="Sumar armazón ${md.n} ${c.n}">${v>1?v:""}${cm?'<span class="bc"></span>':""}${p?`<span class="bp">+${p}</span>`:""}</button>`}).join("")}</div>
+     <div class="ga">${AUMF.map(a=>{const v=o.cris[m][a],cm=o.camC[m][a],p=RP.par[m][a];return `<button class="cc ${v?"":"z"}" data-a="gAdd" data-t="par" data-m="${m}" data-i="${a}" title="${AUM[a]}: ${v} par${v===1?"":"es"}${cm?" · "+cm+" en camino":""}" aria-label="Sumar par ${AUM[a]} ${md.n}"><span class="al">${AUM[a]}</span><b>${v}</b>${cm?'<span class="bc"></span>':""}${p?`<span class="bp">+${p}</span>`:""}</button>`}).join("")}</div>
+     <div class="gf"><span class="mlab tiny muted">A favor</span><b class="num" style="color:var(--rust)">${o.virt[m]}</b>${RP.fav[m]?`<span class="tiny" style="color:var(--rust);font-weight:700">+${RP.fav[m]}</span>`:""}<button class="btn sm" data-a="favUsar" data-m="${m}" ${o.virt[m]?"":"disabled"} title="Usar un par a favor para un cliente">Usar</button><button class="btn sm ghost" data-a="gAdd" data-t="fav" data-m="${m}" data-i="0" title="Sumar un par a favor al pedido" aria-label="Sumar un par a favor del ${md.n}">+</button></div>
+     <div class="gl" title="${l.c} colores × ${l.a} aumentos"><span class="mlab tiny muted">Listas</span><b class="num">${l.n}</b><span class="tiny muted">/35</span></div></div>`}).join("")}
+    <div class="pad tiny muted" style="border-top:1px solid var(--line)">0 y +0,5 no van en el gabinete: salen de tus pares a favor. <b>Listas</b> = colores × aumentos que armás hoy en ese modelo.</div></div>
+
+   <details class="card pad"><summary style="font-weight:600;cursor:pointer">Atajos · tiras de 7 para reforzar</summary><div class="stack" style="margin-top:12px">
+     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por color · un armazón de cada modelo</div>${toggles("selC",COL.map((c,i)=>[i,c.s,c.hex]))}</div>
+     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por modelo · un armazón de cada color</div>${toggles("selM",MOD.map(m=>[m.i,"Modelo "+(m.i+1)]))}</div>
+     <label class="check"><input type="checkbox" data-rpc ${RP.conCris?"checked":""}><span><b>Sumar cristales a esos armazones</b> <span class="small muted">(combinado con 10%)</span><br><span class="small muted">Un par por armazón, en </span><select class="in" data-rpa style="width:auto;padding:3px 6px" aria-label="Aumento de los cristales">${AUMF.map(i=>`<option value="${i}" ${RP.aumT===i?"selected":""}>${AUM[i]}</option>`).join("")}</select></span></label>
+     <div><div class="small" style="font-weight:600;margin-bottom:6px">Por aumento · un par para cada modelo (${ars(7*P.par)} la tira)</div>${toggles("selA",AUMF.map(i=>[i,AUM[i]]))}</div>
+     <div class="row between"><span class="small muted">${nTiraA+nTiraP?`Suma ${nTiraA} armazones y ${nTiraP} pares`:"Elegí uno o más colores, modelos o aumentos."}</span><button class="btn pri sm" data-a="rpTiras" ${nTiraA+nTiraP?"":"disabled"}>Sumar al pedido</button></div></div></details>
+
+   <div class="card"><div class="pad" style="padding-bottom:4px"><div class="lbl">Pedidos</div></div>${o.pedidos.length?o.pedidos.map(p=>`<div class="li"><div class="grow"><div class="t">#${p.n} · ${esc(p.items)}</div><div class="s">${p.f} · ${ars(p.tot)} sin IVA</div></div>${p.est==="en camino"?`<button class="btn sm" data-a="recibido" data-n="${p.n}">Marcar recibido</button>`:'<span class="pill ok">Recibido</span>'}</div>`).join(""):`<div class="empty">Sin pedidos todavía.</div>`}</div>
+  </div>
+  <div class="card pad stack" style="position:sticky;top:52px" id="rpSum">${rpResumen()}</div></div>`;
 }
 
-/* Espejo con confirmación: cada venta se repone igual por defecto; se puede cambiar color/aumento,
-   pedir solo el marco o solo el par, o no reponerla. Hasta confirmar, no entra al pedido. */
-function tEspejo(o,pend){
-  const cab=(sub)=>`<div class="pad" style="padding-bottom:4px"><div class="row between"><div class="lbl" style="margin:0">1 · Espejo: lo que vendiste</div>${RP.esp?'<span class="pill ok">Confirmado</span>':pend.length?'<span class="pill warn">Revisá y confirmá</span>':""}</div><p class="small muted" style="margin:6px 0 8px">${sub}</p></div>`;
-  if(!pend.length)return `<div class="card">${cab("Cada venta descuenta un armazón y un par.")}<div class="empty">Nada pendiente de reponer.</div></div>`;
-  const k=ajCuenta();
-  if(RP.esp)return `<div class="card">${cab(`Sumado al pedido: ${k.a} armazones y ${k.p} pares${k.n?` · ${k.n} sin reponer`:""}.`)}
-    ${RP.aj.map(x=>`<div class="li">${fimg(x.m,x.c,"thumb",200)}<div class="grow"><div class="t">${combo(x.m,x.c,x.a)}</div><div class="s">${[x.arm?"Armazón":"",x.par&&FIS(x.a)?"Par":""].filter(Boolean).join(" + ")||"No se repone"}</div></div></div>`).join("")}
-    <div class="pad row" style="border-top:1px solid var(--line)"><button class="btn sm" data-a="ajEditar">Editar lo vendido</button><span class="tiny muted">Lo saca del pedido para que lo ajustes y lo vuelvas a confirmar.</span></div></div>`;
-  const sel=(x,i,key,opts)=>`<select class="in" data-aj="${i}" data-k="${key}" style="width:auto;padding:4px 6px" aria-label="${key}">${opts.map(([v,n])=>`<option value="${v}" ${x[key]===v?"selected":""}>${n}</option>`).join("")}</select>`;
-  return `<div class="card">${cab("Revisá cada venta antes de reponer: si querés otro color o aumento, solo el marco o nada, cambialo acá.")}
-    ${RP.aj.map((x,i)=>{const v=o.ventas[x.i],cambio=x.m!==v.m||x.c!==v.c||x.a!==v.a,nada=!x.arm&&!(x.par&&FIS(x.a));
-      return `<div class="li" style="align-items:flex-start;${nada?"opacity:.55":""}">${fimg(x.m,x.c,"thumb",200)}<div class="grow stack" style="--x:6px;gap:6px">
-        <div><div class="t">${combo(x.m,x.c,x.a)}</div><div class="s">${esc(v.d)}${cambio?` · vendiste ${combo(v.m,v.c,v.a)}`:""}</div></div>
-        <div class="chips"><button class="chip" data-a="ajT" data-i="${i}" data-k="arm" aria-pressed="${x.arm}">Armazón</button><button class="chip" data-a="ajT" data-i="${i}" data-k="par" aria-pressed="${x.par&&FIS(x.a)}" ${FIS(x.a)?"":"disabled title='Este aumento se pide como virtual'"}>Par ${AUM[x.a]}</button><button class="chip" data-a="ajT" data-i="${i}" data-k="ed" aria-pressed="${x.ed}">Cambiar</button></div>
-        ${x.ed?`<div class="row" style="gap:6px;flex-wrap:wrap">${sel(x,i,"m",MOD.map(md=>[md.i,md.n]))}${sel(x,i,"c",COL.map((c,ci)=>[ci,c.n]))}${sel(x,i,"a",AUM.map((a,ai)=>[ai,a+(FIS(ai)?"":" (virtual)")]))}</div>`:""}
-      </div></div>`}).join("")}
-    <div class="pad row between" style="border-top:1px solid var(--line);gap:8px;flex-wrap:wrap"><span class="small">Vas a reponer <b>${k.a} armazones</b> y <b>${k.p} pares</b>${k.n?` · ${k.n} sin reponer`:""}</span>
-      <button class="btn acc sm" data-a="ajConfirmar" ${k.a+k.p?"":"disabled"}>Confirmar y sumar al pedido</button></div></div>`;
-}
+/* El 10% del combinado se aplica a cada armazón que va con un par (o par a favor) de su mismo modelo. */
+function rpCalc(){let comb=0,arm=0,par=0;for(let m=0;m<7;m++){const a=RP.arm[m].reduce((x,y)=>x+y,0),p=RP.par[m].reduce((x,y)=>x+y,0)+RP.fav[m],k=Math.min(a,p);comb+=k;arm+=a-k;par+=p-k}
+  return {comb,arm,par,uA:sum(RP.arm),uP:sum(RP.par),uF:RP.fav.reduce((x,y)=>x+y,0),tot:comb*P.comb+arm*P.arm+par*P.par}}
+function rpResumen(){const r=rpCalc(),fila=(t,q,v)=>q?`<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line)"><span class="small">${t} × ${q}</span><span class="num" style="font-weight:600">${ars(v)}</span></div>`:"";
+  const qi=(lbl,n,t,m,i)=>`<span class="qi">${lbl}${n>1?` ×${n}`:""}<button data-a="rpQuitar" data-t="${t}" data-m="${m}" data-i="${i}" aria-label="Quitar uno">×</button></span>`;
+  const items=MOD.map(md=>{const m=md.i,q=[];COL.forEach((c,ci)=>{if(RP.arm[m][ci])q.push(qi(`<span class="dot" style="background:${c.hex}"></span>${c.s}`,RP.arm[m][ci],"arm",m,ci))});
+    AUMF.forEach(a=>{if(RP.par[m][a])q.push(qi(`Par ${AUM[a]}`,RP.par[m][a],"par",m,a))});if(RP.fav[m])q.push(qi("A favor",RP.fav[m],"fav",m,0));
+    return q.length?`<div><div class="small" style="font-weight:600;margin-bottom:4px">${md.n}</div><div class="chips">${q.join("")}</div></div>`:""}).join("");
+  return `<div class="row between"><div class="lbl" style="margin:0">Tu pedido</div><span class="pill">Sin IVA</span></div>
+  ${items?`<div style="display:grid;gap:10px">${items}</div>`:`<div class="empty" style="padding:18px">Vacío. Pasá el sugerido del asistente o tocá un color o un aumento del gabinete.</div>`}
+  ${r.uA+r.uP+r.uF?`<div class="small muted">${r.uA} armazones · ${r.uP} pares al gabinete${r.uF?` · ${r.uF} a favor`:""}</div>`:""}
+  <div>${fila("Combinado (armazón + par del mismo modelo) · "+ars(P.comb),r.comb,r.comb*P.comb)}${fila("Armazón solo · "+ars(P.arm),r.arm,r.arm*P.arm)}${fila("Par de cristales solo · "+ars(P.par),r.par,r.par*P.par)}</div>
+  <div class="row between"><span class="small muted">Total</span><span class="big num">${ars(r.tot)}</span></div>
+  ${r.comb?`<div class="tiny" style="color:var(--ok);font-weight:600">Ahorrás ${ars(r.comb*(P.lista-P.comb))} con el 10% del combinado.</div>`:""}
+  <button class="btn acc" data-a="confirmarRepo" ${r.uA+r.uP+r.uF?"":"disabled"}>Confirmar pedido</button>
+  <button class="btn ghost sm" data-a="rpVaciar" ${r.uA+r.uP+r.uF?"":"disabled"}>Vaciar</button>
+  <p class="tiny muted" style="margin:0">Sin mínimo de compra. Lo que va al gabinete aparece en camino (punto verde); los pares a favor se acreditan al confirmar.</p>`}
+
+let CV={m:0,a:0};
+function modalFav(){const o=O(),m=CV.m;
+  modal(`<div class="stack"><div class="eb">Usar un par a favor</div><h2 style="font-size:26px">${MOD[m].n} · te quedan ${o.virt[m]}</h2>
+   <p class="small muted" style="margin:0">Elegí el aumento que necesita el cliente. Te lo mandamos cortado para este modelo en 24–72 h, sin cargo: ya está pago.</p>
+   <div class="chips">${AUM.map((a,i)=>`<button class="chip" data-a="cv" data-k="a" data-v="${i}" aria-pressed="${CV.a===i}">${a}</button>`).join("")}</div>
+   <div class="row"><button class="btn acc" data-a="favOk" ${o.virt[m]?"":"disabled"}>Usar 1 a favor · ${AUM[CV.a]}</button><button class="btn ghost" data-a="cerrar">Cancelar</button></div></div>`)}
 
 const PASOS=["Receta recibida","En laboratorio","Listo para retirar","Entregado"];
 function tPost(o){
@@ -572,8 +705,8 @@ function vVendedor(){
   const mis=Object.values(S.O).filter(o=>o.vend===S.vend),act=mis.filter(o=>o.estado==="activa");
   const alert=[];
   for(const o of act){const f=sum(o.marcos.map(r=>r.map(v=>v===0?1:0)));const k=kp(o);
-    if(f>=5)alert.push([o,`${f} combinaciones sin armazón`,"reposicion"]);
-    const rp=o.ventas.filter(v=>!v.rep).length;if(rp)alert.push([o,`${rp} venta${rp>1?"s":""} sin reponer`,"reposicion"]);
+    if(f>=5)alert.push([o,`${f} combinaciones sin armazón`,"stock"]);
+    const rp=o.ventas.filter(v=>!v.rep).length;if(rp)alert.push([o,`${rp} venta${rp>1?"s":""} sin reponer`,"stock"]);
     const ni=o.consultas.filter(q=>q.est==="nueva").length;if(ni)alert.push([o,`${ni} consulta${ni>1?"s":""} de IRIS sin tomar`,"iris"]);
     const rc=o.reclamos.filter(r=>r.est!=="Resuelto").length;if(rc)alert.push([o,`${rc} reclamo${rc>1?"s":""} abierto${rc>1?"s":""}`,"postventa"])}
   for(const o of mis.filter(o=>o.estado==="vista"))alert.push([o,"Vio la presentación: es el momento de llamar","p"]);
@@ -587,7 +720,7 @@ function vVendedor(){
     <div class="stack">
      <div class="row between"><div class="chips">${[["todas","Todas"],...ESTADOS].map(([k,n])=>`<button class="chip" data-a="vf" data-v="${k}" aria-pressed="${VF===k}">${n}${k!=="todas"?` · ${mis.filter(o=>o.estado===k).length}`:""}</button>`).join("")}</div><button class="btn pri sm" data-a="nuevaOptica">Nueva óptica +</button></div>
      <div class="card">${lista.map(o=>{const ix=ESTADOS.findIndex(e=>e[0]===o.estado);return `<div class="li" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:200px"><div class="t">${esc(o.nombre)}</div><div class="s">${esc(o.barrio)} · ${esc(o.contacto)}</div><div class="stepper" style="margin-top:8px;max-width:240px">${ESTADOS.map((e,j)=>`<span class="${j<=ix?"on":""}"></span>`).join("")}</div><div class="tiny muted" style="margin-top:4px">${ESTADOS[ix][1]}</div></div>
-       <div class="row">${o.estado==="activa"?`<a class="btn sm" href="#/optica/${o.id}">Panel</a><a class="btn sm" href="#/optica/${o.id}/reposicion">Reposición</a>`:`<button class="btn sm acc" data-a="enviarPres" data-id="${o.id}">Enviar presentación</button><button class="btn sm" data-a="paquete" data-id="${o.id}">Armar paquete</button>`}<button class="btn sm ghost" data-a="copiarTxt" data-t="${esc(o.estado==="activa"?panelLink(o):presLink(o))}">Copiar link</button></div></div>`}).join("")||`<div class="empty">No hay ópticas en esta etapa.</div>`}</div>
+       <div class="row">${o.estado==="activa"?`<a class="btn sm" href="#/optica/${o.id}">Panel</a><a class="btn sm" href="#/optica/${o.id}/stock">Stock</a>`:`<button class="btn sm acc" data-a="enviarPres" data-id="${o.id}">Enviar presentación</button><button class="btn sm" data-a="paquete" data-id="${o.id}">Armar paquete</button>`}<button class="btn sm ghost" data-a="copiarTxt" data-t="${esc(o.estado==="activa"?panelLink(o):presLink(o))}">Copiar link</button></div></div>`}).join("")||`<div class="empty">No hay ópticas en esta etapa.</div>`}</div>
     </div>
     <div class="stack">
      <div class="card"><div class="pad" style="padding-bottom:4px"><div class="lbl">Alertas de tus exhibidores</div></div>${alert.map(([o,t,tab])=>`<a class="li" style="text-decoration:none" href="${tab==="p"?`#/p/${o.id}`:`#/optica/${o.id}/${tab}`}"><div class="grow"><div class="t">${esc(o.nombre)}</div><div class="s">${t}</div></div><span aria-hidden="true">→</span></a>`).join("")||`<div class="empty">Todo en orden.</div>`}</div>
@@ -595,7 +728,7 @@ function vVendedor(){
       <p class="quote" style="margin:0">"Llevate esta rueda de auxilio, dejame tu receta y en menos de una semana tenés el anteojo que tenés que tener."</p>
       <ul class="small" style="margin:0;padding-left:18px;color:var(--ink2)"><li>Exhibidor de 1,75 m en comodato, envío sin cargo.</li><li>343 combinaciones con 49 pares. Público ${ars(P.pub)}, ganancia ${ars(P.neto-P.comb)} (54,5%).</li><li>Garantía y cambios los cubre beRabbit. Reposición sin mínimo.</li><li>IRIS y los influencers le mandan clientes de su zona.</li></ul></div>
      <div class="card pad stack"><div class="lbl" style="margin:0">Objeciones frecuentes</div>
-      ${[["¿Me compite la venta online?","No: mismo precio, y la urgencia se deriva a la óptica más cercana con stock."],["¿Tengo que comprar un mínimo?","No. Repone lo que vendió o refuerza con tiras de 7."],["¿Y si no tengo la combinación?","Se arma otra con el mismo aumento, o canjea un virtual desde el panel."]].map(([q,a])=>`<details><summary style="font-weight:600;cursor:pointer">${q}</summary><p class="small muted" style="margin:6px 0 0">${a}</p></details>`).join("")}</div>
+      ${[["¿Me compite la venta online?","No: mismo precio, y la urgencia se deriva a la óptica más cercana con stock."],["¿Tengo que comprar un mínimo?","No. Repone lo que vendió o refuerza con tiras de 7."],["¿Y si no tengo la combinación?","Se arma otra con el mismo aumento, o usa un par a favor desde el panel."]].map(([q,a])=>`<details><summary style="font-weight:600;cursor:pointer">${q}</summary><p class="small muted" style="margin:6px 0 0">${a}</p></details>`).join("")}</div>
     </div></div></div>
   <style>@media(max-width:900px){#vgrid{grid-template-columns:1fr!important}}</style>`;
 }
@@ -612,9 +745,9 @@ function modalPaquete(o){
   const nCol=PQ.col.filter(Boolean).length,arm=7*nCol,pares=7*PQ.aum.reduce((a,b)=>a+b,0),comb=Math.min(arm,pares);
   const tot=comb*P.lista+Math.max(0,arm-comb)*P.arm+Math.max(0,pares-comb)*P.par;
   modal(`<div class="stack"><div class="eb">Paquete de entrada</div><h2 style="font-size:28px">${esc(o.nombre)}</h2>
-   <p class="small muted" style="margin:0">Estándar: 49 armazones (7 modelos × 7 colores, incluye los 7 probadores) y 49 pares cargados al centro. 0 y +0,5 quedan a pedido como virtuales.</p>
+   <p class="small muted" style="margin:0">Estándar: 49 armazones (7 modelos × 7 colores, incluye los 7 probadores) y 49 pares cargados al centro. 0 y +0,5 se cubren con pares a favor.</p>
    <div><p class="lbl">Colores del exhibidor</p><div class="chips">${COL.map((c,i)=>`<button class="chip" data-a="pqc" data-i="${i}" aria-pressed="${PQ.col[i]}"><span class="dot" style="background:${c.hex};vertical-align:-1px"></span> ${c.s}</button>`).join("")}</div></div>
-   <div class="tw"><table><thead><tr><th>Aumento</th><th>Por modelo</th><th>Total</th></tr></thead><tbody>${AUM.map((a,i)=>FIS(i)?`<tr><td>${a}</td><td><div class="row" style="justify-content:center"><button class="btn sm" data-a="pqa" data-i="${i}" data-d="-1" aria-label="Menos">−</button><span class="num" style="min-width:18px">${PQ.aum[i]}</span><button class="btn sm" data-a="pqa" data-i="${i}" data-d="1" aria-label="Más">+</button></div></td><td class="num">${PQ.aum[i]*7}</td></tr>`:`<tr><td>${a}</td><td class="muted">a pedido</td><td class="muted">virtual</td></tr>`).join("")}</tbody></table></div>
+   <div class="tw"><table><thead><tr><th>Aumento</th><th>Por modelo</th><th>Total</th></tr></thead><tbody>${AUM.map((a,i)=>FIS(i)?`<tr><td>${a}</td><td><div class="row" style="justify-content:center"><button class="btn sm" data-a="pqa" data-i="${i}" data-d="-1" aria-label="Menos">−</button><span class="num" style="min-width:18px">${PQ.aum[i]}</span><button class="btn sm" data-a="pqa" data-i="${i}" data-d="1" aria-label="Más">+</button></div></td><td class="num">${PQ.aum[i]*7}</td></tr>`:`<tr><td>${a}</td><td class="muted">a favor</td><td class="muted">—</td></tr>`).join("")}</tbody></table></div>
    <div class="row"><button class="btn sm" data-a="pqPreset" data-v="std">Estándar</button><button class="btn sm" data-a="pqPreset" data-v="fuerte">Lectura fuerte (+2,0 a +3,0)</button><button class="btn sm" data-a="pqPreset" data-v="suave">Presbicia inicial (+1,0 a +2,0)</button></div>
    <div class="note row between"><span>${arm} armazones · ${pares} pares${comb===49&&arm===49?" · 343 combinaciones":""}</span><b class="num" style="font-size:20px">${ars(tot)} <span class="tiny muted" style="font-weight:500">sin IVA</span></b></div>
    <div class="row"><button class="btn acc" data-a="guardarPaq" data-id="${o.id}">Guardar y sumarlo a la presentación</button><span class="sp"></span><button class="btn ghost" data-a="cerrar">Cerrar</button></div></div>`);
@@ -664,14 +797,14 @@ function vPres(){
 
   <section class="slide"><div class="wrap grid g2" style="gap:32px;align-items:start"><div><div class="eb">Tu paquete de entrada</div><h2 style="margin:10px 0 12px">343 combinaciones con solo ${pares} pares.</h2><p class="muted">${arm} armazones (incluye los 7 probadores) y exhibidor en comodato con espejo y gabinete. Envío sin cargo.</p>
      <div class="big num" style="margin-top:14px">${ars(tot)}</div><div class="small muted">sin IVA · armado por ${esc(o.vend)} para ${esc(o.nombre)}</div></div>
-    <div class="tw"><table><thead><tr><th>Aumento</th><th>Por modelo</th><th>Total</th></tr></thead><tbody>${AUM.map((a,i)=>FIS(i)?`<tr><td>${a}</td><td>${o.paq.aum[i]}</td><td>${o.paq.aum[i]*7}</td></tr>`:"").join("")}<tr><td>0 y +0,5</td><td class="muted">a pedido</td><td class="muted">virtual</td></tr></tbody></table></div></div></section>
+    <div class="tw"><table><thead><tr><th>Aumento</th><th>Por modelo</th><th>Total</th></tr></thead><tbody>${AUM.map((a,i)=>FIS(i)?`<tr><td>${a}</td><td>${o.paq.aum[i]}</td><td>${o.paq.aum[i]*7}</td></tr>`:"").join("")}<tr><td>0 y +0,5</td><td class="muted">a favor</td><td class="muted">—</td></tr></tbody></table></div></div></section>
 
   <section class="slide" style="padding-top:0"><div class="wrap"><div class="eb">Reposición y panel</div><h2 style="margin:10px 0 24px">Lo que vendés, vuelve. Y tenés el control de todo.</h2>
-   <div class="grid g3">${[["Espejo","Cada venta descuenta un armazón y un par. El panel arma el pedido para reponer exactamente eso."],["Tiras de 7","Reforzá un aumento (7 pares, $24.500), un color o un modelo (7 armazones, $207.900)."],["Virtuales","Los cristales a favor no vencen. Se piden desde el panel cuando hacen falta."]].map(([t,s],i)=>`<div class="card pad"><div class="eb">${i+1}</div><h3 style="font-size:24px;margin:4px 0">${t}</h3><p class="muted" style="margin:0">${s}</p></div>`).join("")}</div>
-   <div class="card pad row between" style="margin-top:14px"><div><b>Panel de la óptica:</b> <span class="muted">stock de marcos y cristales, virtuales, reposición, postventa, marketing, influencers, test visual y consultas de IRIS.</span></div><a class="btn pri" href="#/optica/ejemplo">Ver el panel de ejemplo</a></div></div></section>
+   <div class="grid g3">${[["Espejo","Cada venta descuenta un armazón y un par. El panel arma el pedido para reponer exactamente eso."],["Tiras de 7","Reforzá un aumento (7 pares, $24.500), un color o un modelo (7 armazones, $207.900)."],["Pares a favor","Cristales ya pagos que guardamos en beRabbit: no ocupan el gabinete ni vencen. Cubren 0, +0,5 o un aumento agotado en 24–72 h."]].map(([t,s],i)=>`<div class="card pad"><div class="eb">${i+1}</div><h3 style="font-size:24px;margin:4px 0">${t}</h3><p class="muted" style="margin:0">${s}</p></div>`).join("")}</div>
+   <div class="card pad row between" style="margin-top:14px"><div><b>Panel de la óptica:</b> <span class="muted">stock y reposición con asistente, pares a favor, postventa, marketing, influencers, test visual y consultas de IRIS.</span></div><a class="btn pri" href="#/optica/ejemplo">Ver el panel de ejemplo</a></div></div></section>
 
   <section class="slide" style="padding-top:0"><div class="wrap grid g2" style="gap:32px;align-items:start"><div><div class="eb">Condiciones</div><h2 style="margin:10px 0 20px">Directo de fábrica, sin letra chica.</h2>
-    <div class="tw"><table class="tl"><tbody>${[["Exhibidor","Comodato, envío sin cargo"],["Garantía y cambios","Los cubre beRabbit"],["Reposición","Sin mínimo de compra"],["Cristales virtuales","No vencen"]].map(([a,b])=>`<tr><td><b>${a}</b></td><td>${b}</td></tr>`).join("")}</tbody></table></div></div>
+    <div class="tw"><table class="tl"><tbody>${[["Exhibidor","Comodato, envío sin cargo"],["Garantía y cambios","Los cubre beRabbit"],["Reposición","Sin mínimo de compra"],["Pares a favor","No vencen"]].map(([a,b])=>`<tr><td><b>${a}</b></td><td>${b}</td></tr>`).join("")}</tbody></table></div></div>
    <div><div class="eb">Preguntas frecuentes</div><div class="stack" style="margin-top:14px">${[["¿Y si no tengo la combinación que pide?","Se arma otra: mismo aumento en otro color o modelo. Lo que falta se pide desde el panel."],["¿Sirve con distinta graduación en cada ojo?","El auxilio es igual en los dos ojos y sirve para salir del paso. El definitivo va con receta, en el mismo marco."],["¿Puedo montar cristales de laboratorio?","Sí. El marco beRabbit acepta cristales recetados: es la base de la doble venta."],["¿Me compite la venta online?","No: mismo precio, y la urgencia se deriva a la óptica más cercana."]].map(([q,a])=>`<details class="card pad"><summary style="font-weight:600;cursor:pointer">${q}</summary><p class="muted" style="margin:8px 0 0">${a}</p></details>`).join("")}</div></div></div></section>
 
   <section class="slide dark" id="sumarme"><div class="wrap" style="text-align:center;max-width:760px"><img src="/br/conejo.svg" alt="" style="height:64px"><h2 style="margin:16px 0 12px">Que la próxima urgencia termine en ${esc(o.nombre)}.</h2>
@@ -723,23 +856,28 @@ const ACT={
    toast(V.receta?"Venta registrada · quedó en seguimiento para el definitivo":"Venta registrada · sumada a la reposición");V.receta=false;V.cli="";V.tel="";save();render()},
  pedirVirtual(){const o=O(),{m,a}=V;if(o.virt[m]>0)o.virt[m]--;o.camC[m][a]=(o.camC[m][a]||0)+1;
    o.consultas.unshift({id:Date.now(),cli:"Cliente de mostrador",canal:"Mostrador",txt:`Espera ${combo(m,V.c,a)} · avisar cuando llegue`,est:"tomada"});save();render();toast("Pedido · llega en 24–72 h")},
- cvSel(el){CV.m=+el.dataset.m;render()},
- cv(el){CV[el.dataset.k]=+el.dataset.v;render()},
- canjear(){const o=O();if(!o.virt[CV.m])return;o.virt[CV.m]--;o.camC[CV.m][CV.a]++;save();render();toast(`Canjeado · cristal ${AUM[CV.a]} del ${MOD[CV.m].n.toLowerCase()} en camino`)},
+ cv(el){CV[el.dataset.k]=+el.dataset.v;modalFav()},
+ favUsar(el){CV={m:+el.dataset.m,a:0};modalFav()},
+ favOk(){const o=O();if(!o.virt[CV.m])return;o.virt[CV.m]--;o.camC[CV.m][CV.a]++;save();cerrar();render();toast(`Par ${AUM[CV.a]} del ${MOD[CV.m].n.toLowerCase()} en camino · llega en 24–72 h`)},
+ gAdd(el){const t=el.dataset.t,m=+el.dataset.m,i=+el.dataset.i;if(t==="fav")RP.fav[m]++;else RP[t][m][i]++;render()},
+ rpQuitar(el){const t=el.dataset.t,m=+el.dataset.m,i=+el.dataset.i;if(t==="fav")RP.fav[m]=Math.max(0,RP.fav[m]-1);else RP[t][m][i]=Math.max(0,RP[t][m][i]-1);render()},
+ iaAplicar(){const o=O();sugerir(o).filter(x=>!RP.hechas[x.k]&&sugOn(x)).forEach(x=>{x.arm.forEach(([m,c])=>RP.arm[m][c]++);x.par.forEach(([m,a])=>RP.par[m][a]++);x.fav.forEach(m=>RP.fav[m]++);if(x.venta!=null)RP.ventas.push(x.venta);RP.hechas[x.k]=true});render();toast("Sugerido sumado al pedido")},
+ iaEnviar(){const i=$("iaq");if(i&&i.value.trim())iaAsk(i.value.trim())},
+ iaPreg(el){iaAsk(el.dataset.q)},
+ iaVender(el){V.m=+el.dataset.m;V.c=+el.dataset.c;V.a=+el.dataset.x;location.hash=`#/optica/${R.id}/vender`},
+ iaFav(el){const o=O(),m=+el.dataset.m,a=+el.dataset.x;if(!o.virt[m])return;o.virt[m]--;o.camC[m][a]++;save();render();toast(`Par ${AUM[a]} del ${MOD[m].n.toLowerCase()} en camino · llega en 24–72 h`)},
+ iaAdd(el){RP[el.dataset.t][+el.dataset.m][+el.dataset.i]++;render();toast("Sumado al pedido")},
  rpSel(el){const a=RP[el.dataset.k],v=+el.dataset.v,i=a.indexOf(v);i<0?a.push(v):a.splice(i,1);render()},
  rpTiras(){for(const c of RP.selC)for(let m=0;m<7;m++){RP.arm[m][c]++;if(RP.conCris)RP.par[m][RP.aumT]++}
    for(const m of RP.selM)for(let c=0;c<7;c++){RP.arm[m][c]++;if(RP.conCris)RP.par[m][RP.aumT]++}
    for(const a of RP.selA)for(let m=0;m<7;m++)RP.par[m][a]++;
    RP.selC=[];RP.selM=[];RP.selA=[];render();toast("Sumado al pedido")},
- ajT(el){const x=RP.aj[+el.dataset.i],k=el.dataset.k;if(k==="par"&&!FIS(x.a))return;x[k]=!x[k];render()},
- ajConfirmar(){rpEspejo(1);render();toast("Lo vendido se sumó al pedido")},
- ajEditar(){rpEspejo(-1);render();toast("Lo vendido salió del pedido: ajustalo y confirmalo de nuevo")},
- rpVaciar(){RP.arm=m7(0);RP.par=m7(0);RP.esp=false;render()},
- confirmarRepo(){const o=O(),r=rpCalc();if(!(r.uA+r.uP))return;
-   for(let m=0;m<7;m++)for(let i=0;i<7;i++){o.camM[m][i]+=RP.arm[m][i];o.camC[m][i]+=RP.par[m][i]}
-   if(RP.esp)RP.aj.forEach(x=>{o.ventas[x.i].rep=true});
-   o.pedidos.unshift({n:S.nPed++,f:hoyDM(),items:[r.uA?`${r.uA} armazones`:"",r.uP?`${r.uP} pares`:"",r.comb?`${r.comb} combinados`:""].filter(Boolean).join(" · "),tot:r.tot,est:"en camino"});
-   RP={id:null};save();render();toast("Pedido confirmado · en camino")},
+ rpVaciar(){RP.arm=m7(0);RP.par=m7(0);RP.fav=Array(7).fill(0);RP.ventas=[];RP.hechas={};render()},
+ confirmarRepo(){const o=O(),r=rpCalc();if(!(r.uA+r.uP+r.uF))return;
+   for(let m=0;m<7;m++){o.virt[m]+=RP.fav[m];for(let i=0;i<7;i++){o.camM[m][i]+=RP.arm[m][i];o.camC[m][i]+=RP.par[m][i]}}
+   RP.ventas.forEach(i=>{if(o.ventas[i])o.ventas[i].rep=true});
+   o.pedidos.unshift({n:S.nPed++,f:hoyDM(),items:[r.uA?`${r.uA} armazones`:"",r.uP?`${r.uP} pares`:"",r.uF?`${r.uF} a favor`:""].filter(Boolean).join(" · "),tot:r.tot,est:"en camino"});
+   const ch=RP.chat;rpNuevo(o);RP.chat=ch;save();render();toast("Pedido confirmado · en camino")},
  recibido(el){const o=O(),p=o.pedidos.find(x=>x.n==el.dataset.n);if(!p)return;
    for(let m=0;m<7;m++)for(let i=0;i<7;i++){o.marcos[m][i]+=o.camM[m][i];o.cris[m][i]+=FIS(i)?o.camC[m][i]:0;o.camM[m][i]=0;o.camC[m][i]=0}
    o.pedidos.forEach(x=>x.est="recibido");save();render();toast("Stock actualizado")},
@@ -783,10 +921,11 @@ document.addEventListener("click",ev=>{const el=ev.target.closest("[data-a]");if
   if(el.tagName==="A"&&!["ir"].includes(el.dataset.a)){f(el,ev);return}
   if(el.type==="checkbox")return;ev.preventDefault();f(el,ev)});
 document.addEventListener("change",ev=>{const el=ev.target;if(el.hasAttribute("data-rpc")){RP.conCris=el.checked;render();return}
-  if(el.hasAttribute("data-aj")){const x=RP.aj[+el.dataset.aj];x[el.dataset.k]=+el.value;if(el.dataset.k==="a"&&!FIS(x.a))x.par=false;render();return}if(el.hasAttribute("data-rpa")){RP.aumT=+el.value;return}if(el.dataset.a==="vend")ACT.vend(el);if(el.dataset.a==="receta")ACT.receta(el)});
-document.addEventListener("input",ev=>{const el=ev.target;if(el.dataset.g){RP[el.dataset.g][+el.dataset.m][+el.dataset.i]=Math.max(0,Math.min(50,parseInt(el.value)||0));$("rpSum").innerHTML=rpResumen();return}if(el.dataset.f){V[el.dataset.f]=el.value}
+  if(el.hasAttribute("data-sug")){RP.sel[el.dataset.sug]=el.checked;render();return}if(el.hasAttribute("data-rpa")){RP.aumT=+el.value;return}if(el.dataset.a==="vend")ACT.vend(el);if(el.dataset.a==="receta")ACT.receta(el)});
+document.addEventListener("input",ev=>{const el=ev.target;if(el.dataset.f){V[el.dataset.f]=el.value}
   if(el.dataset.a==="calc"){CALC=+el.value;const o=$("calcOut");if(o)o.textContent=`${CALC} → ${ars(CALC*(P.neto-P.comb))}/mes`}});
-document.addEventListener("keydown",ev=>{if(ev.key==="Escape")cerrar()});
+document.addEventListener("keydown",ev=>{if(ev.key==="Escape")cerrar();if(ev.key==="Enter"&&ev.target.id==="iaq"){ev.preventDefault();ACT.iaEnviar()}});
+function iaAsk(q){const o=O();RP.chat.push({yo:1,h:esc(q)},{h:iaResp(o,q)});render();const c=$("chat");if(c){c.scrollTop=c.scrollHeight;c.scrollIntoView({block:"nearest"})}$("iaq")?.focus({preventScroll:true})}
 render();
 </script>
 </body></html>

@@ -2,15 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { PiezaMarketing } from '../../lib/types'
 import { abrirWhatsApp, telefonosCliente } from '../../lib/telefono'
+import { useAuth } from '../../lib/auth'
 
 // Kit de envío (p.ej. lanzamiento ASCARI): las piezas de una carpeta que comparten el prefijo del título
 // ("ASCARI · Video", "ASCARI · Foto 1", "ASCARI · Texto WhatsApp"). Se elige la óptica, se abre su chat
 // con el texto ya escrito y el video + fotos se comparten desde el celu (WhatsApp no deja adjuntar por link).
+// Siempre va con el link al catálogo de ESA óptica (su token), abierto en el modelo del kit (?ver=ascari).
+// Los mismos kits aparecen en Preparar envío (Envíos/Cartera) para sumarlos al mensaje del cliente.
 
 type Cliente = { cod: string; razon: string | null; nomcomerc: string | null; whatsapp: string | null; telefono: string | null }
 
+const URL_CATALOGO = 'https://ver.orbitaleyewear.com.ar/catalogo'
 export const prefijoKit = (titulo: string) => (titulo.includes(' · ') ? titulo.split(' · ')[0].trim() : '')
-const urlDe = (p: PiezaMarketing) => p.url_publica || (p.url?.startsWith('http') ? p.url : null)
+export const urlDe = (p: PiezaMarketing) => p.url_publica || (p.url?.startsWith('http') ? p.url : null)
 const nombreDe = (c: Cliente) => (c.nomcomerc?.trim() || c.razon || '').replace(/^\d+\s*-\s*/, '')
 
 export function piezasDelKit(piezas: PiezaMarketing[], p: PiezaMarketing) {
@@ -21,14 +25,71 @@ export function piezasDelKit(piezas: PiezaMarketing[], p: PiezaMarketing) {
   return kit.length > 1 && tieneMedia ? kit : []
 }
 
-export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
+// Todos los kits activos (uno por tema + prefijo), para listarlos en Preparar envío.
+export function kitsActivos(piezas: PiezaMarketing[]) {
+  const out = new Map<string, { clave: string; nombre: string; piezas: PiezaMarketing[] }>()
+  for (const p of piezas) {
+    const nombre = prefijoKit(p.titulo)
+    const clave = `${p.tema}|${nombre}`
+    if (!nombre || out.has(clave)) continue
+    const kit = piezasDelKit(piezas, p)
+    if (kit.length) out.set(clave, { clave, nombre, piezas: kit })
+  }
+  return [...out.values()]
+}
+
+// Link al catálogo del cliente (su token), abierto en el modelo del kit.
+export const linkCatalogoKit = (nombreKit: string, codigo: string) =>
+  `${URL_CATALOGO}?ver=${encodeURIComponent(nombreKit.toLowerCase())}&k=${codigo}`
+
+// Texto del kit para un cliente: el copy cargado en Marketing + el link a su catálogo.
+export function textoKit(kit: PiezaMarketing[], nombre: string, link: string | null) {
+  const base = (kit.find((x) => x.contenido_texto)?.contenido_texto ?? '')
+    .replace(/\s*\{nombre\}/g, nombre ? ` ${nombre}` : '')
+    .trim()
+  return link ? `${base}\n\n👉 Miralo en tu catálogo y sumalo al pedido:\n${link}` : base
+}
+
+// En el celu: hoja de compartir con video + fotos + texto (se elige WhatsApp y el contacto).
+// En la compu no se pueden compartir archivos: se descargan para arrastrarlos al chat.
+// Devuelve el aviso a mostrar ('' si salió bien o se canceló).
+export async function compartirMediaKit(kit: PiezaMarketing[], texto: string): Promise<string> {
   const media = kit.filter((x) => (x.categoria === 'video' || x.categoria === 'imagen') && urlDe(x))
-  const textoBase = kit.find((x) => x.contenido_texto)?.contenido_texto ?? ''
+  try {
+    const files = await Promise.all(media.map(async (m, i) => {
+      const b = await (await fetch(urlDe(m)!)).blob()
+      const ext = m.categoria === 'video' ? 'mp4' : 'jpg'
+      return new File([b], `${prefijoKit(m.titulo).toLowerCase()}-${i + 1}.${ext}`, { type: b.type })
+    }))
+    if (navigator.canShare?.({ files })) {
+      await navigator.share({ files, text: texto })
+      return ''
+    }
+    for (const f of files) {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(f); a.download = f.name; a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+    }
+    return 'Descargados: arrastralos al chat de WhatsApp.'
+  } catch (e) {
+    return (e as Error)?.name === 'AbortError' ? '' : 'No se pudieron preparar los archivos.'
+  }
+}
+
+export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
+  const { codigoEfectivo } = useAuth()
+  const media = kit.filter((x) => (x.categoria === 'video' || x.categoria === 'imagen') && urlDe(x))
   const [q, setQ] = useState('')
   const [res, setRes] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [numero, setNumero] = useState('')
   const [estado, setEstado] = useState('')
+  const [linkCat, setLinkCat] = useState<string | null>(null)
+  const [linkBusy, setLinkBusy] = useState(false)
+  // Fotos y videos que se mandan como archivo (arrancan todos marcados).
+  const [sinMarcar, setSinMarcar] = useState<Set<number>>(new Set())
+  const elegidas = media.filter((m) => !sinMarcar.has(m.id))
+  const marcar = (id: number) => setSinMarcar((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   useEffect(() => {
     const t = q.trim()
@@ -42,37 +103,31 @@ export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
     return () => window.clearTimeout(h)
   }, [q, cliente])
 
+  // Link al catálogo de la óptica elegida (mismo token que usa Preparar envío).
+  useEffect(() => {
+    setLinkCat(null)
+    if (!cliente) return
+    let vivo = true
+    setLinkBusy(true)
+    supabase.rpc('catalogo_link_cliente', { p_cod_cliente: cliente.cod, p_vendedor: codigoEfectivo }).then(({ data }) => {
+      if (!vivo) return
+      const r = data as { ok?: boolean; codigo?: string } | null
+      setLinkCat(r?.ok && r.codigo ? linkCatalogoKit(prefijoKit(kit[0]?.titulo ?? ''), r.codigo) : null)
+      setLinkBusy(false)
+    })
+    return () => { vivo = false }
+  }, [cliente?.cod, codigoEfectivo, kit])
+
   const tels = useMemo(() => (cliente ? telefonosCliente(cliente.whatsapp, cliente.telefono).filter((n) => n.wa) : []), [cliente])
   const wa = numero.replace(/\D/g, '') || tels[0]?.wa || ''
   const nombre = cliente ? nombreDe(cliente) : ''
-  const texto = textoBase.replace(/\s*\{nombre\}/g, nombre ? ` ${nombre}` : '')
+  const texto = textoKit(kit, nombre, linkCat)
 
   function elegir(c: Cliente) { setCliente(c); setQ(nombreDe(c)); setRes([]); setNumero('') }
 
-  // En el celu: hoja de compartir con video + fotos + texto (se elige WhatsApp y el contacto).
-  // En la compu no se pueden compartir archivos: se descargan para arrastrarlos al chat.
   async function compartirArchivos() {
     setEstado('Preparando archivos…')
-    try {
-      const files = await Promise.all(media.map(async (m, i) => {
-        const b = await (await fetch(urlDe(m)!)).blob()
-        const ext = m.categoria === 'video' ? 'mp4' : 'jpg'
-        return new File([b], `${prefijoKit(m.titulo).toLowerCase()}-${i + 1}.${ext}`, { type: b.type })
-      }))
-      if (navigator.canShare?.({ files })) {
-        await navigator.share({ files, text: texto })
-        setEstado('')
-        return
-      }
-      for (const f of files) {
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(f); a.download = f.name; a.click()
-        setTimeout(() => URL.revokeObjectURL(a.href), 4000)
-      }
-      setEstado('Descargados: arrastralos al chat de WhatsApp.')
-    } catch (e) {
-      setEstado((e as Error)?.name === 'AbortError' ? '' : 'No se pudieron preparar los archivos.')
-    }
+    setEstado(await compartirMediaKit(elegidas, texto))
   }
 
   return (
@@ -80,10 +135,21 @@ export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
       <p className="text-sm font-bold">📲 Enviar el kit por WhatsApp</p>
 
       <div className="grid grid-cols-4 gap-1.5">
-        {media.map((m) => m.categoria === 'video'
-          ? <video key={m.id} src={urlDe(m)!} muted playsInline loop autoPlay className="w-full h-24 object-cover rounded-lg bg-black" />
-          : <img key={m.id} src={urlDe(m)!} alt={m.titulo} className="w-full h-24 object-cover rounded-lg" />)}
+        {media.map((m) => {
+          const on = !sinMarcar.has(m.id)
+          return (
+            <button key={m.id} type="button" onClick={() => marcar(m.id)} title={m.titulo}
+              className={`relative rounded-lg overflow-hidden border-2 transition ${on ? 'border-emerald-600' : 'border-transparent opacity-40'}`}>
+              {m.categoria === 'video'
+                ? <video src={urlDe(m)!} muted playsInline loop autoPlay className="w-full h-24 object-cover bg-black" />
+                : <img src={urlDe(m)!} alt={m.titulo} className="w-full h-24 object-cover" />}
+              <span className="absolute top-1 left-1 w-4 h-4 rounded bg-white/90 text-[10px] font-bold text-emerald-700 flex items-center justify-center">{on ? '✓' : ''}</span>
+              {m.categoria === 'video' && <span className="absolute bottom-1 right-1 text-[9px] font-semibold bg-black/60 text-white rounded px-1">▶ video</span>}
+            </button>
+          )
+        })}
       </div>
+      <p className="text-[11px] text-muted -mt-1">Tocá para marcar o desmarcar: lo marcado va como archivo, no como link.</p>
 
       <div className="relative">
         <label className="text-[11px] font-semibold text-muted uppercase tracking-wide">1 · Elegí la óptica</label>
@@ -110,17 +176,17 @@ export default function KitEnviar({ kit }: { kit: PiezaMarketing[] }) {
       </div>
 
       <div>
-        <label className="text-[11px] font-semibold text-muted uppercase tracking-wide">2 · El mensaje</label>
+        <label className="text-[11px] font-semibold text-muted uppercase tracking-wide">2 · El mensaje{linkBusy ? ' · generando link al catálogo…' : cliente && !linkCat ? ' · ⚠ sin link al catálogo' : ''}</label>
         <p className="text-[12.5px] text-ink bg-white border border-black/10 rounded-lg p-3 whitespace-pre-wrap max-h-48 overflow-y-auto mt-1">{texto}</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-2">
-        <button disabled={!wa} onClick={() => abrirWhatsApp(normalizarWa(wa), texto)}
+        <button disabled={!wa || linkBusy} onClick={() => abrirWhatsApp(normalizarWa(wa), texto)}
           className="rounded-xl bg-emerald-600 text-white py-2.5 text-sm font-semibold disabled:opacity-40">
           💬 Abrir chat{nombre ? ` con ${nombre.slice(0, 22)}` : ''} con el texto
         </button>
-        <button onClick={compartirArchivos} className="rounded-xl border border-emerald-600 text-emerald-700 py-2.5 text-sm font-semibold bg-white">
-          🎬 Mandar video y fotos
+        <button onClick={compartirArchivos} disabled={!elegidas.length} className="rounded-xl border border-emerald-600 text-emerald-700 py-2.5 text-sm font-semibold bg-white disabled:opacity-40">
+          🎬 {elegidas.length ? `Mandar ${elegidas.length} archivo${elegidas.length > 1 ? 's' : ''}` : 'Marcá una foto o video'}
         </button>
       </div>
       <p className="text-[11px] text-muted leading-snug">

@@ -4,7 +4,8 @@ import { useAuth } from '../../lib/auth'
 import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
 import { parseTelefonos, abrirWhatsApp } from '../../lib/telefono'
-import { CuentaCobro, ESTADO_PAGO, Pago, mensajeCobro, copiar, mensajeMediosPago } from './cobros'
+import { RAZONES_SOCIALES } from '../../lib/types'
+import { ChequeDeclarado, CuentaCobro, ESTADO_PAGO, Pago, fechaCorta, mensajeCobro, copiar, mensajeMediosPago } from './cobros'
 
 // /cobros: bandeja de pagos (a verificar / pendientes / cobrados) + cuentas de cobro.
 // Verificar mueve el saldo de la cuenta en /finanzas y marca el pedido cobrado (RPC cobro_verificar).
@@ -21,8 +22,99 @@ const ORIGENES = [
 
 const dias = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
 
+// Cheques / e-cheq declarados (cliente o vendedor) → imputar a /finanzas → Cheques.
+function ImputarCheques({ p, cuentas, cheques, onListo }: { p: PagoPed; cuentas: Cuenta[]; cheques: ChequeDeclarado[]; onListo: () => void }) {
+  const toast = useToast()
+  const [fotos, setFotos] = useState<Record<string, string>>({})
+  const [razon, setRazon] = useState(cuentas.find((c) => c.id === p.cuenta_id)?.razon_social ?? '')
+  const declarados = cheques.filter((c) => c.estado === 'declarado')
+  const total = declarados.reduce((a, c) => a + Number(c.monto), 0)
+
+  useEffect(() => {
+    const paths = cheques.flatMap((c) => [c.foto_frente, c.foto_dorso]).filter(Boolean) as string[]
+    if (paths.length)
+      supabase.storage.from('comprobantes').createSignedUrls(paths, 600).then(({ data }) =>
+        setFotos(Object.fromEntries((data ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]))))
+  }, [cheques])
+
+  async function imputar() {
+    if (!razon) return toast('Elegí la razón social del cheque', 'error')
+    const { error } = await supabase.rpc('cobro_imputar_cheques', { p_id: p.id, p_razon: razon })
+    if (error) return toast(error.message, 'error')
+    toast(`✅ ${declarados.length} cheque${declarados.length === 1 ? '' : 's'} en cartera`, 'success')
+    onListo()
+  }
+  async function descartar(id: string) {
+    const nota = window.prompt('¿Por qué se descarta? (foto ilegible, repetido…)')
+    if (nota === null) return
+    const { error } = await supabase.rpc('cobro_cheque_descartar', { p_id: id, p_nota: nota })
+    if (error) return toast(error.message, 'error')
+    onListo()
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {cheques.map((c) => (
+        <div key={c.id} className={`border rounded-lg p-2 ${c.estado === 'declarado' ? 'border-amber-200 bg-amber-50/40' : 'border-black/10 opacity-60'}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-xs">
+              <p className="font-semibold">
+                {c.tipo === 'echeck' ? 'E-cheq' : 'Cheque'} <span className="font-jet">{c.numero || c.echeq_id || 's/n'}</span>
+                {c.banco ? ` · ${c.banco}` : ''} · {formatPrecio(c.monto)}
+              </p>
+              <p className="text-muted">
+                Vence {fechaCorta(c.fecha_vencimiento)}
+                {c.nombre_librador || c.cuit_librador ? ` · ${c.nombre_librador ?? ''} ${c.cuit_librador ?? ''}` : ''}
+                {' · cargó '}{c.origen}
+              </p>
+            </div>
+            {c.estado === 'declarado'
+              ? <button onClick={() => descartar(c.id!)} className="text-[11px] text-red-700">Descartar</button>
+              : <span className="text-[10px] text-muted">{c.estado}</span>}
+          </div>
+          <div className="flex gap-2 mt-1.5">
+            {[c.foto_frente, c.foto_dorso].filter(Boolean).map((path) =>
+              fotos[path!] ? (
+                <a key={path} href={fotos[path!]} target="_blank" rel="noreferrer">
+                  {path!.toLowerCase().endsWith('.pdf')
+                    ? <span className="text-xs text-brandDark underline">Ver PDF</span>
+                    : <img src={fotos[path!]} alt="Cheque" className="h-20 rounded border border-black/10 object-cover" />}
+                </a>
+              ) : null,
+            )}
+          </div>
+        </div>
+      ))}
+      {declarados.length > 0 && (
+        <>
+          <p className={`text-xs font-semibold ${total >= p.monto_esperado - 1 ? 'text-emerald-700' : 'text-amber-700'}`}>
+            Declarado {formatPrecio(total)} de {formatPrecio(p.monto_esperado)}
+            {total < p.monto_esperado - 1 ? ` · faltan ${formatPrecio(p.monto_esperado - total)}` : ' ✓'}
+          </p>
+          <div className="flex gap-2">
+            <select value={razon} onChange={(e) => setRazon(e.target.value)} className="rounded-md border border-black/10 px-2 py-1.5 text-sm">
+              <option value="">Razón social…</option>
+              {RAZONES_SOCIALES.map((r) => <option key={r}>{r}</option>)}
+            </select>
+            <button onClick={imputar} className="flex-1 rounded-lg bg-emerald-600 text-white py-2 text-xs font-bold">
+              ✓ Imputar a cartera de cheques
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function Verificar({ p, cuentas, onListo }: { p: PagoPed; cuentas: Cuenta[]; onListo: () => void }) {
   const toast = useToast()
+  const [cheques, setCheques] = useState<ChequeDeclarado[] | null>(null)
+  const cargarCheques = () =>
+    supabase.from('pago_cheques').select('*').eq('pago_id', p.id).order('fecha_vencimiento')
+      .then(({ data }) => setCheques((data as ChequeDeclarado[]) ?? []))
+  useEffect(() => {
+    cargarCheques()
+  }, [p.id])
   const [monto, setMonto] = useState(String(Math.round(p.monto_esperado)))
   const [cuenta, setCuenta] = useState<number | ''>(p.cuenta_id ?? '')
   const [origen, setOrigen] = useState('transferencia')
@@ -48,6 +140,15 @@ function Verificar({ p, cuentas, onListo }: { p: PagoPed; cuentas: Cuenta[]; onL
     toast('Pago rechazado', 'success')
     onListo()
   }
+
+  if (cheques?.some((c) => c.estado === 'declarado'))
+    return (
+      <ImputarCheques p={p} cuentas={cuentas} cheques={cheques}
+        onListo={() => {
+          cargarCheques()
+          onListo()
+        }} />
+    )
 
   return (
     <div className="mt-2 space-y-2">

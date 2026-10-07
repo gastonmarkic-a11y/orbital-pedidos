@@ -252,6 +252,56 @@ async function telegram(probar: boolean) {
   return { ok: true, mensajes: enviados };
 }
 
+// ── Distribuidores: bot propio (dist-telegram). A cada usuario vinculado: video, fotos y el texto
+// para que se lo pasen a sus ópticas. Una vez por usuario (campana_envio no aplica: no son clientes).
+async function distribuidores(probar: boolean) {
+  const tok = Deno.env.get("DIST_TELEGRAM_BOT_TOKEN") || (await cfg("dist_telegram_bot_token")) || "";
+  const { data: us } = await sb.from("dist_tg_usuario").select("id, nombre, rol, chat_id, distribuidores(nombre)")
+    .eq("activo", true).not("chat_id", "is", null);
+  const lista = (us ?? []) as unknown as { id: number; nombre: string; rol: string; chat_id: number; distribuidores: { nombre: string } | null }[];
+  if (probar || !tok) return { prueba: true, falta_token: !tok, a: lista.map((u) => `${u.nombre} (${u.rol}, ${u.distribuidores?.nombre ?? ""})`) };
+  const api = (m: string, b: unknown) => fetch(`https://api.telegram.org/bot${tok}/${m}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })
+    .then((r) => r.json()).then((d) => { if (!d?.ok) throw new Error(`${m}: ${d?.description}`); return d.result; });
+  const res: { nombre: string; ok: boolean; error?: string }[] = [];
+  for (const u of lista) {
+    try {
+      await api("sendVideo", { chat_id: u.chat_id, video: pub("ascari-teaser.mp4"), supports_streaming: true, parse_mode: "HTML",
+        caption: `🚀 <b>Nuevo en Orbital: ASCARI</b>\nHola ${esc(u.nombre.split(" ")[0])}! Te paso el video, las fotos y el texto listo para mandarle a tus ópticas. Ya está en el catálogo de disponibilidad.` });
+      await api("sendMediaGroup", { chat_id: u.chat_id, media: [1, 2, 3].map((i) => ({ type: "photo", media: pub(`ascari-${i}.jpg`) })) });
+      await api("sendMessage", { chat_id: u.chat_id, text: TEXTO_TG, parse_mode: "HTML", disable_web_page_preview: true });
+      res.push({ nombre: u.nombre, ok: true });
+    } catch (e) { res.push({ nombre: u.nombre, ok: false, error: String(e) }); }
+  }
+  return { ok: true, enviados: res };
+}
+
+// Texto para los promotores (influencers): va a sus seguidores, no a ópticas. Sin precios ni "vidriera".
+const TEXTO_INFLUENCER =
+  "👓 <b>ASCARI llegó a Orbital</b>\n\n" +
+  "El aviador que hoy es ícono de la moda en el mundo: silueta protagonista, armazón Clear Mate translúcido y lentes naranjas de luz cálida.\n\n" +
+  "☀️ UV400: 100% UVA y UVB\n💻 Blue Cut: filtra el 98% de la luz azul de 420 nm\n🪶 Ultra liviano: te olvidás de que lo tenés puesto\n" +
+  "🛡️ También con cristales Triple Protección, que suman 🔥 filtrado infrarrojo\n\n" +
+  "🌙 <b>Del sol a la noche</b>: el naranja es EL look de esta temporada.\n\n" +
+  "Con mi link tenés descuento exclusivo 👇";
+
+// Grupos de Telegram de los otros bots: distribuidores (Optisur, Cristaldo) y administradores de influencers.
+async function grupo(destino: string, probar: boolean) {
+  const conf = destino === "colab"
+    ? { tok: Deno.env.get("COLAB_TELEGRAM_BOT_TOKEN") || (await cfg("colab_telegram_bot_token")), chat: await cfg("colab_telegram_grupo"),
+        intro: "🚀 <b>Lanzamiento ASCARI</b>\nVideo, fotos y un texto para que sus influencers lo publiquen con su link (lo encuentran en Anteojos de su panel).", texto: TEXTO_INFLUENCER }
+    : { tok: Deno.env.get("DIST_TELEGRAM_BOT_TOKEN") || (await cfg("dist_telegram_bot_token")), chat: await cfg("dist_telegram_grupo"),
+        intro: "🚀 <b>Nuevo en Orbital: ASCARI</b>\nVideo, fotos y el texto listo para mandarle a sus ópticas. Ya está en el catálogo de disponibilidad.", texto: TEXTO_TG };
+  if (!conf.tok || !conf.chat) return { ok: false, error: "falta token o grupo", destino };
+  if (probar) return { prueba: true, destino, chat: conf.chat };
+  const api = (m: string, b: unknown) => fetch(`https://api.telegram.org/bot${conf.tok}/${m}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })
+    .then((r) => r.json()).then((d) => { if (!d?.ok) throw new Error(`${m}: ${d?.description}`); return d.result; });
+  const chat = Number(conf.chat);
+  await api("sendVideo", { chat_id: chat, video: pub("ascari-teaser.mp4"), supports_streaming: true, caption: conf.intro, parse_mode: "HTML" });
+  await api("sendMediaGroup", { chat_id: chat, media: [1, 2, 3].map((i) => ({ type: "photo", media: pub(`ascari-${i}.jpg`) })) });
+  await api("sendMessage", { chat_id: chat, text: conf.texto, parse_mode: "HTML", disable_web_page_preview: true });
+  return { ok: true, destino, mensajes: 3 };
+}
+
 Deno.serve(async (req) => {
   if (!req.headers.get("x-cron-key") || req.headers.get("x-cron-key") !== (await cfg("cron_key"))) return new Response("no", { status: 401 });
   const u = new URL(req.url);
@@ -264,6 +314,8 @@ Deno.serve(async (req) => {
     if (tarea === "prueba") return Response.json(await prueba(u.searchParams.get("a") ?? ""));
     if (tarea === "enviar") return Response.json(await enviar(Math.min(Number(u.searchParams.get("max")) || 50, 250)));
     if (tarea === "telegram") return Response.json(await telegram(u.searchParams.get("prueba") === "1"));
+    if (tarea === "grupo") return Response.json(await grupo(u.searchParams.get("destino") ?? "", u.searchParams.get("prueba") === "1"));
+    if (tarea === "distribuidores") return Response.json(await distribuidores(u.searchParams.get("prueba") === "1"));
     return Response.json({ ok: false, error: "tarea: subir | plantilla | estado | cargar | prueba | enviar | telegram" });
   } catch (e) {
     console.error(e);

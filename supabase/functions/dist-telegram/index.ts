@@ -961,6 +961,27 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
     await confirmarPedido(chat, u, lineas);
     return;
   }
+  // Preguntas Sí/No mandadas con dist-avisar: el ítem es el texto del mensaje
+  if (acc === "rsp") {
+    const item = (q.message as { text?: string } | undefined)?.text ?? "";
+    const r = a1 === "si" ? "✅ Sí" : "❌ No";
+    await tg("editMessageText", { chat_id: chat, message_id: q.message!.message_id, text: `${item}\n→ ${r}`, reply_markup: { inline_keyboard: [] } });
+    // a2 = id en dist_preguntas: la respuesta se aplica sola (orden de producción, proyectado, cristales, pedido del cliente)
+    let carga = "";
+    if (a2) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dist_pregunta_responder`, {
+        method: "POST",
+        headers: { ...H, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_id: Number(a2), p_resp: a1 === "si" ? "si" : "no" }),
+      });
+      const j = res.ok ? ((await res.json()) as { msg?: string; cliente?: string }) : null;
+      if (!res.ok) console.error("dist_pregunta_responder", res.status, await res.text());
+      if (j?.cliente) await enviar(chat, `✅ ${esc(j.cliente)}. Lo ves en ${B.pedidos}.`);
+      carga = j?.msg ? `\n⚙️ ${j.msg}` : res.ok ? "" : "\n⚠️ no se pudo cargar solo, revisar";
+    }
+    await avisoOjo(`🗳 ${u.nombre} (${u.distribuidores.nombre}) respondió: ${item} → ${r}${carga}`, u.id);
+    return;
+  }
   if (acc === "p") { await detallePedido(chat, u, Number(a1)); return; }
   if (acc === "d" && esAdmin(u)) {
     await upd("dist_tg_usuario", `id=eq.${u.id}`, { distribuidor_id: Number(a1) });

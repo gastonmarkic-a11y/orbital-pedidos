@@ -38,7 +38,7 @@ export default function EnviosRepos({ clave, data, modo }: { clave: string; data
   if (!d) return <p className="bg-white border border-black/10 rounded-lg text-sm text-muted px-4 py-6">Cargando…</p>
 
   if (modo === 'camino') {
-    const envios = d.envios
+    const envios = d.envios.filter((e) => data.sucursales.some((s) => s.id === e.sucursal_id))
     const totPend = envios.reduce((s, e) => s + e.pendiente, 0)
     return (
       <section className="bg-white border border-black/10 rounded-lg">
@@ -113,7 +113,7 @@ export default function EnviosRepos({ clave, data, modo }: { clave: string; data
                 <span className="text-xs text-muted ml-auto tabular-nums">{fmt(l.unidades ?? 0)} u vendidas</span>
               </div>
               <ul className="divide-y divide-black/5">
-                {(l.sucursales ?? []).map((s) => {
+                {(l.sucursales ?? []).filter((s) => data.sucursales.some((x) => x.id === s.sucursal_id)).map((s) => {
                   const repos = (l.repos ?? []).filter((r) => r.sucursal_id === s.sucursal_id)
                   const reemp = repos.reduce((n, r) => n + (r.items ?? []).reduce((m, i) => m + i.cantidad, 0), 0)
                   const sinCubrir = repos.reduce((n, r) => n + r.sin_cubrir, 0)

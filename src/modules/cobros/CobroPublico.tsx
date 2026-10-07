@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { formatPrecio } from '../../lib/format'
-import { CuentaCobro, ESTADO_PAGO, EstadoPago, copiar } from './cobros'
+import { ChequeDeclarado, CuentaCobro, ESTADO_PAGO, EstadoPago, copiar, planPago } from './cobros'
+import { CargarCheque, PlanPlazo } from './ChequesPlazo'
 
 // Página pública /cobro/ORB-xxx: datos para transferir sin recargo + subir comprobante. Sin login.
-type Datos = { referencia: string; monto: number; estado: EstadoPago; cliente: string; comprobante: boolean; cuentas: CuentaCobro[] }
+// Si el pedido es a plazo (cheque / e-cheq), muestra el plan de vencimientos y la carga de cada cheque.
+type Datos = {
+  referencia: string
+  monto: number
+  estado: EstadoPago
+  cliente: string
+  comprobante: boolean
+  cuentas: CuentaCobro[]
+  cond_pago: string | null
+  cuotas_detalle: string | null
+  medios_pago: string[] | null
+  fecha_base: string | null
+  cheques: ChequeDeclarado[]
+}
 
 function Fila({ label, valor }: { label: string; valor: string }) {
   const [ok, setOk] = useState(false)
@@ -61,6 +75,42 @@ export default function CobroPublico() {
 
   const est = ESTADO_PAGO[d.estado]
   const pagado = d.estado === 'verificado'
+  const plan = planPago({ ...d, fecha_factura: d.fecha_base }, d.monto)
+
+  const transferencia = (
+    <>
+      <div className="bg-goldSoft/60 border border-gold/40 rounded-xl p-3 text-sm">
+        Poné <b className="font-jet">{d.referencia}</b> en el concepto de la transferencia. Así el pago se identifica solo.
+      </div>
+
+      {d.cuentas.length === 0 && (
+        <p className="text-sm text-muted text-center">Pedile los datos de la cuenta a tu vendedor.</p>
+      )}
+      {d.cuentas.map((c) => (
+        <div key={c.id} className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
+          <p className="text-sm font-semibold px-1">{c.razon_social || c.nombre}</p>
+          <Fila label="Concepto" valor={d.referencia} />
+          <Fila label="Importe" valor={String(Math.round(d.monto))} />
+          {c.alias && <Fila label="Alias" valor={c.alias} />}
+          {c.cbu_cvu && <Fila label="CBU / CVU" valor={c.cbu_cvu} />}
+          {c.titular && <Fila label={`Titular${c.cuit ? ' · CUIT' : ''}`} valor={`${c.titular}${c.cuit ? ' · ' + c.cuit : ''}`} />}
+        </div>
+      ))}
+
+      <label className={`block w-full text-center rounded-xl bg-brand text-white py-3 text-sm font-semibold ${subiendo ? 'opacity-50' : 'cursor-pointer'}`}>
+        {subiendo ? 'Subiendo…' : d.comprobante ? 'Subir otro comprobante' : 'Ya transferí · subir comprobante'}
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          disabled={subiendo}
+          onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])}
+        />
+      </label>
+      {msg && <p className="text-sm text-center">{msg}</p>}
+      <p className="text-[11px] text-muted text-center">El comprobante es opcional si pusiste la referencia en el concepto.</p>
+    </>
+  )
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] px-4 py-6">
@@ -73,7 +123,7 @@ export default function CobroPublico() {
         <div className="bg-white rounded-2xl border border-black/10 p-5 text-center">
           <p className="text-xs text-muted">{d.cliente ? `${d.cliente} · ` : ''}Pedido <span className="font-jet">{d.referencia}</span></p>
           <p className="text-4xl font-bold mt-2">{formatPrecio(d.monto)}</p>
-          <p className="text-xs text-muted mt-1">Transferencia bancaria · sin recargo</p>
+          <p className="text-xs text-muted mt-1">{plan.aPlazo ? `A plazo · ${plan.medio}` : 'Transferencia bancaria · sin recargo'}</p>
         </div>
 
         {pagado ? (
@@ -81,38 +131,21 @@ export default function CobroPublico() {
             Pago recibido. ¡Gracias!
           </div>
         ) : (
-          <>
-            <div className="bg-goldSoft/60 border border-gold/40 rounded-xl p-3 text-sm">
-              Poné <b className="font-jet">{d.referencia}</b> en el concepto de la transferencia. Así el pago se identifica solo.
-            </div>
-
-            {d.cuentas.length === 0 && (
-              <p className="text-sm text-muted text-center">Pedile los datos de la cuenta a tu vendedor.</p>
-            )}
-            {d.cuentas.map((c) => (
-              <div key={c.id} className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
-                <p className="text-sm font-semibold px-1">{c.razon_social || c.nombre}</p>
-                <Fila label="Concepto" valor={d.referencia} />
-                <Fila label="Importe" valor={String(Math.round(d.monto))} />
-                {c.alias && <Fila label="Alias" valor={c.alias} />}
-                {c.cbu_cvu && <Fila label="CBU / CVU" valor={c.cbu_cvu} />}
-                {c.titular && <Fila label={`Titular${c.cuit ? ' · CUIT' : ''}`} valor={`${c.titular}${c.cuit ? ' · ' + c.cuit : ''}`} />}
-              </div>
-            ))}
-
-            <label className={`block w-full text-center rounded-xl bg-brand text-white py-3 text-sm font-semibold ${subiendo ? 'opacity-50' : 'cursor-pointer'}`}>
-              {subiendo ? 'Subiendo…' : d.comprobante ? 'Subir otro comprobante' : 'Ya transferí · subir comprobante'}
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                disabled={subiendo}
-                onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])}
-              />
-            </label>
-            {msg && <p className="text-sm text-center">{msg}</p>}
-            <p className="text-[11px] text-muted text-center">El comprobante es opcional si pusiste la referencia en el concepto.</p>
-          </>
+          plan.aPlazo ? (
+            <>
+              <PlanPlazo plan={plan} cheques={d.cheques} cuenta={d.cuentas[0]} />
+              <CargarCheque referencia={d.referencia} plan={plan} cheques={d.cheques} onListo={cargar} />
+              <p className="text-[11px] text-muted text-center">
+                Subí la foto de cada cheque (o la captura del e-cheq). Administración los imputa y te avisamos.
+              </p>
+              <details className="pt-2">
+                <summary className="text-xs text-center text-brandDark underline cursor-pointer list-none">¿Preferís pagar por transferencia?</summary>
+                <div className="space-y-4 pt-3">{transferencia}</div>
+              </details>
+            </>
+          ) : (
+            transferencia
+          )
         )}
       </div>
     </div>

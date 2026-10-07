@@ -51,7 +51,7 @@ tfoot td{font-weight:600;background:var(--ground)}
 .minibar i{display:block;width:12px;background:var(--bar);border-radius:2px 2px 0 0}
 .minibar i:last-child{background:var(--gold)}
 .models{display:grid;grid-template-columns:1fr;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
-.mrow{display:grid;grid-template-columns:minmax(110px,160px) 1fr 90px;gap:12px;align-items:center;font-size:13px}
+.mrow{display:grid;grid-template-columns:minmax(150px,200px) 1fr 90px;gap:12px;align-items:center;font-size:13px}
 .mrow .track{position:relative;height:14px}
 .mrow .v{position:absolute;left:0;top:0;height:14px;background:var(--bar2);border-radius:2px}
 .mrow .s{position:absolute;left:0;top:5px;height:4px;background:var(--gold);border-radius:2px}
@@ -85,6 +85,12 @@ a{color:var(--gold)}
 .live{font:600 13px var(--body);color:var(--ground);background:var(--ink);padding:8px 14px;border-radius:999px;text-decoration:none}
 .live:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 @media (prefers-color-scheme: dark){.logo{filter:invert(1)}}
+.th{width:52px;height:34px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px;display:block}
+.th.e{background:var(--ground)}
+.newcard img.big{width:100%;height:96px;object-fit:contain;background:#fff;border-radius:8px}
+.mrow .nm{display:flex;align-items:center;gap:8px;min-width:0}.mrow .nm .th{width:36px;height:24px}
+.panel{font:600 13px var(--body);color:var(--gold);text-decoration:none}
+.panel:hover{text-decoration:underline}
 footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:16px}
 @media (max-width:520px){.mrow{grid-template-columns:96px 1fr 70px}}
 </style>
@@ -122,7 +128,8 @@ footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);paddin
   <div class="sechead"><h2>Reposición por tienda</h2><p>Ya está en preparación en Orbital, un envío por tienda. Cada línea dice por qué está. Lo que dice <b>Desde su bodega</b> lo tienen que pasar ustedes desde su propia bodega.</p></div>
   <div class="sumline" id="sum"></div>
   <div class="tabs" role="tablist" id="tabs"></div>
-  <div class="tablebox"><table id="tRepo"><thead><tr><th>Tipo</th><th>Modelo</th><th>Color</th><th class="r">Unid.</th><th>Motivo</th></tr></thead><tbody></tbody></table></div>
+  <a class="panel" id="verPanel" href="#">Ver el panel en vivo de esta tienda →</a>
+  <div class="tablebox"><table id="tRepo"><thead><tr><th>Tipo</th><th></th><th>Modelo</th><th>Color</th><th class="r">Unid.</th><th>Motivo</th></tr></thead><tbody></tbody></table></div>
 </section>
 
 <section>
@@ -290,6 +297,12 @@ const R=[
 ].map(r=>({s:r[0],t:r[1],m:r[2],d:r[3],q:+r[4],w:r[5]}));
 const OVER=[["Alaska","Bariloche 35 · Bodega 10 · Aeroparque 9 · Córdoba 5 · Iguazú 2",61,10],["Varsovia","Bariloche 9 · Córdoba 6 · Aeroparque 3 · Iguazú 2 · Bodega 1",21,3],["Basel","Bodega 6 · Aeroparque 8 · Córdoba 1",15,5],["Long Beach","Córdoba 7 · Mendoza 2 · Iguazú 2",11,4]];
 
+// Fotos: catálogo de Orbital (modelo y color) por la RPC pública de la consigna. Si no carga, la página sigue sin fotos.
+const SB="https://towcgvphxeqilpdnboki.supabase.co", KEY="sb_publishable_YhNbcs63Zx6na8pfEsQgCw_C3iKSk-A", K="314ca7e0565cedb69d";
+const SUCID={"Aeroparque":17,"Córdoba":18,"Iguazú":19,"Bariloche":20,"Mendoza":21,"Bodega / Web":22};
+const IMG={mod:{},col:{}}, norm=t=>(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+const imgDe=(m,d)=>IMG.col[norm(m)+"|"+norm(d)]||IMG.mod[norm(m)]||null;
+const th=(m,d,c="th")=>{const u=imgDe(m,d);return u?`<img class="${c}" src="${u}" alt="${m}" loading="lazy">`:`<span class="${c} e" aria-hidden="true"></span>`};
 const $=s=>document.querySelector(s), fmt=n=>n.toLocaleString("es-AR"), pesos=n=>"$"+Math.round(n/1e5)/10+" M";
 const tv=SUC.reduce((a,s)=>a+s.m[0]+s.m[1]+s.m[2],0), ti=SUC.reduce((a,s)=>a+s.imp,0), ts=SUC.reduce((a,s)=>a+s.st,0);
 const orb=R.filter(r=>r.t!=="bodega").reduce((a,r)=>a+r.q,0), nu=R.filter(r=>r.t==="nuevo").reduce((a,r)=>a+r.q,0), bod=R.filter(r=>r.t==="bodega").reduce((a,r)=>a+r.q,0);
@@ -302,11 +315,13 @@ $("#tSuc tbody").innerHTML=SUC.map(s=>{const v=s.m[0]+s.m[1]+s.m[2],mes=v/2.8,co
 $("#tSuc tfoot").innerHTML=`<tr><td>Total</td>${[0,1,2].map(i=>`<td class="r num">${SUC.reduce((a,s)=>a+s.m[i],0)}</td>`).join("")}<td></td><td class="r num">${tv}</td><td class="r num">${pesos(ti)}</td><td class="r num">${ts}</td><td class="r num">${(ts/(tv/2.8)).toFixed(1)}</td></tr>`;
 
 const mm=Math.max(...MODS.flatMap(m=>[m[1],m[2]]));
-$("#mods").innerHTML=MODS.map(([n,v,s])=>`<div class="mrow"><span>${n}</span><div class="track"><div class="v" style="width:${v/mm*100}%"></div><div class="s" style="width:${s/mm*100}%"></div></div><span class="lab">${v} vend · ${s} st</span></div>`).join("");
+function drawMods(){$("#mods").innerHTML=MODS.map(([n,v,s])=>`<div class="mrow"><span class="nm">${th(n,"")}<span>${n}</span></span><div class="track"><div class="v" style="width:${v/mm*100}%"></div><div class="s" style="width:${s/mm*100}%"></div></div><span class="lab">${v} vend · ${s} st</span></div>`).join("")}
+drawMods();
 
 const NM=["Ascari","Civic Center","Casa Blanca","5th Avenue"];
-$("#nuevos").innerHTML=NM.map(m=>{const rs=R.filter(r=>r.m===m);const by={};rs.forEach(r=>by[r.s]=(by[r.s]||0)+r.q);const cols=[...new Set(rs.map(r=>r.d))];
- return `<div class="newcard"><h3>${m}</h3><div class="tot">${rs.reduce((a,r)=>a+r.q,0)} u · ${cols.length} colores</div><ul>${Object.entries(by).map(([s,q])=>`<li>${s} <span class="num" style="float:right">${q}</span></li>`).join("")}</ul><div class="tot">${cols.join(" · ")}</div></div>`}).join("");
+function drawNuevos(){$("#nuevos").innerHTML=NM.map(m=>{const rs=R.filter(r=>r.m===m);const by={};rs.forEach(r=>by[r.s]=(by[r.s]||0)+r.q);const cols=[...new Set(rs.map(r=>r.d))];
+ return `<div class="newcard">${imgDe(m,"")?`<img class="big" src="${imgDe(m,"")}" alt="${m}" loading="lazy">`:""}<h3>${m}</h3><div class="tot">${rs.reduce((a,r)=>a+r.q,0)} u · ${cols.length} colores</div><ul>${Object.entries(by).map(([s,q])=>`<li>${s} <span class="num" style="float:right">${q}</span></li>`).join("")}</ul><div class="tot">${cols.join(" · ")}</div></div>`}).join("")}
+drawNuevos();
 
 const LAB={nuevo:"Nuevo",reemplazo:"Reemplazo",repone:"Repone",bodega:"Desde su bodega"};
 const sucs=SUC.map(s=>s.n);
@@ -314,11 +329,14 @@ let cur="Aeroparque"; try{cur=localStorage.getItem("sg_tab")||cur}catch(e){}
 function draw(){
  $("#tabs").innerHTML=sucs.map(s=>`<button role="tab" id="tab-${sucs.indexOf(s)}" aria-selected="${s===cur}" data-s="${s}">${s}<span class="n">${R.filter(r=>r.s===s&&r.t!=="bodega").reduce((a,r)=>a+r.q,0)}</span></button>`).join("");
  const rs=R.filter(r=>r.s===cur), g=t=>rs.filter(r=>r.t===t).reduce((a,r)=>a+r.q,0);
+ $("#verPanel").href="/consigna?k="+K+"&suc="+SUCID[cur]; $("#verPanel").textContent="Ver el panel en vivo de "+cur+" →";
  $("#sum").innerHTML=`<span>Nuevos <b>${g("nuevo")}</b></span><span>Reemplazos <b>${g("reemplazo")}</b></span><span>Repone venta <b>${g("repone")}</b></span><span>Total desde Orbital <b>${g("nuevo")+g("reemplazo")+g("repone")}</b></span>${g("bodega")?`<span>Pasar desde su bodega <b>${g("bodega")}</b></span>`:""}`;
- $("#tRepo tbody").innerHTML=rs.map(r=>`<tr><td><span class="pill p-${r.t}">${LAB[r.t]}</span></td><td><b>${r.m}</b></td><td>${r.d}</td><td class="r num">${r.q}</td><td class="why">${r.w}</td></tr>`).join("");
+ $("#tRepo tbody").innerHTML=rs.map(r=>`<tr><td><span class="pill p-${r.t}">${LAB[r.t]}</span></td><td>${th(r.m,r.d)}</td><td><b>${r.m}</b></td><td>${r.d}</td><td class="r num">${r.q}</td><td class="why">${r.w}</td></tr>`).join("");
 }
 $("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;cur=b.dataset.s;try{localStorage.setItem("sg_tab",cur)}catch(e){}draw()});
 draw();
+fetch(SB+"/rest/v1/rpc/consigna_catalogo",{method:"POST",headers:{apikey:KEY,"Content-Type":"application/json"},body:JSON.stringify({p_k:K})})
+ .then(r=>r.ok?r.json():[]).then(ms=>{(ms||[]).forEach(m=>{if(m.imagen)IMG.mod[norm(m.modelo)]=m.imagen;(m.colores||[]).forEach(c=>{if(c.imagen)IMG.col[norm(m.modelo)+"|"+norm(c.descripcion)]=c.imagen})});drawMods();drawNuevos();draw()}).catch(()=>{});
 $("#over").innerHTML=OVER.map(([m,d,s,v])=>`<div><b>${m}</b><span class="num">${s} en stock · ${v} vendidos en 3 meses</span><br>${d}</div>`).join("");
 </script>
 </body>

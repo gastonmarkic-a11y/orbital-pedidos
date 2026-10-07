@@ -71,9 +71,9 @@ function Barras({ titulo, filas, nota }: { titulo: string; filas: { k: string; v
   )
 }
 
-export default function VentasConsigna({ clave, data }: { clave: string; data: Central }) {
+export default function VentasConsigna({ clave, data, fija }: { clave: string; data: Central; fija?: number }) {
   const [ventas, setVentas] = useState<Venta[] | null>(null)
-  const [suc, setSuc] = useState<number | 'todas'>('todas')
+  const [suc, setSuc] = useState<number | 'todas'>(fija ?? 'todas')
   useEffect(() => {
     supabase.rpc('consigna_ventas', { p_k: clave }).then(({ data: d }) => setVentas((d as Venta[]) ?? []))
   }, [clave])
@@ -107,12 +107,14 @@ export default function VentasConsigna({ clave, data }: { clave: string; data: C
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
+        {fija == null && <>
         <span className="text-xs text-muted">Ver</span>
         <select id="ventas-suc" aria-label="Tienda" value={suc} onChange={(e) => setSuc(e.target.value === 'todas' ? 'todas' : Number(e.target.value))}
           className="text-sm border border-black/15 rounded-lg px-2.5 py-1.5 bg-white">
           <option value="todas">Todas las tiendas</option>
           {sucs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </select>
+        </>}
         <span className="text-xs text-muted">Período: {meses.map(nombreMes).join(' · ')}</span>
       </div>
 

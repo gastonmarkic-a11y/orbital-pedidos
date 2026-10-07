@@ -112,6 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (error) {
         const m = error.message || ''
+        // El servidor de mail a veces tarda >10 s: Supabase corta con 504 y mensaje vacío ("{}"),
+        // pero el mail suele salir igual.
+        if ((error as { status?: number }).status === 504 || /^\s*\{\s*\}\s*$/.test(m) || /timeout|deadline/i.test(m)) {
+          return { error: 'El envío tardó más de lo normal. Revisá tu mail (y spam) en un par de minutos antes de volver a pedirlo.' }
+        }
         if (/sending.*email|confirmation email|rate limit|rate_limit/i.test(m)) {
           return { error: 'No pudimos enviar el email de acceso ahora mismo. Esperá unos minutos y probá de nuevo, o pedile el link al administrador.' }
         }

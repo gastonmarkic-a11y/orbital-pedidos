@@ -34,6 +34,8 @@ export default function Pedidos() {
   const esAdmin = rol === 'admin'
   const esDeposito = rol === 'deposito'
   const esLogistica = rol === 'logistica'
+  // Postventa también prepara y despacha: puede mover los estados como Depósito y Logística.
+  const esPostventa = rol === 'postventa'
   const esAdministracion = rol === 'administracion'
   const esVendedor = rol === 'vendedor'
   const esRevendedor = rol === 'revendedor'
@@ -97,8 +99,9 @@ export default function Pedidos() {
     // La reposición de consigna SÍ se prepara (se despacha del central).
     if (esDeposito) logs = logs.filter((l) => l.origen !== 'consigna')
     if (esLogistica) logs = logs.filter((l) => ['listo_despachar', 'despachado'].includes(l.estado ?? '') && l.origen !== 'consigna')
-    // Administración factura: ve lo confirmado + las liquidaciones de consigna (van directo a facturar).
-    if (esAdministracion) logs = logs.filter((l) => l.origen === 'consigna' || ['listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
+    // Administración factura: ve lo confirmado + las liquidaciones de consigna (van directo a facturar)
+    // + los observados por Depósito, para saber qué está trabado antes de llegar a facturación.
+    if (esAdministracion) logs = logs.filter((l) => l.origen === 'consigna' || ['observado', 'listo', 'facturado', 'listo_despachar', 'despachado'].includes(l.estado ?? ''))
     if (filtroVendedor) logs = logs.filter((l) => l.vendedor === filtroVendedor)
     if (filtroEstado) logs = logs.filter((l) => (l.estado ?? 'pendiente') === filtroEstado)
     if (filtroTipoCli) logs = logs.filter((l) => esConsFinal(l) === (filtroTipoCli === 'cf'))
@@ -168,14 +171,11 @@ export default function Pedidos() {
     )
       return
     try {
-      for (const item of p.items ?? []) {
-        const s = stock.find((x) => x.codigo === item.codigo)
-        // Solo se devuelve lo que se había descontado: lo pendiente nunca salió del stock
-        const devolver = item.cantidad - (item.pendiente ?? 0)
-        if (s && devolver > 0) {
-          await supabase.rpc('stock_mover', { p_items: [{ codigo: item.codigo, delta: devolver }], p_origen: 'anulacion', p_ref: `pedido #${p.id}` })
-          s.cantidad += devolver
-        }
+      // Devuelve lo descontado, salvo lo pendiente (nunca salió) y lo que el depósito ya sacó al contar a mano
+      const { error: errDev } = await supabase.rpc('pedido_devolver_stock', { p_id: p.id, p_origen: 'anulacion' })
+      if (errDev) {
+        toast('No se pudo devolver el stock: ' + errDev.message, 'error')
+        return
       }
       await supabase
         .from('actividad_diaria')
@@ -504,6 +504,11 @@ export default function Pedidos() {
             </Link>
           )}
           {(esVendedor || esAdmin) && (
+            <Link to="/pedidos/muestrario" className="text-xs font-semibold border border-emerald-600 text-emerald-700 rounded-lg px-3 py-1.5">
+              🧳 Muestrario
+            </Link>
+          )}
+          {(esVendedor || esAdmin) && (
             <Link to="/pedidos/nuevo" className="text-xs font-semibold bg-emerald-600 text-white rounded-lg px-3 py-1.5">
               + Nuevo Pedido
             </Link>
@@ -770,7 +775,7 @@ export default function Pedidos() {
                       )}
                     </div>
 
-                    {(esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna' && (
+                    {(esDeposito || esAdmin || esPostventa) && estado === 'en_preparacion' && l.origen !== 'consigna' && (
                       <p className="text-[11px] font-semibold text-muted mb-1">
                         🛒 Armado en góndola: {(l.picking ?? []).length} / {(l.items ?? []).length} artículos tomados
                         <button onClick={() => setPickeo(l)} className="ml-2 rounded-full bg-ink text-white px-2.5 py-0.5 text-[11px] font-semibold">
@@ -789,7 +794,7 @@ export default function Pedidos() {
                       const pu = netoUnitario(i, s?.precio ?? 0, l.nro_lista, dcPed, dfPed, esPedidoShopify(l))
                       const bu = brutoUnitario(i, s?.precio ?? 0, l.nro_lista, esPedidoShopify(l)) // precio de lista, para mostrar el bruto tachado
                       const picked = (l.picking ?? []).includes(i.codigo)
-                      const conPicking = (esDeposito || esAdmin) && estado === 'en_preparacion' && l.origen !== 'consigna'
+                      const conPicking = (esDeposito || esAdmin || esPostventa) && estado === 'en_preparacion' && l.origen !== 'consigna'
                       return (
                         <div key={i.codigo} className={`flex justify-between items-center gap-2 text-xs py-1 ${picked && conPicking ? 'opacity-60' : ''}`}>
                           <span className="flex items-center gap-2 min-w-0">
@@ -832,7 +837,7 @@ export default function Pedidos() {
                             🏭 <b>{pendienteTotal} unidades</b> de este pedido están en producción y todavía no ingresaron
                             a depósito.
                           </p>
-                          {(esDeposito || esAdmin) && (
+                          {(esDeposito || esAdmin || esPostventa) && (
                             <>
                               {!l.entrega_parcial && !l.esperando_stock ? (
                                 <div className="flex gap-2">
@@ -883,7 +888,7 @@ export default function Pedidos() {
                           💸 Cobrar · alias / QR / WhatsApp
                         </button>
                       )}
-                      {(esDeposito || esAdmin) && estado === 'pendiente' && (
+                      {(esDeposito || esAdmin || esPostventa) && estado === 'pendiente' && (
                         <button
                           onClick={() => cambiarEstado(l.id, 'en_preparacion').then((ok) => ok && toast('🔧 En preparación', 'success'))}
                           className="w-full rounded-lg bg-[#1a7abf] text-white py-2 text-xs font-bold"
@@ -891,7 +896,7 @@ export default function Pedidos() {
                           🔧 Iniciar preparación
                         </button>
                       )}
-                      {(esDeposito || esAdmin) && estado === 'en_preparacion' && (
+                      {(esDeposito || esAdmin || esPostventa) && estado === 'en_preparacion' && (
                         <>
                           <button
                             onClick={() => cambiarEstado(l.id, 'listo').then((ok) => ok && toast('✓ Listo — se pasa a Tango y Administración factura con el remito', 'success'))}
@@ -907,7 +912,7 @@ export default function Pedidos() {
                           </button>
                         </>
                       )}
-                      {(esDeposito || esAdmin) && estado === 'observado' && (
+                      {(esDeposito || esAdmin || esPostventa) && estado === 'observado' && (
                         <>
                           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-2 text-xs">
                             ⚠ <b>Obs:</b> {l.obs_deposito || 'Sin detalle'}
@@ -927,6 +932,12 @@ export default function Pedidos() {
                             ↩ Retomar preparación
                           </button>
                         </>
+                      )}
+
+                      {esAdministracion && estado === 'observado' && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-2 text-xs">
+                          ⚠ <b>Observado por Depósito:</b> {l.obs_deposito || 'Sin detalle'}
+                        </div>
                       )}
 
                       {esVendedor && estado === 'observado' && (
@@ -1037,7 +1048,7 @@ export default function Pedidos() {
                         </>
                       )}
 
-                      {esLogistica && estado === 'listo_despachar' && (
+                      {(esLogistica || esPostventa) && estado === 'listo_despachar' && (
                         <>
                           <div className="bg-[#F1EDE4] rounded-lg p-2.5 text-xs space-y-1">
                             <p className="font-bold">📦 Datos de entrega</p>
@@ -1078,7 +1089,7 @@ export default function Pedidos() {
                         </>
                       )}
 
-                      {(esAdmin || esAdministracion) && estado !== 'pendiente' && (
+                      {(esAdmin || esAdministracion || esPostventa) && estado !== 'pendiente' && (
                         <button
                           onClick={() => cambiarEstado(l.id, 'pendiente').then((ok) => ok && toast('↩ Vuelto a pendiente', 'success'))}
                           className="w-full rounded-lg border border-black/10 text-muted py-1.5 text-xs font-medium"

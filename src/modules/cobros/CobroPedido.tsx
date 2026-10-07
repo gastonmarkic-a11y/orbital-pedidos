@@ -5,9 +5,11 @@ import { useToast } from '../../lib/toast'
 import { formatPrecio } from '../../lib/format'
 import { parseTelefonos, abrirWhatsApp } from '../../lib/telefono'
 import { Pedido } from '../../lib/types'
-import { CuentaCobro, ESTADO_PAGO, Pago, copiar, linkCobro, mensajeCobro, useQR } from './cobros'
+import { ChequeDeclarado, CuentaCobro, ESTADO_PAGO, Pago, copiar, linkCobro, mensajeCobro, mensajeCobroPlazo, planPago, useQR } from './cobros'
+import { CargarCheque, PlanPlazo } from './ChequesPlazo'
 
 // Cobrar un pedido: reemplaza al link de MP. Genera ORB-<id>, QR propio y WhatsApp con los datos.
+// Si es a plazo (cheque / e-cheq) muestra el plan de vencimientos y deja cargar la copia de cada cheque.
 export default function CobroPedido({ pedido, monto, onClose }: { pedido: Pedido; monto: number; onClose: () => void }) {
   const toast = useToast()
   const [cuentas, setCuentas] = useState<CuentaCobro[]>([])
@@ -33,9 +35,24 @@ export default function CobroPedido({ pedido, monto, onClose }: { pedido: Pedido
     generar(monto, null)
   }, [pedido.id])
 
+  const [cheques, setCheques] = useState<ChequeDeclarado[]>([])
+  const cargarCheques = () =>
+    pago &&
+    supabase.from('pago_cheques').select('*').eq('pago_id', pago.id).order('fecha_vencimiento')
+      .then(({ data }) => setCheques((data as ChequeDeclarado[]) ?? []))
+  useEffect(() => {
+    cargarCheques()
+  }, [pago?.id])
+
   const cuentasMsg = cuentaId ? cuentas.filter((c) => c.id === cuentaId) : cuentas
   const editable = pago && (pago.estado === 'pendiente' || pago.estado === 'rechazado')
   const wa = parseTelefonos(pedido.wsp, true)[0]?.wa
+  const plan = planPago(pedido, pago?.monto_esperado ?? monto)
+  const mensaje = () =>
+    pago &&
+    (plan.aPlazo
+      ? mensajeCobroPlazo(pago.referencia, plan, cuentasMsg, nombre.split(' ')[0])
+      : mensajeCobro(pago.referencia, pago.monto_esperado, cuentasMsg, nombre.split(' ')[0]))
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={onClose}>
@@ -97,24 +114,42 @@ export default function CobroPedido({ pedido, monto, onClose }: { pedido: Pedido
               </p>
             )}
 
+            {plan.aPlazo && (
+              <div className="space-y-2">
+                <PlanPlazo plan={plan} cheques={cheques} cuenta={cuentasMsg[0]} />
+                {pago.estado !== 'verificado' && (
+                  <CargarCheque referencia={pago.referencia} plan={plan} cheques={cheques} compacto
+                    onListo={() => {
+                      toast('Cheque cargado: queda para que administración lo impute', 'success')
+                      cargarCheques()
+                      generar(Number(importe), cuentaId)
+                    }} />
+                )}
+              </div>
+            )}
+
             {qr && (
               <div className="text-center">
-                <img src={qr} alt="QR de cobro" className="w-44 h-44 mx-auto" />
-                <p className="text-[11px] text-muted">QR propio: abre la página con los datos para transferir. Sin comisión.</p>
+                <img src={qr} alt="QR de cobro" className={`${plan.aPlazo ? 'w-32 h-32' : 'w-44 h-44'} mx-auto`} />
+                <p className="text-[11px] text-muted">
+                  {plan.aPlazo
+                    ? 'QR propio: el cliente ve el plan y sube la foto de cada cheque / e-cheq.'
+                    : 'QR propio: abre la página con los datos para transferir. Sin comisión.'}
+                </p>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 disabled={!wa}
-                onClick={() => wa && abrirWhatsApp(wa, mensajeCobro(pago.referencia, pago.monto_esperado, cuentasMsg, nombre.split(' ')[0]))}
+                onClick={() => wa && abrirWhatsApp(wa, mensaje()!)}
                 className="rounded-lg bg-[#25D366] text-white py-2 text-xs font-bold disabled:opacity-40"
                 title={wa ? '' : 'El pedido no tiene WhatsApp cargado'}
               >
                 WhatsApp al cliente
               </button>
               <button
-                onClick={() => copiar(mensajeCobro(pago.referencia, pago.monto_esperado, cuentasMsg, nombre.split(' ')[0])).then((ok) => ok && toast('Mensaje copiado', 'success'))}
+                onClick={() => copiar(mensaje()!).then((ok) => ok && toast('Mensaje copiado', 'success'))}
                 className="rounded-lg border border-black/10 py-2 text-xs font-semibold"
               >
                 Copiar mensaje

@@ -15,7 +15,7 @@ import { ArrowRight, Search, X, Store, History, PackageCheck, Undo2, Truck, Minu
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import InstalarApp from '../../components/InstalarApp'
-import { colorSwatch } from '../catalogo/colorLegible'
+import { FotoAnteojo, Miniatura } from './Foto'
 import Postventa from './Postventa'
 import Consultas from './Consultas'
 import LinksSucursales from './LinksSucursales'
@@ -31,7 +31,7 @@ const QUIEN_KEY = 'orbital_consigna_quien'
 export type Sucursal = { id: number; nombre: string; direccion: string | null; localidad: string | null }
 type Linea = {
   sucursal_id: number; codigo: string; modelo: string | null; descripcion: string | null
-  cantidad: number; devolver: number; en_camino: number; precio: number | null
+  cantidad: number; devolver: number; en_camino: number; precio: number | null; imagen?: string | null
 }
 type Mov = {
   id: number; fecha: string; tipo: string; codigo: string; modelo: string | null; descripcion: string | null
@@ -39,7 +39,7 @@ type Mov = {
 }
 type Devolucion = {
   id: number; sucursal_id: number; codigo: string; modelo: string; descripcion: string | null
-  cantidad: number; enviada: number; conservada: number; vendida: number; recibida: number; vendio: number | null; motivo: string; ultimo_por: string | null
+  cantidad: number; enviada: number; conservada: number; vendida: number; recibida: number; vendio: number | null; motivo: string; ultimo_por: string | null; imagen?: string | null
 }
 type ItemPedido = { codigo: string; modelo: string; descripcion: string; cantidad: number }
 type Pedido = {
@@ -49,7 +49,7 @@ type Pedido = {
 }
 export type Central = {
   madre: { cod: string; razon: string; nombre: string } | null
-  acceso: { nombre: string | null; sucursal_id: number | null; catalogo?: string | null }
+  acceso: { nombre: string | null; sucursal_id: number | null; catalogo?: string | null; catalogo_central?: string | null }
   sucursales: Sucursal[]
   stock: Linea[]
   movs: Mov[]
@@ -57,7 +57,7 @@ export type Central = {
   pedidos: Pedido[]
 }
 type Producto = {
-  codigo: string; modelo: string; descripcion: string; precio: number
+  codigo: string; modelo: string; descripcion: string; precio: number; imagen: string | null
   local: Record<number, number>; devolver: Record<number, number>; camino: Record<number, number>; total: number
 }
 type Vista = 'tablero' | 'devolucion' | 'stock' | 'pedir' | 'pedidos' | 'postventa' | 'consultas' | 'links' | 'camino' | 'repo' | 'ayuda' | 'ventas' | 'marketing'
@@ -97,7 +97,8 @@ export default function CentralConsigna() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('tablero')
-  const [selSuc, setSelSuc] = useState<number | null>(null)
+  // ?suc=<id> con el link de la central abre directo el panel de esa sucursal (links del informe).
+  const [selSuc, setSelSuc] = useState<number | null>(() => Number(params.get('suc')) || null)
   const [quien, setQuien] = useState(() => leer(QUIEN_KEY) ?? '')
   const [dispo, setDispo] = useState<{ ok: boolean; habilitados?: number; tope?: number } | null>(null)
 
@@ -123,12 +124,14 @@ export default function CentralConsigna() {
       setError(null)
       const d = data as Central
       setData(d)
-      // Central arranca en el Total (todas); link de sucursal, en su sucursal.
-      setSelSuc((s) => s ?? d.acceso.sucursal_id ?? null)
-      if (d.acceso.sucursal_id == null) setVista((v) => (v === 'tablero' ? 'ventas' : v))
+      // Link de sucursal: queda fijo en su sucursal. Central: arranca en el Total (o en la ?suc= pedida).
+      if (d.acceso.sucursal_id != null) setSelSuc(d.acceso.sucursal_id)
+      else setSelSuc((s) => (s != null && d.sucursales.some((x) => x.id === s) ? s : null))
+      if (d.acceso.sucursal_id == null && !Number(params.get('suc'))) setVista((v) => (v === 'tablero' ? 'ventas' : v))
       // Nombre precargado con el del link (se puede cambiar) para no bloquear la primera operación.
       setQuien((q) => q || (d.acceso.nombre ?? ''))
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave])
 
   // Todas las acciones devuelven la central actualizada (null si falló).
@@ -166,36 +169,56 @@ export default function CentralConsigna() {
   const sucs = data.sucursales
   const miSuc = data.acceso.sucursal_id
   const esCentral = miSuc == null
-  const puedeOperar = (id: number) => esCentral || miSuc === id
-  const suc = sucs.find((s) => s.id === selSuc)
+  const suc = sucs.find((s) => s.id === selSuc) ?? null
+  // Lo que se muestra: con una sucursal elegida (link de sucursal o la central mirando una), solo lo de esa sucursal.
+  const vis = suc ? soloSucursal(data, suc.id) : data
+  const editable = suc ? esCentral || miSuc === suc.id : esCentral
   const sumaSuc = (id: number, k: 'cantidad' | 'devolver' | 'en_camino') =>
     data.stock.filter((l) => l.sucursal_id === id).reduce((s, l) => s + l[k], 0)
-  const tot = (k: 'cantidad' | 'devolver' | 'en_camino') => data.stock.reduce((s, l) => s + l[k], 0)
-  const porAutorizar = data.pedidos.filter((p) => p.estado === 'solicitado').length
+  const tot = (d: Central, k: 'cantidad' | 'devolver' | 'en_camino') => d.stock.reduce((s, l) => s + l[k], 0)
+  const porAutorizar = vis.pedidos.filter((p) => p.estado === 'solicitado').length
   const devPend = data.devoluciones.reduce((s, d) => s + d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0), 0)
 
-  // Devolución, por ahora, solo la central y solo en el Total: es el detalle general, no el de una sucursal.
-  const tabs: [Vista, string, string][] = [
-    ...(suc ? [['tablero', 'Sucursal', suc.nombre] as [Vista, string, string]] : []),
-    ...(esCentral && !suc ? [['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''] as [Vista, string, string]] : []),
-    ['ventas', 'Ventas y análisis', ''],
-    ['stock', 'Stock de todas', `${fmt(tot('cantidad'))} u`],
-    ['camino', 'En camino', tot('en_camino') ? `${fmt(tot('en_camino'))} u` : ''],
-    ['repo', 'Reposición por venta', ''],
-    ['pedir', 'Stock online', ''],
-    ['pedidos', esCentral ? 'Pedidos a autorizar' : 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
-    ['postventa', 'Postventa', ''],
-    ['consultas', 'Consultas IRIS', ''],
-    ['marketing', '✦ Marketing y redes', ''],
-    ...(esCentral ? [['links', 'Links de sucursal', ''] as [Vista, string, string]] : []),
-  ]
+  const elegirSuc = (id: number | null) => {
+    setSelSuc(id)
+    setVista(id == null ? (vista === 'tablero' ? 'ventas' : vista) : 'tablero')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Dos juegos de pestañas: el de una sucursal (lo que ve el local, y la central cuando entra a un local)
+  // y el de la central en el Total. Devolución y links son solo de la central.
+  const tabs: [Vista, string, string][] = suc
+    ? [
+        ['tablero', esCentral ? `Panel de ${suc.nombre}` : 'Mi local', `${fmt(tot(vis, 'cantidad'))} u`],
+        ['pedir', 'Pedir a Orbital · stock virtual', ''],
+        ['pedidos', 'Pedidos', porAutorizar ? `${porAutorizar}` : ''],
+        ['camino', 'Envíos', tot(vis, 'en_camino') ? `${fmt(tot(vis, 'en_camino'))} u` : ''],
+        ['ventas', 'Ventas', ''],
+        ['postventa', 'Postventa', ''],
+        ['consultas', 'Consultas IRIS', ''],
+        ['marketing', '✦ Marketing y redes', ''],
+      ]
+    : [
+        ['ventas', 'Resumen y ventas', ''],
+        ['stock', 'Stock por sucursal', `${fmt(tot(data, 'cantidad'))} u`],
+        ['devolucion', 'Devolución', devPend ? `${fmt(devPend)} u` : ''],
+        ['camino', 'En camino', tot(data, 'en_camino') ? `${fmt(tot(data, 'en_camino'))} u` : ''],
+        ['repo', 'Reposición por venta', ''],
+        ['pedidos', 'Pedidos a autorizar', porAutorizar ? `${porAutorizar}` : ''],
+        ['pedir', 'Stock virtual Orbital', ''],
+        ['marketing', '✦ Marketing y redes', ''],
+        ['postventa', 'Postventa', ''],
+        ['consultas', 'Consultas IRIS', ''],
+        ['links', 'Links de sucursal', ''],
+      ]
+  const vistaOk = tabs.some(([k]) => k === vista) ? vista : tabs[0][0]
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] text-ink">
       <header className="bg-white border-b border-black/10">
         <div className="max-w-[1400px] mx-auto px-4 py-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <img src="/logo-orbital.png" alt="Orbital" className="logo-orbital" />
               <span className="text-[9px] font-bold tracking-[0.28em] text-gold uppercase mt-0.5">Consigna</span>
               <span className="ml-2">
@@ -209,127 +232,111 @@ export default function CentralConsigna() {
                 rel="noreferrer"
                 className="text-xs font-semibold rounded-lg px-3 py-1.5 border inline-flex items-center gap-1.5 whitespace-nowrap bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600"
               >
-                <HelpCircle size={14} /> Ayuda · uso y alcance
+                <HelpCircle size={14} /> Ayuda
               </a>
             </div>
-            <h1 className="text-xl font-semibold mt-2 leading-tight">{data.madre?.nombre ?? 'Cliente'}</h1>
+            <h1 className="text-xl font-semibold mt-2 leading-tight">
+              {data.madre?.nombre ?? 'Cliente'}
+              {!esCentral && suc && <span className="text-muted font-normal"> · {suc.nombre}</span>}
+            </h1>
             <p className="text-xs text-muted">
-              {esCentral ? `Central de operaciones · ${sucs.length} sucursales` : `Sucursal ${sucs.find((s) => s.id === miSuc)?.nombre ?? ''}`}
+              {esCentral ? `Central de operaciones · ${sucs.length} sucursales` : 'Panel de la sucursal'}
             </p>
           </div>
-          <div className="flex flex-wrap items-end gap-5">
-            <Dato label="En los locales" valor={`${fmt(tot('cantidad'))} u`} />
-            <Dato label="A devolver" valor={`${fmt(tot('devolver'))} u`} tono="text-amber-700" />
-            <Dato label="Envío en camino" valor={`${fmt(tot('en_camino'))} u`} tono="text-emerald-700" />
-            <label className="text-[10px] uppercase tracking-wider text-muted flex flex-col gap-0.5">
-              Operando como
-              <input
-                id="consigna-quien"
-                value={quien}
-                onChange={(e) => setQuien(e.target.value)}
-                onBlur={() => guardar(QUIEN_KEY, quien.trim() || null)}
-                placeholder="Tu nombre"
-                className="normal-case tracking-normal text-sm border border-black/15 rounded-lg px-2.5 py-1.5 w-40"
-              />
-            </label>
-          </div>
+          <label className="text-[10px] uppercase tracking-wider text-muted flex flex-col gap-0.5">
+            Operando como
+            <input
+              id="consigna-quien"
+              value={quien}
+              onChange={(e) => setQuien(e.target.value)}
+              onBlur={() => guardar(QUIEN_KEY, quien.trim() || null)}
+              placeholder="Tu nombre"
+              className="normal-case tracking-normal text-sm border border-black/15 rounded-lg px-2.5 py-1.5 w-44"
+            />
+          </label>
         </div>
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 py-4 flex flex-col gap-4">
-        {/* Sucursales: elegir cuál mirar */}
-        <section className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-          <button
-            onClick={() => { setSelSuc(null); setVista((v) => (v === 'tablero' ? 'stock' : v)) }}
-            title="Todas las sucursales"
-            className={`text-left rounded-lg border px-3 py-2 transition-colors ${selSuc == null ? 'bg-ink text-white border-ink' : 'bg-[#FBF7EC] border-gold/60 hover:border-gold'}`}
-          >
-            <div className={`text-[11px] font-semibold uppercase tracking-wide ${selSuc == null ? 'text-white/70' : 'text-muted'}`}>Total · {sucs.length} suc.</div>
-            <div className="text-lg font-semibold tabular-nums leading-tight">{fmt(tot('cantidad'))} u</div>
-            <div className="text-[11px] tabular-nums flex gap-2 mt-0.5">
-              {tot('devolver') > 0 && <span className={selSuc == null ? 'text-amber-300' : 'text-amber-700'}>↩ {fmt(tot('devolver'))}</span>}
-              {tot('en_camino') > 0 && <span className={selSuc == null ? 'text-emerald-300' : 'text-emerald-700'}>+ {fmt(tot('en_camino'))}</span>}
-            </div>
-          </button>
-          {sucs.map((s) => {
-            const activa = selSuc === s.id
-            const dev = sumaSuc(s.id, 'devolver')
-            const cam = sumaSuc(s.id, 'en_camino')
-            return (
-              <button
-                key={s.id}
-                onClick={() => { setSelSuc(s.id); setVista('tablero') }}
-                title={[s.direccion, s.localidad].filter(Boolean).join(', ')}
-                className={`text-left rounded-lg border px-3 py-2 transition-colors ${activa ? 'bg-ink text-white border-ink' : 'bg-white border-black/10 hover:border-gold'}`}
-              >
-                <div className={`text-[11px] truncate ${activa ? 'text-white/70' : 'text-muted'}`}>
-                  <Store size={11} className="inline -mt-0.5 mr-1" />{s.nombre}{miSuc === s.id ? ' · vos' : ''}
-                </div>
-                <div className="text-lg font-semibold tabular-nums leading-tight">{fmt(sumaSuc(s.id, 'cantidad'))} u</div>
-                <div className="text-[11px] tabular-nums flex gap-2 mt-0.5">
-                  {dev > 0 && <span className={activa ? 'text-amber-300' : 'text-amber-700'}>↩ {dev}</span>}
-                  {cam > 0 && <span className={activa ? 'text-emerald-300' : 'text-emerald-700'}>+ {cam}</span>}
-                </div>
-              </button>
-            )
-          })}
-        </section>
+        {/* Central: elegir el Total o entrar al panel de una sucursal. El link de sucursal no ve las otras. */}
+        {esCentral && (
+          <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            <TarjetaSuc
+              activa={!suc} titulo={`Todas · ${sucs.length} suc.`} sub="Central"
+              cant={tot(data, 'cantidad')} dev={tot(data, 'devolver')} cam={tot(data, 'en_camino')}
+              onClick={() => elegirSuc(null)} total
+            />
+            {sucs.map((s) => (
+              <TarjetaSuc
+                key={s.id} activa={suc?.id === s.id} titulo={s.nombre} sub={s.localidad ?? ''}
+                cant={sumaSuc(s.id, 'cantidad')} dev={sumaSuc(s.id, 'devolver')} cam={sumaSuc(s.id, 'en_camino')}
+                onClick={() => elegirSuc(s.id)}
+              />
+            ))}
+          </section>
+        )}
 
-        <nav className="flex flex-wrap gap-1.5">
+        {esCentral && suc && (
+          <div className="flex flex-wrap items-center gap-3 bg-ink text-white rounded-lg px-4 py-2.5">
+            <Store size={16} className="text-gold" />
+            <span className="text-sm">Estás viendo el panel de <b>{suc.nombre}</b> tal como lo ve el local. Desde la central podés operar igual.</span>
+            <button onClick={() => elegirSuc(null)} className="ml-auto text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-md px-3 py-1.5">← Volver a la central</button>
+          </div>
+        )}
+
+        <nav className="flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1 sm:flex-wrap sm:overflow-visible">
           {tabs.map(([k, label, extra]) => {
-            // La devolución va en ámbar y la ayuda en verde: son otra cosa, no se mezclan con mirar stock o pedir.
+            // La devolución va en ámbar: es otra cosa, no se mezcla con mirar stock o pedir.
             const dev = k === 'devolucion'
-            const ayuda = k === 'ayuda'
+            const act = vistaOk === k
             return (
               <button
                 key={k}
                 onClick={() => setVista(k)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md border whitespace-nowrap transition-colors ${vista === k
-                  ? dev ? 'bg-amber-700 text-white border-amber-700'
-                    : ayuda ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-ink text-white border-ink'
-                  : dev ? 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600'
-                    : ayuda ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:border-emerald-600' : 'bg-white text-ink border-black/20 hover:border-gold'}`}
+                className={`px-3 py-1.5 text-[13px] font-semibold rounded-lg border whitespace-nowrap transition-colors ${act
+                  ? dev ? 'bg-amber-700 text-white border-amber-700' : 'bg-ink text-white border-ink'
+                  : dev ? 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600' : 'bg-white text-ink border-black/15 hover:border-gold'}`}
               >
-                {ayuda && '❔ '}{label}
-                {extra && <span className={`ml-1.5 font-medium ${vista === k ? (dev ? 'text-amber-100' : 'text-gold') : 'text-amber-700'}`}>{extra}</span>}
+                {label}
+                {extra && <span className={`ml-1.5 font-medium ${act ? (dev ? 'text-amber-100' : 'text-gold') : 'text-muted'}`}>{extra}</span>}
               </button>
             )
           })}
         </nav>
 
-        {vista === 'tablero' && suc && (
-          <Tablero data={data} suc={suc} editable={puedeOperar(suc.id)} operar={operar} />
+        {vistaOk === 'tablero' && suc && (
+          <PanelSucursal data={vis} todas={data} suc={suc} editable={editable} operar={operar}
+            onVista={setVista} />
         )}
-        {vista === 'ayuda' && <Instructivo data={data} esCentral={esCentral} />}
-        {vista === 'ventas' && <VentasConsigna clave={clave} data={data} />}
-        {vista === 'marketing' && <MarketingConsigna data={data} onVista={setVista} />}
-        {vista === 'consultas' && <Consultas clave={clave} data={data} quien={quien} />}
-        {(vista === 'camino' || vista === 'repo') && <EnviosRepos clave={clave} data={data} modo={vista === 'camino' ? 'camino' : 'repo'} />}
-        {vista === 'links' && esCentral && <LinksSucursales clave={clave} cliente={data.madre?.nombre ?? 'Orbital'} />}
-        {vista === 'devolucion' && esCentral && !suc && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
-        {vista === 'stock' && <StockGeneral data={data} miSuc={miSuc} operar={operar} />}
-        {vista === 'pedir' && (
-          // Con link de sucursal el catálogo siempre pide para SU sucursal; la central ve el catálogo
-          // siempre y elige el destino (la tarjeta elegida o el selector) — su pedido no espera autorización.
+        {vistaOk === 'ventas' && <VentasConsigna key={suc?.id ?? 'todas'} clave={clave} data={vis} fija={suc?.id} />}
+        {vistaOk === 'marketing' && <MarketingConsigna data={vis} esCentral={esCentral && !suc} onVista={setVista} />}
+        {vistaOk === 'consultas' && <Consultas clave={clave} data={vis} quien={quien} />}
+        {(vistaOk === 'camino' || vistaOk === 'repo') && <EnviosRepos clave={clave} data={vis} modo={vistaOk === 'camino' ? 'camino' : 'repo'} />}
+        {vistaOk === 'links' && esCentral && <LinksSucursales clave={clave} cliente={data.madre?.nombre ?? 'Orbital'} onVer={elegirSuc} />}
+        {vistaOk === 'devolucion' && esCentral && !suc && <DevolucionCentral data={data} esCentral={esCentral} operar={operar} />}
+        {vistaOk === 'stock' && !suc && <StockGeneral data={data} miSuc={miSuc} operar={operar} onVerSuc={elegirSuc} />}
+        {vistaOk === 'pedir' && (
+          // Con una sucursal elegida el pedido es para ella; la central en el Total elige el destino.
+          // El pedido de la central no espera autorización.
           <PedirOrbital
             clave={clave}
-            suc={miSuc != null ? sucs.find((s) => s.id === miSuc) ?? null : suc ?? null}
+            suc={suc}
             sucursales={sucs}
             esCentral={esCentral}
-            editable
+            editable={editable || esCentral}
             operar={operar}
             onEnviado={() => setVista('pedidos')}
           />
         )}
-        {vista === 'pedidos' && <Pedidos data={data} esCentral={esCentral} operar={operar} />}
-        {vista === 'postventa' && !suc && (
+        {vistaOk === 'pedidos' && <Pedidos data={vis} esCentral={esCentral} operar={operar} />}
+        {vistaOk === 'postventa' && !suc && (
           <div className="bg-white border border-black/10 rounded-lg px-4 py-5 flex flex-wrap items-center gap-3">
             <span className="text-sm text-muted">¿De qué sucursal es la postventa?</span>
             <select
               id="consigna-suc-postventa"
               aria-label="Sucursal"
               defaultValue=""
-              onChange={(e) => setSelSuc(Number(e.target.value))}
+              onChange={(e) => { setSelSuc(Number(e.target.value)); setVista('postventa') }}
               className="text-sm border border-black/15 rounded-lg px-2.5 py-1.5"
             >
               <option value="" disabled>Elegí una sucursal</option>
@@ -337,84 +344,219 @@ export default function CentralConsigna() {
             </select>
           </div>
         )}
-        {vista === 'postventa' && suc && (
-          <Postventa clave={clave} data={data} suc={suc} editable={puedeOperar(suc.id)} quien={quien} />
+        {vistaOk === 'postventa' && suc && (
+          <Postventa clave={clave} data={data} suc={suc} editable={editable} quien={quien} />
         )}
       </main>
     </div>
   )
 }
 
+// Recorta la central a una sola sucursal (el link de un local, o la central mirando ese local).
+function soloSucursal(d: Central, id: number): Central {
+  return {
+    ...d,
+    sucursales: d.sucursales.filter((s) => s.id === id),
+    stock: d.stock.filter((l) => l.sucursal_id === id),
+    movs: d.movs.filter((m) => m.sucursal_id === id || m.contraparte_sucursal_id === id),
+    devoluciones: d.devoluciones.filter((x) => x.sucursal_id === id),
+    pedidos: d.pedidos.filter((p) => p.sucursal_id === id),
+  }
+}
+
+function TarjetaSuc({ activa, titulo, sub, cant, dev, cam, onClick, total }: {
+  activa: boolean; titulo: string; sub: string; cant: number; dev: number; cam: number; onClick: () => void; total?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${activa ? 'bg-ink text-white border-ink shadow-sm' : total ? 'bg-[#FBF7EC] border-gold/60 hover:border-gold' : 'bg-white border-black/10 hover:border-gold'}`}
+    >
+      <div className={`text-[12px] font-semibold truncate flex items-center gap-1 ${activa ? 'text-white' : 'text-ink'}`}>
+        {!total && <Store size={12} className={activa ? 'text-gold' : 'text-muted'} />}{titulo}
+      </div>
+      {sub && <div className={`text-[10px] truncate ${activa ? 'text-white/60' : 'text-faint'}`}>{sub}</div>}
+      <div className="text-xl font-semibold tabular-nums leading-tight mt-1">{fmt(cant)} <span className="text-xs font-normal opacity-60">u</span></div>
+      <div className="text-[11px] tabular-nums flex gap-2.5 mt-0.5 min-h-[16px]">
+        {cam > 0 && <span className={activa ? 'text-emerald-300' : 'text-emerald-700'} title="Llega de Orbital">+{fmt(cam)} llega</span>}
+        {dev > 0 && <span className={activa ? 'text-amber-300' : 'text-amber-700'} title="Para devolver">↩ {fmt(dev)}</span>}
+      </div>
+    </button>
+  )
+}
+
 type Operar = (fn: string, args: Record<string, unknown>, ok: string) => Promise<Central | null>
 
-// ── Tablero de una sucursal: qué tiene que devolver y qué le llega nuevo ────
-function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal; editable: boolean; operar: Operar }) {
-  const envio = data.stock.filter((l) => l.sucursal_id === suc.id && l.en_camino > 0)
-    .sort((a, b) => (a.modelo ?? '').localeCompare(b.modelo ?? ''))
+// ── Panel de una sucursal: lo que le llega y lo que tiene, en detalle y con foto ────
+function PanelSucursal({ data, todas, suc, editable, operar, onVista }: {
+  data: Central; todas: Central; suc: Sucursal; editable: boolean; operar: Operar; onVista: (v: Vista) => void
+}) {
+  const [busca, setBusca] = useState('')
+  const [filtro, setFiltro] = useState<'todo' | 'libre' | 'devolver'>('todo')
+  const [mover, setMover] = useState<string | null>(null)
+  const lineas = data.stock
+  const envio = lineas.filter((l) => l.en_camino > 0).sort((a, b) => (a.modelo ?? '').localeCompare(b.modelo ?? ''))
   const totCamino = envio.reduce((s, l) => s + l.en_camino, 0)
-  const pedidos = data.pedidos.filter((p) => p.sucursal_id === suc.id)
+  const totLocal = lineas.reduce((s, l) => s + l.cantidad, 0)
+  const totDev = lineas.reduce((s, l) => s + l.devolver, 0)
+  const enLocal = lineas.filter((l) => l.cantidad > 0)
+  const modelosN = new Set(enLocal.map((l) => l.modelo)).size
+  const pedidosPend = data.pedidos.filter((p) => p.estado === 'solicitado').length
 
-  // La devolución ya no va por sucursal: se gestiona en la pestaña "Devolución a Orbital" de la central.
+  // Agrupado por modelo: una tarjeta por modelo con sus colores, cada uno con foto.
+  const grupos = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    const m = new Map<string, Linea[]>()
+    for (const l of enLocal) {
+      if (q && !`${l.modelo} ${l.descripcion} ${l.codigo}`.toLowerCase().includes(q)) continue
+      if (filtro === 'devolver' && l.devolver <= 0) continue
+      if (filtro === 'libre' && l.cantidad - l.devolver <= 0) continue
+      const k = l.modelo ?? '—'
+      m.set(k, [...(m.get(k) ?? []), l])
+    }
+    return [...m.entries()].map(([modelo, ls]) => ({ modelo, ls: ls.sort((a, b) => (a.descripcion ?? '').localeCompare(b.descripcion ?? '')) }))
+      .sort((a, b) => a.modelo.localeCompare(b.modelo))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, busca, filtro])
+
+  // Para mover, los productos con el stock de todas las sucursales (destino) del cliente.
+  const productos = useMemo<Producto[]>(() => {
+    const m = new Map<string, Producto>()
+    for (const l of todas.stock) {
+      let p = m.get(l.codigo)
+      if (!p) { p = { codigo: l.codigo, modelo: l.modelo ?? '—', descripcion: l.descripcion ?? '', precio: Number(l.precio ?? 0), imagen: l.imagen ?? null, local: {}, devolver: {}, camino: {}, total: 0 }; m.set(l.codigo, p) }
+      p.local[l.sucursal_id] = l.cantidad; p.devolver[l.sucursal_id] = l.devolver; p.camino[l.sucursal_id] = l.en_camino; p.total += l.cantidad
+    }
+    return [...m.values()].filter((p) => (p.local[suc.id] ?? 0) - (p.devolver[suc.id] ?? 0) > 0)
+      .sort((a, b) => a.modelo.localeCompare(b.modelo) || a.descripcion.localeCompare(b.descripcion))
+  }, [todas.stock, suc.id])
+
   return (
-    <div className="grid lg:grid-cols-2 gap-4 items-start">
-      <>
-        <section className="bg-white border border-black/10 rounded-lg">
-          <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-3">
-            <h2 className="font-semibold flex items-center gap-2 mr-auto"><Truck size={16} className="text-emerald-700" /> Envío nuevo en camino</h2>
-            <span className="text-xs text-muted tabular-nums"><b className="text-emerald-700">{totCamino}</b> u</span>
-            {editable && totCamino > 0 && (
-              <button
-                onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: null }, `${suc.nombre} recibió el envío`)}
-                className="text-xs bg-emerald-100 text-emerald-900 font-medium rounded-lg px-3 py-1.5"
-              >
-                Recibí todo
-              </button>
-            )}
-          </div>
-          {envio.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-6">No hay envíos en camino.</p>
-          ) : (
-            <ul className="divide-y divide-black/5">
-              {envio.map((l) => (
-                <li key={l.codigo} className="px-4 py-2 flex items-center gap-3 text-sm">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-semibold tracking-wide">{l.modelo}</div>
-                    <div className="text-xs text-muted truncate">{l.descripcion}</div>
-                  </div>
-                  <span className="font-semibold tabular-nums">+{l.en_camino}</span>
-                  {editable && (
-                    <button
-                      onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: l.codigo }, `Recibido ${l.modelo}`)}
-                      title="Marcar recibido"
-                      aria-label={`Marcar recibido ${l.modelo}`}
-                      className="text-emerald-700 border border-emerald-200 rounded-md p-1 hover:bg-emerald-50"
-                    >
-                      <Check size={14} />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+    <div className="flex flex-col gap-4">
+      {/* Resumen en grande: lo primero que hay que leer */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Kpi label="En el local" valor={`${fmt(totLocal)} u`} sub={`${modelosN} modelos`} />
+        <Kpi label="Llega de Orbital" valor={`${fmt(totCamino)} u`} sub={totCamino ? 'Marcalo al recibir' : 'Nada en camino'} tono="text-emerald-700" />
+        <Kpi label="Para devolver" valor={`${fmt(totDev)} u`} sub={totDev ? 'Lo junta la central' : 'Nada pendiente'} tono="text-amber-700" />
+        <button onClick={() => onVista('pedidos')} className="text-left">
+          <Kpi label="Pedidos" valor={`${data.pedidos.length}`} sub={pedidosPend ? `${pedidosPend} esperando autorización` : 'Ver pedidos →'} />
+        </button>
+      </div>
 
-        <section className="bg-white border border-black/10 rounded-lg">
-          <h2 className="font-semibold px-4 py-3 border-b border-black/10">Pedidos particulares</h2>
-          {pedidos.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-4">Sin pedidos. Se arman desde "Pedir a Orbital".</p>
-          ) : (
-            <ul className="divide-y divide-black/5">
-              {pedidos.map((p) => (
-                <li key={p.id} className="px-4 py-2 text-sm flex items-center gap-3">
-                  <span className="text-xs text-muted w-24 shrink-0">{fecha(p.created_at)}</span>
-                  <span className="flex-1 tabular-nums">{p.total_units} u · {p.items.length} productos</span>
-                  <EstadoPedido e={p.estado} />
-                </li>
-              ))}
-            </ul>
+      {/* Lo que llega */}
+      <section className="bg-white border border-emerald-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-emerald-50/70 border-b border-emerald-200 flex flex-wrap items-center gap-3">
+          <h2 className="font-semibold flex items-center gap-2 mr-auto"><Truck size={17} className="text-emerald-700" /> Llega de Orbital <span className="text-emerald-700 tabular-nums">{fmt(totCamino)} u</span></h2>
+          {editable && totCamino > 0 && (
+            <button
+              onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: null }, `${suc.nombre} recibió el envío`)}
+              className="text-xs bg-emerald-700 text-white font-semibold rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5"
+            >
+              <Check size={14} /> Recibí todo
+            </button>
           )}
-        </section>
-      </>
+        </div>
+        {envio.length === 0 ? (
+          <p className="text-sm text-muted px-4 py-5">No hay envíos en camino. Cuando Orbital despache, aparece acá con foto para controlarlo al abrir la caja.</p>
+        ) : (
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {envio.map((l) => (
+              <div key={l.codigo} className="flex items-center gap-3 border border-black/5 rounded-lg px-2.5 py-2">
+                <Miniatura src={l.imagen} alt={`${l.modelo} ${l.descripcion ?? ''}`} color={l.descripcion} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-semibold tracking-wide uppercase truncate">{l.modelo}</div>
+                  <div className="text-xs text-muted truncate" title={l.descripcion ?? ''}>{l.descripcion}</div>
+                </div>
+                <span className="text-base font-semibold tabular-nums text-emerald-700">+{l.en_camino}</span>
+                {editable && (
+                  <button
+                    onClick={() => operar('consigna_recibir_envio', { p_sucursal: suc.id, p_codigo: l.codigo }, `Recibido ${l.modelo}`)}
+                    title="Marcar recibido"
+                    aria-label={`Marcar recibido ${l.modelo}`}
+                    className="text-emerald-700 border border-emerald-200 rounded-md p-1.5 hover:bg-emerald-50"
+                  >
+                    <Check size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Lo que tiene */}
+      <section className="bg-white border border-black/10 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-black/10 flex flex-wrap items-center gap-2">
+          <h2 className="font-semibold flex items-center gap-2 mr-auto"><Store size={17} className="text-gold" /> Lo que hay en el local <span className="tabular-nums text-muted font-normal">{fmt(totLocal)} u</span></h2>
+          <label className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+            <input id="suc-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar modelo o color"
+              className="w-full bg-white border border-black/15 rounded-lg pl-8 pr-3 py-1.5 text-sm" />
+          </label>
+          <div className="flex gap-1 bg-black/5 rounded-lg p-1">
+            {([['todo', 'Todo'], ['libre', 'Para vender'], ['devolver', `Para devolver${totDev ? ` · ${totDev}` : ''}`]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setFiltro(k)} className={`text-xs rounded-md px-2.5 py-1 whitespace-nowrap ${filtro === k ? 'bg-white shadow-sm font-semibold' : 'text-muted'}`}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {grupos.length === 0 ? (
+          <p className="text-sm text-muted px-4 py-6">{enLocal.length ? 'No hay productos con ese filtro.' : 'Todavía no hay stock cargado en este local.'}</p>
+        ) : (
+          <div className="divide-y divide-black/5">
+            {grupos.map((g) => {
+              const u = g.ls.reduce((s, l) => s + l.cantidad, 0)
+              return (
+                <div key={g.modelo} className="px-4 py-3">
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <h3 className="text-sm font-semibold tracking-wide uppercase">{g.modelo}</h3>
+                    <span className="text-xs text-muted tabular-nums">{u} u · {g.ls.length} {g.ls.length === 1 ? 'color' : 'colores'}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                    {g.ls.map((l) => {
+                      const libre = l.cantidad - l.devolver
+                      return (
+                        <div key={l.codigo} className={`flex items-center gap-3 rounded-lg border px-2.5 py-2 ${l.devolver > 0 ? 'border-amber-200 bg-amber-50/40' : 'border-black/5'}`}>
+                          <Miniatura src={l.imagen} alt={`${l.modelo} ${l.descripcion ?? ''}`} color={l.descripcion} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs leading-snug line-clamp-2" title={`${l.descripcion ?? ''} · ${l.codigo}`}>{l.descripcion || l.codigo}</div>
+                            <div className="text-[10px] flex gap-2 mt-0.5 tabular-nums">
+                              {l.devolver > 0 && <span className="text-amber-700 font-medium">↩ {l.devolver} devolver</span>}
+                              {l.en_camino > 0 && <span className="text-emerald-700 font-medium">+{l.en_camino} llega</span>}
+                            </div>
+                          </div>
+                          <span className="text-lg font-semibold tabular-nums">{l.cantidad}</span>
+                          {editable && libre > 0 && (
+                            <button onClick={() => setMover(l.codigo)} title="Mover a otra sucursal" aria-label={`Mover ${l.modelo}`}
+                              className="text-muted hover:text-ink border border-black/10 rounded-md p-1.5">
+                              <ArrowRight size={14} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {mover && todas.sucursales.length > 1 && (
+        <MoverStock productos={productos} sucursales={todas.sucursales} inicial={{ codigo: mover, desde: suc.id }} miSuc={suc.id}
+          onCerrar={() => setMover(null)}
+          onMover={async (args, texto) => { if (await operar('consigna_transferir', args, texto)) setMover(null) }} />
+      )}
+    </div>
+  )
+}
+
+function Kpi({ label, valor, sub, tono = '' }: { label: string; valor: string; sub?: string; tono?: string }) {
+  return (
+    <div className="bg-white border border-black/10 rounded-xl px-4 py-3 h-full">
+      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+      <div className={`text-2xl font-semibold tabular-nums leading-tight mt-0.5 ${tono}`}>{valor}</div>
+      {sub && <div className="text-[11px] text-faint mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -423,7 +565,7 @@ function Tablero({ data, suc, editable, operar }: { data: Central; suc: Sucursal
 // En esta etapa la registra SOLO la central (el link de sucursal la ve, no opera). La RPC reparte
 // la cantidad entre las sucursales que tienen pendiente ese código.
 type GrupoDev = {
-  codigo: string; modelo: string; descripcion: string; motivos: string[]
+  codigo: string; modelo: string; descripcion: string; imagen: string | null; motivos: string[]
   cantidad: number; pendiente: number; enviada: number; conservada: number; vendida: number
   porSuc: Record<number, number>
 }
@@ -436,7 +578,7 @@ function DevolucionCentral({ data, esCentral, operar }: { data: Central; esCentr
     for (const d of data.devoluciones) {
       let g = m.get(d.codigo)
       if (!g) {
-        g = { codigo: d.codigo, modelo: d.modelo, descripcion: d.descripcion ?? '', motivos: [], cantidad: 0, pendiente: 0, enviada: 0, conservada: 0, vendida: 0, porSuc: {} }
+        g = { codigo: d.codigo, modelo: d.modelo, descripcion: d.descripcion ?? '', imagen: d.imagen ?? null, motivos: [], cantidad: 0, pendiente: 0, enviada: 0, conservada: 0, vendida: 0, porSuc: {} }
         m.set(d.codigo, g)
       }
       const pend = d.cantidad - d.enviada - d.conservada - (d.vendida ?? 0)
@@ -515,8 +657,13 @@ function FilaDevolucion({ g, nombreSuc, editable, operar }: { g: GrupoDev; nombr
   return (
     <tr className="align-top">
       <td className="px-4 py-2 border-b border-black/5">
-        <div className="text-[11px] font-semibold tracking-wide">{g.modelo}</div>
-        <div className="text-xs text-muted">{g.descripcion}</div>
+        <div className="flex items-center gap-2.5">
+          <Miniatura src={g.imagen} alt={`${g.modelo} ${g.descripcion}`} color={g.descripcion} />
+          <div>
+            <div className="text-[11px] font-semibold tracking-wide uppercase">{g.modelo}</div>
+            <div className="text-xs text-muted">{g.descripcion}</div>
+          </div>
+        </div>
       </td>
       <td className="px-2 py-2 border-b border-black/5 text-xs min-w-[180px]">{g.motivos.join(' · ')}</td>
       <td className="px-2 py-2 border-b border-black/5 text-[11px] text-muted min-w-[160px]">
@@ -559,7 +706,7 @@ function FilaDevolucion({ g, nombreSuc, editable, operar }: { g: GrupoDev; nombr
 }
 
 // ── Stock de todas las sucursales + mover entre sucursales ───────────────────
-function StockGeneral({ data, miSuc, operar }: { data: Central; miSuc: number | null; operar: Operar }) {
+function StockGeneral({ data, miSuc, operar, onVerSuc }: { data: Central; miSuc: number | null; operar: Operar; onVerSuc: (id: number) => void }) {
   const [busca, setBusca] = useState('')
   const [mover, setMover] = useState<{ codigo: string; desde: number | null } | null>(null)
   const sucs = data.sucursales
@@ -569,7 +716,7 @@ function StockGeneral({ data, miSuc, operar }: { data: Central; miSuc: number | 
     for (const l of data.stock) {
       let p = m.get(l.codigo)
       if (!p) {
-        p = { codigo: l.codigo, modelo: l.modelo ?? '—', descripcion: l.descripcion ?? '', precio: Number(l.precio ?? 0), local: {}, devolver: {}, camino: {}, total: 0 }
+        p = { codigo: l.codigo, modelo: l.modelo ?? '—', descripcion: l.descripcion ?? '', precio: Number(l.precio ?? 0), imagen: l.imagen ?? null, local: {}, devolver: {}, camino: {}, total: 0 }
         m.set(l.codigo, p)
       }
       p.local[l.sucursal_id] = l.cantidad
@@ -617,8 +764,12 @@ function StockGeneral({ data, miSuc, operar }: { data: Central; miSuc: number | 
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="text-[11px] uppercase tracking-wide text-muted">
-              <th className="sticky left-0 z-[1] bg-white text-left font-medium px-3 py-2 border-b border-black/10 min-w-[190px]">Modelo · color</th>
-              {sucs.map((s) => <th key={s.id} className="font-medium px-2 py-2 border-b border-black/10 text-center whitespace-nowrap">{s.nombre}</th>)}
+              <th className="sticky left-0 z-[1] bg-white text-left font-medium px-3 py-2 border-b border-black/10 min-w-[240px]">Modelo · color</th>
+              {sucs.map((s) => (
+                <th key={s.id} className="font-medium px-2 py-2 border-b border-black/10 text-center whitespace-nowrap">
+                  <button onClick={() => onVerSuc(s.id)} title={`Abrir el panel de ${s.nombre}`} className="uppercase tracking-wide hover:text-ink underline decoration-dotted underline-offset-2">{s.nombre}</button>
+                </th>
+              ))}
               <th className="font-semibold px-3 py-2 border-b border-black/10 text-right">Total</th>
             </tr>
           </thead>
@@ -629,8 +780,13 @@ function StockGeneral({ data, miSuc, operar }: { data: Central; miSuc: number | 
               return (
                 <tr key={p.codigo} className={nuevoModelo ? 'border-t border-black/15' : ''}>
                   <td className="sticky left-0 z-[1] bg-white px-3 py-1.5 border-b border-black/5">
-                    {nuevoModelo && <div className="text-[11px] font-semibold tracking-wide">{p.modelo}</div>}
-                    <div className="text-xs text-muted truncate max-w-[220px]" title={p.codigo}>{p.descripcion || p.codigo}</div>
+                    <div className="flex items-center gap-2.5">
+                      <Miniatura src={p.imagen} alt={`${p.modelo} ${p.descripcion}`} color={p.descripcion} size="sm" />
+                      <div className="min-w-0">
+                        {nuevoModelo && <div className="text-[11px] font-semibold tracking-wide uppercase">{p.modelo}</div>}
+                        <div className="text-xs text-muted truncate max-w-[200px]" title={p.codigo}>{p.descripcion || p.codigo}</div>
+                      </div>
+                    </div>
                   </td>
                   {sucs.map((s) => {
                     const q = p.local[s.id] ?? 0
@@ -778,18 +934,6 @@ function MoverStock({ productos, sucursales, inicial, miSuc, onCerrar, onMover }
 type ColorCat = { codigo: string; descripcion: string | null; tipo: string | null; tratamiento: string | null; imagen: string | null }
 type ModeloCat = { modelo: string; caliente: boolean; tipos: string[]; imagen: string | null; colores: ColorCat[] }
 
-function FotoAnteojo({ src, alt, color }: { src: string | null; alt: string; color?: string | null }) {
-  const [rota, setRota] = useState(false)
-  if (src && !rota) return <img src={src} alt={alt} loading="lazy" onError={() => setRota(true)} className="w-full h-full object-contain" />
-  return (
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#F0EEE8] to-[#E4E1D8]">
-      <svg width="64" height="30" viewBox="0 0 64 30" fill="none" stroke={color ? colorSwatch(color) : '#B5AF9F'} strokeWidth="3">
-        <circle cx="15" cy="16" r="11" /><circle cx="49" cy="16" r="11" /><path d="M26 14h12M4 12l4-3M60 12l-4-3" />
-      </svg>
-    </div>
-  )
-}
-
 function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onEnviado }: {
   clave: string; suc: Sucursal | null; sucursales: Sucursal[]; esCentral: boolean
   editable: boolean; operar: Operar; onEnviado: () => void
@@ -803,7 +947,8 @@ function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onE
   const [enviando, setEnviando] = useState(false)
   // La central entra al catálogo sin sucursal elegida: el destino se elige acá.
   const [destinoSel, setDestinoSel] = useState<number | null>(null)
-  const destino = sucursales.find((s) => s.id === (esCentral ? destinoSel ?? suc?.id ?? null : suc?.id)) ?? null
+  const elige = esCentral && !suc
+  const destino = sucursales.find((s) => s.id === (elige ? destinoSel : suc?.id)) ?? null
 
   useEffect(() => {
     supabase.rpc('consigna_catalogo', { p_k: clave }).then(({ data }) => setModelos((data as ModeloCat[]) ?? []))
@@ -857,7 +1002,7 @@ function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onE
             <button key={k} onClick={() => setTipo(k)} className={`text-sm rounded-md px-3 py-1 ${tipo === k ? 'bg-white shadow-sm font-semibold' : 'text-muted'}`}>{l}</button>
           ))}
         </div>
-        {esCentral ? (
+        {elige ? (
           <label className="text-xs text-muted ml-auto flex items-center gap-2">
             Pedido para
             <select
@@ -871,7 +1016,7 @@ function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onE
             </select>
           </label>
         ) : (
-          <span className="text-xs text-muted ml-auto">Pedido para <b className="text-ink">{destino?.nombre}</b> · lo autoriza la central</span>
+          <span className="text-xs text-muted ml-auto">Pedido para <b className="text-ink">{destino?.nombre}</b>{esCentral ? ' · sale directo a Orbital' : ' · lo autoriza la central'}</span>
         )}
       </div>
 
@@ -954,6 +1099,7 @@ function PedirOrbital({ clave, suc, sucursales, esCentral, editable, operar, onE
 // ── Pedidos particulares: la central autoriza ────────────────────────────────
 function Pedidos({ data, esCentral, operar }: { data: Central; esCentral: boolean; operar: Operar }) {
   const nombreSuc = (id: number) => data.sucursales.find((s) => s.id === id)?.nombre ?? '—'
+  const img = new Map(data.stock.map((l) => [l.codigo, l.imagen ?? null]))
   const [ocupado, setOcupado] = useState<number | null>(null)
 
   if (data.pedidos.length === 0) return <p className="text-sm text-muted bg-white border border-black/10 rounded-lg px-4 py-6">Todavía no hay pedidos particulares.</p>
@@ -983,7 +1129,8 @@ function Pedidos({ data, esCentral, operar }: { data: Central; esCentral: boolea
           </div>
           <ul className="px-4 py-2 text-sm divide-y divide-black/5">
             {p.items.map((it) => (
-              <li key={it.codigo} className="py-1 flex gap-3">
+              <li key={it.codigo} className="py-1.5 flex items-center gap-3">
+                <Miniatura src={img.get(it.codigo)} alt={it.modelo} color={it.descripcion} size="sm" />
                 <span className="flex-1 min-w-0"><b className="text-[11px] tracking-wide">{it.modelo}</b> <span className="text-xs text-muted">{it.descripcion}</span></span>
                 <span className="tabular-nums font-medium">{it.cantidad}</span>
               </li>

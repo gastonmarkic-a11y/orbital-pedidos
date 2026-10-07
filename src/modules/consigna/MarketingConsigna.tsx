@@ -2,13 +2,14 @@
 // Lo mismo que tienen las ópticas en su catálogo (Inspiración, Crear contenido, Mis publicaciones,
 // Postventa) más Triple Protección e IRIS. Cada acceso de consigna tiene su propio link de catálogo
 // (consigna_acceso.catalogo) y el catálogo abre directo en la sección con ?ver=.
-import { Sparkles, PenLine, Megaphone, Wrench, ShieldCheck, MessageCircle } from 'lucide-react'
+import { Sparkles, PenLine, Megaphone, Wrench, ShieldCheck, MessageCircle, LayoutGrid, Package } from 'lucide-react'
 import type { Central } from './CentralConsigna'
 
 type Tarjeta = { ver: string | null; titulo: string; texto: string; icono: typeof Sparkles; tono: string; boton: string; accion?: () => void }
 
-export default function MarketingConsigna({ data, onVista }: { data: Central; onVista: (v: 'postventa' | 'consultas') => void }) {
-  const cat = data.acceso.catalogo
+export default function MarketingConsigna({ data, esCentral, onVista }: { data: Central; esCentral?: boolean; onVista: (v: 'postventa' | 'consultas' | 'pedir') => void }) {
+  // La central usa su catálogo (o el de la central si entra desde una sucursal sin link propio).
+  const cat = data.acceso.catalogo ?? data.acceso.catalogo_central
   const url = (ver: string) => `/catalogo?k=${cat}&ver=${ver}`
   const tarjetas: Tarjeta[] = [
     { ver: 'inspiracion', titulo: 'Inspiración', icono: Sparkles, tono: 'from-fuchsia-600 via-pink-500 to-orange-400 text-white', boton: 'Ver inspiración',
@@ -29,6 +30,17 @@ export default function MarketingConsigna({ data, onVista }: { data: Central; on
       <p className="text-sm text-muted max-w-3xl">
         Todo lo que Orbital pone a disposición para vender más en las tiendas: contenido para redes, influencers, postventa y la demanda que manda IRIS.
       </p>
+      {cat && (
+        <div className="flex flex-wrap gap-2">
+          <a href={`/catalogo?k=${cat}`} target="_blank" rel="noreferrer"
+            className="text-sm font-semibold bg-ink text-white rounded-lg px-4 py-2 inline-flex items-center gap-2">
+            <LayoutGrid size={15} /> {esCentral ? 'Abrir el panel de marketing completo' : 'Abrir marketing completo'} ↗
+          </a>
+          <button onClick={() => onVista('pedir')} className="text-sm font-semibold bg-white border border-black/15 hover:border-gold rounded-lg px-4 py-2 inline-flex items-center gap-2">
+            <Package size={15} /> Ver el stock virtual de Orbital
+          </button>
+        </div>
+      )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {tarjetas.map((t) => {
           const Icono = t.icono

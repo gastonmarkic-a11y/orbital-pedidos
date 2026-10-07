@@ -2,7 +2,7 @@
 // El administrador del cliente reparte un link por sucursal: cada uno es único, entra directo a esa
 // sucursal (sin clave) y se puede instalar como app en la compu o el teléfono del local.
 import { useEffect, useState } from 'react'
-import { Copy, Check, Link2, Share2 } from 'lucide-react'
+import { Copy, Check, Link2, Share2, Eye } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 
@@ -11,7 +11,7 @@ type Acceso = {
   codigo: string | null; nombre: string | null
 }
 
-export default function LinksSucursales({ clave, cliente }: { clave: string; cliente: string }) {
+export default function LinksSucursales({ clave, cliente, onVer }: { clave: string; cliente: string; onVer: (id: number) => void }) {
   const toast = useToast()
   const [items, setItems] = useState<Acceso[] | null>(null)
   const [copiado, setCopiado] = useState<number | null>(null)
@@ -48,6 +48,7 @@ export default function LinksSucursales({ clave, cliente }: { clave: string; cli
         y carga la postventa; lo que hace queda en línea para todos al instante. En el local conviene
         <b className="text-ink"> instalarlo como app</b> (botón "Instalar" arriba) para tenerlo a mano en la compu o el celular.
         No lo compartas fuera de la sucursal: quien tenga el link entra sin clave.
+        Para mirar el panel de un local desde acá usá <b className="text-ink">Ver su panel</b>: no ocupa una terminal de la sucursal.
       </div>
       {items == null ? (
         <p className="text-sm text-muted px-4 py-6">Cargando…</p>
@@ -55,10 +56,13 @@ export default function LinksSucursales({ clave, cliente }: { clave: string; cli
         <ul className="divide-y divide-black/5 mt-2">
           {items.map((a) => (
             <li key={a.sucursal_id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <div className="min-w-[180px]">
+              <div className="min-w-[180px] mr-auto">
                 <div className="text-sm font-semibold">{a.sucursal}</div>
                 <div className="text-xs text-muted">{[a.direccion, a.localidad].filter(Boolean).join(', ')}</div>
               </div>
+              <button onClick={() => onVer(a.sucursal_id)} className="text-xs font-semibold bg-gold/15 text-ink border border-gold/50 hover:border-gold rounded-md px-2.5 py-1.5 inline-flex items-center gap-1.5">
+                <Eye size={13} /> Ver su panel
+              </button>
               {a.codigo ? (
                 <>
                   <input

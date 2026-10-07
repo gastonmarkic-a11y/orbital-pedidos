@@ -14,7 +14,23 @@ type Fila = {
   cliente_cod: string | null; cliente_nombre: string | null; cliente_vendedor: string | null; cliente_compro: boolean
   cliente_posible: string | null; provincia: string | null
   estado: Estado; escrito_por: string | null
+  respuesta: string | null; respondio_en: string | null; derivado_a: string | null
+  cat_visitas: number | null; cat_ultima: string | null
 }
+type Abrio = { usuario: string; nombre: string | null; estado: Estado; visitas: number; ultima_visita: string }
+
+// Hasta cuándo ya viste las aperturas del catálogo (para resaltar las nuevas)
+const VISTO_KEY = 'opticas_ig_catalogo_visto'
+const leerVisto = () => { try { return localStorage.getItem(VISTO_KEY) ?? '' } catch { return '' } }
+const hace = (iso: string) => {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (m < 1) return 'recién'
+  if (m < 60) return `hace ${m} min`
+  if (m < 1440) return `hace ${Math.round(m / 60)} h`
+  return new Date(iso).toLocaleDateString('es-AR')
+}
+// Las fechas vienen de Postgres con formato distinto a toISOString: se comparan como fecha, no como texto
+const despues = (a: string | null, b: string) => !!a && (!b || new Date(a).getTime() > new Date(b).getTime())
 
 const PROVINCIAS = ['CABA', 'Buenos Aires', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy',
   'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
@@ -103,8 +119,32 @@ function Bandeja() {
   const [editando, setEditando] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
+  // «Respondió»: se carga lo que contestó y se pasa al grupo de Ventas (vendedor de la zona)
+  const [respondiendo, setRespondiendo] = useState<{ usuario: string; texto: string; provincia: string; error?: string } | null>(null)
 
-  const filtros = { p_cliente: cliente || null, p_origen: origen || null }
+  // Ópticas que abrieron el catálogo del DM (campaña ig_organico): aviso arriba, se refresca cada minuto
+  const [abrieron, setAbrieron] = useState<Abrio[]>([])
+  const [visto, setVisto] = useState(leerVisto)
+  useEffect(() => {
+    const cargar = () => supabase.rpc('ig_opt_abrieron').then(({ data }) => setAbrieron((data as Abrio[]) ?? []))
+    cargar()
+    const t = setInterval(cargar, 60000)
+    return () => clearInterval(t)
+  }, [])
+  const nuevas = abrieron.filter((a) => despues(a.ultima_visita, visto))
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, '')
+    document.title = nuevas.length ? `(${nuevas.length}) ${base}` : base
+    return () => { document.title = document.title.replace(/^\(\d+\) /, '') }
+  }, [nuevas.length])
+  const marcarVisto = () => {
+    const v = new Date().toISOString()
+    try { localStorage.setItem(VISTO_KEY, v) } catch { /* sin storage */ }
+    setVisto(v)
+  }
+  const verOptica = (u: string) => { setEstado(''); setCliente(''); setOrigen(''); setProvincia(''); setBuscar(u); setQ(u) }
+
+  const filtros ={ p_cliente: cliente || null, p_origen: origen || null }
   const cargarResumen = () =>
     supabase.rpc('ig_opt_resumen', { ...filtros, p_provincia: provincia || null })
       .then(({ data }) => setResumen((data as Record<string, number>) ?? {}))
@@ -154,6 +194,24 @@ function Bandeja() {
     setOcupado(null)
   }
 
+  async function guardarRespuesta(f: Fila) {
+    if (!respondiendo) return
+    if (!respondiendo.texto.trim()) { setRespondiendo({ ...respondiendo, error: 'Pegá lo que respondió' }); return }
+    setOcupado(f.usuario)
+    const { data, error } = await supabase.rpc('ig_opt_respondio', {
+      p_usuario: f.usuario, p_respuesta: respondiendo.texto, p_provincia: respondiendo.provincia || null,
+    })
+    setOcupado(null)
+    const r = data as { ok: boolean; error?: string; vendedor?: string } | null
+    if (error || !r?.ok) { setRespondiendo({ ...respondiendo, error: r?.error ?? 'No se pudo guardar' }); return }
+    setFilas((prev) => (prev ? prev.map((x) => (x.usuario === f.usuario
+      ? { ...x, estado: 'respondio', respuesta: respondiendo.texto.trim(), respondio_en: new Date().toISOString(),
+          derivado_a: r.vendedor ?? null, provincia: respondiendo.provincia || x.provincia }
+      : x)) : prev))
+    setRespondiendo(null)
+    cargarResumen()
+  }
+
   async function escribir(f: Fila) {
     await copiar(f)
     window.open(`https://ig.me/m/${f.usuario}`, '_blank', 'noopener,noreferrer')
@@ -169,6 +227,41 @@ function Bandeja() {
           automático: «Escribir» copia el mensaje y te abre el chat, vos pegás y enviás.
         </p>
       </div>
+
+      {abrieron.length > 0 && (
+        <div className={`mb-4 rounded-xl border-2 p-3 ${nuevas.length ? 'border-amber-400 bg-amber-50' : 'border-black/10 bg-white'}`}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {nuevas.length > 0 && (
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75 animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+              </span>
+            )}
+            <span className="text-[13px] font-bold">
+              {nuevas.length
+                ? `${nuevas.length} ${nuevas.length === 1 ? 'óptica abrió' : 'ópticas abrieron'} tu catálogo`
+                : `${abrieron.length} ${abrieron.length === 1 ? 'óptica abrió' : 'ópticas abrieron'} el catálogo`}
+            </span>
+            <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700">Campaña ig_organico</span>
+            {nuevas.length > 0 && (
+              <button onClick={marcarVisto} className="ml-auto rounded-md border border-black/15 bg-white px-2 py-0.5 text-[10px] font-semibold">
+                Ya las vi
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-neutral-600 mt-1">
+            Leyeron tu DM: fijate en Instagram si te contestaron y, si sí, marcá «Respondió».
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {abrieron.map((a) => (
+              <button key={a.usuario} onClick={() => verOptica(a.usuario)}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border ${despues(a.ultima_visita, visto) ? 'bg-amber-400 border-amber-500 text-black' : 'bg-white border-black/10 text-neutral-700'}`}>
+                @{a.usuario} <span className="opacity-70 font-normal">· {a.visitas} {a.visitas === 1 ? 'vez' : 'veces'} · {hace(a.ultima_visita)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5 mb-3">
         {ESTADOS.map((e) => (
@@ -232,7 +325,9 @@ function Bandeja() {
 
       <div className="space-y-2">
         {filas?.map((f) => (
-          <div key={f.usuario} className="bg-white rounded-xl border border-black/10 p-3">
+          <div key={f.usuario} className={`bg-white rounded-xl p-3 ${f.cat_visitas
+            ? (despues(f.cat_ultima, visto) ? 'border-2 border-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,.18)]' : 'border-2 border-amber-200')
+            : 'border border-black/10'}`}>
             <div className="flex gap-3 items-start">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -256,6 +351,14 @@ function Bandeja() {
                     <option value="">Sin provincia</option>
                     {PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
+                  {!!f.cat_visitas && (
+                    <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-amber-400 text-black">
+                      Abrió el catálogo · {f.cat_visitas} {f.cat_visitas === 1 ? 'vez' : 'veces'}{f.cat_ultima ? ` · ${hace(f.cat_ultima)}` : ''}
+                    </span>
+                  )}
+                  {!!f.cat_visitas && (
+                    <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700">Campaña ig_organico</span>
+                  )}
                   {f.lo_seguimos && <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-500">La seguimos</span>}
                   {f.estado !== 'pendiente' && (
                     <span className="text-[9px] uppercase font-bold rounded px-1.5 py-0.5 bg-neutral-100 text-neutral-600">
@@ -268,6 +371,15 @@ function Bandeja() {
                   {f.ultimo_dm ? ` · último DM ${new Date(f.ultimo_dm).toLocaleDateString('es-AR')}` : ''}
                 </div>
                 {f.bio && <div className="text-[10px] text-neutral-500 mt-0.5 line-clamp-2 whitespace-pre-line">{f.bio}</div>}
+                {f.respuesta && (
+                  <div className="mt-1.5 rounded-lg bg-emerald-50 px-2 py-1.5 text-[11px] text-emerald-900">
+                    <span className="font-bold">Respondió{f.respondio_en ? ` el ${new Date(f.respondio_en).toLocaleDateString('es-AR')}` : ''}:</span>{' '}
+                    «{f.respuesta}»
+                    <span className="block text-[10px] text-emerald-700 mt-0.5">
+                      {f.derivado_a ? `Pasada a ${f.derivado_a} en el grupo de Ventas` : 'Sin vendedor: falta la provincia'}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="shrink-0 flex flex-col gap-1.5 items-end">
                 <button onClick={() => escribir(f)} disabled={ocupado === f.usuario}
@@ -282,10 +394,45 @@ function Bandeja() {
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-black/5">
               {ESTADOS.filter((e) => e.k !== f.estado).map((e) => (
-                <button key={e.k} onClick={() => marcar(f, e.k)} disabled={ocupado === f.usuario}
+                <button key={e.k} disabled={ocupado === f.usuario}
+                  onClick={() => (e.k === 'respondio'
+                    ? setRespondiendo({ usuario: f.usuario, texto: f.respuesta ?? '', provincia: f.provincia ?? '' })
+                    : marcar(f, e.k))}
                   className="rounded-md border border-black/10 px-2 py-0.5 text-[10px] text-neutral-600 disabled:opacity-50">{e.t}</button>
               ))}
+              {f.estado === 'respondio' && respondiendo?.usuario !== f.usuario && (
+                <button onClick={() => setRespondiendo({ usuario: f.usuario, texto: f.respuesta ?? '', provincia: f.provincia ?? '' })}
+                  className="rounded-md border border-black/10 px-2 py-0.5 text-[10px] text-neutral-600">
+                  {f.respuesta ? 'Nueva respuesta' : 'Cargar respuesta'}
+                </button>
+              )}
             </div>
+            {respondiendo?.usuario === f.usuario && (
+              <div className="mt-2 rounded-lg border border-black/10 bg-neutral-50 p-2">
+                <div className="text-[11px] font-bold mb-1">¿Qué respondió?</div>
+                <textarea autoFocus value={respondiendo.texto} rows={3}
+                  onChange={(e) => setRespondiendo({ ...respondiendo, texto: e.target.value, error: undefined })}
+                  placeholder="Pegá la respuesta de la óptica"
+                  className="w-full rounded-lg border border-black/10 p-2 text-[12px] bg-white focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <select value={respondiendo.provincia} onChange={(e) => setRespondiendo({ ...respondiendo, provincia: e.target.value })}
+                    title="Con la provincia se elige el vendedor de la zona"
+                    className="rounded-lg border border-black/10 px-2 py-1 text-[11px] bg-white">
+                    <option value="">Provincia…</option>
+                    {PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <button onClick={() => guardarRespuesta(f)} disabled={ocupado === f.usuario}
+                    className="rounded-md text-white px-2.5 py-1 text-[11px] font-bold disabled:opacity-50" style={{ background: ACENTO }}>
+                    Guardar y pasar a Ventas
+                  </button>
+                  <button onClick={() => setRespondiendo(null)} className="text-[11px] text-neutral-500">Cancelar</button>
+                  {respondiendo.error && <span className="text-[11px] text-rose-600">{respondiendo.error}</span>}
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Se avisa en el grupo de Ventas al vendedor de la zona (o al suyo si ya es cliente), con la respuesta y el catálogo.
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
