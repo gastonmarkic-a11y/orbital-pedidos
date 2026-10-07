@@ -7,7 +7,7 @@
 //   · Solo se exhibe lo disponible (cantidad − devolver > 0). Lo marcado para devolver sale de la vitrina.
 //   · Puntaje = ventas recientes (30 días pesan doble) + demanda del modelo en otros colores
 //     + un empujón al que tiene reserva de sobra (hay que rotarlo).
-//   · Variedad: el 2.º color de un modelo compite al 60 % de su puntaje y el 3.º al 35 %.
+//   · Variedad: un color por modelo (el que más vende); un 2.º color entra solo si sobran lugares.
 //   · Los estantes de arriba son los más visibles (en el mostrador se ven primero) y van para los de mejor puntaje.
 //   · Estabilidad: lo que ya está bien ubicado no se mueve; se cambian solo los huecos, lo que no
 //     corresponde y como mucho 3 movimientos para subir a los que más venden.
@@ -69,8 +69,8 @@ export function planificar(filas: number, columnas: number, stock: LineaStock[],
   const total = filas * columnas
   const ordenados = stock.filter((s) => (disp.get(s.codigo) ?? 0) > 0).sort((a, b) => (pts.get(b.codigo)! - pts.get(a.codigo)!) || a.codigo.localeCompare(b.codigo))
 
-  // Selección: el segundo color de un modelo vale 60 % y el tercero 35 %. Así la vitrina tiene variedad,
-  // pero un color que vende mucho le gana el lugar a un modelo que casi no se vende.
+  // Selección por variedad: primero el mejor color de cada modelo; un 2.º color (y después un 3.º)
+  // entra solo si sobran lugares. Los otros colores quedan en reserva como reemplazo del mismo modelo.
   const rango = new Map<string, number>()
   const porModelo = new Map<string, number>()
   for (const s of ordenados) {
@@ -79,9 +79,7 @@ export function planificar(filas: number, columnas: number, stock: LineaStock[],
     porModelo.set(m, n + 1)
     rango.set(s.codigo, n)
   }
-  const factor = [1, 0.6, 0.35]
-  const efectivo = (c: string) => (pts.get(c) ?? 0) * (factor[rango.get(c) ?? 0] ?? 0.2)
-  const elegidos = [...ordenados].sort((a, b) => (efectivo(b.codigo) - efectivo(a.codigo)) || (rango.get(a.codigo)! - rango.get(b.codigo)!))
+  const elegidos = [...ordenados].sort((a, b) => (rango.get(a.codigo)! - rango.get(b.codigo)!) || (pts.get(b.codigo)! - pts.get(a.codigo)!))
     .slice(0, total).map((s) => s.codigo)
   const sel = new Set(elegidos)
 
