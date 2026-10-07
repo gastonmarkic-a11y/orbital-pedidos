@@ -1,13 +1,13 @@
 // ── Marketing y redes para el cliente de consigna ───────────────────────────
 // Lo mismo que tienen las ópticas en su catálogo (Inspiración, Crear contenido, Mis publicaciones,
-// Postventa) más Triple Protección e IRIS. Cada acceso de consigna tiene su propio link de catálogo
+// Postventa, Vision Lab Pro, Kit de marca) más Triple Protección e IRIS. Cada acceso de consigna tiene su propio link de catálogo
 // (consigna_acceso.catalogo) y el catálogo abre directo en la sección con ?ver=.
-import { Sparkles, PenLine, Megaphone, Wrench, ShieldCheck, MessageCircle, LayoutGrid, Package } from 'lucide-react'
+import { Sparkles, PenLine, Megaphone, Wrench, ShieldCheck, MessageCircle, LayoutGrid, ScanFace, Palette } from 'lucide-react'
 import type { Central } from './CentralConsigna'
 
 type Tarjeta = { ver: string | null; titulo: string; texto: string; icono: typeof Sparkles; tono: string; boton: string; accion?: () => void }
 
-export default function MarketingConsigna({ data, esCentral, onVista }: { data: Central; esCentral?: boolean; onVista: (v: 'postventa' | 'consultas' | 'pedir') => void }) {
+export default function MarketingConsigna({ data, esCentral, onVista }: { data: Central; esCentral?: boolean; onVista: (v: 'postventa' | 'consultas') => void }) {
   // La central usa su catálogo (o el de la central si entra desde una sucursal sin link propio).
   const cat = data.acceso.catalogo ?? data.acceso.catalogo_central
   const url = (ver: string) => `/catalogo?k=${cat}&ver=${ver}`
@@ -18,6 +18,10 @@ export default function MarketingConsigna({ data, esCentral, onVista }: { data: 
       texto: 'Elegí un anteojo y copiá la historia, el posteo o el guion de video listos, con la ficha técnica y la foto.' },
     { ver: 'publicaciones', titulo: 'Influencers y publicaciones', icono: Megaphone, tono: 'from-white to-white text-ink border border-black/10', boton: 'Mandar publicación',
       texto: 'Pegá el link de lo que publicaron ustedes o un influencer con Orbital: Orbital lo comparte en sus redes con la tienda.' },
+    { ver: 'visionlab', titulo: 'Vision Lab Pro', icono: ScanFace, tono: 'from-[#0F2A2E] to-[#1F5D57] text-white', boton: 'Abrir Vision Lab',
+      texto: 'El QR del pretest de la tienda, estudio de rostro, medición de calce y los pacientes que eligieron la tienda, con su seguimiento.' },
+    { ver: 'marca', titulo: 'Kit de marca', icono: Palette, tono: 'from-white to-white text-ink border border-black/10', boton: 'Ver kit de marca',
+      texto: 'Manual de Orbital y todo el material listo para bajar: logo, fotos de producto, en cara, estuches, campaña y videos.' },
     { ver: null, titulo: 'Triple Protección', icono: ShieldCheck, tono: 'from-[#8A6420] to-[#8A6420] text-white', boton: 'Contenido de Triple',
       texto: 'Infrarrojo, UV400 y Blue Cut en un mismo cristal. En Inspiración hay una solapa con contenido listo para explicarlo.' },
     { ver: null, titulo: 'Postventa directa', icono: Wrench, tono: 'from-white to-white text-ink border border-black/10', boton: 'Ir a postventa', accion: () => onVista('postventa'),
@@ -36,9 +40,6 @@ export default function MarketingConsigna({ data, esCentral, onVista }: { data: 
             className="text-sm font-semibold bg-ink text-white rounded-lg px-4 py-2 inline-flex items-center gap-2">
             <LayoutGrid size={15} /> {esCentral ? 'Abrir el panel de marketing completo' : 'Abrir marketing completo'} ↗
           </a>
-          <button onClick={() => onVista('pedir')} className="text-sm font-semibold bg-white border border-black/15 hover:border-gold rounded-lg px-4 py-2 inline-flex items-center gap-2">
-            <Package size={15} /> Ver el stock virtual de Orbital
-          </button>
         </div>
       )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
