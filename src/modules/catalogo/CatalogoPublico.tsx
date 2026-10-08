@@ -401,6 +401,9 @@ const DIA_MADRE_TAPA: Record<string, { c: string; u: string }> = {
 }
 // Modelo con algún color en promo (la base marca cada color con pm; solo colores con stock)
 const tienePromo = (m: HomeModelo) => (m.fotos || []).some((f) => f.pm)
+// Sección Día de la Madre: los modelos Para Ellas con sol, haya o no promo de precio para este cliente
+// (distribuidores y vendedores sin precios no reciben pm, pero tienen que ver la selección igual)
+const esDiaMadre = (m: HomeModelo) => tienePromo(m) || (DIA_MADRE_MODELOS.includes(m.modelo) && tieneSolFoto(m))
 const pctOff = (precio: number, lista: number) => Math.round((1 - precio / lista) * 100)
 // Importe a precio cerrado (promo) y ahorro del carrito: la promo no suma escalera / bono / contado.
 const importePromo = (items: CartItem[]) => items.reduce((a, c) => a + (c.precio_lista && c.precio_lista > c.precio ? c.cantidad * c.precio : 0), 0)
@@ -427,7 +430,7 @@ const matchGrupo = (g: Grupo, m: HomeModelo) => {
 }
 type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea' | 'madre'; match: (m: HomeModelo) => boolean }
 const GRUPOS: Grupo[] = [
-  ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => tienePromo(m) }] : []),
+  ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => esDiaMadre(m) }] : []),
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
   { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
@@ -449,7 +452,7 @@ const ACCENT: Record<Grupo['accent'], string> = {
 
 // Contenido explicativo (pop-up tipo frontpage) por grupo
 const GRUPO_INFO: Record<string, { titulo: string; bajada: string; puntos: string[]; link?: { href: string; texto: string } }> = {
-  diamadre: { titulo: 'Especial Día de la Madre', bajada: 'La selección Para Ellas para armar la vidriera del Día de la Madre (domingo 18 de octubre): los modelos femeninos de sol que más regalan.', puntos: ['13 modelos de sol pensados para ellas', 'Tu precio mayorista de siempre en cada anteojo', 'Pedí con tiempo: llegás con stock a la semana fuerte'], link: { href: 'https://www.orbitaleyewear.com.ar/collections/para-ellas', texto: 'Ver la colección Para Ellas en la tienda →' } },
+  diamadre: { titulo: 'Especial Día de la Madre', bajada: 'La selección Para Ellas para armar la vidriera del Día de la Madre (domingo 18 de octubre): los modelos femeninos de sol que más regalan.', puntos: ['13 modelos de sol pensados para ellas', 'Tu precio mayorista de siempre en cada anteojo', 'Pedí con tiempo: llegás con stock a la semana fuerte'] },
   destacados: { titulo: 'Destacados', bajada: 'Lo más elegido por las ópticas: los modelos que más rotan y mejor funcionan en vidriera.', puntos: ['Curados por el equipo comercial', 'Alta rotación y demanda comprobada', 'Ideales para arrancar o reponer stock'] },
   triple: { titulo: 'Triple Protección', bajada: 'La tecnología Orbital que protege de la luz infrarroja, la luz azul y los rayos UV en un solo cristal.', puntos: ['Filtro Infrarrojo (IR) — confort térmico', 'Filtro Blue Cut — pantallas y luz artificial', 'Protección UV400 — sol', 'Visión más nítida y menos fatiga'], link: { href: '/proteccion', texto: 'Ver la página de Triple Protección →' } },
   urbano: { titulo: 'Urbanos', bajada: 'Diseño para el día a día en la ciudad. Livianos, versátiles y con impronta de marca.', puntos: ['Estilo para uso diario', 'Materiales livianos y resistentes', 'Combinan con todo'] },
@@ -607,7 +610,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
   let fotos = enMadre ? m.fotos.filter((f) => f.pm) : m.fotos
   const nColores = fotos === m.fotos ? m.n_colores : fotos.length
   // Tapa con la foto de la tienda (Shopify) en ese color, si el color sigue con stock
-  const tapa = enMadre ? DIA_MADRE_TAPA[m.modelo] : undefined
+  const tapa = grupo === 'diamadre' ? DIA_MADRE_TAPA[m.modelo] : undefined
   const iTapa = tapa ? fotos.findIndex((f) => norm(f.c) === norm(tapa.c)) : -1
   if (iTapa >= 0) fotos = fotos.map((f, i) => (i === iTapa ? { ...f, u: tapa!.u + '?width=700', o: true } : f))
   return (
@@ -1077,6 +1080,7 @@ export default function CatalogoPublico() {
   // La promo de precio está prendida en la base si algún modelo de la selección viene con descuento
   const modelosPromo = todos.filter(tienePromo).length
   const promoActiva = modelosPromo > 0
+  const modelosMadre = todos.filter(esDiaMadre).length
   const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
@@ -1370,7 +1374,7 @@ export default function CatalogoPublico() {
           </div>
         ) : grupoObj ? (
           <>
-            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} modelos={modelosPromo} />}
+            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} modelos={modelosMadre} />}
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
               <button onClick={() => setInfoGrupo(grupoObj.key)} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupoObj.nombre}`}>
                 <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupoObj.nombre}</span>
@@ -1405,7 +1409,7 @@ export default function CatalogoPublico() {
             })
             return (
               <>
-                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosPromo} />}
+                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosMadre} />}
                 <EstudioRostroBanner />
                 {secciones}
               </>
