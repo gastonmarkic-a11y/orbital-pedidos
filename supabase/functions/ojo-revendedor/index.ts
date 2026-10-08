@@ -270,6 +270,14 @@ Deno.serve(async (req) => {
   try {
     const tarea = url.searchParams.get("tarea");
     if (tarea === "dia") return json(await tareaDia(url.searchParams.get("rev"), url.searchParams.get("forzar") === "1"));
+    // Un link de invitación por persona (de un solo uso). Ojo tiene que ser admin del grupo.
+    if (tarea === "link") {
+      const { data: g } = await sb.from("revendedor_grupo").select("chat_id").eq("revendedor", url.searchParams.get("rev") ?? "").maybeSingle();
+      if (!g) return json({ error: "ese revendedor no tiene grupo" }, 400);
+      const nombre = (url.searchParams.get("nombre") ?? "invitado").slice(0, 32);
+      const d = await tg("createChatInviteLink", { chat_id: g.chat_id, name: nombre, member_limit: 1 });
+      return json(d?.ok ? { link: d.result.invite_link } : { error: d?.description ?? "no pude crear el link" });
+    }
     if (tarea === "registrar") {
       const rev = url.searchParams.get("rev"), chat = Number(url.searchParams.get("chat"));
       if (!rev || !chat) return json({ error: "falta rev o chat" }, 400);
