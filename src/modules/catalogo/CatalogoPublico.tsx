@@ -622,7 +622,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
       </div>
       <button onClick={onOpen} className="text-left w-full block px-3 pt-3 pb-2 flex-1">
         <p className="text-sm font-semibold truncate">{m.modelo}</p>
-        <p className="text-[11px] text-neutral-400">{nColores} color{nColores !== 1 ? 'es' : ''}{fotos !== m.fotos ? ' en promo' : ''}</p>
+        <p className="text-[11px] text-neutral-400">{nColores} color{nColores !== 1 ? 'es' : ''}{enMadre ? ' en promo' : ''}</p>
         {sinPrecios
           ? <p className="text-[11px] font-semibold mt-1 text-emerald-600">Disponible</p>
           : enPromo(m.modelo, m.precio_desde, m.precio_lista_desde) ? (
