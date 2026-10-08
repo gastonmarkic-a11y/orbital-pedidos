@@ -278,11 +278,12 @@ async function pisada(b: { cod: string; quien: string; dueno: string }) {
 }
 
 // Mensaje libre al grupo de un revendedor (promos, campañas, avisos). Texto en HTML de Telegram.
-async function mensaje(rev: string, b: { texto?: string; foto?: string; documento?: string }) {
+async function mensaje(rev: string, b: { texto?: string; foto?: string; video?: string; documento?: string }) {
   const { data: g } = await sb.from("revendedor_grupo").select("chat_id").eq("revendedor", rev).maybeSingle();
   if (!g) return { error: "ese revendedor no tiene grupo" };
   const chat = Number(g.chat_id);
   if (b.foto) return await tg("sendPhoto", { chat_id: chat, photo: b.foto, caption: (b.texto ?? "").slice(0, 1024), parse_mode: "HTML" });
+  if (b.video) return await tg("sendVideo", { chat_id: chat, video: b.video, caption: (b.texto ?? "").slice(0, 1024), parse_mode: "HTML", supports_streaming: true });
   if (b.documento) return await tg("sendDocument", { chat_id: chat, document: b.documento, caption: (b.texto ?? "").slice(0, 1024), parse_mode: "HTML" });
   if (!b.texto) return { error: "falta texto" };
   return await enviar(chat, b.texto);
