@@ -3,6 +3,7 @@
 //   POST (x-cron-key) {"uid": 2, "texto": "..."}  -> al usuario + copia al grupo
 //   POST (x-cron-key) {"texto": "..."}            -> solo al grupo
 //   "foto": "https://..." (opcional) va como imagen antes del texto, al usuario y al grupo
+//   "video": "https://..." (opcional) igual, como video
 // Usa el mismo bot que dist-telegram (secret DIST_TELEGRAM_BOT_TOKEN o app_config).
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -38,13 +39,13 @@ async function enviar(chat: number, texto: string, botones?: { text: string; cal
   return ok;
 }
 
-async function foto(chat: number, url: string) {
-  const res = await fetch(`https://api.telegram.org/bot${await token()}/sendPhoto`, {
+async function foto(chat: number, url: string, video = false) {
+  const res = await fetch(`https://api.telegram.org/bot${await token()}/${video ? "sendVideo" : "sendPhoto"}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chat, photo: url }),
+    body: JSON.stringify(video ? { chat_id: chat, video: url, supports_streaming: true } : { chat_id: chat, photo: url }),
   });
-  if (!res.ok) console.error("sendPhoto", res.status, await res.text());
+  if (!res.ok) console.error(video ? "sendVideo" : "sendPhoto", res.status, await res.text());
   return res.ok;
 }
 
@@ -83,6 +84,8 @@ Deno.serve(async (req) => {
   if (choques.length) return Response.json({ ok: false, error: "cantidad del texto ≠ cant_cliente", choques });
   const url_foto = /^https:\/\//.test(String(b.foto ?? "")) ? String(b.foto) : "";
   if (url_foto && !(await foto(d.chat_id, url_foto))) return Response.json({ ok: false, error: "no salió la foto" });
+  const url_video = /^https:\/\//.test(String(b.video ?? "")) ? String(b.video) : "";
+  if (url_video && !(await foto(d.chat_id, url_video, true))) return Response.json({ ok: false, error: "no salió el video" });
   const alUsuario = await enviar(d.chat_id, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
   const preguntas = lista_p.map((p) => p.texto);
   for (const p of lista_p) {
@@ -104,6 +107,7 @@ Deno.serve(async (req) => {
   }
   const lista = preguntas.length ? `\n\n${preguntas.map((p) => `• ${esc(p)} [Sí / No]`).join("\n")}` : "";
   if (url_foto) await foto(grupo, url_foto);
+  if (url_video) await foto(grupo, url_video, true);
   const alGrupo = await enviar(grupo, `✅ Enviado a ${esc(d.nombre)} (${esc(d.distribuidores.nombre)}):\n\n${esc(texto)}${lista}\n#d${Number(b.uid)}`);
   return Response.json({ ok: alUsuario, grupo: alGrupo, preguntas: preguntas.length });
 });

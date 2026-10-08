@@ -114,7 +114,7 @@ const responderCallback = (id: string, texto?: string) =>
 const PEDIR_TEL = {
   keyboard: [[{ text: "📱 Entrar con mi teléfono", request_contact: true }]],
   resize_keyboard: true,
-  one_time_keyboard: true,
+  is_persistent: true,
 };
 
 const B = {
@@ -814,7 +814,14 @@ async function onMensaje(m: Msg) {
 
   const u = await usuarioPorTelegram(m.from.id);
   if (!u) {
-    await enviar(chat, "👋 Este es el bot de Orbital para distribuidores. Para entrar, compartí tu teléfono.", undefined, PEDIR_TEL);
+    // Si escribe el número a mano no sirve (cualquiera podría poner uno ajeno): hay que tocar el botón
+    if ((m.text ?? "").replace(/\D/g, "").length >= 8) {
+      await enviar(chat,
+        "No hace falta escribir el número 🙂 Tocá el botón <b>📱 Entrar con mi teléfono</b> que está abajo, en lugar del teclado, y después <b>Compartir</b>.\n\n" +
+        "Si no ves el botón, tocá el ícono de los cuadraditos (🎛) al lado del cuadro de mensaje.", undefined, PEDIR_TEL);
+      return;
+    }
+    await enviar(chat, "👋 Este es el bot de Orbital para distribuidores. Para entrar, tocá el botón <b>📱 Entrar con mi teléfono</b> que aparece abajo.", undefined, PEDIR_TEL);
     return;
   }
   const texto = (m.text ?? m.caption ?? "").trim();
@@ -928,6 +935,15 @@ async function onCallback(q: { id: string; from: { id: number }; message?: { cha
   const u = await usuarioPorTelegram(q.from.id);
   if (!chat || !u) { await responderCallback(q.id); return; }
   const [acc, a1, a2] = (q.data ?? "").split("|");
+  // Ópticas del día (dd|<id>|<resultado>): las maneja dist-datos
+  if (acc === "dd") {
+    await fetch(`${SUPABASE_URL}/functions/v1/dist-datos?tarea=boton`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-key": await cfg("cron_key") },
+      body: JSON.stringify({ callback_query: q }),
+    });
+    return;
+  }
   const est = await leerEstado(chat);
   // Botones de pedido/color/repuestos: se usan una sola vez
   const sacarBotones = () =>

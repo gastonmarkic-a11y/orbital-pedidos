@@ -268,7 +268,9 @@ async function pisada(b: { cod: string; quien: string; dueno: string }) {
     await enviar(Number(gq.chat_id), `⚠️ ${optica} la está trabajando ${esc(NOMBRE[b.dueno] ?? b.dueno)}, de Orbital${desde}. El primero que la activa se la queda: no sigan con esta por ahora.`);
     return { avisado: "revendedor" };
   }
-  if (gd) {
+  // Distribuidor (Cristaldo): no tiene grupo, trabaja por el bot de distribuidores (dist-datos).
+  const { data: vd } = gd ? { data: null } : await sb.from("vendedores").select("rol").eq("codigo", b.dueno).maybeSingle();
+  if (gd || vd?.rol === "revendedor") {
     // Un vendedor tocó una que ya tomó el revendedor.
     const ventas = await chatTema("ventas");
     if (ventas) await enviar(ventas, `⚠️ ${await mencion(b.quien)}: ${optica} la está trabajando <b>${esc(await nombreRev(b.dueno))}</b> (revendedor)${desde}. El primero que la activa se la queda: dejala por ahora.`);
