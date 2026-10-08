@@ -115,8 +115,8 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
           <div className="card">
             <div className="rs-h"><h3>¿Ya tenés receta?</h3><small className="muted">Calculamos el grosor de tus cristales</small></div>
             <div className="lab-rx">
-              {([['esfOD', 'Esfera OD', '-2,50'], ['esfOI', 'Esfera OI', '-2,25'], ['cil', 'Cilindro', '-1,00'], ['add', 'Adición', '+1,50']] as [keyof Receta, string, string][]).map(([k, t, ph]) => (
-                <label key={k}><small>{t}</small><input inputMode="decimal" placeholder={ph} value={(perfil.receta ?? recetaVacia)[k]}
+              {([['esfOD', 'Esfera OD', '-2,50'], ['cilOD', 'Cilindro OD', '-0,75'], ['ejeOD', 'Eje OD (°)', '180'], ['esfOI', 'Esfera OI', '-2,25'], ['cilOI', 'Cilindro OI', '-1,00'], ['ejeOI', 'Eje OI (°)', '10'], ['add', 'Adición', '+1,50']] as [keyof Receta, string, string][]).map(([k, t, ph]) => (
+                <label key={k}><small>{t}</small><input inputMode="decimal" placeholder={ph} value={(perfil.receta ?? recetaVacia)[k] ?? ''}
                   onChange={(e) => setPerfil(guardarReceta({ ...(perfil.receta ?? recetaVacia), [k]: e.target.value }))} /></label>
               ))}
             </div>

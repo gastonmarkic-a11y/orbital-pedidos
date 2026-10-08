@@ -2,7 +2,7 @@
 // distancia, luz) y captura automática cuando todo está bien durante ~1,5 s (mediana de 36 cuadros).
 import { useRef, useState } from 'react'
 import { Check, Loader2, Sun } from 'lucide-react'
-import { Medidas, P3, contorno, medianaMedidas, medir, postura } from './medidas'
+import { Medidas, P3, Silueta, contorno, medianaMedidas, medir, medirSilueta, postura } from './medidas'
 import { altoDe, anchoDe, luz, useCaraEnVivo } from './camara'
 
 export interface Captura {
@@ -11,6 +11,8 @@ export interface Captura {
   foto: string
   lm: P3[]
   W: number; H: number
+  /** Borde real de la cara medido en esa foto (null si no se pudo leer). */
+  silueta: Silueta | null
 }
 
 const N_CAM = 36
@@ -27,7 +29,7 @@ export default function Escaneo({ onListo }: { onListo: (c: Captura) => void }) 
   const foto = useRef<HTMLImageElement>(null)
   const lienzo = useRef<HTMLCanvasElement>(null)
   const muestras = useRef<Medidas[]>([])
-  const mejor = useRef<{ pen: number; foto: string; lm: P3[]; W: number; H: number } | null>(null)
+  const mejor = useRef<{ pen: number; foto: string; lm: P3[]; W: number; H: number; lienzo: HTMLCanvasElement } | null>(null)
   const listo = useRef(false)
   const t0 = useRef(performance.now())
   const nLuz = useRef(0)
@@ -108,14 +110,16 @@ export default function Escaneo({ onListo }: { onListo: (c: Captura) => void }) 
     if (!mejor.current || pen < mejor.current.pen) {
       const c2 = document.createElement('canvas'); c2.width = W; c2.height = H
       c2.getContext('2d')!.drawImage(fuente, 0, 0, W, H)
-      mejor.current = { pen, foto: c2.toDataURL('image/jpeg', 0.88), lm: lm.map((p) => ({ x: p.x, y: p.y })), W, H }
+      mejor.current = { pen, foto: c2.toDataURL('image/jpeg', 0.88), lm: lm.map((p) => ({ x: p.x, y: p.y, z: p.z })), W, H, lienzo: c2 }
     }
     setProg(muestras.current.length / N)
     if (muestras.current.length >= N && mejor.current) {
       listo.current = true
       navigator.vibrate?.(30)
       const b = mejor.current
-      onListo({ medidas: medianaMedidas(muestras.current), foto: b.foto, lm: b.lm, W: b.W, H: b.H })
+      let silueta: Silueta | null = null
+      try { silueta = medirSilueta(b.lienzo.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, b.W, b.H), b.lm) } catch { /* sin silueta: va MALLA */ }
+      onListo({ medidas: medianaMedidas(muestras.current), foto: b.foto, lm: b.lm, W: b.W, H: b.H, silueta })
     }
   })
 

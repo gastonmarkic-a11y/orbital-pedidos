@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Crosshair, Glasses, Loader2, MapPin, Ruler, ScanFace, X } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
-import { Perfil, PerfilCalce, guardarCalce, leerPerfil } from '../perfil'
+import { Perfil, PerfilCalce, dpTarjetaDe, guardarCalce, leerPerfil } from '../perfil'
 import { BISAGRA_MM, COLORES, Color, PUENTE_MM, dibujar } from './armazon'
 import { altoDe, anchoDe, useCaraEnVivo } from './camara'
 import { Estilo, IRIS_MM, L, MALLA, P3, afinidadRostro, contorno, estilosDelFormato, perspectivaPomulos, postura } from './medidas'
@@ -40,7 +40,9 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
   const [lec, setLec] = useState<Lectura | null>(null)
   const [elegido, setElegido] = useState<string | null>(inicial ?? null)
   const [guardado, setGuardado] = useState<string | null>(null)
-  const dpTarjeta = perfil.vision?.dp?.lejos ?? null
+  const tarjeta = dpTarjetaDe(perfil)
+  const dpTarjeta = tarjeta?.lejos ?? null
+  const dpCerca = tarjeta?.cerca ?? null
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -69,8 +71,8 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marcos, perfil.rostro, Math.round(caraRef / 4)])
   const sel = opciones.find((o) => o.modelo === elegido) ?? opciones[0]
-  const actual = useRef({ sel, color, dpTarjeta })
-  actual.current = { sel, color, dpTarjeta }
+  const actual = useRef({ sel, color, dpTarjeta, dpCerca })
+  actual.current = { sel, color, dpTarjeta, dpCerca }
 
   const ultimo = useRef(0)
   const estado = useCaraEnVivo(video, foto, (r, fuente) => {
@@ -86,11 +88,13 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     const iD = p(L.irisD), iI = p(L.irisI)
     const iris = (Math.hypot(p(469).x - p(471).x, p(469).y - p(471).y) + Math.hypot(p(474).x - p(476).x, p(474).y - p(476).y)) / 2
     const pos = postura(lm, W, H, r.facialTransformationMatrixes?.[0]?.data as number[] | undefined)
-    const pxMm = iris / IRIS_MM
+    // Escala: con la DP de la tarjeta, la distancia entre pupilas (≈5× más px que un iris, ±2 %); si no, el iris (±6 %).
+    const dpCm = actual.current.dpCerca
+    const pxMm = dpCm ? Math.hypot(iD.x - iI.x, iD.y - iI.y) / dpCm : iris / IRIS_MM
     const pD = p(L.pomuloD), pI = p(L.pomuloI)
     const obj = {
       x: (iD.x + iI.x) / 2, y: (iD.y + iI.y) / 2, giro: Math.atan2(iI.y - iD.y, iI.x - iD.x), px: pxMm, yaw: (pos.yaw * Math.PI) / 180,
-      cara: (Math.hypot(pD.x - pI.x, pD.y - pI.y) / pxMm) * perspectivaPomulos(lm) * MALLA, dp: (Math.hypot(iD.x - iI.x, iD.y - iI.y) / pxMm) * 1.03,
+      cara: (Math.hypot(pD.x - pI.x, pD.y - pI.y) / pxMm) * perspectivaPomulos(lm, W, H) * MALLA, dp: (Math.hypot(iD.x - iI.x, iD.y - iI.y) / pxMm) * 1.03,
     }
     const s = suave.current, k = 0.55
     suave.current = s ? {

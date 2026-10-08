@@ -23,8 +23,15 @@ export interface Marco {
   precio_desde: number | null
 }
 
-export interface Receta { esfOD: string; esfOI: string; cil: string; add: string }
-export const recetaVacia: Receta = { esfOD: '', esfOI: '', cil: '', add: '' }
+/** Receta tal cual la escribe el oftalmólogo. Cilindro y eje por ojo (2026-10-08); `cil` es el campo único de antes
+ *  (recetas ya guardadas en el celular): vale para los dos ojos si el del ojo está vacío. */
+export interface Receta {
+  esfOD: string; esfOI: string; cil: string; add: string
+  cilOD?: string; cilOI?: string; ejeOD?: string; ejeOI?: string
+}
+export const recetaVacia: Receta = { esfOD: '', esfOI: '', cil: '', add: '', cilOD: '', cilOI: '', ejeOD: '', ejeOI: '' }
+/** Cilindro de un ojo: el suyo o, si está vacío, el campo único de las recetas viejas. */
+export const cilDe = (rec: Receta, ojo: 'OD' | 'OI') => (ojo === 'OD' ? rec.cilOD : rec.cilOI)?.trim() || rec.cil || ''
 
 export interface Criterio { id: string; t: string; por: string }
 export interface Recomendacion {
@@ -47,7 +54,8 @@ export function recomendar(
   afinidad?: (m: Marco) => { score: number; motivos: string[] } | null,
 ): Recomendacion {
   const esfs = [num(rec.esfOD), num(rec.esfOI)].filter((v): v is number => v !== null)
-  const cil = num(rec.cil)
+  const cils = [num(cilDe(rec, 'OD')), num(cilDe(rec, 'OI'))].filter((v): v is number => v !== null)
+  const cil = cils.length ? cils.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a)) : null
   const add = num(rec.add)
   const conReceta = esfs.length > 0 || cil !== null || add !== null
   // La esfera que manda es la de mayor valor absoluto (el ojo con más aumento define el borde del cristal).

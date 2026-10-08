@@ -7,7 +7,7 @@
 // La distancia más lejana sale del lente (ancho A y alto B del armazón) con el centro óptico en la pupila (DP).
 // Es una estimación (±0,5 mm): la curva base, el bisel y el calibre real los define el laboratorio.
 import { BISAGRA_MM, PUENTE_MM } from './rostro/armazon'
-import type { Receta } from './marcos'
+import { cilDe, type Receta } from './marcos'
 
 export interface Indice { n: number; nombre: string; corto: string; centro: number; nota: string }
 export const INDICES: Indice[] = [
@@ -49,14 +49,40 @@ export function profundidadDe(modelo?: string | null): number | null {
 
 const num = (s: string) => { const v = parseFloat((s ?? '').replace(',', '.')); return Number.isFinite(v) ? v : null }
 
-/** Potencias de los dos meridianos más extremos de la receta (el ojo con más aumento). */
-export function potencias(rec: Receta): { neg: number; pos: number } | null {
-  const esf = [num(rec.esfOD), num(rec.esfOI)].filter((v): v is number => v !== null)
-  const cil = num(rec.cil) ?? 0
-  if (!esf.length && !cil) return null
-  const e = esf.length ? esf : [0]
-  // El cilindro suma su potencia solo en su eje: en el borde se toma la mitad (promedio entre meridianos).
-  return { neg: Math.min(...e) + Math.min(0, cil) / 2, pos: Math.max(...e) + Math.max(0, cil) / 2 }
+/** Potencia "equivalente" que manda en el grosor, para cada signo, del ojo que más pesa (2026-10-08: cilindro y eje
+ *  por ojo). Con astigmatismo la potencia cambia según el meridiano: P(θ) = esfera + cilindro · sen²(θ − eje).
+ *  Con la lente (`l`) y el eje cargado se recorre el borde del lente cada 5°: lo que cuenta es la potencia en cada
+ *  dirección pesada por cuánto se aleja el borde ahí (la sagita crece con r²), y se devuelve la potencia que en el
+ *  punto más lejano daría el mismo grosor. Sin eje o sin lente: la mitad del cilindro (promedio entre meridianos).
+ *  Eje en notación TABO (0–180°, antihorario mirando al paciente): para el OD la sien queda a 180°, para el OI a 0°. */
+export function potencias(rec: Receta, l?: Lente): { neg: number; pos: number } | null {
+  const ojos = (['OD', 'OI'] as const).map((o) => ({
+    o, esf: num(o === 'OD' ? rec.esfOD : rec.esfOI), cil: num(cilDe(rec, o)) ?? 0, eje: num((o === 'OD' ? rec.ejeOD : rec.ejeOI) ?? ''),
+  })).filter((x) => x.esf !== null || x.cil)
+  if (!ojos.length) return null
+  let neg = 0, pos = 0
+  for (const x of ojos) {
+    const S = x.esf ?? 0, C = x.cil
+    if (l && C && x.eje !== null) {
+      // Borde del lente visto de frente, con la pupila en el origen (x hacia la derecha del que mira al paciente)
+      const [xi, xd] = x.o === 'OD' ? [l.sien, l.nariz] : [l.nariz, l.sien]
+      const yl = l.b / 2, esquina = (xx: number) => Math.hypot(xx, yl) * 0.93
+      let mNeg = 0, mPos = 0
+      for (let g = 0; g < 360; g += 5) {
+        const t = (g * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t)
+        const xl = c >= 0 ? xd : xi
+        const r = Math.min(Math.abs(c) > 1e-6 ? xl / Math.abs(c) : Infinity, Math.abs(s) > 1e-6 ? yl / Math.abs(s) : Infinity, esquina(xl))
+        const P = S + C * Math.sin(t - (x.eje * Math.PI) / 180) ** 2
+        const w = (r / l.lejos) ** 2
+        mNeg = Math.min(mNeg, P * w); mPos = Math.max(mPos, P * w)
+      }
+      neg = Math.min(neg, mNeg); pos = Math.max(pos, mPos)
+    } else {
+      neg = Math.min(neg, S + Math.min(0, C) / 2)
+      pos = Math.max(pos, S + Math.max(0, C) / 2)
+    }
+  }
+  return { neg, pos }
 }
 
 /** Sagita (mm) de una superficie de potencia |P| en un material n, a `y` mm del centro. */

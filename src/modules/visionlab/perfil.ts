@@ -39,7 +39,9 @@ export interface PerfilCalce {
   veredicto: 'justo' | 'grande' | 'chico'
 }
 /** Receta (valores que copió del oftalmólogo): solo en este celular, para el grosor de los cristales y los armazones. */
-export interface Perfil { rostro?: PerfilRostro; vision?: PerfilVision; calces?: PerfilCalce[]; receta?: Receta }
+/** DP medida con la tarjeta en la frente fuera del chequeo (desde el estudio de rostro o el calce). */
+export interface PerfilDP { f: string; lejos: number; cerca: number }
+export interface Perfil { rostro?: PerfilRostro; vision?: PerfilVision; calces?: PerfilCalce[]; receta?: Receta; dp?: PerfilDP }
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 const vigente = (f: string) => (Date.now() - new Date(f + 'T12:00:00').getTime()) / 864e5 <= VIGENCIA_DIAS
@@ -54,6 +56,7 @@ export function leerPerfil(): Perfil {
       vision: p.vision && vigente(p.vision.f) ? p.vision : undefined,
       calces: (p.calces ?? []).filter((c) => vigente(c.f)),
       receta: p.receta,
+      dp: p.dp && vigente(p.dp.f) ? p.dp : undefined,
     }
   } catch { return {} }
 }
@@ -96,8 +99,16 @@ export function marcoDelPerfil(p: Perfil): { modelo: string | null; ancho: numbe
   const mejor = reales.length ? [...reales].sort((a, b) => Math.abs(a.calce - 100) - Math.abs(b.calce - 100))[0] : null
   return mejor ? { modelo: mejor.modelo, ancho: mejor.marco } : { modelo: null, ancho: p.rostro?.ideal ?? null }
 }
-/** DP: la de la tarjeta si hizo el chequeo, si no la del escaneo de rostro. */
-export const dpDelPerfil = (p: Perfil) => p.vision?.dp?.lejos ?? p.rostro?.mm.dp ?? null
+/** DP medida con tarjeta (la del chequeo o la medida suelta), o null. Es la escala más precisa del rostro y el calce. */
+export const dpTarjetaDe = (p: Perfil): { lejos: number; cerca: number } | null => p.vision?.dp ?? p.dp ?? null
+/** Guarda la DP medida con la tarjeta fuera del chequeo. */
+export function guardarDP(dp: { lejos: number; cerca: number }): Perfil {
+  const p = { ...leerPerfil(), dp: { ...dp, f: hoy() } }
+  escribir(p)
+  return p
+}
+/** DP: la de la tarjeta si la midió, si no la del escaneo de rostro. */
+export const dpDelPerfil = (p: Perfil) => dpTarjetaDe(p)?.lejos ?? p.rostro?.mm.dp ?? null
 
 /** Guarda el chequeo visual; el pretest suma el rostro a su lead por su cuenta (guardarExtras). */
 export function guardarVision(v: Omit<PerfilVision, 'f'>): Perfil {

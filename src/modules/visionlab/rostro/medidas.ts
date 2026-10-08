@@ -39,7 +39,21 @@ export const OVALO = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
 export const MALLA = 1.07
 const GLABELA = 9, SUBNASAL = 2
 export interface Contorno { puntos: P3[]; arriba: P3; abajo: P3; ejeX: number }
-export function contorno(lm: P3[]): Contorno {
+/** Apertura horizontal a la altura `y` (normalizada): interpola entre las alturas donde se midió la silueta. */
+export function aperturaEnY(lm: P3[], y: number, sil?: Silueta | null): number {
+  if (!sil) return MALLA
+  const tramos = ([
+    [lm[L.frenteD].y, sil.k.frente], [lm[SIENES.d].y, sil.k.sienes], [lm[L.pomuloD].y, sil.k.pomulos], [lm[L.mandD].y, sil.k.mandibula],
+  ] as [number, number | null][]).map(([yy, k]) => [yy, k ?? MALLA] as [number, number]).sort((a, b) => a[0] - b[0])
+  if (y <= tramos[0][0]) return tramos[0][1]
+  for (let j = 1; j < tramos.length; j++) {
+    const [y0, k0] = tramos[j - 1], [y1, k1] = tramos[j]
+    if (y <= y1) return y1 - y0 < 1e-6 ? k1 : k0 + ((y - y0) / (y1 - y0)) * (k1 - k0)
+  }
+  return tramos[tramos.length - 1][1]
+}
+
+export function contorno(lm: P3[], sil?: Silueta | null): Contorno {
   const ejeX = (lm[10].x + lm[152].x + lm[GLABELA].x + lm[1].x) / 4
   const yG = lm[GLABELA].y, yTop = lm[10].y
   // tercio superior = tercio inferior (subnasal → mentón); nunca menos que lo que ya da la malla
@@ -47,19 +61,118 @@ export function contorno(lm: P3[]): Contorno {
   const s = yG - yTop > 1e-4 ? (yG - yPelo) / (yG - yTop) : 1
   const puntos = OVALO.map((i) => {
     const p = lm[i]
-    const x = ejeX + (p.x - ejeX) * MALLA
+    const x = ejeX + (p.x - ejeX) * aperturaEnY(lm, p.y, sil)
     const y = p.y < yG ? yG - (yG - p.y) * s : p.y
     return { x, y, z: p.z }
   })
   return { puntos, arriba: { x: ejeX + (lm[10].x - ejeX) * MALLA, y: yPelo }, abajo: { x: ejeX + (lm[152].x - ejeX) * MALLA, y: lm[152].y }, ejeX }
 }
 
+// ── Silueta medida en la foto (2026-10-08, pedido de Gastón: "no me adapta toda la cara y me mide mal") ──────────
+// El 7 % fijo de MALLA es un promedio: con barba, pelo corto o cara ancha queda corto o largo. En el mejor cuadro del
+// escaneo se busca el borde real de la cara sobre rayos horizontales que salen de la malla hacia afuera: se toma el
+// color de la piel en las mejillas y la frente, y el borde es el primer punto donde el color deja de ser piel (pelo,
+// fondo, sombra) por 3 px seguidos. Cada ancho usa su altura:
+//  · sienes (127 / 356, a la altura de los ojos): el ancho que tiene que cubrir el frente del armazón; afuera hay pelo
+//    o fondo, casi nunca la oreja.
+//  · pómulos (234 / 454) y mandíbula (172 / 397): para el contorno y la forma.
+// Si la piel no se distingue del fondo (pared beige, contraluz) el rayo no encuentra borde y ese lado sigue con MALLA.
+export const SIENES = { d: 127, i: 356 } as const
+export type LadoSilueta = 'sienes' | 'pomulos' | 'mandibula' | 'frente'
+export interface Silueta {
+  /** Apertura medida de cada ancho (borde real / malla, desde el eje). null = no se encontró borde, va MALLA. */
+  k: Record<LadoSilueta, number | null>
+  /** Bordes detectados (normalizados 0–1, sin espejar) para dibujarlos. */
+  bordes: { lado: LadoSilueta; x: number; y: number }[]
+  /** Qué pasó en cada rayo (para ?debug). */
+  diag: string[]
+}
+const RAYOS: Record<LadoSilueta, [number, number]> = {
+  sienes: [SIENES.d, SIENES.i], pomulos: [L.pomuloD, L.pomuloI], mandibula: [L.mandD, L.mandI], frente: [L.frenteD, L.frenteI],
+}
+/** Apertura máxima creíble por altura: más allá del pómulo empieza la oreja (que es piel), por eso es la más corta. */
+const K_MAX: Record<LadoSilueta, number> = { sienes: 1.16, pomulos: 1.1, mandibula: 1.16, frente: 1.14 }
+
+export function medirSilueta(img: ImageData, lm: P3[]): Silueta {
+  const { width: W, height: H, data } = img
+  const px = (x: number, y: number): [number, number, number] => {
+    const i = (Math.min(H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))) * 4
+    return [data[i], data[i + 1], data[i + 2]]
+  }
+  // Color de piel: frente y parte alta de las mejillas (debajo de los ojos), donde no llega la barba, POR LADO: con
+  // luz de costado una mitad de la cara tiene otro tono. Mediana por canal para que un mechón o un reflejo no muevan
+  // la referencia. Índices de MediaPipe: los "D" (108, 116, 50) caen a la izquierda de la imagen (x menor).
+  const r0 = Math.max(2, Math.round(W / 160))
+  const piel = (ref: number[]) => {
+    const ms: [number, number, number][] = []
+    for (const i of ref) for (let dy = -r0; dy <= r0; dy += r0) for (let dx = -r0; dx <= r0; dx += r0) ms.push(px(lm[i].x * W + dx, lm[i].y * H + dy))
+    return { ms, c: [0, 1, 2].map((c) => mediana(ms.map((m) => m[c]))) }
+  }
+  const lados = { [-1]: piel([151, 108, 116, 50]), [1]: piel([151, 337, 345, 280]) } as Record<number, { ms: [number, number, number][]; c: number[] }>
+  const dist = (a: number[], b: number[]) => {
+    // La crominancia (r, g relativos) manda: el costado de la cara en sombra sigue siendo piel. La luz pesa poco,
+    // salvo un salto muy grande (pelo oscuro, fondo blanco), que es borde aunque el tono se parezca.
+    const sa = a[0] + a[1] + a[2] + 1, sb = b[0] + b[1] + b[2] + 1
+    const dc = Math.hypot((a[0] / sa - b[0] / sb) * 600, (a[1] / sa - b[1] / sb) * 600)
+    const dl = Math.abs(sa - sb) / 3
+    return dl > 75 ? 999 : Math.hypot(dc, dl * 0.3)
+  }
+  const umbralDe = (l: { ms: number[][]; c: number[] }) => Math.min(60, Math.max(30, mediana(l.ms.map((m) => dist(m, l.c))) * 4.5))
+  const ejeX = ((lm[10].x + lm[152].x + lm[9].x + lm[1].x) / 4) * W
+  const banda = (x: number, y: number) => {
+    // promedio vertical de 5 px para no frenar en un pelo suelto o un poro
+    const s = [0, 0, 0]
+    for (let dy = -2; dy <= 2; dy++) { const c = px(x, y + dy * Math.max(1, r0 / 2)); s[0] += c[0]; s[1] += c[1]; s[2] += c[2] }
+    return s.map((v) => v / 5)
+  }
+  const k = {} as Record<LadoSilueta, number | null>
+  const bordes: Silueta['bordes'] = []
+  const diag: string[] = [`umbral − ${umbralDe(lados[-1]).toFixed(0)} · + ${umbralDe(lados[1]).toFixed(0)}`]
+  for (const lado of Object.keys(RAYOS) as LadoSilueta[]) {
+    const ks: number[] = []
+    for (const i of RAYOS[lado]) {
+      const x0 = lm[i].x * W, y = lm[i].y * H
+      const mitad = Math.abs(x0 - ejeX)
+      if (mitad < 10) continue
+      const sg = Math.sign(x0 - ejeX)
+      const media = lados[sg].c, umbral = umbralDe(lados[sg])
+      // arranca adentro de la malla: el último punto de piel entre 80 y 94 % es el inicio; si no hay piel, el rayo no sirve
+      let t0: number | null = null
+      for (let t = 0.8; t <= 0.94; t += 1 / mitad) if (dist(banda(ejeX + sg * mitad * t, y), media) <= umbral) t0 = t
+      if (t0 === null) { diag.push(`${lado}${sg > 0 ? '+' : '-'} sin piel adentro de la malla`); continue }
+      let fuera = 0, borde: number | null = null
+      for (let t = t0; t <= K_MAX[lado] + 0.02; t += 1 / mitad) {
+        const x = ejeX + sg * mitad * t
+        if (x < 1 || x > W - 2) break
+        if (dist(banda(x, y), media) > umbral) { if (++fuera >= 3) { borde = t - 2 / mitad; break } } else fuera = 0
+      }
+      if (borde === null || borde > K_MAX[lado]) { diag.push(`${lado}${sg > 0 ? "+" : "-"} sin borde hasta ${K_MAX[lado]}`); continue }
+      diag.push(`${lado}${sg > 0 ? "+" : "-"} borde ${borde.toFixed(3)}`)
+      const kk = Math.max(0.98, borde)
+      ks.push(kk)
+      bordes.push({ lado, x: (ejeX + sg * mitad * kk) / W, y: y / H })
+    }
+    // los dos lados tienen que coincidir más o menos (una sombra de un solo lado no puede ensanchar la cara)
+    k[lado] = !ks.length ? null : ks.length === 1 ? Math.min(ks[0], MALLA + 0.03) : Math.abs(ks[0] - ks[1]) > 0.08 ? Math.min(...ks) : (ks[0] + ks[1]) / 2
+  }
+  return { k, bordes, diag }
+}
+
+// ── Escala ──────────────────────────────────────────────────────────────────────────────────
+// De qué sale el paso de px a mm, de más a menos precisa:
+//  · tarjeta: DP medida con la tarjeta en la frente (85,6 mm de referencia). La distancia entre los centros de los
+//    iris mide ~5 veces más px que el diámetro de un iris, así que el error de un px pesa 5 veces menos (±2 %).
+//  · iris: el diámetro del iris (≈ 11,7 mm en todos los adultos); a 40 cm son ~30 px y un px es un 3–4 % (±6 %).
+// La DP "de cerca" de la tarjeta es la misma situación del escaneo (mirando la cámara a ~40 cm, ojos convergiendo).
+export type FuenteEscala = 'tarjeta' | 'iris'
+export const ERROR_ESCALA: Record<FuenteEscala, number> = { tarjeta: 0.02, iris: 0.06 }
+
 // El iris mide ≈ 11,7 mm, pero el anillo de MediaPipe sale un poco más grande que el iris real: con 34 retratos
 // frontales (Wikimedia Commons, 2026-10-02) la DP mediana daba 59,3 mm contra ~62,5 mm de promedio adulto.
 // Se corrige la escala +5 % (equivale a un iris "efectivo" de 12,3 mm).
 export const IRIS_MM = 11.7 * 1.05
 /** Para quien mide en vivo (calce): factor de perspectiva del ancho de pómulos. */
-export const perspectivaPomulos = (lm: P3[]) => profundidad(lm, L.pomuloD, L.pomuloI)
+export const perspectivaPomulos = (lm: P3[], W = 1, H = 1) => profundidad(lm, L.pomuloD, L.pomuloI, W, H)
 
 const d2 = (a: P3, b: P3) => Math.hypot(a.x - b.x, a.y - b.y)
 const angulo = (a: P3, v: P3, b: P3) => {
@@ -83,15 +196,19 @@ export interface Medidas {
 // 127 mm y talle S). MediaPipe da la profundidad z de cada punto en la misma escala que x (fracción del ancho de la
 // imagen); con la distancia focal de una cámara frontal (≈ 0,75 × ancho, ~67° horizontales) la corrección del par
 // a–b es 1 + Δz / f. Sin z (o valores raros) se usa el promedio medido, 1,12.
-const FOCAL = 0.75
+// 2026-10-08: la focal se toma del lado LARGO del cuadro (f ≈ 0,7 × lado largo, la misma que usa la DP con tarjeta).
+// Antes era 0,75 × ancho, que vale para una cámara apaisada; con el celular vertical (ancho = lado corto) la focal real
+// en unidades de ancho es ~1,0 y la corrección salía inflada (llegaba al tope de ×1,25 y los anchos daban de más).
+const FOCAL_LARGO = 0.7
 const K_DEFECTO = 1.12
-function profundidad(lm: P3[], a: number, b: number): number {
+function profundidad(lm: P3[], a: number, b: number, W = 1, H = 1): number {
   const z = (i: number) => lm[i]?.z
   const ojos = [33, 263, 133, 362].map(z)
   if ([z(a), z(b), ...ojos].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return K_DEFECTO
   const zOjo = (ojos as number[]).reduce((x, y) => x + y, 0) / 4
   const dz = ((z(a) as number) + (z(b) as number)) / 2 - zOjo
-  const k = 1 + dz / FOCAL
+  // z viene en fracción del ancho de la imagen: pasado a px es dz·W, y la focal en px es 0,7 × lado largo
+  const k = 1 + (dz * W) / (FOCAL_LARGO * Math.max(W, H))
   // Un cuadro raro (cara muy cerca o z ruidosa) no puede agrandar más de 25 % ni achicar
   return Math.min(1.25, Math.max(1, k))
 }
@@ -109,9 +226,9 @@ export function medir(lm: P3[], W: number, H: number): Medidas {
     anguloMand: (angulo(p(L.sobreMandD), p(L.mandD), p(L.bajoMandD)) + angulo(p(L.sobreMandI), p(L.mandI), p(L.bajoMandI))) / 2,
     iris: (d2(p(L.irisD_d), p(L.irisD_i)) + d2(p(L.irisI_d), p(L.irisI_i))) / 2,
     dp: d2(p(L.irisD), p(L.irisI)),
-    kPom: profundidad(lm, L.pomuloD, L.pomuloI),
-    kFrente: profundidad(lm, L.frenteD, L.frenteI),
-    kMand: profundidad(lm, L.mandD, L.mandI),
+    kPom: profundidad(lm, L.pomuloD, L.pomuloI, W, H),
+    kFrente: profundidad(lm, L.frenteD, L.frenteI, W, H),
+    kMand: profundidad(lm, L.mandD, L.mandI, W, H),
   }
 }
 
@@ -341,21 +458,47 @@ export interface Resultado {
   talle: 'S' | 'M' | 'L'
 }
 
-export function resultado(m: Medidas): Resultado {
-  const k = IRIS_MM / m.iris
+/** Cómo salió cada número: lo muestra "Cómo te medimos" y va en el debug. */
+export interface Metodo {
+  escala: FuenteEscala
+  /** Error relativo esperado de los mm (escala + silueta). */
+  error: number
+  /** Apertura usada en cada ancho y si salió de la foto (true) o del promedio MALLA (false). */
+  apertura: Record<'pomulos' | 'frente' | 'mandibula', { k: number; foto: boolean }>
+  /** Corrección de perspectiva promedio de los anchos. */
+  perspectiva: number
+}
+
+export interface OpcionesResultado {
+  /** Silueta medida en la foto del escaneo. */
+  silueta?: Silueta | null
+  /** DP de cerca medida con la tarjeta (mm): pasa a ser la escala. */
+  dpCerca?: number | null
+}
+
+export function resultado(m: Medidas, op: OpcionesResultado = {}): Resultado & { metodo: Metodo } {
+  const escala: FuenteEscala = op.dpCerca && m.dp > 0 ? 'tarjeta' : 'iris'
+  const k = escala === 'tarjeta' ? (op.dpCerca as number) / m.dp : IRIS_MM / m.iris
   const prop = proporciones(m)
   const { forma, pct } = clasificar(prop)
-  // Medidas en el plano del armazón (corregidas por perspectiva y abiertas de la malla a la silueta real, MALLA);
-  // las proporciones de la forma siguen con los px crudos.
+  // Medidas en el plano del armazón (corregidas por perspectiva y abiertas de la malla a la silueta real: la medida en
+  // la foto si se encontró el borde, si no el promedio MALLA); las proporciones de la forma siguen con los px crudos.
   const kP = m.kPom ?? K_DEFECTO, kF = m.kFrente ?? K_DEFECTO, kM = m.kMand ?? K_DEFECTO
-  const pom = m.pomulos * k * kP * MALLA
+  const sk = op.silueta?.k
+  const ap = (v: number | null | undefined) => ({ k: v ?? MALLA, foto: v != null })
+  // el ancho de la cara para el armazón: pómulos; si ahí no hubo borde (oreja, fondo), el de las sienes
+  const apertura = { pomulos: ap(sk?.pomulos ?? sk?.sienes), frente: ap(sk?.frente), mandibula: ap(sk?.mandibula) }
+  const pom = m.pomulos * k * kP * apertura.pomulos.k
   // El ancho de sien a sien es ≈ el ancho del frente del armazón que queda bien (igual que en el probador).
   const ideal = Math.round(pom)
+  const dpMm = escala === 'tarjeta' ? (op.dpCerca as number) : m.dp * k * 1.03
+  const errSil = apertura.pomulos.foto ? 0.015 : 0.04
   return {
     forma, pct, prop,
-    mm: { pomulos: Math.round(pom), largo: Math.round((m.largoTotal ?? m.largo) * k), frente: Math.round(m.frente * k * kF * MALLA), mandibula: Math.round(m.mandibula * k * kM * MALLA), dp: Math.round(m.dp * k * 1.03) },
+    mm: { pomulos: Math.round(pom), largo: Math.round((m.largoTotal ?? m.largo) * k), frente: Math.round(m.frente * k * kF * apertura.frente.k), mandibula: Math.round(m.mandibula * k * kM * apertura.mandibula.k), dp: Math.round(dpMm) },
     ideal, rango: [ideal - 4, ideal + 4],
     talle: talleRostro(ideal),
+    metodo: { escala, error: Math.hypot(ERROR_ESCALA[escala], errSil), apertura, perspectiva: (kP + kF + kM) / 3 },
   }
 }
 

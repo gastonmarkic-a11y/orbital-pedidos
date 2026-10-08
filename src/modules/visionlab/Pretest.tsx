@@ -725,7 +725,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
   const campo = (k: keyof Receta, lbl: string, ph: string) => (
     <div>
       <label htmlFor={'rx-' + k}>{lbl}</label>
-      <input type="text" id={'rx-' + k} inputMode="decimal" placeholder={ph} value={rec[k]} onChange={(e) => setRec({ ...rec, [k]: e.target.value })} />
+      <input type="text" id={'rx-' + k} inputMode="decimal" placeholder={ph} value={rec[k] ?? ''} onChange={(e) => setRec({ ...rec, [k]: e.target.value })} />
     </div>
   )
   const link = (m: string) => `https://ver.orbitaleyewear.com.ar/modelo/${encodeURIComponent(m)}?desde=pretest${code ? '&c=' + code : ''}`
@@ -755,8 +755,11 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
             <div className="rx-grid">
               <p className="small" style={{ gridColumn: '1/-1', margin: 0 }}><b>Opcional:</b> copiá los valores para ordenar los armazones según tu receta.</p>
               {campo('esfOD', 'Esfera OD', '-2,50')}
+              {campo('cilOD', 'Cilindro OD', '-0,75')}
+              {campo('ejeOD', 'Eje OD (°)', '180')}
               {campo('esfOI', 'Esfera OI', '-2,25')}
-              {campo('cil', 'Cilindro (mayor)', '-1,00')}
+              {campo('cilOI', 'Cilindro OI', '-1,00')}
+              {campo('ejeOI', 'Eje OI (°)', '10')}
               {campo('add', 'Adición', '+1,50')}
               <p className="muted small" style={{ gridColumn: '1/-1', margin: 0 }}>Tal cual figuran (con el signo). Si no tiene adición, dejalo vacío.</p>
             </div>

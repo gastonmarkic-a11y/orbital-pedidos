@@ -16,10 +16,11 @@ export default function Grosor({ rec, marco, dp, alto, modelo, ideal }: {
 }) {
   const [marcos, setMarcos] = useState<Marco[] | null>(null)
   useEffect(() => { supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? [])) }, [])
-  const p = useMemo(() => potencias(rec), [rec])
   const ancho = marco ?? 140
   const dpU = dp ?? 63
   const lente = useMemo(() => lenteDe(ancho, dpU, alto), [ancho, dpU, alto])
+  // con la lente: si la receta trae eje, el astigmatismo se calcula en la dirección real de cada borde
+  const p = useMemo(() => potencias(rec, lente), [rec, lente])
   const [dis, setDis] = useState<Diseno['id']>('esferico')
   const d = DISENOS.find((x) => x.id === dis) ?? DISENOS[0]
   const gs = useMemo(() => (p ? grosores(p, lente, d.f) : []), [p, lente, d.f])

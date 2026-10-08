@@ -10,10 +10,11 @@ import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
 import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
-import { Estilo, FORMAS, Forma, L, MALLA, OVALO, P3, Resultado, contorno, marcosParaVos, ordenarSeleccion, resultado, z, COLECCION_TALLE, TALLES_PARA } from './medidas'
+import { Estilo, FORMAS, Forma, L, Metodo, P3, Resultado, aperturaEnY, contorno, marcosParaVos, ordenarSeleccion, resultado, z, COLECCION_TALLE, TALLES_PARA } from './medidas'
 import { VISITANTE_KEY } from '../../colab/colabUtil'
 import { QRProfesional, urlPerfil } from '../extras'
-import { Perfil, compactarCalces, compactarRostro, guardarRostro, leerPerfil, rostroDe } from '../perfil'
+import { MedirDP } from '../dp'
+import { Perfil, compactarCalces, compactarRostro, dpTarjetaDe, guardarDP, guardarRostro, leerPerfil, rostroDe } from '../perfil'
 import Calce from './Calce'
 import '../pretest.css'
 import './rostro.css'
@@ -47,12 +48,13 @@ type Linea = (typeof LINEAS)[number]['id']
 function MapaRostro({ cap, r, sel, animar }: { cap: Captura; r: Resultado; sel: Linea | null; animar?: boolean }) {
   const { W, H, lm } = cap
   // Contorno real (malla abierta a la silueta + nacimiento del pelo), espejado como la foto.
-  const con = contorno(lm)
+  const con = contorno(lm, cap.silueta)
   const esp = (p: P3) => ({ x: (1 - p.x) * W, y: p.y * H })
   const pts = con.puntos.map(esp)
   const arriba = esp(con.arriba), abajo = esp(con.abajo)
-  // Extremos de cada ancho, abiertos igual que el contorno
-  const P = (i: number) => esp({ x: con.ejeX + (lm[i].x - con.ejeX) * MALLA, y: lm[i].y })
+  // Extremos de cada ancho, abiertos igual que el contorno (borde medido en la foto o el promedio)
+  const P = (i: number) => esp({ x: con.ejeX + (lm[i].x - con.ejeX) * aperturaEnY(lm, lm[i].y, cap.silueta), y: lm[i].y })
+  const bordes = (cap.silueta?.bordes ?? []).map((b) => esp(b))
   // recorte alrededor de la cara
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
@@ -70,12 +72,16 @@ function MapaRostro({ cap, r, sel, animar }: { cap: Captura; r: Resultado; sel: 
         <rect x={cx - lado} y={cy - lado} width={lado * 2} height={lado * 2} fill="rgba(12,12,16,.28)" />
         <polygon points={ovalo} className="ov" fill="none" stroke="#fff" strokeWidth={0.45 * u} strokeLinejoin="round" pathLength={100} filter="url(#rs-sh)" />
         {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={0.45 * u} fill="#d6b26e" className="pt" />)}
+        {/* Bordes reales de la cara encontrados en la foto (verde): de ahí salen los anchos */}
+        {bordes.map((b, i) => <circle key={'b' + i} cx={b.x} cy={b.y} r={1.1 * u} fill="none" stroke="#3ccf8e" strokeWidth={0.45 * u} />)}
         {LINEAS.map((l) => {
           const a = l.id === 'largo' ? arriba : P(l.a), b = l.id === 'largo' ? abajo : P(l.b)
           const on = sel === null || sel === l.id
           const mm = r.mm[l.id]
           const vert = l.id === 'largo'
-          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+          // el rótulo del largo va por debajo de la nariz, para no taparse con el de los pómulos
+          const t = vert ? 0.68 : 0.5
+          const mx = a.x + (b.x - a.x) * t, my = a.y + (b.y - a.y) * t
           return (
             <g key={l.id} className={'ln' + (on ? '' : ' off')} filter="url(#rs-sh)">
               <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#d6b26e" strokeWidth={0.5 * u} strokeDasharray={vert ? `${1.2 * u} ${0.8 * u}` : undefined} />
@@ -92,8 +98,14 @@ function MapaRostro({ cap, r, sel, animar }: { cap: Captura; r: Resultado; sel: 
   )
 }
 
-function Analizando({ cap, r, onFin }: { cap: Captura; r: Resultado; onFin: () => void }) {
-  const PASOS = ['Contorno del rostro', 'Ancho de frente, pómulos y mandíbula', 'Proporción largo / ancho', 'Escala en milímetros con el iris', 'Formas que te favorecen']
+function Analizando({ cap, r, onFin }: { cap: Captura; r: Resultado & { metodo: Metodo }; onFin: () => void }) {
+  const PASOS = [
+    'Contorno del rostro (478 puntos)',
+    cap.silueta?.bordes.length ? 'Borde real de tu cara en la foto' : 'Ancho de frente, pómulos y mandíbula',
+    'Proporción largo / ancho',
+    r.metodo.escala === 'tarjeta' ? 'Escala en milímetros con tu tarjeta' : 'Escala en milímetros con el iris',
+    'Formas que te favorecen',
+  ]
   const [i, setI] = useState(0)
   useEffect(() => {
     if (i >= PASOS.length) { const t = setTimeout(onFin, 450); return () => clearTimeout(t) }
@@ -115,6 +127,48 @@ function Analizando({ cap, r, onFin }: { cap: Captura; r: Resultado; onFin: () =
         ))}
       </ul>
     </section>
+  )
+}
+
+/** Transparencia del método: de dónde salió cada número y cuánto se le puede creer. */
+function ComoTeMedimos({ cap, r, onTarjeta }: { cap: Captura; r: Resultado & { metodo: Metodo }; onTarjeta: () => void }) {
+  const [abierto, setAbierto] = useState(false)
+  const m = r.metodo
+  const err = Math.round(r.ideal * m.error)
+  const pct = (k: number) => { const v = Math.round((k - 1) * 100); return v > 0 ? `se abre +${v} %` : v < 0 ? `se cierra −${-v} %` : 'coincide con la malla' }
+  const fila = (t: string, ap: { k: number; foto: boolean }) => (
+    <li className={ap.foto ? 'ok' : ''}>
+      <span>{ap.foto ? <Check size={13} /> : '≈'}</span>
+      <div><b>{t}</b><small>{ap.foto ? `Borde real de tu cara en la foto · la malla ${pct(ap.k)}` : `Sin borde claro en la foto (fondo parecido a la piel o pelo encima) · se usa el promedio: la malla ${pct(ap.k)}`}</small></div>
+    </li>
+  )
+  return (
+    <div className="card rs-como">
+      <button className="rs-como-h" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
+        <span className={'rs-prec ' + (m.escala === 'tarjeta' ? 'alta' : 'media')}>{m.escala === 'tarjeta' ? 'Precisión alta' : 'Precisión media'}</span>
+        <span><b>Cómo te medimos</b><small>Ancho {r.ideal} mm · ± {err} mm</small></span>
+        <Info size={16} />
+      </button>
+      {abierto && (
+        <ol className="rs-como-l">
+          <li className="ok"><span><Check size={13} /></span><div><b>478 puntos sobre tu cara</b><small>MediaPipe ubica ojos, cejas, nariz, boca y el óvalo en cada cuadro; usamos la mediana de 36 cuadros con la cabeza derecha y de frente.</small></div></li>
+          {fila('Pómulos (ancho para el armazón)', m.apertura.pomulos)}
+          {fila('Frente', m.apertura.frente)}
+          {fila('Mandíbula', m.apertura.mandibula)}
+          <li className="ok"><span><Check size={13} /></span><div><b>Perspectiva corregida</b><small>Los costados de la cara están más lejos de la cámara que los ojos y se ven más chicos: los agrandamos ×{m.perspectiva.toFixed(2).replace('.', ',')} con la profundidad de cada punto.</small></div></li>
+          <li className={m.escala === 'tarjeta' ? 'ok' : ''}>
+            <span>{m.escala === 'tarjeta' ? <Check size={13} /> : '≈'}</span>
+            <div>
+              <b>{m.escala === 'tarjeta' ? 'Milímetros con tu tarjeta' : 'Milímetros con el iris'}</b>
+              <small>{m.escala === 'tarjeta'
+                ? 'Tu distancia entre pupilas medida con la tarjeta (85,6 mm) da la escala: error ±2 %.'
+                : `El iris mide ≈ 11,7 mm en todos los adultos, pero en la cámara son ~${Math.round(cap.medidas.iris)} px: un px de diferencia mueve todo un ${Math.round(100 / cap.medidas.iris)} %.`}</small>
+              {m.escala !== 'tarjeta' && <button className="btn sm" style={{ marginTop: 8 }} onClick={onTarjeta}>Medir con una tarjeta · 30 s</button>}
+            </div>
+          </li>
+        </ol>
+      )}
+    </div>
   )
 }
 
@@ -188,12 +242,14 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
   const [scrolled, setScrolled] = useState(false)
   const [perfil, setPerfil] = useState<Perfil>(leerPerfil)
   const [calce, setCalce] = useState(false)
+  const [tarjeta, setTarjeta] = useState(false)
 
-  const r = useMemo(() => (cap ? resultado(cap.medidas) : null), [cap])
+  // Con la DP medida con tarjeta (chequeo visual o acá mismo) la escala sale de ahí; si no, del iris.
+  const dpTarjeta = dpTarjetaDe(perfil)
+  const r = useMemo(() => (cap ? resultado(cap.medidas, { silueta: cap.silueta, dpCerca: dpTarjeta?.cerca }) : null), [cap, dpTarjeta?.cerca])
   // Perfil visual: el resultado del escaneo (la forma detectada, no la que se esté mirando) queda en el celular y,
   // si ya hizo el chequeo visual, se suma a ese informe para la óptica.
   useEffect(() => { if (r) setPerfil(guardarRostro(rostroDe(r, r.forma))) }, [r])
-  const dpTarjeta = perfil.vision?.dp ?? null
   const f: Forma | null = forma ?? r?.forma ?? null
   const info = f ? FORMAS[f] : null
   const recomendados = info ? info.si.map((x) => x.e) : []
@@ -308,6 +364,8 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
               </div>
             </div>
 
+            <ComoTeMedimos cap={cap} r={r} onTarjeta={() => setTarjeta(true)} />
+
             <div className="card">
               <div className="rs-h"><h3>Cómo se compone tu rostro</h3><small className="muted">Tocá una forma para ver sus recomendaciones</small></div>
               <div className="rs-bars">
@@ -358,8 +416,8 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
                 <div><small>Proporción</small><b className="num">{(r.prop.largo).toFixed(2).replace('.', ',')}</b></div>
               </div>
               <p className="muted small" style={{ margin: '10px 0 0' }}>{dpTarjeta
-                ? <>DP medida con la tarjeta en tu chequeo visual <b className="num">{perfil.vision!.code}</b>: es la que sirve para pedir anteojos con receta.</>
-                : <>La DP es aproximada. Para pedir anteojos con receta medila con la tarjeta en el <a href="/lab/pretest?desde=rostro">chequeo visual</a> o en la óptica.</>}</p>
+                ? <>DP medida con la tarjeta{perfil.vision?.dp ? <> en tu chequeo visual <b className="num">{perfil.vision.code}</b></> : ''}: es la que sirve para pedir anteojos con receta, y con ella calculamos todas tus medidas.</>
+                : <>La DP es aproximada. <button className="link" onClick={() => setTarjeta(true)}>Medila con una tarjeta</button> (30 s) y tus medidas pasan a ser exactas.</>}</p>
             </div>
 
             <div className="rs-idea"><Info size={18} /><span>{info.idea}</span></div>
@@ -453,13 +511,22 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
             <button className="link" onClick={() => { setCap(null); setForma(null); setPaso('escaneo') }}><RotateCcw size={14} />Escanear de nuevo</button>
 
             {debug && (
-              <pre className="ticket">{JSON.stringify({ prop: r.prop, z: z(r.prop), pct: r.pct, mm: r.mm, iris: cap.medidas.iris, k: [cap.medidas.kPom, cap.medidas.kFrente, cap.medidas.kMand] }, (_, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v), 2)}</pre>
+              <pre className="ticket">{JSON.stringify({ prop: r.prop, z: z(r.prop), pct: r.pct, mm: r.mm, iris: cap.medidas.iris, dpPx: cap.medidas.dp, k: [cap.medidas.kPom, cap.medidas.kFrente, cap.medidas.kMand], metodo: r.metodo, silueta: cap.silueta?.k, diag: cap.silueta?.diag }, (_, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v), 2)}</pre>
             )}
             <div className="disclaimer"><ShieldCheck size={16} /><span>Guía de estilo y talle basada en proporciones del rostro; no es una indicación médica. Las medidas son aproximadas (±5 mm). Con receta alta, el óptico puede sugerirte un lente más chico para que el cristal quede fino.</span></div>
           </section>
         )}
       </div>
       {calce && <Calce onCerrar={() => { setCalce(false); setPerfil(leerPerfil()) }} />}
+      {tarjeta && (
+        <div className="rs-modal" role="dialog" aria-label="Medir con una tarjeta">
+          <div className="rs-modal-box">
+            <div className="rs-h"><h3>Precisión máxima con una tarjeta</h3><button className="link" onClick={() => setTarjeta(false)} aria-label="Cerrar"><X size={18} /></button></div>
+            <p className="small muted" style={{ margin: '0 0 10px' }}>La tarjeta (crédito, débito o SUBE) mide siempre 85,6 mm: con ella pasamos tus medidas a milímetros exactos, sin volver a escanear.</p>
+            <MedirDP compacto onSaltear={() => setTarjeta(false)} onListo={(dp) => { setPerfil(guardarDP(dp)); setTarjeta(false) }} />
+          </div>
+        </div>
+      )}
       {probar && r && (
         <ProbarFormas ideal={r.ideal} recomendados={recomendados} inicial={probar} onCerrar={() => setProbar(null)} />
       )}
