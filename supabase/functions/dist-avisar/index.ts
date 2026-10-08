@@ -2,6 +2,7 @@
 // Así lo que se le manda desde fuera de Telegram (Suite, Claude) queda a la vista del equipo.
 //   POST (x-cron-key) {"uid": 2, "texto": "..."}  -> al usuario + copia al grupo
 //   POST (x-cron-key) {"texto": "..."}            -> solo al grupo
+//   "foto": "https://..." (opcional) va como imagen antes del texto, al usuario y al grupo
 // Usa el mismo bot que dist-telegram (secret DIST_TELEGRAM_BOT_TOKEN o app_config).
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -37,6 +38,16 @@ async function enviar(chat: number, texto: string, botones?: { text: string; cal
   return ok;
 }
 
+async function foto(chat: number, url: string) {
+  const res = await fetch(`https://api.telegram.org/bot${await token()}/sendPhoto`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chat, photo: url }),
+  });
+  if (!res.ok) console.error("sendPhoto", res.status, await res.text());
+  return res.ok;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
   if (!req.headers.get("x-cron-key") || req.headers.get("x-cron-key") !== (await cfg("cron_key"))) return new Response("no", { status: 401 });
@@ -70,6 +81,8 @@ Deno.serve(async (req) => {
     else if (p.cant_cliente > 0 && p.cant_cliente !== n) choques.push(`${p.sku}: texto dice ${n} u., cant_cliente=${p.cant_cliente}`);
   }
   if (choques.length) return Response.json({ ok: false, error: "cantidad del texto ≠ cant_cliente", choques });
+  const url_foto = /^https:\/\//.test(String(b.foto ?? "")) ? String(b.foto) : "";
+  if (url_foto && !(await foto(d.chat_id, url_foto))) return Response.json({ ok: false, error: "no salió la foto" });
   const alUsuario = await enviar(d.chat_id, `📣 <b>Orbital</b>\n\n${esc(texto)}`);
   const preguntas = lista_p.map((p) => p.texto);
   for (const p of lista_p) {
@@ -90,6 +103,7 @@ Deno.serve(async (req) => {
     await enviar(d.chat_id, esc(p.texto), [[{ text: "✅ Sí", callback_data: `rsp|si${data}` }, { text: "❌ No", callback_data: `rsp|no${data}` }]]);
   }
   const lista = preguntas.length ? `\n\n${preguntas.map((p) => `• ${esc(p)} [Sí / No]`).join("\n")}` : "";
+  if (url_foto) await foto(grupo, url_foto);
   const alGrupo = await enviar(grupo, `✅ Enviado a ${esc(d.nombre)} (${esc(d.distribuidores.nombre)}):\n\n${esc(texto)}${lista}\n#d${Number(b.uid)}`);
   return Response.json({ ok: alUsuario, grupo: alGrupo, preguntas: preguntas.length });
 });
