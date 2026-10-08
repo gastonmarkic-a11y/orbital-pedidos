@@ -120,7 +120,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
                   onChange={(e) => setPerfil(guardarReceta({ ...(perfil.receta ?? recetaVacia), [k]: e.target.value }))} /></label>
               ))}
             </div>
-            {perfil.receta && <Grosor rec={perfil.receta} marco={marcoDelPerfil(perfil).ancho} modelo={marcoDelPerfil(perfil).modelo} dp={dpDelPerfil(perfil)} />}
+            {perfil.receta && <Grosor rec={perfil.receta} marco={marcoDelPerfil(perfil).ancho} modelo={marcoDelPerfil(perfil).modelo} dp={dpDelPerfil(perfil)} ideal={perfil.rostro?.ideal} />}
             <p className="muted small" style={{ margin: 0 }}>Copiá los valores de la receta tal cual (con el signo). Quedan solo en tu celular.</p>
           </div>
 

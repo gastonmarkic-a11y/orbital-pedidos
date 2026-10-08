@@ -807,7 +807,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
               </a>
             ))}
           </div>
-          {r.fuente === 'receta' && <Grosor rec={rec} marco={ref.ancho} modelo={ref.modelo} dp={dpDelPerfil(pf)} />}
+          {r.fuente === 'receta' && <Grosor rec={rec} marco={ref.ancho} modelo={ref.modelo} dp={dpDelPerfil(pf)} ideal={pf.rostro?.ideal} />}
           {r.lentes.length > 0 && (
             <div className="note">
               <b style={{ display: 'block', marginBottom: 4, color: 'var(--ink)' }}>Para tus cristales</b>

@@ -12,12 +12,40 @@ import type { Receta } from './marcos'
 export interface Indice { n: number; nombre: string; corto: string; centro: number; nota: string }
 export const INDICES: Indice[] = [
   { n: 1.5, nombre: 'Orgánico 1.50', corto: '1.50', centro: 2.0, nota: 'Estándar' },
+  // Trivex y policarbonato (2026-10-08): no son los más finos, pero son livianos e irrompibles (chicos, deporte,
+  // ranurados y al aire). El centro mínimo es el habitual de laboratorio para cada uno.
+  { n: 1.53, nombre: 'Trivex 1.53', corto: 'Trivex', centro: 1.5, nota: 'Liviano e irrompible, muy nítido' },
   { n: 1.56, nombre: 'Medio índice 1.56', corto: '1.56', centro: 1.8, nota: 'Un poco más fino' },
+  { n: 1.59, nombre: 'Policarbonato 1.59', corto: 'Policarb.', centro: 1.2, nota: 'Irrompible: chicos y deporte' },
   { n: 1.6, nombre: 'Alto índice 1.60', corto: '1.60', centro: 1.5, nota: 'Fino y resistente' },
   { n: 1.67, nombre: 'Alto índice 1.67', corto: '1.67', centro: 1.4, nota: 'Muy fino' },
   { n: 1.74, nombre: 'Ultra fino 1.74', corto: '1.74', centro: 1.3, nota: 'El más fino' },
 ]
 const BORDE_MIN = 1.0
+
+/** Diseño de la superficie (2026-10-08). El asférico aplana la curva hacia el borde y el free-form (tallado digital
+ *  punto a punto, doble asférico) lo hace en las dos caras: con la misma receta el borde (o el centro) crece menos.
+ *  `f` escala la sagita: valores conservadores de lo que publican Zeiss/Essilor/Hoya (−15 % y −22 %). */
+export interface Diseno { id: 'esferico' | 'asferico' | 'freeform'; nombre: string; f: number; nota: string }
+export const DISENOS: Diseno[] = [
+  { id: 'esferico', nombre: 'Esférico', f: 1, nota: 'El común: curva pareja de centro a borde.' },
+  { id: 'asferico', nombre: 'Asférico', f: 0.85, nota: 'Más plano y fino, y achica el efecto lupa o de ojo chico.' },
+  { id: 'freeform', nombre: 'Free-form', f: 0.78, nota: 'Tallado digital en las dos caras: el más fino y la visión más nítida en los costados.' },
+]
+
+/** Profundidad del aro (mm, de adelante hacia atrás en el costado del lente), medida con calibre por modelo.
+ *  Es lo que tapa el borde del cristal: lo que sobresale es borde − profundidad. Se carga a medida que se mide. */
+export const PROFUNDIDAD_ARO: Record<string, number> = {}
+/** Aros de referencia cuando el modelo no tiene la medida cargada. */
+export const ARO_FINO = 2.0
+export const ARO_ACETATO = 3.5
+const clave = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+export function profundidadDe(modelo?: string | null): number | null {
+  if (!modelo) return null
+  const k = clave(modelo)
+  const hit = Object.entries(PROFUNDIDAD_ARO).find(([m]) => k === clave(m) || k.startsWith(clave(m) + ' '))
+  return hit ? hit[1] : null
+}
 
 const num = (s: string) => { const v = parseFloat((s ?? '').replace(',', '.')); return Number.isFinite(v) ? v : null }
 
@@ -56,11 +84,12 @@ export function lenteDe(marco: number, dp: number, alto?: number | null): Lente 
 }
 
 export interface Grosor { indice: Indice; borde: number; centro: number; max: number }
-export function grosores(p: { neg: number; pos: number }, l: Lente): Grosor[] {
+/** `f`: factor del diseño (DISENOS), 1 = esférico. */
+export function grosores(p: { neg: number; pos: number }, l: Lente, f = 1): Grosor[] {
   return INDICES.map((ix) => {
     // negativo: borde grueso en el punto más lejano; positivo: centro grueso para no dejar el borde en cero
-    const bordeNeg = p.neg < 0 ? ix.centro + sagita(p.neg, ix.n, l.lejos) : null
-    const centroPos = p.pos > 0 ? BORDE_MIN + sagita(p.pos, ix.n, l.lejos) : null
+    const bordeNeg = p.neg < 0 ? ix.centro + f * sagita(p.neg, ix.n, l.lejos) : null
+    const centroPos = p.pos > 0 ? BORDE_MIN + f * sagita(p.pos, ix.n, l.lejos) : null
     const borde = bordeNeg ?? BORDE_MIN + (p.pos > 0 ? 0 : ix.centro - BORDE_MIN)
     const centro = centroPos ?? ix.centro
     return { indice: ix, borde, centro, max: Math.max(borde, centro) }
@@ -74,15 +103,33 @@ export function sugerido(gs: Grosor[], p: { neg: number; pos: number }) {
   return gs.find((g) => g.indice.n === n) ?? gs[0]
 }
 
+/** Armazones del catálogo ordenados por cuánto afinan el cristal con esta receta y este material (2026-10-08).
+ *  Solo los que calzan con la cara (frente entre ideal − 8 y ideal + 6 mm: más angosto aprieta, más ancho se ve
+ *  grande); si no hay rostro medido, cualquiera de 128 a 150 mm. Devuelve el grosor que manda (borde o centro). */
+export function masFinos<T extends { modelo: string; ancho_mm: number | null; alto_mm: number | null }>(
+  marcos: T[], p: { neg: number; pos: number }, dp: number, n: number, ideal: number | null, max = 4, f = 1,
+): (T & { grosor: number })[] {
+  const neg = p.neg < 0 && Math.abs(p.neg) >= Math.abs(p.pos)
+  const [a, b] = ideal ? [ideal - 8, ideal + 6] : [128, 150]
+  return marcos
+    .filter((m) => m.ancho_mm && m.ancho_mm >= a && m.ancho_mm <= b)
+    .map((m) => {
+      const g = grosores(p, lenteDe(m.ancho_mm!, dp, m.alto_mm), f).find((x) => x.indice.n === n)!
+      return { ...m, grosor: neg ? g.borde : g.centro }
+    })
+    .sort((x, y) => x.grosor - y.grosor)
+    .slice(0, max)
+}
+
 /** Perfil del corte horizontal del lente (de la nariz a la sien), para dibujarlo: [x mm, espesor mm][]. */
-export function perfil(p: { neg: number; pos: number }, l: Lente, ix: Indice, pasos = 24): [number, number][] {
+export function perfil(p: { neg: number; pos: number }, l: Lente, ix: Indice, f = 1, pasos = 24): [number, number][] {
   const out: [number, number][] = []
   for (let i = 0; i <= pasos; i++) {
     const x = -l.nariz + ((l.nariz + l.sien) * i) / pasos
     const y = Math.abs(x)
     const t = p.neg < 0
-      ? ix.centro + sagita(p.neg, ix.n, y)
-      : p.pos > 0 ? BORDE_MIN + sagita(p.pos, ix.n, l.lejos) - sagita(p.pos, ix.n, y) : ix.centro
+      ? ix.centro + f * sagita(p.neg, ix.n, y)
+      : p.pos > 0 ? BORDE_MIN + f * (sagita(p.pos, ix.n, l.lejos) - sagita(p.pos, ix.n, y)) : ix.centro
     out.push([x, t])
   }
   return out
