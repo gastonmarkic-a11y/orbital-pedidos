@@ -187,7 +187,7 @@ async function boton(cq: any) {
   if (res === "reunion" || res === "pedido") {
     await aVentas(`🔁 <b>${esc(marca)}</b> (distribuidor) ${res === "reunion" ? "consiguió una <b>reunión</b>" : "dice que <b>va a comprar</b>"} con <b>${esc(f.nombre)}</b>${lugar}.`);
   }
-  await espejo(`🗂 ${marca} marcó ${f.nombre}${f.lugar ? ` (${f.lugar})` : ""}: ${r.label}`);
+  await espejo(`🗂 ${marca} marcó ${f.nombre}${f.lugar ? ` (${f.lugar})` : ""}: ${r.label} — ${quien}`);
 
   (s as Sug).resultado = res; (s as Sug).resultado_por = `${quien}, ${hhmm()}`;
   await dist("editMessageText", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: await tarjeta(s as Sug), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: botones(s.id) });
@@ -205,6 +205,14 @@ Deno.serve(async (req) => {
     const tarea = url.searchParams.get("tarea");
     if (tarea === "dia") return json(await tareaDia(Number(url.searchParams.get("dist")) || null, url.searchParams.get("forzar") === "1"));
     if (tarea === "boton") { const b = await req.json(); await boton(b.callback_query); return json({ ok: true }); }
+    // Prueba: la tarjeta de una sugerencia, con botones, al chat de un usuario del bot (ej. el admin).
+    if (tarea === "prueba") {
+      const { data: u } = await sb.from("dist_tg_usuario").select("chat_id").eq("id", Number(url.searchParams.get("uid"))).maybeSingle();
+      const { data: s } = await sb.from("dist_sugerencia").select("*").eq("id", Number(url.searchParams.get("id"))).maybeSingle();
+      if (!u?.chat_id || !s) return json({ error: "falta uid o id" }, 400);
+      const r = await msg(Number(u.chat_id), "🧪 PRUEBA\n" + await tarjeta(s as Sug), { reply_markup: botones(s.id) });
+      return json({ ok: r?.ok, chat_id: u.chat_id, message_id: r?.result?.message_id });
+    }
     return json({ error: "tarea?" }, 400);
   } catch (e) {
     console.error(e);
