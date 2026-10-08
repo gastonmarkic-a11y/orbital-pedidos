@@ -446,10 +446,35 @@ async function esDeCheckin(u: any): Promise<boolean> {
   return !!data?.length;
 }
 
+// Grupo de un revendedor (2026-10-08) → ojo-revendedor: TODO lo de ese grupo, para que nunca llegue a
+// ojo-telegram (que conoce precios y datos internos). También el alta («Ojo · Revendedor Omar») y /revendedor.
+async function esDeRevendedor(u: any): Promise<boolean> {
+  if (String(u?.callback_query?.data ?? "").startsWith("rv:")) return true;
+  const cm = u?.my_chat_member;
+  if (cm) return ["group", "supergroup"].includes(cm.chat?.type) && ["member", "administrator"].includes(cm.new_chat_member?.status) && /revendedor/i.test(cm.chat?.title ?? "");
+  const m = u?.message ?? u?.edited_message;
+  const chat = Number(m?.chat?.id ?? u?.callback_query?.message?.chat?.id);
+  if (!chat) return false;
+  if (m && /^\/revendedor\b/i.test(m.text ?? "")) return true;
+  const { data } = await sb.from("revendedor_grupo").select("revendedor").eq("chat_id", chat).limit(1);
+  return !!data?.length;
+}
+
 async function puertaTelegram(req: Request): Promise<Response> {
   const raw = await req.text();
   let u: any = {};
   try { u = JSON.parse(raw); } catch { /* se reenvía igual */ }
+  try {
+    if (await esDeRevendedor(u)) {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/ojo-revendedor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+        body: JSON.stringify({ update: u }),
+      });
+      if (!r.ok) console.error("ojo-revendedor", r.status, await r.text());
+      return new Response("ok");
+    }
+  } catch (e) { console.error("ojo-revendedor", e); }
   try {
     if (await esDeGrupos(u)) {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/ojo-grupos`, {

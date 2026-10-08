@@ -16,6 +16,7 @@ import AgendaCampo from './modules/actividad/AgendaCampo'
 import ProspeccionCampo from './modules/actividad/ProspeccionCampo'
 import AgendaEquipo from './modules/actividad/AgendaEquipo'
 import Cartera from './modules/actividad/Cartera'
+import MisOpticas from './modules/actividad/MisOpticas'
 import CargarActividad from './modules/actividad/CargarActividad'
 import MisResultados from './modules/actividad/MisResultados'
 import CoachFlotante from './modules/actividad/CoachFlotante'
@@ -193,9 +194,10 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   // Prospección social (piloto): solo la Cola de prospección + Guiones + Marketing (material). Nada más.
   if (rol === 'social')
     return { principales: [{ to: '/prospeccion-social', label: 'Prospección' }, { to: '/guiones', label: 'Guiones' }, { to: '/marketing', label: 'Material' }, { to: '/condiciones', label: 'Condiciones' }], secundarios: [], menu: [] }
-  // Revendedor: Cartera (su zona), Pedidos (solo los suyos) y Marketing (material para vender). Nada más.
+  // Revendedor: Mis ópticas (las compartidas, solo lectura), Cartera (su zona), Pedidos (solo los suyos)
+  // y Marketing (material para vender). Nada más.
   if (rol === 'revendedor')
-    return { principales: [{ to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
+    return { principales: [{ to: '/mis-opticas', label: 'Mis ópticas' }, { to: '/mi-catalogo', label: 'Catálogo' }, { to: '/cartera', label: 'Cartera' }, { to: '/pedidos', label: 'Pedidos' }, { to: '/marketing', label: 'Marketing' }], secundarios: [{ to: '/guiones', label: 'Guiones' }], menu: [] }
   // Rol financiero: solo el tablero de tesorería. No ve pedidos ni carteras comerciales.
   // Postventa: lo de después de la venta, en 6 accesos (Postventa, Catálogo, Devoluciones,
   // Envíos, Pedidos, Conversaciones). No ve plata: ni cobranzas ni finanzas.
@@ -315,7 +317,7 @@ function homeFor(rol: Rol): string {
   if (rol === 'social') return '/prospeccion-social'
   if (rol === 'financiero') return '/finanzas'
   if (rol === 'postventa') return '/postventa'
-  if (rol === 'revendedor') return '/cartera'
+  if (rol === 'revendedor') return '/mis-opticas'
   if (rol === 'deposito' || rol === 'logistica' || rol === 'administracion' || rol === 'tienda') return '/pedidos'
   if (rol === 'usa') return '/usa-pedidos'
   return '/hoy'
@@ -712,6 +714,7 @@ function Layout() {
           {rol === 'administracion' && <Route path="/cartera" element={<Cartera />} />}
           {rol === 'revendedor' && (
             <>
+              <Route path="/mis-opticas" element={<MisOpticas />} />
               <Route path="/cartera" element={<Cartera />} />
               <Route path="/marketing" element={<Marketing />} />
             </>
