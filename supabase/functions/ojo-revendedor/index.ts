@@ -55,11 +55,21 @@ async function admins(): Promise<number[]> {
   const { data } = await sb.from("ojo_admins").select("telegram_user_id");
   return (data ?? []).map((a) => Number(a.telegram_user_id));
 }
+const NOMBRE: Record<string, string> = {
+  Adrian: "Adrián", Bruno: "Bruno", Lola: "Lola", Mauro: "Mauro", Gaston: "Gastón", Gustavo: "Gustavo", Ulises: "Ulises", Damian: "Damián",
+};
+async function idsEquipo(): Promise<Record<string, number[]>> {
+  try { return JSON.parse(await cfg("tarjetas_tg") ?? "{}"); } catch { return {}; }
+}
 async function esDelEquipo(id: number): Promise<boolean> {
   if ((await admins()).includes(id)) return true;
-  let mapa: Record<string, number[]> = {};
-  try { mapa = JSON.parse(await cfg("tarjetas_tg") ?? "{}"); } catch { /* vacío */ }
-  return Object.values(mapa).some((ids) => ids.map(Number).includes(id));
+  return Object.values(await idsEquipo()).some((ids) => ids.map(Number).includes(id));
+}
+// Nombre con mención de Telegram, para que al vendedor le llegue la notificación.
+async function mencion(cod: string): Promise<string> {
+  const id = (await idsEquipo())[cod]?.[0];
+  const n = NOMBRE[cod] ?? cod;
+  return id ? `<a href="tg://user?id=${id}">${esc(n)}</a>` : `<b>${esc(n)}</b>`;
 }
 async function chatTema(tema: string): Promise<number | null> {
   const { data } = await sb.rpc("ojo_chat_tema", { p_tema: tema });
@@ -210,12 +220,25 @@ async function boton(cq: any) {
   await sb.from("revendedor_sugerencia").update({ resultado: res, resultado_at: new Date().toISOString(), resultado_por: quien }).eq("id", s.id);
 
   const { data: c } = await sb.from("clientes").select("razon, nomcomerc, localidad, telefono, whatsapp, vendedor_asignado").eq("cod", s.cod_cliente).maybeSingle();
-  // Queda como actividad del revendedor: así el vendedor ve que la óptica se está trabajando.
-  await sb.from("actividad_diaria").insert({
-    fecha: hoyAR(), vendedor: s.revendedor, cod_cliente: s.cod_cliente,
-    nombre_comercio: c?.nomcomerc || c?.razon, razon: c?.razon, localidad: c?.localidad, telefono: c?.whatsapp || c?.telefono,
-    origen: "revendedor", resultado_contacto: r.act, actividad_desarrollo: `${r.label} — ${quien} (revendedor, Telegram)`,
-  });
+  const optica = c?.nomcomerc || c?.razon || s.cod_cliente;
+  // Queda como actividad del revendedor: así el vendedor ve que la óptica se está trabajando y
+  // el primero que la activa se la queda (v_cliente_toma). «No atiende» no la toma: no hubo contacto.
+  if (res !== "no_atiende") {
+    const { data: antes } = await sb.from("v_cliente_toma").select("dueno").eq("cod_cliente", s.cod_cliente).maybeSingle();
+    await sb.from("actividad_diaria").insert({
+      fecha: hoyAR(), vendedor: s.revendedor, cod_cliente: s.cod_cliente,
+      nombre_comercio: optica, razon: c?.razon, localidad: c?.localidad, telefono: c?.whatsapp || c?.telefono,
+      origen: "revendedor", resultado_contacto: r.act, actividad_desarrollo: `${r.label} — ${quien} (revendedor, Telegram)`,
+    });
+    // La tomó recién: que el vendedor asignado lo sepa para no pisarla.
+    const vend = c?.vendedor_asignado;
+    if (!antes && vend && vend !== s.revendedor && !["Corporativo", "Marketing"].includes(vend)) {
+      const ventas = await chatTema("ventas");
+      if (ventas) await enviar(ventas,
+        `🔁 <b>${esc(await nombreRev(s.revendedor))}</b> (revendedor) tomó <b>${esc(optica)}</b>${c?.localidad ? ` (${esc(c.localidad)})` : ""}, asignada a ${await mencion(vend)}.\n` +
+        `El primero que la activa se la queda: por ahora no la contactes. Se libera si pasan 30 días sin contacto.`);
+    }
+  }
 
   s.resultado = res; s.resultado_por = `${quien}, ${hhmm()}`;
   await tg("editMessageText", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: await tarjeta(s), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: botones(s.id) });
@@ -225,12 +248,44 @@ async function boton(cq: any) {
   if (res === "reunion" || res === "pedido") {
     const ventas = await chatTema("ventas");
     const nombre = await nombreRev(s.revendedor);
-    const optica = c?.nomcomerc || c?.razon || s.cod_cliente;
     if (ventas) await enviar(ventas,
       `🔁 <b>${esc(nombre)}</b> (revendedor) ${res === "reunion" ? "consiguió una <b>reunión</b>" : "dice que <b>va a comprar</b>"} con <b>${esc(optica)}</b>${c?.localidad ? ` (${esc(c.localidad)})` : ""}.\n` +
       `La óptica es de ${esc(c?.vendedor_asignado ?? "nadie")} y está compartida con el revendedor: quien vende se la queda. Si la estás trabajando, avisá acá.`);
     if (res === "pedido") await enviar(g.chat_id, `🛒 ¡Bien! Carguen el pedido de ${esc(optica)} en la Suite y Adrián lo aprueba.`, { reply_to_message_id: cq.message.message_id });
   }
+}
+
+// ---------- pisada: alguien tocó una compartida que ya es de otro (trigger en actividad_diaria) ----------
+async function pisada(b: { cod: string; quien: string; dueno: string }) {
+  const { data: c } = await sb.from("clientes").select("razon, nomcomerc, localidad").eq("cod", b.cod).maybeSingle();
+  const { data: t } = await sb.from("v_cliente_toma").select("desde").eq("cod_cliente", b.cod).maybeSingle();
+  const optica = `<b>${esc(c?.nomcomerc || c?.razon || b.cod)}</b>${c?.localidad ? ` (${esc(c.localidad)})` : ""}`;
+  const desde = t?.desde ? ` desde el ${ddmm(t.desde)}` : "";
+  const { data: gq } = await sb.from("revendedor_grupo").select("*").eq("revendedor", b.quien).maybeSingle();
+  const { data: gd } = await sb.from("revendedor_grupo").select("*").eq("revendedor", b.dueno).maybeSingle();
+  if (gq) {
+    // El revendedor tocó una que ya trabaja un vendedor.
+    await enviar(Number(gq.chat_id), `⚠️ ${optica} la está trabajando ${esc(NOMBRE[b.dueno] ?? b.dueno)}, de Orbital${desde}. El primero que la activa se la queda: no sigan con esta por ahora.`);
+    return { avisado: "revendedor" };
+  }
+  if (gd) {
+    // Un vendedor tocó una que ya tomó el revendedor.
+    const ventas = await chatTema("ventas");
+    if (ventas) await enviar(ventas, `⚠️ ${await mencion(b.quien)}: ${optica} la está trabajando <b>${esc(await nombreRev(b.dueno))}</b> (revendedor)${desde}. El primero que la activa se la queda: dejala por ahora.`);
+    return { avisado: "vendedor" };
+  }
+  return { avisado: null };
+}
+
+// Mensaje libre al grupo de un revendedor (promos, campañas, avisos). Texto en HTML de Telegram.
+async function mensaje(rev: string, b: { texto?: string; foto?: string; documento?: string }) {
+  const { data: g } = await sb.from("revendedor_grupo").select("chat_id").eq("revendedor", rev).maybeSingle();
+  if (!g) return { error: "ese revendedor no tiene grupo" };
+  const chat = Number(g.chat_id);
+  if (b.foto) return await tg("sendPhoto", { chat_id: chat, photo: b.foto, caption: (b.texto ?? "").slice(0, 1024), parse_mode: "HTML" });
+  if (b.documento) return await tg("sendDocument", { chat_id: chat, document: b.documento, caption: (b.texto ?? "").slice(0, 1024), parse_mode: "HTML" });
+  if (!b.texto) return { error: "falta texto" };
+  return await enviar(chat, b.texto);
 }
 
 // ---------- consultas del grupo → Ventas ----------
@@ -270,6 +325,8 @@ Deno.serve(async (req) => {
   try {
     const tarea = url.searchParams.get("tarea");
     if (tarea === "dia") return json(await tareaDia(url.searchParams.get("rev"), url.searchParams.get("forzar") === "1"));
+    if (tarea === "pisada") return json(await pisada(await req.json()));
+    if (tarea === "mensaje") return json(await mensaje(url.searchParams.get("rev") ?? "", await req.json()));
     // Un link de invitación por persona (de un solo uso). Ojo tiene que ser admin del grupo.
     if (tarea === "link") {
       const { data: g } = await sb.from("revendedor_grupo").select("chat_id").eq("revendedor", url.searchParams.get("rev") ?? "").maybeSingle();

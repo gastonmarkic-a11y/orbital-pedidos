@@ -98,6 +98,20 @@ export default function Cartera() {
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
   const [ultimaActPor, setUltimaActPor] = useState<Record<string, string>>({})
   const [propuestaMes, setPropuestaMes] = useState<Record<string, string>>({})
+  // Ópticas compartidas con un revendedor que él activó primero: el primero que la activa se la queda.
+  const [tomadas, setTomadas] = useState<Record<string, { nombre: string; desde: string }>>({})
+  useEffect(() => {
+    if (esRevendedor) return
+    supabase.rpc('clientes_tomados_revendedor').then(({ data }) => {
+      const m: Record<string, { nombre: string; desde: string }> = {}
+      for (const t of (data as { cod: string; nombre: string; desde: string }[]) ?? []) m[t.cod] = { nombre: t.nombre, desde: t.desde }
+      setTomadas(m)
+    })
+  }, [esRevendedor])
+  const tomadaTxt = (cod: string) => {
+    const t = tomadas[cod]
+    return t ? `${t.nombre} (revendedor) la tomó el ${t.desde.slice(8, 10)}/${t.desde.slice(5, 7)}. El primero que la activa se la queda.` : ''
+  }
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [loading, setLoading] = useState(true)
   const [segmento, setSegmento] = useState<Segmento>('canje')
@@ -449,6 +463,10 @@ export default function Cartera() {
   // Si otro operador lo viene trabajando y la reserva sigue vigente, avisa antes de pisar.
   // Enviar es la acción más importante de la cartera: se abre como popup, sin salir de acá.
   function enviar(c: Cliente) {
+    if (tomadas[c.cod] && !esAdmin) {
+      toast(`🔁 ${tomadaTxt(c.cod)} Dejala por ahora.`, 'error')
+      return
+    }
     if (reservaDe(c.cod).ajena) {
       setAvisoReserva(c)
       return
@@ -782,6 +800,11 @@ export default function Cartera() {
                     {esFidelizado(c) && '⭐ '}
                     {c.nomcomerc || c.razon}
                   </p>
+                  {tomadas[c.cod] && (
+                    <p className="text-[11px] font-semibold text-amber-700" title={tomadaTxt(c.cod)}>
+                      🔁 La trabaja {tomadas[c.cod].nombre} (revendedor) desde el {tomadas[c.cod].desde.slice(8, 10)}/{tomadas[c.cod].desde.slice(5, 7)}
+                    </p>
+                  )}
                   <p className="text-[11px] text-faint">
                     {c.cod} {c.origen && `· ${ORIGEN_LABELS[c.origen] ?? c.origen}`}
                   </p>
@@ -930,6 +953,11 @@ export default function Cartera() {
                     <div className="flex items-center gap-1.5">
                       <p className="font-medium text-ink truncate">{c.nomcomerc || c.razon}</p>
                       {esFidelizado(c) && <span className="shrink-0 text-[10px]">⭐</span>}
+                      {tomadas[c.cod] && (
+                        <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-800" title={tomadaTxt(c.cod)}>
+                          🔁 {tomadas[c.cod].nombre}
+                        </span>
+                      )}
                       {aportadoPor(c) && (
                         <span className="shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-goldSoft text-brandDark"
                           title={`Contacto que trajo ${aportadoPor(c)} de su propia agenda — ya lo conoce`}>lo conocés</span>
