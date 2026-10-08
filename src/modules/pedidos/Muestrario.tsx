@@ -243,7 +243,9 @@ export default function Muestrario() {
     const ahora = new Date()
     const p = promos.find((x) => x.modelo === m && (!x.codigo || x.codigo === a.codigo) && ahora >= new Date(x.desde) && ahora < new Date(x.hasta))
     const base = esp ?? (a.precio ? getPrecioLista(a.precio, cliente?.nro_lista ?? 5) : 0)
-    if (p && p.precio < base) return { precio_promo: p.precio, promo: p.promo }
+    // La promo es precio óptico: a un distribuidor (lista 1) va ÷ 1,41, igual que la lista
+    const precio = p ? getPrecioLista(p.precio, cliente?.nro_lista ?? 5) : 0
+    if (p && precio < base) return { precio_promo: precio, promo: p.promo }
     return esp != null ? { precio_esp: esp } : {}
   }
 

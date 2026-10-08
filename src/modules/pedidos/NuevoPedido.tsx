@@ -516,7 +516,8 @@ export default function NuevoPedido() {
   const espDe = (modelo: string | null | undefined): number | undefined =>
     modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined
   // Promo vigente para el modelo, solo si baja el precio que pagaría el cliente (lista o especial).
-  // Distribuidores (lista 1) ya pagan menos → no les aplica. La venta de consigna no entra en promos.
+  // La promo es precio óptico: a un distribuidor (lista 1) se le factura ÷ 1,41, igual que la lista.
+  // La venta de consigna no entra en promos.
   const promoDe = (codigo: string, modelo: string | null | undefined, precioBase: number | null | undefined): { precio: number; promo: string } | undefined => {
     if (!modelo || esConsigna || !promos.length) return undefined
     const ref = new Date(precargaWebId && webCreado ? webCreado : Date.now())
@@ -524,7 +525,8 @@ export default function NuevoPedido() {
     const p = promos.find((x) => x.modelo === m && (!x.codigo || x.codigo === codigo) && ref >= new Date(x.desde) && ref < new Date(x.hasta))
     if (!p) return undefined
     const base = espDe(modelo) ?? (precioBase ? getPrecioLista(precioBase, cliente?.nro_lista ?? 5) : 0)
-    return p.precio < base ? { precio: p.precio, promo: p.promo } : undefined
+    const precio = getPrecioLista(p.precio, cliente?.nro_lista ?? 5)
+    return precio < base ? { precio, promo: p.promo } : undefined
   }
   // Precio especial o promo de la línea (la promo, si baja el precio, reemplaza al especial).
   const extraPrecio = (pr: { precio: number; promo: string } | undefined, esp: number | undefined, esRegalo: boolean) =>
