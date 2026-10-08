@@ -44,3 +44,16 @@ where c.provincia ilike '%santa fe%'
       or exists (select 1 from public.visitas_checkin v where v.cod_cliente = c.cod and v.creado_en >= '2026-01-01' and v.estado = 'confirmado')
     ), false)
 on conflict do nothing;
+
+-- Cuyo para Omar (2026-10-08, misma lógica): todas menos las que un vendedor trabajó o compraron en 2026.
+insert into public.cliente_revendedor (cod_cliente, revendedor, motivo)
+select c.cod, 'RevCuyoSF', 'Cuyo compartido con Omar'
+from public.clientes c
+where region_de(c.provincia, c.localidad) = 'CUYO'
+  and not (
+    coalesce(c.ultima_compra_fecha::date >= '2026-01-01', false)
+    or exists (select 1 from public.actividad_diaria a where a.cod_cliente = c.cod and a.created_at >= '2026-01-01' and coalesce(a.vendedor, '') not in ('Marketing', ''))
+    or exists (select 1 from public.pedidos p where p.cod_cliente = c.cod and p.created_at >= '2026-01-01' and coalesce(p.estado, '') <> 'anulado')
+    or exists (select 1 from public.visitas_checkin v where v.cod_cliente = c.cod and v.creado_en >= '2026-01-01' and v.estado = 'confirmado')
+  )
+on conflict do nothing;
