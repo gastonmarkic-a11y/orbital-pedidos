@@ -42,8 +42,8 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .muestra{position:sticky;top:0;z-index:30;background:#a8441e;color:#fff;text-align:center;font-weight:700;font-size:14px;letter-spacing:.02em;padding:8px 16px;line-height:1.3}
 .muestra b{display:inline-block;background:#fff;color:#a8441e;border-radius:6px;padding:1px 8px;margin-right:8px;letter-spacing:.12em;font-size:13px}
 .quien{border-top:1px solid var(--line);background:var(--paper)}
-.quien .wrap{display:flex;gap:8px;overflow-x:auto;padding:10px 16px;scrollbar-width:thin}
-.qb{display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid var(--line2);background:var(--card);border-radius:12px;padding:8px 14px 8px 10px;white-space:nowrap;flex:none}
+.quien .wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:10px 16px;height:auto}
+.qb{display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid var(--line2);background:var(--card);border-radius:12px;padding:8px 14px 8px 10px;min-width:0}
 .qb .qi{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--rust-soft);color:var(--rust);flex:none}
 .qb .qi svg{width:17px;height:17px}
 .qb small{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);line-height:1.2}
@@ -91,7 +91,21 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
 .kpi .l{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);font-weight:600}
 .kpi .v{font-size:24px;font-family:var(--sans);font-weight:500}
 .kpi .v.acc{color:var(--rust)} .kpi .v.ok{color:var(--ok)}
-.tabs{display:flex;gap:6px;overflow-x:auto;padding:14px 0 10px;scrollbar-width:thin}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;padding:14px 0 10px}
+.tab.lab{background:var(--rust-soft);color:var(--rust);border-color:var(--rust);font-weight:700}
+.tab.lab[aria-current]{background:var(--rust);color:#fff;border-color:var(--rust)}
+.labx{background:var(--rust);color:#fff;border-radius:var(--r);padding:22px;display:grid;gap:14px}
+.labx h3{font-size:28px;color:#fff;margin:0}
+.labx p{margin:0;opacity:.92}
+.labx .go{display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:var(--rust);border-radius:12px;padding:15px 18px;font-weight:700;font-size:17px;text-decoration:none}
+.labx .go svg{width:22px;height:22px;flex:none}
+.labx .qrw{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.labx .qrw .small{word-break:break-all;opacity:.9}
+.labx .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.6)}
+.atajos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.atajos a{display:grid;gap:2px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:12px;text-decoration:none;color:var(--ink)}
+.atajos a b{font-size:14px}
+.atajos a span{font-size:12.5px;color:var(--ink3)}
 .tab{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:7px 12px;font-size:14px;white-space:nowrap;text-decoration:none}
 .tab[aria-current]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tab .n{opacity:.7;margin-left:4px}
@@ -427,7 +441,7 @@ function vOptica(){
   const k=kp(o),tab={marcos:"stock",cristales:"stock",virtuales:"stock",reposicion:"stock"}[R.tab]||R.tab||"vender";
   const nIris=o.consultas.filter(x=>x.est==="nueva").length;
   const pend=o.ventas.filter(v=>!v.rep).length;
-  const TABS=[["vender","Vender"],["stock","Stock y reposición",pend?pend+" a reponer":""],["postventa","Postventa"],["marketing","Marketing"],["influencers","Influencers"],["inspiracion","Inspiración"],["test","Test visual",o.tests.length],["iris","IRIS",nIris||""]];
+  const TABS=[["vender","Vender"],["stock","Stock y reposición",pend?pend+" a reponer":""],["postventa","Postventa"],["marketing","Marketing"],["influencers","Influencers"],["inspiracion","Inspiración"],["test","Vision Lab",o.tests.length],["iris","IRIS",nIris||""]];
   if(o.estado!=="activa")return `<div class="wrap" style="padding:40px 16px"><div class="card pad stack"><div class="eb">${esc(o.nombre)}</div><h2>El panel se activa cuando llega el exhibidor.</h2><p class="muted">Etapa actual: <b>${ESTADOS.find(e=>e[0]===o.estado)[1]}</b>.</p><div class="row"><a class="btn pri" href="#/p/${o.id}">Ver su presentación</a><button class="btn" data-a="activar" data-id="${o.id}">Simular instalación del exhibidor</button></div></div></div>`;
   const body={vender:tVender,stock:tStock,postventa:tPost,marketing:tMkt,influencers:tInfl,inspiracion:tInsp,test:tTest,iris:tIris}[tab]||tVender;
   return `<div class="wrap" style="padding-top:18px">
@@ -435,7 +449,7 @@ function vOptica(){
     <div class="who"><b>beRabbit</b><span class="eb">Panel óptica</span><h2>${esc(o.nombre)}</h2><div class="small muted">${esc(o.barrio)} · exhibidor beRabbit · vendedor ${esc(o.vend)}</div></div>
     <div class="kpis"><div class="kpi"><div class="l">Armazones</div><div class="v num">${k.arm} u</div></div><div class="kpi"><div class="l">Cristales</div><div class="v num">${k.cri} pares</div></div><div class="kpi"><div class="l">Pares a favor</div><div class="v acc num">${k.vir}</div></div><div class="kpi"><div class="l">En camino</div><div class="v ok num">${k.cam} u</div></div></div>
    </div>
-   <nav class="tabs" aria-label="Secciones">${TABS.map(([h,n,c])=>`<a class="tab" href="#/optica/${o.id}/${h}" ${tab===h?'aria-current="page"':""}>${n}${c!==undefined&&c!==""?`<span class="n">${c}</span>`:""}</a>`).join("")}</nav>
+   <nav class="tabs" aria-label="Secciones">${TABS.map(([h,n,c])=>`<a class="tab${h==="test"?" lab":""}" href="#/optica/${o.id}/${h}" ${tab===h?'aria-current="page"':""}>${n}${c!==undefined&&c!==""?`<span class="n">${c}</span>`:""}</a>`).join("")}</nav>
    <div style="padding-bottom:40px">${body(o)}</div>
   </div>`;
 }
@@ -682,9 +696,12 @@ function tInsp(){
 }
 function tTest(o){
   return `<div class="grid g2" style="align-items:start">
-   <div class="card pad stack"><div class="eb">Vision Lab · test visual</div><h3 style="font-size:26px">Que el cliente llegue sabiendo su aumento.</h3>
-    <p class="small muted" style="margin:0">El test se hace desde el celular en 3 minutos: distancia de lectura, agudeza y fatiga visual. Sugiere el aumento del auxilio y, si detecta algo que no se resuelve con un pregraduado, lo deriva al oftalmólogo.</p>
-    <div class="row" style="align-items:flex-start"><div class="qr">${qrSvg(testLink(o))}</div><div class="stack small"><span class="muted" style="word-break:break-all">${esc(testLink(o))}</span><button class="btn sm" data-a="copiarTxt" data-t="${esc(testLink(o))}">Copiar link</button><span class="tiny muted">Imprimilo para el exhibidor o mandalo por WhatsApp.</span></div></div></div>
+   <div class="stack">
+    <div class="labx"><div class="eb" style="color:#fff;opacity:.85">beRabbit Vision Lab</div><h3>El Vision Lab completo, en un link.</h3>
+     <p class="small">Rostro, calce con los 7 anteojos beRabbit y chequeo visual, todo desde el celular del cliente. El resultado llega a tu óptica.</p>
+     <a class="go" href="${esc(testLink(o))}" target="_blank" rel="noopener">${icon.eye} Abrir Vision Lab</a>
+     <div class="qrw"><div class="qr">${qrSvg(testLink(o))}</div><div class="stack small"><span class="small">${esc(testLink(o))}</span><button class="btn sm" data-a="copiarTxt" data-t="${esc(testLink(o))}">Copiar link</button><span class="tiny" style="opacity:.85">Imprimilo para el exhibidor o mandalo por WhatsApp.</span></div></div></div>
+    <div class="atajos">${[["calce","Medición de calce","Los 7 modelos sobre la cara"],["pretest?o="+o.id,"Chequeo visual","Sugiere el aumento"],["rostro","Estudio de rostro","Forma y talle"],["buscar?oftalmo","Oftalmólogos","Por zona y obra social"]].map(([p,t,s])=>`<a href="/berabbit/lab/${p}" target="_blank" rel="noopener"><b>${t}</b><span>${s}</span></a>`).join("")}</div></div>
    <div class="card"><div class="pad" style="padding-bottom:4px"><div class="lbl">Resultados que llegaron a tu óptica</div></div>
     ${o.tests.map((t,i)=>`<div class="li"><div class="grow"><div class="t">${esc(t.cli)} · ${t.edad} años · sugiere ${AUM[t.sug]}</div><div class="s">${t.f} · ${esc(t.nota)}</div></div>${t.acc==="oftalmo"?`<a class="btn sm" href="/berabbit/lab/buscar?oftalmo" target="_blank" rel="noopener">Derivar a oftalmólogo</a>`:`<button class="btn sm acc" data-a="usarTest" data-i="${i}">Preparar ${AUM[t.sug]}</button>`}</div>`).join("")||`<div class="empty">Todavía no hay tests.</div>`}</div></div>`;
 }
