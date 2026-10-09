@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Crosshair, Glasses, Loader2, MapPin, Ruler, ScanFace, X } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
+import { recortarAnteojo } from '../../landings/Probador'
 import type { Marco } from '../marcos'
 import { Perfil, PerfilCalce, dpTarjetaDe, guardarCalce, leerPerfil } from '../perfil'
 import { BISAGRA_MM, COLORES, Color, PUENTE_MM, dibujar } from './armazon'
@@ -26,7 +27,35 @@ export function pupilaEnLente(marco: number, dp: number) {
   const a = (marco - PUENTE_MM - 2 * BISAGRA_MM) / 2
   return Math.round(((dp / 2 - PUENTE_MM / 2) / a) * 100)
 }
-const TXT_VER = { justo: 'Te queda justo', grande: 'Te queda grande', chico: 'Te queda chico' }
+interface ColorReal { codigo: string; color: string; fotos: string[] }
+/** Simetría izquierda/derecha de la silueta recortada (0–1): de frente ≈ 0,93–0,99; de tres cuartos ≈ 0,2–0,4. */
+function simetria(c: HTMLCanvasElement) {
+  const W = 64, H = Math.max(8, Math.round((64 * c.height) / c.width))
+  const t = document.createElement('canvas'); t.width = W; t.height = H
+  const x = t.getContext('2d', { willReadFrequently: true })!
+  x.drawImage(c, 0, 0, W, H)
+  const p = x.getImageData(0, 0, W, H).data
+  let i = 0, u = 0
+  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W / 2; X++) {
+    const a = p[(Y * W + X) * 4 + 3] > 40, b = p[(Y * W + W - 1 - X) * 4 + 3] > 40
+    if (a && b) i++
+    if (a || b) u++
+  }
+  return u ? i / u : 0
+}
+/** De las fotos de un color, la de frente ya recortada (apaisada y simétrica), o null si no hay. */
+async function fotoDeFrente(fotos: string[]) {
+  let mejor: HTMLCanvasElement | null = null, s0 = 0
+  for (const u of fotos.slice(0, 6)) {
+    const c = await recortarAnteojo(u).catch(() => null)
+    if (!c || c.width < c.height * 1.6) continue
+    const s = simetria(c)
+    if (s > s0) { mejor = c; s0 = s }
+    if (s > 0.95) break
+  }
+  return s0 >= 0.85 ? mejor : null
+}
+const TXT_VER ={ justo: 'Te queda justo', grande: 'Te queda grande', chico: 'Te queda chico' }
 const cm = (mm: number) => (mm / 10).toFixed(1).replace('.', ',')
 
 export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; inicial?: string | null }) {
@@ -40,6 +69,13 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
   const [lec, setLec] = useState<Lectura | null>(null)
   const [elegido, setElegido] = useState<string | null>(inicial ?? null)
   const [guardado, setGuardado] = useState<string | null>(null)
+  // Anteojo real (2026-10-08): la foto de frente del modelo recortada del fondo, a escala; si no hay foto o no es
+  // de frente, el formato dibujado. 'formato' fuerza el dibujo (para comparar o elegir color).
+  const [vista, setVista] = useState<'real' | 'formato'>('real')
+  const recortes = useRef(new Map<string, HTMLCanvasElement | null>())
+  const [recorte, setRecorte] = useState<HTMLCanvasElement | null | 'cargando'>(null)
+  const [colsReal, setColsReal] = useState<ColorReal[]>([])
+  const [colorReal, setColorReal] = useState(-1)
   const tarjeta = dpTarjetaDe(perfil)
   const dpTarjeta = tarjeta?.lejos ?? null
   const dpCerca = tarjeta?.cerca ?? null
@@ -71,8 +107,41 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marcos, perfil.rostro, Math.round(caraRef / 4)])
   const sel = opciones.find((o) => o.modelo === elegido) ?? opciones[0]
-  const actual = useRef({ sel, color, dpTarjeta, dpCerca })
-  actual.current = { sel, color, dpTarjeta, dpCerca }
+  // Colores reales del modelo con sus fotos (la misma RPC pública de la landing del modelo)
+  useEffect(() => {
+    setColsReal([]); setColorReal(-1)
+    if (sel.modelo === 'Tu talle ideal') return
+    let vivo = true
+    supabase.rpc('modelo_landing', { p_modelo: sel.modelo, p_sku: null }).then(({ data }) => {
+      if (!vivo) return
+      const cs = ((data as { colores?: ColorReal[] } | null)?.colores ?? []).filter((c) => c.fotos?.length)
+      setColsReal(cs)
+    })
+    return () => { vivo = false }
+  }, [sel.modelo])
+  // Foto de frente del color elegido; sin color elegido, el primer color que tenga foto de frente
+  useEffect(() => {
+    if (!colsReal.length) { setRecorte(null); return }
+    let vivo = true
+    ;(async () => {
+      const orden = colorReal >= 0 ? [colorReal] : colsReal.map((_, i) => i)
+      for (const i of orden) {
+        const k = `${sel.modelo}|${colsReal[i].color}`
+        if (!recortes.current.has(k)) {
+          if (vivo) setRecorte('cargando')
+          recortes.current.set(k, await fotoDeFrente(colsReal[i].fotos))
+        }
+        const c = recortes.current.get(k)!
+        if (!vivo) return
+        if (c || colorReal >= 0) { setRecorte(c); if (colorReal < 0) setColorReal(i); return }
+      }
+      if (vivo) setRecorte(null)
+    })()
+    return () => { vivo = false }
+  }, [colsReal, colorReal, sel.modelo])
+  const real = vista === 'real' && recorte && recorte !== 'cargando' ? recorte : null
+  const actual = useRef({ sel, color, dpTarjeta, dpCerca, real })
+  actual.current = { sel, color, dpTarjeta, dpCerca, real }
 
   const ultimo = useRef(0)
   const estado = useCaraEnVivo(video, foto, (r, fuente) => {
@@ -116,7 +185,13 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     // Armazón a escala real
     ctx.save()
     ctx.translate(S.x, S.y); ctx.rotate(S.giro); ctx.scale(Math.max(0.6, Math.cos(S.yaw)), 1); ctx.translate(0, 2.5 * S.px)
-    dibujar(ctx, o.estilo, o.ancho, c, S.px)
+    const im = actual.current.real
+    if (im) {
+      // Ancho de la foto = frente del modelo; centrada en los lentes. El lienzo está espejado por CSS: se des-espeja
+      // para que el logo y la forma queden como en la realidad.
+      const w = o.ancho * S.px, h = (w * im.height) / im.width
+      ctx.save(); ctx.scale(-1, 1); ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore()
+    } else dibujar(ctx, o.estilo, o.ancho, c, S.px)
     // Zona recomendada (como la grilla de JINS): 40–60 % del lente desde la nariz, a la altura de la pupila
     {
       const a = (o.ancho - PUENTE_MM - 2 * BISAGRA_MM) / 2, h = a * 0.36
@@ -251,13 +326,29 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
             )
           })}
         </div>
+        {colsReal.length > 0 && (
+          <div className="ca-real">
+            <div className="ca-vista" role="radiogroup" aria-label="Vista del armazón">
+              <button role="radio" aria-checked={vista === 'real'} className={vista === 'real' ? 'sel' : ''} onClick={() => setVista('real')}>{recorte === 'cargando' ? <Loader2 size={13} className="spin" /> : null}Anteojo real</button>
+              <button role="radio" aria-checked={vista === 'formato'} className={vista === 'formato' ? 'sel' : ''} onClick={() => setVista('formato')}>Formato</button>
+            </div>
+            {vista === 'real' && colsReal.length > 1 && (
+              <div className="ca-colreal" role="radiogroup" aria-label="Color del modelo">
+                {colsReal.map((c, i) => (
+                  <button key={c.codigo} role="radio" aria-checked={colorReal === i} className={colorReal === i ? 'sel' : ''} onClick={() => setColorReal(i)}>{c.color}</button>
+                ))}
+              </div>
+            )}
+            {vista === 'real' && recorte === null && <small>Este color no tiene foto de frente: se muestra el formato.</small>}
+          </div>
+        )}
         <div className="rs-try-fila">
-          <div className="rs-try-colores" role="radiogroup" aria-label="Color">
+          {!real && <div className="rs-try-colores" role="radiogroup" aria-label="Color">
             {COLORES.map((c) => (
               <button key={c.id} role="radio" aria-checked={color.id === c.id} aria-label={c.nombre} title={c.nombre}
                 className={(color.id === c.id ? 'sel ' : '') + c.id} onClick={() => setColor(c)} style={{ background: c.aro }} />
             ))}
-          </div>
+          </div>}
           <button className="ca-guardar" onClick={guardar} disabled={!lec?.ok || estado !== 'listo'}>
             {guardado === sel.modelo ? <><Check size={16} />Guardado</> : <><Ruler size={16} />Guardar medición</>}
           </button>

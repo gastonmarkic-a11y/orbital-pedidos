@@ -16,7 +16,7 @@ const ANCHO_X_CARA = 1.0
 interface ColorProbador { codigo: string; color: string; fotos: string[] }
 
 // Saca el fondo liso de la foto (relleno desde los bordes, para no agujerear armazones del mismo color) y recorta al anteojo
-async function recortarAnteojo(url: string): Promise<HTMLCanvasElement | null> {
+export async function recortarAnteojo(url: string): Promise<HTMLCanvasElement | null> {
   const img = new Image()
   img.crossOrigin = 'anonymous'
   img.src = url.includes('cdn.shopify.com') ? url + (url.includes('?') ? '&' : '?') + 'width=900' : url
@@ -66,6 +66,28 @@ async function recortarAnteojo(url: string): Promise<HTMLCanvasElement | null> {
     if (x0 > X) x0 = X; if (x1 < X) x1 = X; if (y0 > Y) y0 = Y; if (y1 < Y) y1 = Y
   }
   if (x1 <= x0 || y1 <= y0) return null
+  // Fondo encerrado en el puente (2026-10-09): entre el puente y las plaquetas queda un hueco del color del fondo
+  // que el relleno desde los bordes no alcanza (se veía un parche blanco sobre la nariz). Se rellena desde la franja
+  // central del anteojo (40–60 % del ancho), solo por píxeles del color del fondo y dentro del recorte.
+  {
+    const bx0 = x0 + Math.round((x1 - x0) * 0.4), bx1 = x0 + Math.round((x1 - x0) * 0.6)
+    const pila2: number[] = []
+    for (let Y = y0; Y <= y1; Y++) for (let X = bx0; X <= bx1; X++) {
+      const k = Y * W + X
+      if (!visto[k] && esFondo(k * 4)) pila2.push(k)
+    }
+    while (pila2.length) {
+      const k = pila2.pop()!
+      if (visto[k] || !esFondo(k * 4)) continue
+      visto[k] = 1
+      p[k * 4 + 3] = 0
+      const X = k % W, Y = (k / W) | 0
+      if (X > x0) pila2.push(k - 1)
+      if (X < x1) pila2.push(k + 1)
+      if (Y > y0) pila2.push(k - W)
+      if (Y < y1) pila2.push(k + W)
+    }
+  }
   x.putImageData(d, 0, 0)
   const out = document.createElement('canvas')
   out.width = x1 - x0 + 1; out.height = y1 - y0 + 1
