@@ -3,7 +3,7 @@
 // Se alimenta del perfil: ancho del marco que mejor le calzó (o su talle ideal) y DP (tarjeta o escaneo).
 import { useEffect, useMemo, useState } from 'react'
 import { Glasses, Layers } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { MARCA, cargarMarcos } from './marca'
 import type { Marco, Receta } from './marcos'
 import { ARO_ACETATO, ARO_FINO, DISENOS, Diseno, Grosor as G, grosores, lenteDe, masFinos, perfil, potencias, profundidadDe, sugerido } from './grosorCalc'
 
@@ -15,7 +15,7 @@ export default function Grosor({ rec, marco, dp, alto, modelo, ideal }: {
   ideal?: number | null
 }) {
   const [marcos, setMarcos] = useState<Marco[] | null>(null)
-  useEffect(() => { supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? [])) }, [])
+  useEffect(() => { cargarMarcos().then(setMarcos) }, [])
   const ancho = marco ?? 140
   const dpU = dp ?? 63
   const lente = useMemo(() => lenteDe(ancho, dpU, alto), [ancho, dpU, alto])
@@ -175,7 +175,7 @@ function VistaAro({ borde, modelo }: { borde: number; modelo: string | null }) {
       <small className="muted">
         {prof && modelo
           ? s0 <= 0.2 ? <>El aro del <b>{modelo}</b> tapa todo el borde de tu cristal ({mm(borde)} mm).</> : <>El aro del <b>{modelo}</b> tapa {mm(prof)} de los {mm(borde)} mm del borde; en un aro fino se verían {mm(sobra(ARO_FINO))} mm.</>
-          : <>Borde de {mm(borde)} mm. Un aro profundo esconde el borde: buscá acetatos de aro grueso o los modelos de Orbital con aro profundo.</>}
+          : <>Borde de {mm(borde)} mm. Un aro profundo esconde el borde: buscá acetatos de aro grueso{MARCA.id === 'orbital' ? ' o los modelos de Orbital con aro profundo' : ''}.</>}
       </small>
     </div>
   )

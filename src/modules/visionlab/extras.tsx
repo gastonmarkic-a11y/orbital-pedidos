@@ -5,6 +5,7 @@ import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { CalendarPlus, Check, History, QrCode } from 'lucide-react'
 import { acuityLabel, Duo, Eye as Ojo, Habitos, NearId, Resultados, Usa } from './logic'
+import { MARCA } from './marca'
 import type { CalceCompacto, RostroCompacto } from './perfil'
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
@@ -112,9 +113,9 @@ export function compactar(S: Resultados, code: string, edad: number | null, usa:
 }
 const b64url = (s: string) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 export const deB64url = (s: string) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))))
-export const urlProfesional = (c: Compacto) => `${window.location.origin}/lab/informe#${b64url(JSON.stringify(c))}`
+export const urlProfesional = (c: Compacto) => `${window.location.origin}${MARCA.base}/informe#${b64url(JSON.stringify(c))}`
 /** Perfil visual sin el chequeo completo (rostro y/o calces, más el código del chequeo si lo hizo): misma vista profesional. */
-export const urlPerfil = (p: { c?: string; ro?: RostroCompacto; ca?: CalceCompacto[] }) => `${window.location.origin}/lab/informe#${b64url(JSON.stringify({ f: new Date().toISOString().slice(0, 10), ...p }))}`
+export const urlPerfil = (p: { c?: string; ro?: RostroCompacto; ca?: CalceCompacto[] }) => `${window.location.origin}${MARCA.base}/informe#${b64url(JSON.stringify({ f: new Date().toISOString().slice(0, 10), ...p }))}`
 export const urlRostro = (ro: RostroCompacto) => urlPerfil({ ro })
 
 export function QRProfesional({ url, titulo = 'Para tu óptico u oftalmólogo', texto = 'Que escanee este código: ve el resultado completo, prueba por prueba, en su celular. No incluye tu nombre.' }: { url: string; titulo?: string; texto?: string }) {
@@ -145,10 +146,10 @@ export function Recordatorio({ meses }: { meses: number }) {
     const fin = new Date(d)
     fin.setDate(fin.getDate() + 1)
     const ics = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orbital Eyewear//Vision Lab//ES', 'BEGIN:VEVENT',
+      'BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${MARCA.empresa}//Vision Lab//ES`, 'BEGIN:VEVENT',
       `UID:${Date.now()}@lab.orbitaleyewear.com.ar`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
       `DTSTART;VALUE=DATE:${f(d)}`, `DTEND;VALUE=DATE:${f(fin)}`,
-      'SUMMARY:Control visual', `DESCRIPTION:Repetí el chequeo en ${window.location.origin}/lab/pretest y pedí turno con tu oftalmólogo.`,
+      'SUMMARY:Control visual', `DESCRIPTION:Repetí el chequeo en ${window.location.origin}${MARCA.base}/pretest y pedí turno con tu oftalmólogo.`,
       'BEGIN:VALARM', 'TRIGGER:PT9H', 'ACTION:DISPLAY', 'DESCRIPTION:Control visual', 'END:VALARM',
       'END:VEVENT', 'END:VCALENDAR',
     ].join('\r\n')

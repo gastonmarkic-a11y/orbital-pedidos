@@ -9,6 +9,7 @@ import { ArrowRight, Check, Eye, Glasses, MapPin, ScanFace, ShieldCheck, Stethos
 import { QRProfesional, urlPerfil } from './extras'
 import { Perfil, avance, compactarCalces, compactarRostro, dpDelPerfil, guardarReceta, leerPerfil, marcoDelPerfil } from './perfil'
 import Grosor from './Grosor'
+import { Logo, MARCA } from './marca'
 import { Receta, recetaVacia } from './marcos'
 import Calce from './rostro/Calce'
 import { FORMAS } from './rostro/medidas'
@@ -25,7 +26,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
     window.addEventListener('focus', f); window.addEventListener('storage', f)
     return () => { window.removeEventListener('focus', f); window.removeEventListener('storage', f) }
   }, [])
-  const base = enSuite ? '/vision-lab' : '/lab'
+  const base = enSuite ? '/vision-lab' : MARCA.base
   // ?r=<codigo> (link de un colaborador): pasa al estudio de rostro para que la venta quede a su nombre.
   const qs = new URLSearchParams(window.location.search)
   const ref = (qs.get('r') ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
@@ -63,7 +64,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
       <div className="wrap">
         <header className="top">
           <div className="brand">
-            <div className="logo"><b>ORBITAL</b><span>Vision Lab</span></div>
+            <Logo />
             <span className="side">Tu perfil visual · {n}/3</span>
           </div>
         </header>
@@ -77,7 +78,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
             <div className="lab-ring" aria-label={`${n} de 3 listas`}>
               <svg viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(23,23,28,.08)" strokeWidth="9" />
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#8f6a34" strokeWidth="9" strokeLinecap="round" strokeDasharray="264" strokeDashoffset={264 - (264 * n) / 3} transform="rotate(-90 50 50)" />
+                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--gold)" strokeWidth="9" strokeLinecap="round" strokeDasharray="264" strokeDashoffset={264 - (264 * n) / 3} transform="rotate(-90 50 50)" />
               </svg>
               <b className="num">{n}<small>/3</small></b>
             </div>
@@ -140,10 +141,10 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
             <div className="rs-h"><h3>Tu camino a los anteojos</h3><small className="muted">Te acompañamos hasta el final</small></div>
             <ol className="lab-camino">
               <li className={n ? 'ok' : ''}><span><ScanFace size={16} /></span><div><b>Tu perfil visual</b><small>Rostro, calce y chequeo: sabés qué te queda y llegás a la consulta con un informe.</small></div></li>
-              <li><span><Stethoscope size={16} /></span><div><b>Oftalmólogo de la red Orbital</b><small>Te recomendamos uno cerca tuyo que atienda tu obra social o prepaga. Él te hace la receta.</small></div>
-                <a className="btn sm" href={`/lab/buscar?oftalmo${mejor && mejor.modelo !== 'Tu talle ideal' ? '&m=' + encodeURIComponent(mejor.modelo) : ''}`}>Buscar oftalmólogo</a></li>
-              <li><span><Store size={16} /></span><div><b>Óptica Orbital con tu modelo</b><small>{mejor && mejor.modelo !== 'Tu talle ideal' ? <>Te mostramos las ópticas que tienen el <b>{mejor.modelo}</b>, para hacer tus anteojos con receta.</> : 'Te mostramos las ópticas que tienen el armazón que elegiste, para hacer tus anteojos con receta.'}</small></div>
-                <a className="btn sm ghost" href={`/lab/buscar${mejor && mejor.modelo !== 'Tu talle ideal' ? '?m=' + encodeURIComponent(mejor.modelo) : ''}`}><MapPin size={14} />Ver ópticas</a></li>
+              <li><span><Stethoscope size={16} /></span><div><b>Oftalmólogo de la {MARCA.red}</b><small>Te recomendamos uno cerca tuyo que atienda tu obra social o prepaga. Él te hace la receta.</small></div>
+                <a className="btn sm" href={`${MARCA.base}/buscar?oftalmo${mejor && mejor.modelo !== 'Tu talle ideal' ? '&m=' + encodeURIComponent(mejor.modelo) : ''}`}>Buscar oftalmólogo</a></li>
+              <li><span><Store size={16} /></span><div><b>Óptica {MARCA.nombre} con tu modelo</b><small>{mejor && mejor.modelo !== 'Tu talle ideal' ? <>Te mostramos las ópticas que tienen el <b>{mejor.modelo}</b>, para hacer tus anteojos con receta.</> : 'Te mostramos las ópticas que tienen el armazón que elegiste, para hacer tus anteojos con receta.'}</small></div>
+                <a className="btn sm ghost" href={`${MARCA.base}/buscar${mejor && mejor.modelo !== 'Tu talle ideal' ? '?m=' + encodeURIComponent(mejor.modelo) : ''}`}><MapPin size={14} />Ver ópticas</a></li>
             </ol>
           </div>
           <div className="disclaimer"><ShieldCheck size={16} /><span>Las imágenes de la cámara se procesan en tu celular y no se guardan ni se envían; tu perfil (solo medidas) queda en este celular. El chequeo visual es una guía previa a la consulta: no es un examen ni un diagnóstico, que solo puede hacer un médico oftalmólogo.</span></div>
@@ -159,7 +160,7 @@ export function CalcePagina({ enSuite = false }: { enSuite?: boolean }) {
   const m = new URLSearchParams(window.location.search).get('m')
   return (
     <div className="ovl rs">
-      <Calce inicial={m} onCerrar={() => { window.location.href = enSuite ? '/vision-lab/perfil' : '/lab' }} />
+      <Calce inicial={m} onCerrar={() => { window.location.href = enSuite ? '/vision-lab/perfil' : MARCA.base }} />
     </div>
   )
 }

@@ -95,6 +95,7 @@ import VisionLabPanel from './modules/visionlab/VisionLabPanel'
 import InformeProfesional from './modules/visionlab/InformeProfesional'
 import Rostro from './modules/visionlab/rostro/Rostro'
 import Lab, { CalcePagina } from './modules/visionlab/Lab'
+import { rutaLab } from './modules/visionlab/marca'
 import RedOftalmo from './modules/visionlab/RedOftalmo'
 
 interface NavItem {
@@ -905,24 +906,26 @@ export default function App() {
     }
   }
   // Orbital Vision Lab · Estudio de rostro: escaneo facial → forma del rostro, talle y armazones que le van (público).
-  if (typeof window !== 'undefined' && /^\/lab\/rostro\/?$/.test(window.location.pathname)) {
+  // beRabbit Vision Lab: /berabbit/lab/* es el mismo Lab con la piel de beRabbit (ver visionlab/marca.tsx).
+  const labPath = typeof window !== 'undefined' ? rutaLab(window.location.pathname) : ''
+  if (typeof window !== 'undefined' && /^\/lab\/rostro\/?$/.test(labPath)) {
     return <Rostro />
   }
   // Orbital Vision Lab · Tu perfil visual: /lab = las tres herramientas (rostro, calce, chequeo), también con
   // ?o=<cod> (QR de las ópticas: el chequeo queda a su nombre) y ?r=<codigo> (link de un colaborador: el rostro
   // atribuye la venta). /lab/calce = la medición de calce sola. Solo /lab?src= sigue abriendo el chequeo visual directo.
-  if (typeof window !== 'undefined' && /^\/lab\/?$/.test(window.location.pathname) && !new URLSearchParams(window.location.search).has('src')) {
+  if (typeof window !== 'undefined' && /^\/lab\/?$/.test(labPath) && !new URLSearchParams(window.location.search).has('src')) {
     return <Lab />
   }
-  if (typeof window !== 'undefined' && /^\/lab\/calce\/?$/.test(window.location.pathname)) {
+  if (typeof window !== 'undefined' && /^\/lab\/calce\/?$/.test(labPath)) {
     return <CalcePagina />
   }
   // Orbital Vision Lab: pretest visual público (tienda: ?src=tienda · QR en la óptica: ?o=<cod>) y /lab/buscar (solo ópticas / oftalmólogos).
-  if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(window.location.pathname)) {
+  if (typeof window !== 'undefined' && /^\/lab(\/pretest|\/buscar)?\/?$/.test(labPath)) {
     return <Pretest />
   }
   // /lab/informe#…: lo que ve el óptico u oftalmólogo al escanear el QR del informe (datos en el fragmento, sin nombre).
-  if (typeof window !== 'undefined' && /^\/lab\/informe\/?$/.test(window.location.pathname)) {
+  if (typeof window !== 'undefined' && /^\/lab\/informe\/?$/.test(labPath)) {
     return <InformeProfesional />
   }
   // Colaboradores (influencers): panel por clave (Orbital / administrador / promotor).

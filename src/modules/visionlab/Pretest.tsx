@@ -9,6 +9,7 @@ import {
   Info, LocateFixed, MapPin, Navigation, Phone, Printer, Ruler, ScanFace, Search, Share2, ShieldCheck, Stethoscope, Store, Sun, Upload,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { ES_BR, Logo, MARCA, cargarMarcos, linkModelo } from './marca'
 import { telefonosCliente } from '../../lib/telefono'
 import {
   CAL_DEFAULT, CARD_H_MM, CARD_MM, CLEVELS, DIST_CERCA_MM, DIST_LEJOS_MM, DIST_MM, Dir, Duo, Eye as Ojo, Habitos, Informe, LEVELS, NEAR, NearId, PLATES, Resultados, Usa,
@@ -33,7 +34,7 @@ import { FORMAS, afinidadRostro } from './rostro/medidas'
 import { OBRAS, ObraSocial, PRINCIPALES } from './obras'
 import './pretest.css'
 
-type Origen = 'web' | 'tienda' | 'qr' | 'suite'
+type Origen = 'web' | 'tienda' | 'qr' | 'suite' | 'berabbit'
 
 interface Optica {
   cod: string
@@ -107,14 +108,14 @@ const PASO_LEGAL = PASO_INFORME + 2
 // Pendiente: revisión de un abogado. Los pedidos de la Ley 25.326 se derivan a IRIS (WhatsApp de Orbital).
 const WA_IRIS = '5491178548316'
 const LEGALES: [string, ReactNode][] = [
-  ['Qué es esta herramienta', 'Orbital Vision Lab es una guía previa a la consulta oftalmológica: un conjunto de pruebas de autoevaluación visual que te ayuda a llegar a la consulta con información y a saber qué contarle al profesional. Es gratuita y la ofrece Orbital Eyewear con fines informativos.'],
+  ['Qué es esta herramienta', `${MARCA.lab} es una guía previa a la consulta oftalmológica: un conjunto de pruebas de autoevaluación visual que te ayuda a llegar a la consulta con información y a saber qué contarle al profesional. Es gratuita y la ofrece ${MARCA.empresa} con fines informativos.`],
   ['Qué no es', 'No es un examen oftalmológico ni un dispositivo médico: no está destinada al diagnóstico de enfermedades ni a su cura, mitigación, tratamiento o prevención, y no reemplaza la consulta con un médico oftalmólogo. No sirve para obtener, renovar ni modificar una receta de anteojos o lentes de contacto. Un resultado "normal" no descarta enfermedades oculares: muchas no dan síntomas y solo se detectan en un control profesional.'],
   ['Cómo leer los resultados', 'Los valores son estimaciones orientativas. Dependen de la calibración de tu pantalla, el brillo, la iluminación, la distancia a la que sostengas el celular y tus respuestas. Pueden no coincidir con los de un examen profesional.'],
   ['Cuándo ir a una guardia', 'Si tenés pérdida de visión repentina, dolor ocular, ojo rojo con dolor, destellos de luz, una "cortina" o manchas nuevas en la visión, visión doble repentina o un golpe en el ojo, no hagas esta guía: consultá de inmediato en una guardia oftalmológica.'],
   ['Menores de edad', 'Las personas menores de 18 años deben hacer la guía acompañadas por un adulto responsable. Los chicos necesitan controles oftalmológicos periódicos aunque no tengan síntomas.'],
-  ['Armazones y ópticas sugeridos', 'Las sugerencias de armazones son recomendaciones comerciales generales de Orbital Eyewear según criterios ópticos habituales, no una indicación médica. Los anteojos recetados se confeccionan únicamente con la receta de un profesional matriculado; el óptico confirma medidas y calce. Los oftalmólogos del buscador provienen de Google Maps: Orbital Eyewear no tiene relación con ellos ni responde por su atención.'],
-  ['Tus datos', <>La cámara (medición de distancia, distancia entre pupilas con la tarjeta y conteo de parpadeos) se usa solo dentro de tu celular: las imágenes y la foto no se guardan ni se envían. El código QR del informe lleva tus resultados sin tu nombre, y solo los ve quien lo escanee. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; Orbital no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, la forma y las medidas de tu cara si hiciste el estudio de rostro (nunca la imagen), y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de Orbital Eyewear, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
-  ['Responsabilidad', 'Al usar la guía aceptás que es informativa y que las decisiones sobre tu salud visual las tomás con un profesional. Orbital Eyewear no se responsabiliza por decisiones tomadas solo en base a estos resultados.'],
+  ['Armazones y ópticas sugeridos', `Las sugerencias de armazones son recomendaciones comerciales generales de ${MARCA.empresa} según criterios ópticos habituales, no una indicación médica. Los anteojos recetados se confeccionan únicamente con la receta de un profesional matriculado; el óptico confirma medidas y calce. Los oftalmólogos del buscador provienen de Google Maps: ${MARCA.empresa} no tiene relación con ellos ni responde por su atención.`],
+  ['Tus datos', <>La cámara (medición de distancia, distancia entre pupilas con la tarjeta y conteo de parpadeos) se usa solo dentro de tu celular: las imágenes y la foto no se guardan ni se envían. El código QR del informe lleva tus resultados sin tu nombre, y solo los ve quien lo escanee. Si respondés por voz, el reconocimiento lo hace el servicio de voz de tu celular o navegador; {MARCA.nombre} no graba ni guarda el audio. Guardamos las respuestas de la guía, el nombre y la edad si los ingresás, la forma y las medidas de tu cara si hiciste el estudio de rostro (nunca la imagen), y tu zona aproximada (barrio o ciudad; nunca tu ubicación exacta) para generar tu código, que la óptica que elijas pueda identificar tu informe y para mejorar el servicio. No vendemos tus datos. Podés pedir acceder, corregir o borrar tus datos en cualquier momento escribiéndole a IRIS, la asistente de {MARCA.empresa}, por <a href={`https://wa.me/${WA_IRIS}?text=${encodeURIComponent('Hola IRIS, quiero hacer una consulta sobre mis datos del Vision Lab')}`} target="_blank" rel="noopener">WhatsApp al +54 9 11 7854-8316</a> (Ley 25.326 de Protección de los Datos Personales). La Agencia de Acceso a la Información Pública es el órgano de control de esa ley.</>],
+  ['Responsabilidad', `Al usar la guía aceptás que es informativa y que las decisiones sobre tu salud visual las tomás con un profesional. ${MARCA.empresa} no se responsabiliza por decisiones tomadas solo en base a estos resultados.`],
 ]
 
 /** Traduce la posición del GPS a barrio, ciudad y provincia (OpenStreetMap; las coordenadas no salen de acá). */
@@ -548,7 +549,7 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false, modelo = null
   return (
     <div className="finder">
       <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'opticas'} className={tab === 'opticas' ? 'sel' : ''} onClick={() => setTab('opticas')}><Store size={16} />Ópticas Orbital</button>
+        <button role="tab" aria-selected={tab === 'opticas'} className={tab === 'opticas' ? 'sel' : ''} onClick={() => setTab('opticas')}><Store size={16} />Ópticas {MARCA.nombre}</button>
         <button role="tab" aria-selected={tab === 'oftalmo'} className={tab === 'oftalmo' ? 'sel' : ''} onClick={() => setTab('oftalmo')}><Stethoscope size={16} />Oftalmólogos</button>
       </div>
 
@@ -561,31 +562,37 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false, modelo = null
         <div className="geo" style={{ marginTop: 6 }}>{geo ?? 'Usamos solo tu zona aproximada; no guardamos tu ubicación exacta.'}</div>
       </div>
 
-      {tab === 'opticas' && (
+      {tab === 'opticas' && !MARCA.conOpticas && (
+        <div className="opts">
+          <div className="empty"><Store size={28} />Las {MARCA.opticas} con exhibidor se suman a medida que lo instalan. Mientras, armá tu combinación y pedila online o reservala en la tienda.</div>
+          <a className="btn block" href={MARCA.tienda}><Glasses size={16} />Ir a la tienda {MARCA.nombre}</a>
+        </div>
+      )}
+      {tab === 'opticas' && MARCA.conOpticas && (
         <div className="opts">
           {modelo && (
             <div className="oschips" role="radiogroup" aria-label="Qué ópticas mostrar">
               <button role="radio" aria-checked={conModelo} className={conModelo ? 'sel' : ''} onClick={() => setConModelo(true)}><Glasses size={14} style={{ verticalAlign: -2, marginRight: 4 }} />Con tu {modelo}</button>
-              <button role="radio" aria-checked={!conModelo} className={!conModelo ? 'sel' : ''} onClick={() => setConModelo(false)}>Todas las ópticas Orbital</button>
+              <button role="radio" aria-checked={!conModelo} className={!conModelo ? 'sel' : ''} onClick={() => setConModelo(false)}>Todas las {MARCA.opticas}</button>
             </div>
           )}
-          {conModelo && modelo && !hayZona && opticas !== null && opticas.length > 0 && <div className="note">Ópticas Orbital que trabajan el <b>{modelo}</b>. Escribí tu localidad para ver las más cercanas.</div>}
-          {sinModeloCerca && <div className="note">Ninguna óptica de {zonaTexto || 'tu zona'} tiene hoy el <b>{modelo}</b>. Estas son las ópticas Orbital de tu zona: te lo pueden pedir.</div>}
+          {conModelo && modelo && !hayZona && opticas !== null && opticas.length > 0 && <div className="note">Ópticas {MARCA.nombre} que trabajan el <b>{modelo}</b>. Escribí tu localidad para ver las más cercanas.</div>}
+          {sinModeloCerca && <div className="note">Ninguna óptica de {zonaTexto || 'tu zona'} tiene hoy el <b>{modelo}</b>. Estas son las {MARCA.opticas} de tu zona: te lo pueden pedir.</div>}
           {opticas === null && !buscando && (
-            <div className="empty"><MapPin size={28} />Escribí tu localidad o usá tu ubicación para ver las ópticas Orbital más cercanas.</div>
+            <div className="empty"><MapPin size={28} />Escribí tu localidad o usá tu ubicación para ver las {MARCA.opticas} más cercanas.</div>
           )}
           {buscando && opticas === null && <div className="empty">Buscando ópticas…</div>}
           {opticas !== null && opticas.length === 0 && (
-            <div className="empty"><Store size={28} />Todavía no hay ópticas Orbital para esa búsqueda. Probá con tu provincia.</div>
+            <div className="empty"><Store size={28} />Todavía no hay {MARCA.opticas} para esa búsqueda. Probá con tu provincia.</div>
           )}
-          {soloProvincia && <div className="note">Todavía no hay ópticas Orbital en {loc.trim() || 'tu zona'}. Estas son las más cercanas de tu provincia.</div>}
+          {soloProvincia && <div className="note">Todavía no hay {MARCA.opticas} en {loc.trim() || 'tu zona'}. Estas son las más cercanas de tu provincia.</div>}
           {opticas?.map((o) => {
             const wa = telefonosCliente(o.whatsapp, null).find((n) => n.tipo === 'celular')
             const tel = o.telefono || o.whatsapp
             const mod = conModelo && modelo ? ` con el armazón ${modelo}` : ''
             const msg = code
-              ? `Hola, hice el chequeo visual Orbital (código ${code})${recetaFoto ? ', ya subí mi receta' : ''} y quiero hacer mis anteojos${mod}`
-              : `Hola, los encontré en Orbital Vision Lab y quiero consultar por anteojos${mod}`
+              ? `Hola, hice el chequeo visual ${MARCA.nombre} (código ${code})${recetaFoto ? ', ya subí mi receta' : ''} y quiero hacer mis anteojos${mod}`
+              : `Hola, los encontré en ${MARCA.lab} y quiero consultar por anteojos${mod}`
             const dir = [o.nombre, o.direccion, o.localidad, o.provincia].filter(Boolean).join(', ')
             const verMapa = mapaDe === o.cod
             return (
@@ -642,17 +649,17 @@ function Buscador({ code, inicial = 'opticas', recetaFoto = false, modelo = null
           </div>
           {red && red.length > 0 && (
             <>
-              <div className="hd" style={{ marginTop: 4 }}><b>Oftalmólogos de la red Orbital</b></div>
+              <div className="hd" style={{ marginTop: 4 }}><b>Oftalmólogos de la {MARCA.red}</b></div>
               {red.map((o) => {
                 const wa = telefonosCliente(o.whatsapp, null).find((n) => n.tipo === 'celular')
                 const tel = o.telefono || o.whatsapp
                 const dir = [o.centro ?? o.nombre, o.direccion, o.localidad, o.provincia].filter(Boolean).join(', ')
                 const porObra = os && os.id !== 'particular' && os.id !== 'otra' ? ` por ${os.corto ?? os.nombre}` : ''
-                const msg = `Hola, quiero pedir un turno de oftalmología${porObra}. Me recomendaron desde Orbital Vision Lab${code ? ` (chequeo ${code})` : ''}.`
+                const msg = `Hola, quiero pedir un turno de oftalmología${porObra}. Me recomendaron desde ${MARCA.lab}${code ? ` (chequeo ${code})` : ''}.`
                 const turnos = o.turnos_url || o.web
                 return (
                   <div className="opt" key={o.id}>
-                    <div className="hd"><b>{o.nombre}</b>{o.recomendado && <span className="tag gold">Recomendado por Orbital</span>}</div>
+                    <div className="hd"><b>{o.nombre}</b>{o.recomendado && <span className="tag gold">Recomendado por {MARCA.nombre}</span>}</div>
                     {(o.centro || o.subespecialidad) && <div className="muted small">{[o.centro, o.subespecialidad].filter(Boolean).join(' · ')}</div>}
                     {o.atiende_obra && os && <div className="senal"><Check size={14} />Atiende {os.id === 'particular' ? 'particulares' : os.corto ?? os.nombre}</div>}
                     <div className="ln"><MapPin size={16} /><span>{[o.direccion, [o.localidad, o.provincia].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</span></div>
@@ -703,7 +710,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
   const [subiendo, setSubiendo] = useState<'no' | 'si' | 'error'>('no')
 
   useEffect(() => {
-    supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? []))
+    cargarMarcos().then(setMarcos)
   }, [])
 
   // Foto o PDF de la receta → bucket privado `recetas/<código>/…`; queda en el lead para la óptica.
@@ -728,7 +735,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
       <input type="text" id={'rx-' + k} inputMode="decimal" placeholder={ph} value={rec[k] ?? ''} onChange={(e) => setRec({ ...rec, [k]: e.target.value })} />
     </div>
   )
-  const link = (m: string) => `https://ver.orbitaleyewear.com.ar/modelo/${encodeURIComponent(m)}?desde=pretest${code ? '&c=' + code : ''}`
+  const link = (m: string) => linkModelo(m, `desde=pretest${code ? '&c=' + code : ''}`)
 
   return (
     <div className="frames">
@@ -742,7 +749,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
           <div className="rx-body">
             <div className="rx-subir">
               {recetaFoto ? (
-                <div className="ok"><Check size={16} /><span><b>Receta subida.</b> La óptica Orbital que elijas la ve con tu código <b className="num">{code}</b>.</span></div>
+                <div className="ok"><Check size={16} /><span><b>Receta subida.</b> La óptica que elijas la ve con tu código <b className="num">{code}</b>.</span></div>
               ) : (
                 <label className={'btn' + (!code || subiendo === 'si' ? ' disabled' : '')}>
                   <Upload size={16} />{subiendo === 'si' ? 'Subiendo…' : 'Subir foto de la receta'}
@@ -750,7 +757,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
                 </label>
               )}
               {subiendo === 'error' && <div className="muted small">No se pudo subir. Probá de nuevo o mandala por WhatsApp cuando pidas turno.</div>}
-              <div className="muted small">Se guarda en forma privada: solo la ven Orbital y la óptica que elijas.</div>
+              <div className="muted small">Se guarda en forma privada: solo la ven {MARCA.nombre} y la óptica que elijas.</div>
             </div>
             <div className="rx-grid">
               <p className="small" style={{ gridColumn: '1/-1', margin: 0 }}><b>Opcional:</b> copiá los valores para ordenar los armazones según tu receta.</p>
@@ -791,7 +798,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
             </div>
           )}
 
-          {r.marcos.length === 0 && <div className="empty">No encontramos armazones en stock que cumplan todo. Consultá en tu óptica Orbital.</div>}
+          {r.marcos.length === 0 && <div className="empty">No encontramos armazones en stock que cumplan todo. Consultá en tu óptica {MARCA.nombre}.</div>}
           <div className="fgrid">
             {r.marcos.map((m) => (
               <a className="frame" key={m.modelo} href={link(m.modelo)} target="_blank" rel="noopener">
@@ -805,7 +812,7 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
                   {m.precio_desde ? <span className="price num">Desde {precioAR(m.precio_desde)}</span> : null}
                   {medidos.get(m.modelo)
                     ? <span className="medido num">Te lo mediste · calce {medidos.get(m.modelo)!.calce} %</span>
-                    : <span className="medir" role="link" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(`/lab/calce?m=${encodeURIComponent(m.modelo)}`, '_blank', 'noopener') }}>Medir el calce</span>}
+                    : <span className="medir" role="link" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(`${MARCA.base}/calce?m=${encodeURIComponent(m.modelo)}`, '_blank', 'noopener') }}>Medir el calce</span>}
                 </div>
               </a>
             ))}
@@ -817,10 +824,10 @@ function Marcos({ code, recetaFoto, onRecetaFoto, rostro, calces }: { code: stri
               {r.lentes.map((l) => <div key={l}>· {l}</div>)}
             </div>
           )}
-          <p className="muted small" style={{ margin: 0 }}>Armazones para receta del catálogo Orbital con stock. Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.</p>
+          <p className="muted small" style={{ margin: 0 }}>{ES_BR ? 'Los 7 modelos beRabbit. Probátelos en una óptica beRabbit antes de decidir.' : 'Armazones para receta del catálogo Orbital con stock. Medidas: ancho total del frente × altura del lente. Probátelos en una óptica Orbital antes de decidir.'}</p>
           {rostro
-            ? <a className="btn ghost block" href="/lab/rostro?desde=pretest" target="_blank" rel="noopener"><ScanFace size={16} />Ver tu estudio de rostro y probártelos en vivo</a>
-            : <a className="btn ghost block" href="/lab/rostro?desde=pretest" target="_blank" rel="noopener"><ScanFace size={16} />¿Qué forma le va a tu cara? Escaneá tu rostro y se suma a este informe</a>}
+            ? <a className="btn ghost block" href={`${MARCA.base}/rostro?desde=pretest`} target="_blank" rel="noopener"><ScanFace size={16} />Ver tu estudio de rostro y probártelos en vivo</a>
+            : <a className="btn ghost block" href={`${MARCA.base}/rostro?desde=pretest`} target="_blank" rel="noopener"><ScanFace size={16} />¿Qué forma le va a tu cara? Escaneá tu rostro y se suma a este informe</a>}
         </>
       )}
     </div>
@@ -832,7 +839,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const opticaOrigen = params.get('o') || null
   const src = params.get('src')
-  const origen: Origen = origenProp ?? (opticaOrigen ? 'qr' : src === 'tienda' || src === 'suite' ? src : 'web')
+  const origen: Origen = origenProp ?? (ES_BR ? 'berabbit' : opticaOrigen ? 'qr' : src === 'tienda' || src === 'suite' ? src : 'web')
   const soloBuscar = /\/buscar\/?$/.test(window.location.pathname) || params.has('buscar')
 
   const [step, setStep] = useState(soloBuscar ? PASO_BUSCAR : 0)
@@ -1194,7 +1201,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
   async function compartir() {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'Mi chequeo visual Orbital', text: ticket })
+        await navigator.share({ title: `Mi chequeo visual ${MARCA.nombre}`, text: ticket })
         return
       } catch {
         return
@@ -1230,7 +1237,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
       <div className="wrap">
         <header className={'top' + (scrolled ? ' scrolled' : '') + (step === 1 ? ' fijo-no' : '')}>
           <div className="brand">
-            <div className="logo"><b>ORBITAL</b><span>Vision Lab</span></div>
+            <Logo />
             {lado}
           </div>
           {enTest && (
@@ -1606,7 +1613,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
                 </tbody>
               </table>
               <div className="rf">
-                <b>Informe orientativo, no es un diagnóstico ni una receta.</b> Autoevaluación hecha por la persona con Orbital Vision Lab
+                <b>Informe orientativo, no es un diagnóstico ni una receta.</b> Autoevaluación hecha por la persona con {MARCA.lab}
                 (pantalla calibrada con tarjeta, {(S.pxPerMm * 25.4).toFixed(0)} ppi). Solo un médico oftalmólogo puede examinar, diagnosticar
                 e indicar anteojos. Un resultado normal no descarta enfermedades oculares: hacé tu control periódico igual.
               </div>
@@ -1666,7 +1673,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
 
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Tu receta y armazones</h2>
-              <p className="muted small">Si el oftalmólogo te indica anteojos, subí la receta y elegí el armazón en una óptica Orbital.</p>
+              <p className="muted small">Si el oftalmólogo te indica anteojos, subí la receta y elegí el armazón en una óptica {MARCA.nombre}.</p>
               <Marcos code={code} recetaFoto={!!recetaFoto} onRecetaFoto={setRecetaFoto} rostro={rostro} calces={perfil.calces} />
               {consejos.length > 0 && (
                 <div className="note" style={{ marginTop: 12 }}>
@@ -1678,7 +1685,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
 
             <div className="no-print" style={{ marginTop: 12 }}>
               <h2>Dónde atenderte</h2>
-              <p className="muted small">Pedí turno con un oftalmólogo y, si te indica anteojos, hacelos en una óptica Orbital: con tu código tenés el chequeo registrado y atención prioritaria.</p>
+              <p className="muted small">Pedí turno con un oftalmólogo y, si te indica anteojos, hacelos en una óptica {MARCA.nombre}: con tu código tenés el chequeo registrado y atención prioritaria.</p>
               <Buscador code={code} recetaFoto={!!recetaFoto} inicial={informe.semaforo === 'verde' ? 'opticas' : 'oftalmo'} modelo={modeloElegido} />
             </div>
             <div className="no-print" style={{ textAlign: 'center' }}>
@@ -1692,7 +1699,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
             <div>
               <div className="kicker"><MapPin size={15} />Buscador</div>
               <h1>Encontrá una óptica u oftalmólogo cerca tuyo.</h1>
-              <p>Ópticas asociadas a Orbital y oftalmólogos de tu zona, con cómo llegar y turno por WhatsApp.</p>
+              <p>Ópticas asociadas a {MARCA.nombre} y oftalmólogos de tu zona, con cómo llegar y turno por WhatsApp.</p>
             </div>
             <Buscador code={perfil.vision?.code ?? null} inicial={params.has('oftalmo') ? 'oftalmo' : 'opticas'} modelo={modeloElegido} />
             <div className="card flat" style={{ display: 'grid', gap: 10 }}>
@@ -1718,7 +1725,7 @@ export default function Pretest({ origen: origenProp }: { origen?: Origen }) {
         )}
 
         <footer className="no-print">
-          <b>Orbital Vision Lab</b> es una guía previa a la consulta oftalmológica de Orbital Eyewear. No es un examen médico ni un dispositivo
+          <b>{MARCA.lab}</b> es una guía previa a la consulta oftalmológica de {MARCA.empresa}. No es un examen médico ni un dispositivo
           médico, no diagnostica y no reemplaza la consulta con un oftalmólogo. Los resultados son orientativos y dependen de la calibración
           de tu pantalla, el brillo y la distancia. Ante una urgencia visual, acudí a una guardia.{' '}
           {step !== PASO_LEGAL && <button type="button" className="inline-link" onClick={verLegales}>Aviso legal y privacidad</button>}

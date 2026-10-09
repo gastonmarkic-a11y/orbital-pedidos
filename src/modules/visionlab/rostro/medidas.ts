@@ -326,6 +326,7 @@ export function estilosDelFormato(formato: string | null): Estilo[] {
   if (f.includes('redond')) return ['redondo', 'ovalado']
   if (f.includes('cuadr')) return ['cuadrado']
   if (f.includes('rect')) return ['rectangular']
+  if (f.includes('aviador')) return ['aviador']
   return []
 }
 

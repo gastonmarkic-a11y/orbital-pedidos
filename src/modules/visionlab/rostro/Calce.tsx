@@ -12,6 +12,7 @@ import { Check, Crosshair, Glasses, Loader2, MapPin, Ruler, ScanFace, X } from '
 import { supabase } from '../../../lib/supabase'
 import { recortarAnteojo } from '../../landings/Probador'
 import type { Marco } from '../marcos'
+import { COLORES_BR, ES_BR, MARCA, anteojoBR, cargarMarcos, nroBR } from '../marca'
 import { Perfil, PerfilCalce, dpTarjetaDe, guardarCalce, leerPerfil } from '../perfil'
 import { BISAGRA_MM, COLORES, Color, PUENTE_MM, dibujar } from './armazon'
 import { altoDe, anchoDe, useCaraEnVivo } from './camara'
@@ -83,7 +84,7 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? []))
+    cargarMarcos().then(setMarcos)
     return () => { document.body.style.overflow = prev }
   }, [])
 
@@ -102,6 +103,8 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
       .sort((a, b) => b.score - a.score)
       .slice(0, 14)
       .map(({ m, motivo }) => ({ modelo: m.modelo, ancho: m.ancho_mm!, estilo: estilosDelFormato(m.formato)[0], foto: m.foto || null, motivo }))
+    // beRabbit: solo sus 7 modelos reales, sin el armazón genérico "tu talle ideal"
+    if (ES_BR) return cat.length ? cat : [base]
     return [base, ...cat]
     // caraRef cambia en cada lectura: el orden se fija con el primer ancho medido
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,7 +113,8 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
   // Colores reales del modelo con sus fotos (la misma RPC pública de la landing del modelo)
   useEffect(() => {
     setColsReal([]); setColorReal(-1)
-    if (sel.modelo === 'Tu talle ideal') return
+    if (ES_BR && nroBR(sel.modelo)) { setColsReal(COLORES_BR.map((c) => ({ codigo: c.k, color: c.n, fotos: [] }))); return }
+    if (sel.modelo === 'Tu talle ideal' || ES_BR) return
     let vivo = true
     supabase.rpc('modelo_landing', { p_modelo: sel.modelo, p_sku: null }).then(({ data }) => {
       if (!vivo) return
@@ -124,6 +128,16 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
     if (!colsReal.length) { setRecorte(null); return }
     let vivo = true
     ;(async () => {
+      // beRabbit: la foto BRn teñida en el color elegido (negro de entrada)
+      const br = ES_BR ? nroBR(sel.modelo) : null
+      if (br) {
+        const ci = colorReal >= 0 ? colorReal : COLORES_BR.length - 1
+        if (vivo) setRecorte('cargando')
+        const c = await anteojoBR(br, ci)
+        if (!vivo) return
+        setRecorte(c); if (colorReal < 0) setColorReal(ci)
+        return
+      }
       const orden = colorReal >= 0 ? [colorReal] : colsReal.map((_, i) => i)
       for (const i of orden) {
         const k = `${sel.modelo}|${colsReal[i].color}`
@@ -354,7 +368,7 @@ export default function Calce({ onCerrar, inicial }: { onCerrar: () => void; ini
           </button>
         </div>
         {medidos.has(sel.modelo) && sel.modelo !== 'Tu talle ideal' && (
-          <a className="ca-donde" href={`/lab/buscar?m=${encodeURIComponent(sel.modelo)}`}><MapPin size={15} />¿Dónde encuentro el {sel.modelo}? Ópticas que lo tienen</a>
+          <a className="ca-donde" href={`${MARCA.base}/buscar?m=${encodeURIComponent(sel.modelo)}`}><MapPin size={15} />¿Dónde encuentro el {sel.modelo}? Ópticas que lo tienen</a>
         )}
         <p className="ca-nota">{perfil.calces?.length ? `${perfil.calces.length} medido${perfil.calces.length > 1 ? 's' : ''} en tu perfil visual · ` : ''}Calce ideal 97–103 %. Pupila ideal 40–60 % del lente. Medida aproximada (±5 mm): la confirma la óptica.</p>
       </div>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import type { Marco } from '../marcos'
+import { Logo, MARCA, cargarMarcos, linkModelo } from '../marca'
 import Escaneo, { Captura } from './Escaneo'
 import ProbarFormas, { IconoArmazon } from './ProbarFormas'
 import { Estilo, FORMAS, Forma, L, Metodo, P3, Resultado, aperturaEnY, contorno, marcosParaVos, ordenarSeleccion, resultado, z, COLECCION_TALLE, TALLES_PARA } from './medidas'
@@ -267,10 +268,10 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
   useEffect(() => { window.scrollTo({ top: 0 }) }, [paso])
   useEffect(() => {
     if (paso !== 'resultado' || marcos) return
-    supabase.rpc('pretest_marcos').then(({ data }) => setMarcos((data as Marco[] | null) ?? []))
+    cargarMarcos().then(setMarcos)
   }, [paso, marcos])
 
-  const link = (m: string) => `https://ver.orbitaleyewear.com.ar/modelo/${encodeURIComponent(m)}?desde=rostro${f ? '&rostro=' + f : ''}`
+  const link = (m: string) => linkModelo(m, `desde=rostro${f ? '&rostro=' + f : ''}`)
   const lado = { inicio: '', escaneo: 'Paso 1 de 2 · Escaneo', analisis: 'Paso 2 de 2 · Análisis', resultado: 'Tu resultado' }[paso]
 
   return (
@@ -278,7 +279,7 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
       <div className="wrap">
         <header className={'top' + (scrolled ? ' scrolled' : '')}>
           <div className="brand">
-            <div className="logo"><b>ORBITAL</b><span>Estudio de rostro</span></div>
+            <Logo sub="Estudio de rostro" />
             <span className="side">{lado}</span>
           </div>
         </header>
@@ -322,7 +323,7 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
                 <li><span className="n">2</span><span>Medidas en milímetros y tu talle</span><small>S · M · L</small></li>
                 <li><span className="n">3</span><span>Formas de armazón que te favorecen</span><small>y por qué</small></li>
                 <li><span className="n">4</span><span>Probador de formas en vivo</span><small>7 estilos</small></li>
-                <li><span className="n">5</span><span>Modelos Orbital a tu medida</span><small>con stock</small></li>
+                <li><span className="n">5</span><span>Modelos {MARCA.nombre} a tu medida</span><small>con stock</small></li>
               </ul>
             </div>
 
@@ -471,9 +472,9 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
             )}
 
             {!sel && <div>
-              <div className="rs-h"><h3>Modelos Orbital para vos</h3><small className="muted">Forma ideal y a tu medida, con stock</small></div>
+              <div className="rs-h"><h3>Modelos {MARCA.nombre} para vos</h3><small className="muted">Forma ideal y a tu medida, con stock</small></div>
               {!sugeridos && <div className="empty">Buscando armazones…</div>}
-              {sugeridos && sugeridos.length === 0 && <div className="empty">Por ahora no hay modelos con stock que cumplan forma y medida. Consultá en tu óptica Orbital.</div>}
+              {sugeridos && sugeridos.length === 0 && <div className="empty">Por ahora no hay modelos con stock que cumplan forma y medida. Consultá en tu óptica {MARCA.nombre}.</div>}
               {sugeridos && sugeridos.length > 0 && (
                 <div className="fgrid">
                   {sugeridos.map((m) => <Frame key={m.modelo} m={m} href={link(m.modelo)} motivos={m.motivos} externo />)}
@@ -499,14 +500,14 @@ export default function Rostro({ enSuite = false }: { enSuite?: boolean }) {
               </ol>
               <div className="rs-next">
                 <button className={'btn' + (perfil.calces?.length ? ' ghost' : '')} onClick={() => setCalce(true)}><Glasses size={16} />{perfil.calces?.length ? 'Medir otro armazón' : 'Medir el calce'}</button>
-                {!perfil.vision && <a className="btn ghost" href="/lab/pretest?desde=rostro"><Eye size={16} />Chequeo visual</a>}
+                {!perfil.vision && <a className="btn ghost" href={`${MARCA.base}/pretest?desde=rostro`}><Eye size={16} />Chequeo visual</a>}
               </div>
               <QRProfesional url={urlPerfil({ c: perfil.vision?.code, ro: compactarRostro(rostroDe(r, r.forma)), ca: compactarCalces(perfil.calces) })} titulo="Para tu óptica"
                 texto="Mostrale este código: ve tu forma, tu talle, tus medidas y los armazones que te mediste. Sin foto ni nombre." />
             </div>
             <div className="rs-next">
-              <a className="btn" href="/lab/buscar"><MapPin size={16} />Encontrá tu óptica Orbital</a>
-              {perfil.vision && <a className="btn ghost" href="/lab/pretest"><Eye size={16} />Repetir el chequeo visual</a>}
+              <a className="btn" href={`${MARCA.base}/buscar`}><MapPin size={16} />Encontrá tu óptica {MARCA.nombre}</a>
+              {perfil.vision && <a className="btn ghost" href={`${MARCA.base}/pretest`}><Eye size={16} />Repetir el chequeo visual</a>}
             </div>
             <button className="link" onClick={() => { setCap(null); setForma(null); setPaso('escaneo') }}><RotateCcw size={14} />Escanear de nuevo</button>
 

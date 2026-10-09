@@ -46,7 +46,7 @@ const SEM: Record<Semaforo, { t: string; c: string }> = {
   amarillo: { t: 'Consulta', c: 'bg-amber-50 text-amber-700' },
   verde: { t: 'Bien', c: 'bg-emerald-50 text-emerald-700' },
 }
-const ORIGEN: Record<string, string> = { web: 'Web', tienda: 'Tienda', qr: 'QR óptica', suite: 'Suite' }
+const ORIGEN: Record<string, string> = { web: 'Web', tienda: 'Tienda', qr: 'QR óptica', suite: 'Suite', berabbit: 'beRabbit' }
 // Link público principal: el perfil visual completo (rostro, calce y chequeo); cada prueba suelta va en los atajos.
 const PUBLICO = `${window.location.origin}/lab`
 

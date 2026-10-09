@@ -479,3 +479,26 @@
 .ovl .gr-aro{display:grid;gap:6px;padding:12px;border-radius:14px;background:#f6f4ef}
 .ovl .gr-aro svg{width:100%;max-width:420px;height:auto;background:#fff;border-radius:10px;justify-self:center}
 .ovl .gr-aro small{font-size:12.5px}
+
+/* ── beRabbit Vision Lab (/berabbit/lab): misma estructura, piel de beRabbit — crema, conejo, óxido y espresso,
+   DM Serif Display en los títulos y DM Sans en el texto. La clase vl-br la pone visionlab/marca.tsx en <html>. */
+.vl-br .ovl{
+  --bg:#f3eada; --surface:#fffaf2; --surface-2:#f8f1e5; --ink:#1f1b18; --ink-2:#4a3f37; --muted:#7a6b5e; --faint:#a8998a;
+  --line:#e4d8c4; --line-2:#d6c6ac;
+  --brand:#1f1b18; --gold:#a8441e; --gold-soft:#f6e3d6;
+  --blue:#a8441e; --blue-soft:#f6e3d6;
+  --shadow:0 1px 2px rgba(31,27,24,.05),0 4px 16px rgba(31,27,24,.06);
+  font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.vl-br .ovl h1,.vl-br .ovl h2{font-family:"DM Serif Display",Georgia,serif;font-weight:400;letter-spacing:-.01em}
+.vl-br .ovl header.top{background:rgba(243,234,218,.92)}
+.vl-br .ovl .btn{background:#a8441e;border-color:#a8441e}
+.vl-br .ovl .btn:hover{background:#8f3818}
+.vl-br .ovl .btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line-2)}
+.vl-br .ovl .btn.ghost:hover{background:var(--surface-2);border-color:var(--ink)}
+.vl-br .ovl .btn.wa{background:#1f8a4c;border-color:#1f8a4c}
+.vl-br .ovl .progress .bar i{background:#a8441e}
+.vl-br .ovl .logo.br{align-items:center}
+.vl-br .ovl .logo.br img{height:20px;width:auto;display:block}
+.vl-br .ovl .logo.br span{color:#b87545}
+.vl-br .rs-try,.vl-br .rs-comp{font-family:"DM Sans",ui-sans-serif,system-ui,sans-serif}

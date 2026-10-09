@@ -5,6 +5,7 @@
 import { ScanFace, ShieldCheck } from 'lucide-react'
 import { acuityLabel, logmar } from './logic'
 import { Compacto, deB64url } from './extras'
+import { Logo } from './marca'
 import type { CalceCompacto, RostroCompacto } from './perfil'
 import { FORMAS } from './rostro/medidas'
 import './pretest.css'
@@ -70,7 +71,7 @@ export default function InformeProfesional() {
       <div className="wrap">
         <header className="top">
           <div className="brand">
-            <div className="logo"><b>ORBITAL</b><span>Vision Lab</span></div>
+            <Logo />
             <span className="side">Vista profesional</span>
           </div>
         </header>
