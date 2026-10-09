@@ -2,7 +2,7 @@
 // Cada pretest terminado queda en `pretests` con su código ORB-XXXX-MMDD (la persona lo dice en
 // la óptica). Se ve en tiempo real; acá se sigue el lead: contactado → turno → vendido.
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, QrCode, Copy, Check } from 'lucide-react'
+import { ExternalLink, QrCode, Copy, Check, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { PerfilCalce, PerfilRostro } from './perfil'
 import { FORMAS } from './rostro/medidas'
@@ -47,7 +47,8 @@ const SEM: Record<Semaforo, { t: string; c: string }> = {
   verde: { t: 'Bien', c: 'bg-emerald-50 text-emerald-700' },
 }
 const ORIGEN: Record<string, string> = { web: 'Web', tienda: 'Tienda', qr: 'QR óptica', suite: 'Suite' }
-const PUBLICO = `${window.location.origin}/lab/pretest`
+// Link público principal: el perfil visual completo (rostro, calce y chequeo); cada prueba suelta va en los atajos.
+const PUBLICO = `${window.location.origin}/lab`
 
 const fecha = (s: string) =>
   new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -124,7 +125,11 @@ export default function VisionLabPanel() {
         </div>
         <div className="flex gap-2">
           <a href="/vision-lab/perfil" className="rounded-lg bg-black text-white px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-            Perfil visual (las 3)
+            <Sparkles size={12} /> Perfil visual completo
+          </a>
+          <span className="self-center text-[10px] uppercase tracking-widest text-neutral-400 px-1">Atajos</span>
+          <a href="/lab/rostro" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+            <ExternalLink size={12} /> Estudio de rostro
           </a>
           <a href="/vision-lab/calce" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
             Medición de calce
@@ -133,15 +138,12 @@ export default function VisionLabPanel() {
             Red oftalmológica
           </a>
           <a href="/lab/pretest?src=suite" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-            <ExternalLink size={12} /> Abrir pretest
-          </a>
-          <a href="/lab/rostro" target="_blank" rel="noopener" className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-            <ExternalLink size={12} /> Estudio de rostro
+            <ExternalLink size={12} /> Chequeo visual
           </a>
           <button
             onClick={() => { navigator.clipboard.writeText(PUBLICO).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }) }}
             className="rounded-lg border border-black/15 px-2.5 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-            {copiado ? <Check size={12} /> : <Copy size={12} />} Link público
+            {copiado ? <Check size={12} /> : <Copy size={12} />} Link del perfil visual
           </button>
         </div>
       </div>

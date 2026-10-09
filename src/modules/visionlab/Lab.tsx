@@ -26,6 +26,11 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
     return () => { window.removeEventListener('focus', f); window.removeEventListener('storage', f) }
   }, [])
   const base = enSuite ? '/vision-lab' : '/lab'
+  // ?r=<codigo> (link de un colaborador): pasa al estudio de rostro para que la venta quede a su nombre.
+  const qs = new URLSearchParams(window.location.search)
+  const ref = (qs.get('r') ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
+  // ?o=<cod> (QR de una óptica): pasa al chequeo visual para que el paciente le quede a ella.
+  const optica = (qs.get('o') ?? '').trim().slice(0, 24)
   const n = avance(perfil)
   const { rostro, vision, calces } = perfil
   const reales = calces?.filter((c) => c.modelo !== 'Tu talle ideal')
@@ -36,7 +41,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
     {
       k: 'rostro', n: 1, ic: <ScanFace size={22} />, t: 'Estudio de rostro', d: 'Forma de tu cara, medidas en mm y tu talle de armazón.', dur: '10 s',
       hecho: !!rostro, res: rostro && <>Rostro <b>{FORMAS[rostro.forma].nombre.toLowerCase()}</b> · talle <b>{rostro.talle}</b> · ideal <b className="num">{rostro.ideal} mm</b></>,
-      href: `${base}/rostro${enSuite ? '' : '?desde=perfil'}`, cta: rostro ? 'Ver o repetir' : 'Escanear mi rostro',
+      href: `${base}/rostro${enSuite ? '' : '?desde=perfil' + (ref ? '&r=' + ref : '')}`, cta: rostro ? 'Ver o repetir' : 'Escanear mi rostro',
       da: 'Le da al calce tu ancho ideal y los modelos que van con tu forma.',
     },
     {
@@ -48,7 +53,7 @@ export default function Lab({ enSuite = false }: { enSuite?: boolean }) {
     {
       k: 'vision', n: 3, ic: <Eye size={22} />, t: 'Chequeo visual previo', d: 'Siete pruebas para llegar a la consulta con el oftalmólogo con un informe orientativo.', dur: '10 min',
       hecho: !!vision, res: vision && <>Código <b className="num">{vision.code}</b> · {SEM[vision.semaforo] ?? vision.semaforo}{vision.dp ? <> · DP <b className="num">{vision.dp.lejos.toFixed(1).replace('.', ',')} mm</b></> : null}</>,
-      href: `${base}/pretest${enSuite ? '' : '?desde=perfil'}`, cta: vision ? 'Repetir el chequeo' : 'Hacer el chequeo',
+      href: `${base}/pretest${enSuite ? '' : '?desde=perfil' + (optica ? '&o=' + encodeURIComponent(optica) : '')}`, cta: vision ? 'Repetir el chequeo' : 'Hacer el chequeo',
       da: 'Su DP medida con tarjeta afina la posición de la pupila en el calce.',
     },
   ]

@@ -14,12 +14,8 @@ type Estado = { link?: string; creando?: boolean; error?: string }
 // cada modelo sale con su link (su cupón o sus UTM), así la venta queda atribuida. Usa uno de sus links
 // (se crea uno "otra/otro" del primer anteojo la primera vez y queda guardado en el celular).
 const ROSTRO_KEY = 'orbital_colab_rostro_'
-export function EstudioRostro({ clave, modelos: dados, onLink }: { clave: string; modelos?: Modelo[]; onLink?: () => void }) {
-  const [cargados, setCargados] = useState<Modelo[]>([])
-  useEffect(() => {
-    if (!dados) supabase.rpc('colab_catalogo', { p_clave: clave }).then(({ data }) => setCargados((data as Modelo[]) ?? []))
-  }, [clave, dados])
-  const modelos = dados ?? cargados
+/** El link del colaborador para el Vision Lab (código `r`): se crea una vez y queda guardado en el celular. */
+export function useLinkLab(clave: string, modelos: Modelo[], onLink?: () => void) {
   const [link, setLink] = useState<string | null>(() => { try { return localStorage.getItem(ROSTRO_KEY + clave) } catch { return null } })
   const [creando, setCreando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +30,21 @@ export function EstudioRostro({ clave, modelos: dados, onLink }: { clave: string
     try { localStorage.setItem(ROSTRO_KEY + clave, l) } catch { /* sin storage: se muestra igual */ }
     setLink(l); onLink?.()
   }
+  const codigo = link?.match(/[?&]r=([a-z0-9]+)/i)?.[1] ?? null
+  return { link, codigo, obtener, creando, error, listo: modelos.length > 0 }
+}
+
+export function useCatalogoColab(clave: string, dados?: Modelo[]) {
+  const [cargados, setCargados] = useState<Modelo[]>([])
+  useEffect(() => {
+    if (!dados) supabase.rpc('colab_catalogo', { p_clave: clave }).then(({ data }) => setCargados((data as Modelo[]) ?? []))
+  }, [clave, dados])
+  return dados ?? cargados
+}
+
+export function EstudioRostro({ clave, modelos: dados, onLink }: { clave: string; modelos?: Modelo[]; onLink?: () => void }) {
+  const modelos = useCatalogoColab(clave, dados)
+  const { link, obtener, creando, error } = useLinkLab(clave, modelos, onLink)
   return (
     <div className="rounded-xl bg-white border border-black/10 p-4 mb-4">
       <h2 className="text-[15px] font-bold tracking-wide uppercase">🪞 Estudio de rostro</h2>

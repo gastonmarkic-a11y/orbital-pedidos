@@ -1,7 +1,7 @@
 // ── Vision Lab Pro: el Vision Lab de Orbital para cada óptica, dentro del catálogo mayorista ──
 // Pacientes: los pretests que eligieron la óptica (WhatsApp / Cómo llegar) o salieron de su QR, con el mismo
 // seguimiento que la Suite (estado compartido) y una nota propia. Herramientas: su QR del pretest (?o=<cod>,
-// queda atribuido), estudio de rostro, medición de calce y el buscador de la red. Solo con la clave de la óptica:
+// queda atribuido) con el perfil visual completo destacado, y atajos: rostro, calce, pretest y la red. Solo con la clave de la óptica:
 // catalogo_pretests / catalogo_pretest_actualizar (supabase/sql/catalogo_pretests.sql).
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import QRCode from 'qrcode'
@@ -177,40 +177,45 @@ export default function VisionLabPro({ clave, cod, onClose }: { clave: string; c
   )
 }
 
-// Herramientas para compartir: el pretest con el código de la óptica queda atribuido a ella.
+// Herramientas para compartir. Destacado: el perfil visual completo (/lab?o=<cod>: rostro, calce y chequeo en un
+// recorrido; el chequeo queda atribuido a la óptica). Abajo, atajos para ir directo a una medición.
 function Herramientas({ cod }: { cod: string | null }) {
   const base = window.location.origin
-  const pretest = `${base}/lab/pretest${cod ? `?o=${encodeURIComponent(cod)}` : ''}`
+  const o = cod ? `?o=${encodeURIComponent(cod)}` : ''
+  const perfil = `${base}/lab${o}`
+  const pretest = `${base}/lab/pretest${o}`
   const [qr, setQr] = useState<string | null>(null)
   const [copiado, setCopiado] = useState<string | null>(null)
   useEffect(() => {
-    QRCode.toDataURL(pretest, { margin: 1, width: 720, errorCorrectionLevel: 'M', color: { dark: '#050505', light: '#ffffff' } }).then(setQr).catch(() => setQr(null))
-  }, [pretest])
+    QRCode.toDataURL(perfil, { margin: 1, width: 720, errorCorrectionLevel: 'M', color: { dark: '#050505', light: '#ffffff' } }).then(setQr).catch(() => setQr(null))
+  }, [perfil])
   const copiar = (u: string) => { navigator.clipboard?.writeText(u); setCopiado(u); setTimeout(() => setCopiado(null), 1500) }
-  const wa = `https://wa.me/?text=${encodeURIComponent(`Hacé el chequeo visual gratis desde el celu (5 minutos) y traelo a la óptica: ${pretest}`)}`
+  const wa = `https://wa.me/?text=${encodeURIComponent(`Armá tu perfil visual gratis desde el celu (forma de tu cara, qué armazón te calza y un chequeo de la vista) y traelo a la óptica: ${perfil}`)}`
   const tools = [
-    { ic: <Eye size={18} />, t: 'Pretest visual', d: 'Agudeza, contraste, astigmatismo, cerca y pantallas. 5 minutos.', u: pretest },
-    { ic: <ScanFace size={18} />, t: 'Estudio de rostro', d: 'Forma del rostro, talle y los armazones que le van.', u: `${base}/lab/rostro` },
+    { ic: <ScanFace size={18} />, t: 'Estudio de rostro', d: 'Forma del rostro, talle y los armazones que le van. 10 segundos.', u: `${base}/lab/rostro` },
     { ic: <Glasses size={18} />, t: 'Medición de calce', d: 'Se pone el armazón y mide marco vs. rostro y la pupila en el lente.', u: `${base}/lab/calce` },
+    { ic: <Eye size={18} />, t: 'Pretest visual', d: 'Agudeza, contraste, astigmatismo, cerca y pantallas. 5 minutos. Queda a tu nombre.', u: pretest },
     { ic: <MapPin size={18} />, t: 'Red oftalmológica', d: 'Buscador de oftalmólogos y ópticas Orbital, por zona y obra social.', u: `${base}/lab/buscar` },
   ]
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-[#050505] text-white p-4 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="bg-white rounded-lg p-2 shrink-0">{qr ? <img src={qr} alt="QR del pretest" className="w-36 h-36" /> : <div className="w-36 h-36" />}</div>
+        <div className="bg-white rounded-lg p-2 shrink-0">{qr ? <img src={qr} alt="QR del perfil visual" className="w-36 h-36" /> : <div className="w-36 h-36" />}</div>
         <div className="flex-1 min-w-0 text-center sm:text-left">
           <p className="text-[10px] font-mono tracking-widest opacity-60">{cod ? 'TU QR · QUEDA A NOMBRE DE TU ÓPTICA' : 'QR GENERAL'}</p>
-          <p className="text-[17px] font-bold mt-1">Chequeo visual gratis en el mostrador</p>
-          <p className="text-[12px] opacity-75 mt-1">{cod
-            ? 'Imprimilo para la vidriera o el mostrador. Cada persona que lo escanea y termina el pretest te aparece en Pacientes.'
+          <p className="text-[17px] font-bold mt-1">Perfil visual completo, gratis en el mostrador</p>
+          <p className="text-[12px] opacity-75 mt-1">Rostro, calce y chequeo visual en un solo recorrido desde el celular. {cod
+            ? 'Imprimilo para la vidriera o el mostrador. Cada persona que lo escanea y termina el chequeo te aparece en Pacientes.'
             : 'Link sin óptica asignada. Con el link personal de cada óptica, este QR sale a su nombre y los pacientes le llegan a ella.'}</p>
           <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
-            {qr && <a href={qr} download="QR-pretest-Orbital.png" className="inline-flex items-center gap-1.5 bg-white text-black rounded-full px-3 py-1.5 text-[12px] font-semibold"><Download size={14} /> Bajar QR</a>}
-            <button onClick={() => copiar(pretest)} className="inline-flex items-center gap-1.5 border border-white/30 rounded-full px-3 py-1.5 text-[12px] font-semibold">{copiado === pretest ? <Check size={14} /> : <Copy size={14} />} Copiar link</button>
+            {qr && <a href={qr} download="QR-vision-lab-Orbital.png" className="inline-flex items-center gap-1.5 bg-white text-black rounded-full px-3 py-1.5 text-[12px] font-semibold"><Download size={14} /> Bajar QR</a>}
+            <button onClick={() => copiar(perfil)} className="inline-flex items-center gap-1.5 border border-white/30 rounded-full px-3 py-1.5 text-[12px] font-semibold">{copiado === perfil ? <Check size={14} /> : <Copy size={14} />} Copiar link</button>
             <a href={wa} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 border border-white/30 rounded-full px-3 py-1.5 text-[12px] font-semibold"><MessageCircle size={14} /> WhatsApp</a>
+            <a href={perfil} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 border border-white/30 rounded-full px-3 py-1.5 text-[12px] font-semibold"><ExternalLink size={14} /> Probarlo</a>
           </div>
         </div>
       </div>
+      <p className="text-[11px] font-bold uppercase tracking-widest text-neutral-400">Atajos · ir directo a una medición</p>
       <div className="grid sm:grid-cols-2 gap-2">
         {tools.map((x) => <HerramientaLab key={x.t} {...x} />)}
       </div>

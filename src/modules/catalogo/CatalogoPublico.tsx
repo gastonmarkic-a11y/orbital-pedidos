@@ -551,21 +551,22 @@ function AscariPop({ onClose, onVer }: { onClose: () => void; onVer: () => void 
   )
 }
 
-// Estudio de rostro (Vision Lab /lab/rostro): la óptica lo prueba y le pasa el link a sus clientes.
-const LINK_ROSTRO = 'https://ver.orbitaleyewear.com.ar/lab/rostro'
+// Perfil visual completo (Vision Lab /lab: rostro, calce y chequeo): la óptica lo prueba y le pasa el link a sus clientes.
+// El QR a su nombre y los atajos a cada medición están en la pestaña Vision Lab Pro.
+const LINK_LAB = 'https://ver.orbitaleyewear.com.ar/lab'
 function EstudioRostroBanner() {
   const [copiado, setCopiado] = useState(false)
-  const copiar = () => navigator.clipboard?.writeText(LINK_ROSTRO).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1800) }).catch(() => {})
+  const copiar = () => navigator.clipboard?.writeText(LINK_LAB).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1800) }).catch(() => {})
   return (
     <div className="mb-6 rounded-2xl border border-black/10 bg-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3">
-      <div className="text-3xl leading-none" aria-hidden>🪞</div>
+      <div className="text-3xl leading-none" aria-hidden>✨</div>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#0004FF]">Nuevo · Vision Lab</div>
-        <div className="text-[15px] font-bold mt-0.5">Estudio de rostro</div>
-        <p className="text-[12px] text-neutral-500 mt-0.5">Tu cliente escanea su cara con el celular: forma del rostro, talle de armazón y qué modelos Orbital le quedan mejor.</p>
+        <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#0004FF]">Vision Lab</div>
+        <div className="text-[15px] font-bold mt-0.5">Perfil visual completo</div>
+        <p className="text-[12px] text-neutral-500 mt-0.5">Tu cliente, desde el celular: forma de su rostro y talle, qué modelos Orbital le calzan y un chequeo de la vista. Todo junto en un solo código para el mostrador.</p>
       </div>
       <div className="flex gap-2 shrink-0">
-        <a href="/lab/rostro" target="_blank" rel="noopener" className="rounded-xl bg-[#0004FF] text-white px-3.5 py-2 text-[12px] font-semibold">Probarlo</a>
+        <a href="/lab" target="_blank" rel="noopener" className="rounded-xl bg-[#0004FF] text-white px-3.5 py-2 text-[12px] font-semibold">Probarlo</a>
         <button onClick={copiar} className="rounded-xl border border-black/15 px-3.5 py-2 text-[12px] font-semibold">{copiado ? '¡Copiado!' : 'Copiar link para clientes'}</button>
       </div>
     </div>

@@ -908,9 +908,10 @@ export default function App() {
   if (typeof window !== 'undefined' && /^\/lab\/rostro\/?$/.test(window.location.pathname)) {
     return <Rostro />
   }
-  // Orbital Vision Lab · Tu perfil visual: /lab sin parámetros = las tres herramientas (rostro, calce, chequeo);
-  // /lab/calce = la medición de calce sola. /lab?o=… (QR de las ópticas) y ?src= siguen abriendo el chequeo visual.
-  if (typeof window !== 'undefined' && /^\/lab\/?$/.test(window.location.pathname) && !window.location.search) {
+  // Orbital Vision Lab · Tu perfil visual: /lab = las tres herramientas (rostro, calce, chequeo), también con
+  // ?o=<cod> (QR de las ópticas: el chequeo queda a su nombre) y ?r=<codigo> (link de un colaborador: el rostro
+  // atribuye la venta). /lab/calce = la medición de calce sola. Solo /lab?src= sigue abriendo el chequeo visual directo.
+  if (typeof window !== 'undefined' && /^\/lab\/?$/.test(window.location.pathname) && !new URLSearchParams(window.location.search).has('src')) {
     return <Lab />
   }
   if (typeof window !== 'undefined' && /^\/lab\/calce\/?$/.test(window.location.pathname)) {
