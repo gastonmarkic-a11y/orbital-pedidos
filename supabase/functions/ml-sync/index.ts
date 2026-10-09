@@ -76,7 +76,24 @@ Deno.serve(async (req) => {
         pausar: 'duplicada, pausada a proposito',
         revisar: 'recien creada, esperando revision',
         sin_foto_del_color: 'la foto es del modelo y no del color: no se publica',
+        fuera_tienda: 'no esta en la tienda web: pausada por ml-tienda-espejo',
+        pausa_seccion: 'seccion de la tienda pausada a mano (ml-tienda-espejo ?pausar_seccion)',
       }
+      // Fuera de la tienda y activa (ML la aprobo tras una revision, o la reactivo solo):
+      // se vuelve a pausar. Si no, queda vendiendose a un precio que ya no corresponde.
+      if ((item.decision === 'fuera_tienda' || item.decision === 'pausa_seccion') && item.estado === 'active' && escribe) {
+        const r = await ml(`/items/${item.item_id}`, token, { method: 'PUT', body: JSON.stringify({ status: 'paused' }) })
+        if (r.ok) {
+          pausados++
+          await sb.from('mapeo_producto_ml').update({ estado: 'paused' }).eq('item_id', item.item_id)
+        }
+        acciones.push({
+          item_id: item.item_id, codigo: item.codigo, modelo: item.modelo, cambios: { status: 'paused' },
+          resultado: r.ok ? 'pausada — estaba activa y fuera de la tienda' : `error ${r.status}`,
+        })
+        continue
+      }
+
       if (item.decision && MOTIVO[item.decision]) {
         saltados++
         acciones.push({
@@ -110,8 +127,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Las del espejo de la tienda (decision 'tienda') ya pasaron por ml_plan_tienda: el
+      // precio y la seccion los define el plan (Zaira Nara incluida, y Oportunidad no tiene
+      // precio de lista). Solo las apaga quedarse sin stock publicable.
+      const delPlan = (item.decision === 'tienda' || item.decision === 'tienda_duplicada') &&
+        Number(p?.cantidad_publicable ?? 0) > 0
+
       // Si el SKU esta bloqueado y la publicacion esta activa, hay que apagarla.
-      if (!p || p.motivo_bloqueo) {
+      if (!p || (p.motivo_bloqueo && !delPlan)) {
         if (item.estado === 'active' && cfg.pausar_si_stock_cero) {
           cambios.status = 'paused'
           pausados++
