@@ -692,6 +692,16 @@ Deno.serve(async (req) => {
     if (tarea === "recordar") return json(await tareaRecordar(url.searchParams.get("modo") ?? "favor", forzar));
     if (tarea === "resumen") return json(await tareaResumen(forzar, Number(url.searchParams.get("a")) || undefined, url.searchParams.get("simular") === "1"));
     if (tarea === "estado") return json(await temas());
+    // Mensaje libre al grupo de un tema (campañas, avisos): body { texto (HTML), video?, foto? }.
+    if (tarea === "mensaje") {
+      const t = (await temas()).find((x) => x.tema === url.searchParams.get("tema"));
+      if (!t?.chat_id) return json({ error: "ese tema no tiene grupo" }, 400);
+      const b = await req.json().catch(() => ({})) as { texto?: string; video?: string; foto?: string };
+      if (b.video) await tg("sendVideo", { chat_id: t.chat_id, video: b.video, supports_streaming: true });
+      if (b.foto) await tg("sendPhoto", { chat_id: t.chat_id, photo: b.foto });
+      if (!b.texto) return json({ ok: !!(b.video || b.foto) });
+      return json(await enviar(t.chat_id, b.texto));
+    }
     if (tarea === "invitar") {
       const t = (await temas()).find((x) => x.tema === url.searchParams.get("tema"));
       if (!t?.chat_id) return json({ error: "ese tema no tiene grupo" }, 400);
