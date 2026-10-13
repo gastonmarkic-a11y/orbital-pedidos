@@ -27,7 +27,7 @@ export const MATERIAL: Material[] = [
 ]
 export const materialDe = (u: number) => [...MATERIAL].reverse().find((m) => u >= m.desde) ?? null
 
-export const CONTADO_PCT = 15
+export const CONTADO_PCT = 3
 export const PREMIO_DIAS = 30
 export const PLAZO_TOPE = 150
 
