@@ -149,6 +149,8 @@ interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; l
 // solo se evita mostrar el número y todo lo que hable de plata.
 const SinPreciosCtx = createContext(false)
 const useSinPrecios = () => useContext(SinPreciosCtx)
+// Precio de venta sugerido por modelo para esta óptica (ej. Paesani). Solo referencia: no se factura.
+const PrecioRefCtx = createContext<Record<string, number>>({})
 // "010002 - Optisur S.R.L · vendedores (sin precios)" → "Optisur S.R.L"
 const empresaDe = (label?: string | null) => ((label || '').split(' - ')[1] || label || '').split('·')[0].trim()
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
@@ -1101,6 +1103,18 @@ export default function CatalogoPublico() {
     })
   }, [claveOk, acceso?.codigo, clave])
 
+  // Precios de venta sugeridos del cliente (solo si su óptica tiene lista exclusiva con referencia).
+  const [preciosRef, setPreciosRef] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!claveOk || acceso?.tipo !== 'optica') { setPreciosRef({}); return }
+    supabase.rpc('catalogo_precio_ref', { p_clave: acceso?.codigo || clave }).then(({ data, error }) => {
+      if (error) { setPreciosRef({}); return }
+      const m: Record<string, number> = {}
+      for (const r of (data as { modelo: string; precio_ref: number | null }[]) ?? []) if (r.precio_ref != null) m[r.modelo] = Number(r.precio_ref)
+      setPreciosRef(m)
+    })
+  }, [claveOk, acceso?.tipo, acceso?.codigo, clave])
+
   // ── Tracking: cuánto miró y qué llegó a cargar ──────────────────────────────
   // Hasta acá solo sabíamos que entró, y —si confirmaba— qué pidió. Lo del medio
   // (el rato que estuvo y el carrito que armó y no cerró) es justo la señal que le
@@ -1295,7 +1309,7 @@ export default function CatalogoPublico() {
     `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
   return (
-    <SinPreciosCtx.Provider value={sinPrecios}>
+    <SinPreciosCtx.Provider value={sinPrecios}><PrecioRefCtx.Provider value={preciosRef}>
     <div className="min-h-screen bg-white text-[#0a0a0a] orb-tienda">
       {/* Banner chico estilo tienda */}
       <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
@@ -1468,7 +1482,7 @@ export default function CatalogoPublico() {
         </button>
       )}
     </div>
-    </SinPreciosCtx.Provider>
+    </PrecioRefCtx.Provider></SinPreciosCtx.Provider>
   )
 }
 
@@ -1620,6 +1634,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
   const [vars, setVars] = useState<Variante[]>([])
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
+  const precioRef = useContext(PrecioRefCtx)
   const [medidas, setMedidas] = useState<Medidas | null>(null)
   const [ficha, setFicha] = useState<{ linea: string | null; descripcion: string | null } | null>(null)
   const sinPrecios = useSinPrecios()
@@ -1775,6 +1790,9 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
                   {enPromo(modelo.modelo, v.precio, v.precio_lista) && <PromoTag precio={v.precio} lista={v.precio_lista} />}
                   <span className="text-[11px] text-neutral-400">+ IVA</span>
                 </div>
+              )}
+              {!soloContenido && !sinPrecios && precioRef[modelo.modelo] != null && (
+                <p className="text-[12px] text-neutral-500 mt-1">Tu precio de venta sugerido: <b className="text-neutral-800">{kAr(precioRef[modelo.modelo])}</b> <span className="text-[11px] text-neutral-400">(referencia)</span></p>
               )}
             </div>
 
@@ -1995,9 +2013,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
     setEnviando(true); setErr(null)
     const payload = items.map((c) => ({ codigo: c.codigo, modelo: c.modelo, descripcion: c.descripcion, cantidad: c.cantidad, precio: c.precio }))
     // Revendedor: marcamos el pedido y sumamos "para quién" (informativo) a las observaciones,
-    // así Adrián sabe aplicar 15% bonif. + 30/60/90 + retira al aprobar.
+    // Precio óptica; si corresponde descuento lo carga Adrián al aprobar. 30/60/90 + retira.
     const obsFinal = esRev
-      ? ['🔁 REVENDEDOR — aplicar 15% bonif. · 30/60/90 · retira',
+      ? ['🔁 REVENDEDOR — precio óptica (descuento: lo carga Adrián) · 30/60/90 · retira',
          paraQuien.trim() ? 'Para: ' + paraQuien.trim() : '', obs.trim()].filter(Boolean).join(' · ')
       : packCalc
         // Pack de bienvenida: el vendedor ve en el pedido qué corresponde sin cargo.

@@ -65,6 +65,8 @@ export default function NuevoPedido() {
   const [cliente, setCliente] = useState<Cliente | null>(location.state?.cliente ?? null)
   // Precios especiales del cliente (lista especial por cliente). Clave = modelo en MAYÚSCULAS.
   const [preciosEsp, setPreciosEsp] = useState<Record<string, number>>({})
+  // Precio de venta sugerido al cliente (solo referencia, no se factura). Ej.: Paesani.
+  const [preciosRef, setPreciosRef] = useState<Record<string, number>>({})
   // Promos por modelo con vigencia (tabla promo_precio, ej. Día de la Madre). Precio neto cerrado.
   // codigo null = todo el modelo; con codigo = solo ese color.
   const [promos, setPromos] = useState<{ modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string }[]>([])
@@ -97,10 +99,7 @@ export default function NuevoPedido() {
   const [medios, setMedios] = useState<string[]>([])
   const [dtoFinanciero, setDtoFinanciero] = useState('')
   const [dtoComercial, setDtoComercial] = useState('')
-  // Revendedor autorizado (marca en la ficha): siempre 15% comercial, precargado.
-  useEffect(() => {
-    if (cliente?.nota?.includes('REVENDEDOR')) setDtoComercial((d) => d || '15')
-  }, [cliente?.cod])
+  // Revendedor: paga precio óptica. Si corresponde un descuento, lo carga Adrián a mano (desde 13/10/2026).
   const [blancoPct, setBlancoPct] = useState(100)
   const [cuotas, setCuotas] = useState<Cuota[]>([{ dias: 0, pct: 100 }])
   const [otroPlazo, setOtroPlazo] = useState('')
@@ -207,12 +206,19 @@ export default function NuevoPedido() {
 
   // Precios especiales del cliente (lista especial por cliente): reemplazan la lista al cotizar.
   useEffect(() => {
-    if (!cliente?.cod) { setPreciosEsp({}); return }
-    supabase.from('cliente_precio_especial').select('modelo, precio_neto').eq('cod_cliente', cliente.cod)
+    if (!cliente?.cod) { setPreciosEsp({}); setPreciosRef({}); return }
+    // '*': precio_ref llega con precios_nov_2026.sql; sin esa columna sigue andando igual.
+    supabase.from('cliente_precio_especial').select('*').eq('cod_cliente', cliente.cod)
       .then(({ data }) => {
         const m: Record<string, number> = {}
-        for (const r of (data as { modelo: string; precio_neto: number }[]) ?? []) m[r.modelo.trim().toUpperCase()] = Number(r.precio_neto)
+        const r2: Record<string, number> = {}
+        for (const r of (data as { modelo: string; precio_neto: number; precio_ref: number | null }[]) ?? []) {
+          const k = r.modelo.trim().toUpperCase()
+          m[k] = Number(r.precio_neto)
+          if (r.precio_ref != null) r2[k] = Number(r.precio_ref)
+        }
         setPreciosEsp(m)
+        setPreciosRef(r2)
       })
   }, [cliente?.cod])
 
@@ -573,9 +579,14 @@ export default function NuevoPedido() {
       const lista = getPrecioLista(info?.precio || 0, cliente?.nro_lista ?? 5)
       tag = `♥ −${promoPct(item.precio_promo, esp ?? lista).toLocaleString('es-AR')}% ${item.promo} (lista ${formatPrecio(esp ?? lista)})`
     }
-    else if (esp != null) tag = '★ precio especial'
+    else if (esp != null) {
+      const ref = info?.modelo ? preciosRef[info.modelo.trim().toUpperCase()] : undefined
+      tag = '★ precio exclusivo' + (ref ? ` · venta sugerida ${formatPrecio(ref)}` : '')
+    }
     else if (esPreventa) tag = 'preventa (precio fijo)'
     else tag = pct > 0 ? `−${pct}% comercial` : 'precio de lista'
+    // Distribuidor: se factura óptica ÷ 1,41; el precio óptica va solo como referencia.
+    if (cliente?.nro_lista === 1 && !esRegalo && esp == null && (info?.precio ?? 0) > 0) tag += ` · ref. óptica ${formatPrecio(info!.precio)}`
     return { net, total: net * cart[k], tag }
   }
   const pendienteDe = (k: string) => Math.max(0, (cart[k] || 0) - (stock.find((x) => x.codigo === k)?.cantidad ?? 0))
@@ -1246,8 +1257,11 @@ export default function NuevoPedido() {
                                   {p.descripcion || '—'}
                                 </p>
                                 <p className="text-[10px] text-faint font-mono">{p.codigo}</p>
-                                {(p.precio ?? 0) > 0 && (
-                                  <p className="text-xs text-gold font-semibold">{formatPrecio(p.precio)}</p>
+                                {(p.precio ?? 0) > 0 && (espDe(p.modelo) != null
+                                  ? <p className="text-xs text-gold font-semibold">★ {formatPrecio(espDe(p.modelo)!)} <span className="font-normal text-faint">exclusivo</span></p>
+                                  : cliente?.nro_lista === 1
+                                    ? <p className="text-xs text-gold font-semibold">{formatPrecio(getPrecioLista(p.precio!, 1))} <span className="font-normal text-faint">distribuidor · óptica {formatPrecio(p.precio)} (ref.)</span></p>
+                                    : <p className="text-xs text-gold font-semibold">{formatPrecio(p.precio)}</p>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
