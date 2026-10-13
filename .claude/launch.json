@@ -89,6 +89,50 @@
       "port": 5211
     },
     {
+      "name": "orbital-suite-deck",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5215",
+        "--strictPort"
+      ],
+      "port": 5215
+    },
+    {
+      "name": "orbital-suite-colab-guia",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5223",
+        "--strictPort"
+      ],
+      "port": 5223
+    },
+    {
+      "name": "orbital-suite-vitrina",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5229",
+        "--strictPort"
+      ],
+      "port": 5229
+    },
+    {
+      "name": "orbital-suite-proteccion",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5241",
+        "--strictPort"
+      ],
+      "port": 5241
+    },
+    {
       "name": "orbital-suite-perfil",
       "runtimeExecutable": "npx",
       "runtimeArgs": [

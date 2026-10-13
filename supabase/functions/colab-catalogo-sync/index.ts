@@ -3,6 +3,8 @@
 // colab_producto. En la tienda cada producto es un color; `disponible` = alguna variante
 // publicada con stock. Es lo único que ven los influencers (solo lo disponible).
 // Solo anteojos: productos con tag SOL o RECETA (deja afuera servicios como Cuidado ORBITAL).
+// Además marca colab_producto.colecciones con lo publicado en /collections/<c> de cada
+// promotor de colección (corre cada hora por cron).
 //
 // Auth (verify_jwt=false): header x-cron-key == app_config.cron_key, o body.clave de un
 // admin de colaboradores activo (botón "Actualizar catálogo" del panel).
@@ -64,9 +66,22 @@ Deno.serve(async (req) => {
   }
   if (!ok) return json({ error: 'no_autorizado' }, 401)
 
+  // La tienda corta con 429 si la consultan seguido (otras funciones también leen products.json):
+  // se reintenta respetando Retry-After, si no 3s, 6s, 12s, 20s.
+  async function traer(url: string): Promise<Response> {
+    let r = await fetch(url)
+    for (const espera of [3, 6, 12, 20]) {
+      if (r.status !== 429 && r.status < 500) break
+      const ra = Number(r.headers.get('retry-after'))
+      await new Promise((ok) => setTimeout(ok, (ra > 0 && ra <= 30 ? ra : espera) * 1000))
+      r = await fetch(url)
+    }
+    return r
+  }
+
   const productos: Producto[] = []
   for (let page = 1; page <= 20; page++) {
-    const r = await fetch(`${TIENDA}/products.json?limit=250&page=${page}`)
+    const r = await traer(`${TIENDA}/products.json?limit=250&page=${page}`)
     if (!r.ok) return json({ error: 'tienda_error', status: r.status }, 502)
     const ps: Producto[] = (await r.json()).products ?? []
     productos.push(...ps)
@@ -114,8 +129,54 @@ Deno.serve(async (req) => {
       .eq('disponible', true).not('product_id', 'in', `(${ids.join(',')})`)
   }
 
+  // Colecciones de promotores (ej. orbital-x-zaira): su panel muestra lo que está en esa
+  // página de la tienda. Si la página no responde, queda la marca del sync anterior.
+  // Primero por la Admin API (la página pública corta con 429 a los pedidos de Supabase).
+  const { data: infs } = await db.from('colab_influencer').select('coleccion').not('coleccion', 'is', null)
+  const { data: store } = await db.from('shopify_stores').select('shop_domain, access_token').eq('id', 'linea').maybeSingle()
+  const ver = Deno.env.get('SHOPIFY_API_VERSION') ?? '2025-01'
+  async function porAdmin(c: string): Promise<string[] | null> {
+    if (!store) return null
+    const handles: string[] = []
+    let cursor: string | null = null
+    for (let i = 0; i < 10; i++) {
+      const r = await fetch(`https://${store.shop_domain}/admin/api/${ver}/graphql.json`, {
+        method: 'POST',
+        headers: { 'X-Shopify-Access-Token': store.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `query($h:String!,$c:String){collectionByHandle(handle:$h){products(first:250,after:$c){nodes{handle} pageInfo{hasNextPage endCursor}}}}`,
+          variables: { h: c, c: cursor },
+        }),
+      })
+      if (!r.ok) return null
+      const d = (await r.json()).data?.collectionByHandle?.products
+      if (!d) return null
+      handles.push(...d.nodes.map((n: { handle: string }) => n.handle))
+      if (!d.pageInfo.hasNextPage) break
+      cursor = d.pageInfo.endCursor
+    }
+    return handles
+  }
+  const colecciones: Record<string, number | string> = {}
+  for (const c of new Set((infs ?? []).map((i) => i.coleccion as string))) {
+    const admin = await porAdmin(c).catch(() => null)
+    const handles: string[] = admin ?? []
+    let fallo: string | null = null
+    for (let page = 1; page <= 10 && !admin; page++) {
+      const r = await traer(`${TIENDA}/collections/${encodeURIComponent(c)}/products.json?limit=250&page=${page}`)
+      if (!r.ok) { fallo = `tienda_${r.status}`; break }
+      const ps: Producto[] = (await r.json()).products ?? []
+      handles.push(...ps.map((p) => p.handle))
+      if (ps.length < 250) break
+    }
+    if (fallo || !handles.length) { colecciones[c] = fallo ?? 'vacia'; continue }
+    const { data: n, error } = await db.rpc('colab_set_coleccion', { p_coleccion: c, p_handles: handles })
+    colecciones[c] = error ? `db_error: ${error.message}` : (n as number)
+  }
+
   const disp = filas.filter((f) => f.disponible)
   return json({
+    colecciones,
     ok: true,
     productos_tienda: productos.length,
     anteojos: filas.length,

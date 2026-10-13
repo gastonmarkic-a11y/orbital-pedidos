@@ -24,6 +24,9 @@ const COLORES: Record<string, string> = {
   adrian: "🟢", bruno: "🔵", lola: "🔴", ulises: "🟣", mauro: "🟠", gus: "🟡", gustavo: "🟡",
   gaston: "⚫", corporativo: "⚫", administracion: "🟤", orbital: "🟤", postventa: "⚪",
 };
+const CANAL: Record<string, string> = { instagram: "Instagram", messenger: "Messenger", web: "el chat de la web", whatsapp: "WhatsApp" };
+const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 function marca(n: string | null | undefined): string {
   const s = String(n ?? "").trim();
   const k = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[\s(]+/)[0] ?? "";
@@ -59,7 +62,7 @@ Deno.serve(async (req: Request) => {
   const limite = new Date(Date.now() - ESCALA_MIN * 60 * 1000).toISOString();
   const desde24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data: sinResp } = await supabase
-    .from("derivaciones").select("id, conversacion_id, created_at, asignado_a")
+    .from("derivaciones").select("id, conversacion_id, created_at, asignado_a, motivo, resumen")
     .eq("estado", "pendiente").gte("created_at", desde24h).lte("created_at", limite)
     .order("created_at", { ascending: false });
 
@@ -83,12 +86,18 @@ Deno.serve(async (req: Request) => {
 
     const { data: dv } = await supabase.from("ojo_v_derivaciones")
       .select("cliente_razon, contacto_nombre, contacto_telefono").eq("id", d.id).maybeSingle();
-    const quien = dv?.cliente_razon ?? dv?.contacto_nombre ?? dv?.contacto_telefono ?? "un contacto";
+    // v2 (2026-10-08): sin nombre ni teléfono (Instagram, chat web) decía "el caso de un contacto" y nadie
+    // sabía de qué se trataba: ahora va el canal y qué pidió.
+    const { data: cv } = await supabase.from("at_conversaciones").select("canal_origen").eq("id", conv).maybeSingle();
+    const canal = CANAL[String(cv?.canal_origen ?? "")] ?? String(cv?.canal_origen ?? "");
+    const quien = dv?.cliente_razon ?? dv?.contacto_nombre ?? dv?.contacto_telefono ?? `alguien que escribió${canal ? " por " + canal : ""}`;
+    const pidio = String(d.resumen ?? "").trim();
     const min = Math.round((Date.now() - Date.parse(d.created_at)) / 60000);
     const hace = min < 90 ? `${min} min` : `${Math.round(min / 60)} h`;
     const texto =
       (v ? `⏰ No tengo respuesta de <b>${marca(v.nombre)}</b> sobre` : `⏰ Nadie tomó`) +
-      ` el caso de <b>${quien}</b> (hace ${hace}).\n` +
+      ` el caso de <b>${esc(quien)}</b> (hace ${hace}).\n` +
+      (pidio ? `💬 ${esc(pidio.slice(0, 300))}\n` : "") +
       `🙋 <b>¿Algún vendedor puede tomar este caso?</b>\n` +
       `<i>Respondé «yo» a este mensaje y le pido el OK a Gastón.</i>`;
     if (simular) { salida.push({ derivacion: d.id, asignado: v?.codigo ?? null, quien, texto }); continue; }

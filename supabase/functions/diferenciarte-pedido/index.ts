@@ -114,17 +114,30 @@ async function recordatorio(codigo: string, cod: string | null) {
   const f = cli as { nomcomerc: string | null; razon: string | null; whatsapp: string | null; telefono: string | null } | null;
   const tel = f?.whatsapp || f?.telefono;
   if (!tel) return { ok: false, motivo: "sin_telefono" };
+  // Una sola renovación por código: la RPC emite un bono nuevo (recordado_at null) y el cron lo
+  // volvía a tomar a los 7 días → loop semanal. El cron ya marcó el bono actual; si hay otro
+  // recordado, ya se renovó antes. Además, nada si la charla recibió una renovación en 30 días.
+  const { count: yaRec } = await db.from("catalogo_bono").select("id", { count: "exact", head: true }).eq("codigo", codigo).not("recordado_at", "is", null);
+  if ((yaRec ?? 0) > 1) return { ok: false, motivo: "ya_renovado" };
+  const conv = await conversacionDe(tel);
+  if (conv) {
+    const { count: rec } = await db.from("at_mensajes").select("id", { count: "exact", head: true }).eq("conversacion_id", conv).eq("emisor", "bot")
+      .ilike("contenido", "%Te renovamos por 72%").gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString());
+    if ((rec ?? 0) > 0) return { ok: false, motivo: "renovado_reciente" };
+  }
   const { data: nb } = await db.rpc("bot_bono_diferenciarte", { p_token: codigo, p_cod: cod });
   const base = (await cfg("url_landings")) || "https://ver.orbitaleyewear.com.ar";
   const link = `${base}/catalogo?k=${codigo}&pack=bienvenida`;
-  const nombre = f?.nomcomerc || f?.razon || "";
+  // En algunos leads nomcomerc quedó con una respuesta del chat ("no nunca trabaje con ustedes"): eso no es un nombre.
+  const crudo = (f?.nomcomerc || f?.razon || "").trim();
+  const nombre = crudo && crudo.split(/\s+/).length <= 4 && !/\b(no|nunca|trabaj\w*|hemos|gracias|quiero|hola|firma|ustedes)\b/i.test(crudo) ? crudo : "";
   const to = waTo(tel);
   // Fuera de la ventana de 24 h solo sale por plantilla; si no está aprobada, se intenta texto.
   const viaTpl = await enviar({ messaging_product: "whatsapp", to, type: "template", template: { name: TPL_RECORDATORIO, language: { code: "es_AR" },
-    components: [{ type: "body", parameters: [{ type: "text", text: nombre || "¡Hola!" }, { type: "text", text: link }] }] } });
+    components: [{ type: "body", parameters: [{ type: "text", text: nombre || "de nuevo" }, { type: "text", text: link }] }] } });
   const msg = `Hola${nombre ? " " + nombre : ""} 👋 Te renovamos por 72 h tu propuesta exclusiva: bono de hasta $300.000 comprando por el catálogo + Pack de Bienvenida.\n\n${link}\n\nCualquier duda, escribime por acá.`;
   const viaTexto = viaTpl.ok ? null : await texto(to, msg);
-  if (viaTpl.ok || viaTexto?.ok) await logBot(await conversacionDe(tel), msg);
+  if (viaTpl.ok || viaTexto?.ok) await logBot(conv, msg);
   return { ok: viaTpl.ok || !!viaTexto?.ok, bono: nb, viaTpl, viaTexto };
 }
 

@@ -4,3 +4,6 @@ dist
 *.local
 tmp/
 dnda/
+
+# Clave de ml-tienda-espejo (no subir)
+supabase/.temp/ml-espejo-clave.env
