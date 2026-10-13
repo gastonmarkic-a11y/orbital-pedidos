@@ -1973,10 +1973,10 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   const [elegido, setElegido] = useState<ClienteBusq | null>(null)
   const sinPrecios = useSinPrecios()
   // Escalera por volumen: solo ópticas con precios, sin pack ni bono de campaña (esos traen sus condiciones)
-  // unidades al abrir el carrito: si desde acá completa un escalón, gana el premio de +30 días
+  // unidades al abrir el carrito: si desde acá sube de paquete, se le comunica lo que ganó
   const [unidadesAlAbrir] = useState(unidades)
   const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
-  // Compra digital (Diferenciarte): el bono sigue igual; plazo con premio y % por volumen que aplica el vendedor
+  // Compra digital (Diferenciarte): el bono sigue igual; plazo del paquete y % por volumen que aplica el vendedor
   const escDigital = digital ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
   const [ident, setIdent] = useState(identFijo)
@@ -2015,7 +2015,6 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
          (sinCargoUnidades ? ` · ${sinCargoUnidades} sin cargo (${kAr(sinCargoImp)})` : '') +
          ` · neto ${kAr(digital.calc.neto)} + IVA · plazo ${condiciones!.plazo}` +
          (escDigital!.actual.pct ? ` · 📊 VOLUMEN ${escDigital!.actual.pct}% comercial` : '') +
-         (escDigital!.premio ? ' (🎁 +30 días por completar escalón en el checkout)' : '') +
          (contado ? ` · PAGA CONTADO/TRANSFERENCIA ${digital.bono.contado_pct ?? 0}% extra → ${kAr(digital.calc.pagaEfectivo)} + IVA` : ''),
          obsFinal].filter(Boolean).join(' · ')
       : obsFinal
@@ -2121,7 +2120,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
               {escalera && (
                 <EscaleraResumen calc={escalera} subtotal={total} contado={contado} onContado={setContado}>
                   <EscaleraSugerencias clave={clave} modelosCarrito={[...new Set(items.map((c) => c.modelo))]} modelosTop={topModelos}
-                    enCarrito={Object.fromEntries(items.map((c) => [c.codigo, c.cantidad]))} faltan={escalera.faltan}
+                    enCarrito={Object.fromEntries(items.map((c) => [c.codigo, c.cantidad]))} faltan={escalera.faltan} paquete={escalera.proximo?.paquete}
                     onAdd={(v, m) => onAdd(v as Variante, m)} />
                 </EscaleraResumen>
               )}

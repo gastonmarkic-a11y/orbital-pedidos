@@ -1,13 +1,14 @@
 // ── Escalera por volumen en el carrito: cómo pagar + cuánto falta para el próximo escalón ──
 // Se muestra en el catálogo de ópticas cuando no hay pack ni bono de campaña.
 import { useEffect, useState, type ReactNode } from 'react'
-import { TrendingUp, Plus, Star } from 'lucide-react'
+import { TrendingUp, Plus, Star, Zap } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { FotoProd } from './FotoProd'
 import { colorLegible } from './colorLegible'
-import { CONTADO_PCT, PREMIO_DIAS, type EscaleraCalc } from './escalera'
+import { CONTADO_PCT, materialDe, type EscaleraCalc } from './escalera'
 
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+const enumerar = (xs: string[]) => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : xs[0] ?? ''
 
 export interface VarSugerida {
   codigo: string; descripcion: string | null; clasificacion: string | null
@@ -19,20 +20,24 @@ export function EscaleraResumen({ calc, subtotal, contado, onContado, children }
   calc: EscaleraCalc; subtotal: number; contado: boolean | null; onContado: (v: boolean) => void; children?: ReactNode
 }) {
   const { actual, proximo } = calc
+  const matProx = proximo ? materialDe(proximo.desde) : null
+  const matSubio = calc.subio ? materialDe(calc.subio.desde) : null
   return (
     <div className="rounded-xl border border-[#0004FF]/15 bg-[#0004FF]/[0.03] p-3 mb-3 space-y-2">
       {proximo && (
         <div className="flex items-start gap-2 rounded-lg bg-[#0004FF] text-white px-3 py-2">
-          <TrendingUp size={16} className="shrink-0 mt-0.5" />
+          {matProx?.img && matProx !== calc.material
+            ? <img src={matProx.img} alt={matProx.nombre} className="w-11 h-14 object-cover object-top rounded-md shrink-0 bg-white" />
+            : <TrendingUp size={16} className="shrink-0 mt-0.5" />}
           <p className="text-[12px] leading-snug">
-            Sumá <b>{calc.faltan} {calc.faltan === 1 ? 'anteojo' : 'anteojos'}</b> y pasás a <b>{proximo.pct}% de descuento</b>
-            {!calc.premio && <> + <b>🎁 te regalamos {PREMIO_DIAS} días más</b> ({calc.plazoProximo})</>}.
+            Sumá <b>{calc.faltan} {calc.faltan === 1 ? 'anteojo' : 'anteojos'}</b> y pasás al paquete <b>{proximo.paquete}</b>: 🎁 <b>{enumerar(calc.premioProximo)}</b>.
           </p>
         </div>
       )}
-      {calc.premio && (
-        <p className="text-[12px] rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">
-          🎁 ¡Completaste el escalón! Ganaste <b>{PREMIO_DIAS} días más</b>: pagás a {calc.plazo}.
+      {calc.subio && (
+        <p className="flex items-center gap-2.5 text-[12px] rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">
+          {matSubio?.img && <img src={matSubio.img} alt={matSubio.nombre} className="w-11 h-14 object-cover object-top rounded-md shrink-0" />}
+          <span>🎉 ¡Llegaste al paquete <b>{calc.subio.paquete}</b>! Ganaste <b>{enumerar(calc.premioSubio)}</b>.</span>
         </p>
       )}
       {(calc.material || calc.materialProximo) && (
@@ -56,7 +61,7 @@ export function EscaleraResumen({ calc, subtotal, contado, onContado, children }
       {children}
       <div className="text-sm space-y-0.5">
         <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>{kAr(subtotal)}</span></div>
-        {actual.pct > 0 && <div className="flex justify-between"><span className="text-neutral-500">Descuento por volumen {actual.pct}%</span><span className="text-[#0004FF]">− {kAr(calc.descuento)}</span></div>}
+        {actual.pct > 0 && <div className="flex justify-between"><span className="text-neutral-500">Paquete {actual.paquete} · descuento por volumen {actual.pct}%</span><span className="text-[#0004FF]">− {kAr(calc.descuento)}</span></div>}
       </div>
       <p className="text-[11px] font-semibold text-neutral-600 pt-1">¿Cómo lo querés pagar?</p>
       <div className="grid grid-cols-2 gap-2">
@@ -76,9 +81,9 @@ export function EscaleraResumen({ calc, subtotal, contado, onContado, children }
 }
 
 /** Sugerencias para completar el escalón: otros colores de lo que pidió + los que más rotan. */
-export function EscaleraSugerencias({ clave, modelosCarrito, modelosTop, enCarrito, faltan, onAdd }: {
+export function EscaleraSugerencias({ clave, modelosCarrito, modelosTop, enCarrito, faltan, paquete, onAdd }: {
   clave: string; modelosCarrito: string[]; modelosTop: string[]; enCarrito: Record<string, number>
-  faltan: number; onAdd: (v: VarSugerida, modelo: string) => void
+  faltan: number; paquete?: string; onAdd: (v: VarSugerida, modelo: string) => void
 }) {
   const [sug, setSug] = useState<{ v: VarSugerida; modelo: string; mismo: boolean }[]>([])
   const key = [...modelosCarrito].sort().join('|') + '#' + modelosTop.join('|')
@@ -108,8 +113,25 @@ export function EscaleraSugerencias({ clave, modelosCarrito, modelosTop, enCarri
 
   const visibles = sug.filter((s) => !enCarrito[s.v.codigo])
   if (!visibles.length || faltan <= 0) return null
+  // Carga automática: reparte las unidades que faltan entre las sugerencias (de a una, sin pasar el stock).
+  const plan: { v: VarSugerida; modelo: string }[] = []
+  const usados: Record<string, number> = {}
+  for (let vuelta = 0; plan.length < faltan && vuelta < faltan; vuelta++) {
+    for (const s of visibles) {
+      if (plan.length >= faltan) break
+      if ((usados[s.v.codigo] ?? 0) >= s.v.stock) continue
+      usados[s.v.codigo] = (usados[s.v.codigo] ?? 0) + 1
+      plan.push(s)
+    }
+  }
   return (
     <div>
+      {plan.length === faltan && (
+        <button onClick={() => plan.forEach((s) => onAdd(s.v, s.modelo))}
+          className="w-full mb-2 flex items-center justify-center gap-1.5 rounded-lg bg-[#0004FF] text-white text-[12px] font-bold py-2">
+          <Zap size={14} /> Completar {paquete ? `el paquete ${paquete}` : 'el paquete'}: agregar {faltan} {faltan === 1 ? 'anteojo' : 'anteojos'} sugeridos
+        </button>
+      )}
       <p className="text-[11px] font-semibold text-neutral-600 mb-1.5">Para completar, según lo que pediste y lo que más se vende:</p>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {visibles.map(({ v, modelo, mismo }) => (

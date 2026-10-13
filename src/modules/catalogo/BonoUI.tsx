@@ -112,7 +112,7 @@ export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoU
   bono: BonoEstado; calc: BonoCalc; subtotal: number; unidades: number
   sinCargoUnidades: number; sinCargoImporte: number
   contado: boolean | null; onContado: (v: boolean) => void
-  escalera: EscaleraCalc   // escalera por volumen: % lo aplica el vendedor; plazo con premio del checkout
+  escalera: EscaleraCalc   // paquete por volumen: % lo aplica el vendedor; plazo del paquete
 }) {
   const cpct = bono.contado_pct ?? bono.financiero_pct ?? 0
   return (
@@ -150,9 +150,9 @@ export function ResumenCompraDigital({ bono, calc, subtotal, unidades, sinCargoU
       <div className="pt-2 mt-1 border-t border-[#0004FF]/15 space-y-1.5">
         <p className="text-[12px] text-neutral-700 leading-snug">
           <b>Forma de pago:</b> {escalera.plazo.replace(/\//g, ', ')} días.{' '}
-          {escalera.premio
-            ? <span className="text-emerald-700 font-semibold">🎁 Completaste el escalón: ganaste 30 días más.</span>
-            : escalera.proximo && <span>Sumá {escalera.faltan} y pasás a {escalera.proximo.pct}% por volumen + 🎁 30 días más.</span>}
+          {escalera.subio
+            ? <span className="text-emerald-700 font-semibold">🎉 Llegaste al paquete {escalera.subio.paquete}: ganaste {escalera.premioSubio.join(', ')}.</span>
+            : escalera.proximo && <span>Sumá {escalera.faltan} y pasás al paquete {escalera.proximo.paquete}: 🎁 {escalera.premioProximo.join(', ')}.</span>}
         </p>
         {escalera.actual.pct > 0 && (
           <p className="text-[12px] text-neutral-700">

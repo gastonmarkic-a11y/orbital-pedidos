@@ -6,6 +6,7 @@ import { useToast } from '../../lib/toast'
 import { Cliente, PedidoItem, StockItem } from '../../lib/types'
 import { formatPrecio } from '../../lib/format'
 import { fetchPaged } from '../../lib/fetchAll'
+import { escalonDe, materialDe, ESCALERA, CONTADO_PCT, premioPaquete } from '../catalogo/escalera'
 import { ENTREGA_CANALES, ENTREGA_PAGOS, MEDIOS_PAGO, labelEntrega, labelMedios, qtyClass, calcImporte, calcFinanciero, netoUnitario, descuentoItemPct, getPrecioLista, promoPct } from './calc'
 
 interface Cuota {
@@ -14,7 +15,7 @@ interface Cuota {
 }
 
 // Plazos de pago habituales (días). Se tildan y el 100% se reparte en partes iguales.
-const PLAZOS_FIJOS = [0, 30, 60, 90, 120, 150]
+const PLAZOS_FIJOS = [0, 30, 60, 90, 120, 150, 180]
 
 // Reparte 100% en partes iguales entre los plazos elegidos, ajustando el último
 // para que la suma dé exactamente 100 (evita 33,33 × 3 = 99,99).
@@ -1487,6 +1488,34 @@ export default function NuevoPedido() {
                 <p className="text-[11px] text-muted mt-1.5">🚚 {labelEntrega(entregaCanal, entregaPago)}</p>
               )}
             </div>
+
+            {totalUnidades > 0 && (() => {
+              // Paquete del cuadro de condiciones según las unidades del pedido (bonificación por cantidad, pague como pague).
+              const paq = escalonDe(totalUnidades)
+              const mat = materialDe(totalUnidades)
+              const sig = ESCALERA.find((e) => e.desde > totalUnidades)
+              const noAplica = cliente?.nro_lista === 1 || !!cliente?.nota?.includes('REVENDEDOR')
+              const aplicar = (contado: boolean) => {
+                setDtoComercial(paq.pct ? String(paq.pct) : '')
+                if (contado) { setDtoFinanciero(String(CONTADO_PCT)); setCuotas([{ dias: 0, pct: 100 }]) }
+                else { setDtoFinanciero(''); setCuotas(repartirCuotas(paq.plazo.split('/').map(Number))) }
+              }
+              return (
+                <div className="rounded-lg border border-brand/20 bg-brand/[0.04] p-2.5 text-xs space-y-1.5">
+                  <p>
+                    📊 <b>Paquete {paq.paquete}</b> ({totalUnidades} u.): bonif. comercial <b>{paq.pct}%</b> · cheques <b>{paq.plazo}</b> · contado <b>+{CONTADO_PCT}%</b>
+                    {mat && <> · 📦 {mat.detalle}</>}
+                  </p>
+                  {sig && <p className="text-muted">🎁 Con {sig.desde - totalUnidades} u. más pasa al paquete {sig.paquete}: {premioPaquete(paq, sig).join(', ')}.</p>}
+                  {noAplica
+                    ? <p className="text-muted">No aplica a distribuidores ni revendedores.</p>
+                    : <div className="flex gap-1.5">
+                        <button type="button" onClick={() => aplicar(false)} className="px-2.5 py-1 rounded-md border border-brand text-brandDark font-semibold">Aplicar · cheques {paq.plazo}</button>
+                        <button type="button" onClick={() => aplicar(true)} className="px-2.5 py-1 rounded-md border border-emerald-600 text-emerald-700 font-semibold">Aplicar · contado {paq.pct ? paq.pct + '% + ' : ''}{CONTADO_PCT}%</button>
+                      </div>}
+                </div>
+              )
+            })()}
 
             <div>
               <p className="text-xs text-muted mb-1.5">Tipo de pago — tildá todos los que apliquen</p>
