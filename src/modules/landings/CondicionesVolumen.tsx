@@ -36,7 +36,7 @@ export default function CondicionesVolumen({ kicker, titulo, bajada }: { kicker:
       </div>
       <ul className="mt-5 space-y-2 text-[13px] text-black/75">
         <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>La bonificación es por cantidad y va siempre, pagues con cheques o contado.</li>
-        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>Más cantidad, más plazo: 30/60/90 días; desde 24 u. hasta 120; desde 37 u. hasta 150; desde 101 u. hasta 180.</li>
+        <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>Más cantidad, más plazo: 30/60/90 días; desde 24 u. hasta 120; desde 36 u. hasta 150; desde 100 u. hasta 180.</li>
         <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>{CONTADO_PCT}% extra pagando por transferencia o contado, sobre el neto bonificado.</li>
         <li className="flex gap-2"><span style={{ color: AZUL }}>✓</span>🎁 El carrito te avisa cuánto te falta para el siguiente paquete y qué ganás al llegar.</li>
       </ul>

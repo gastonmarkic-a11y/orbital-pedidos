@@ -9,18 +9,18 @@ export interface Escalon { desde: number; pct: number; plazo: string; paquete: s
 export const ESCALERA: Escalon[] = [
   { desde: 1,   pct: 0,  plazo: '30/60/90',             paquete: 'Inicial' },
   { desde: 24,  pct: 5,  plazo: '30/60/90/120',         paquete: 'Básico' },
-  { desde: 37,  pct: 7,  plazo: '30/60/90/120/150',     paquete: 'Intermedio' },
-  { desde: 61,  pct: 7,  plazo: '30/60/90/120/150',     paquete: 'Avanzado' },
-  { desde: 101, pct: 10, plazo: '30/60/90/120/150/180', paquete: 'Full' },
+  { desde: 36,  pct: 7,  plazo: '30/60/90/120/150',     paquete: 'Intermedio' },
+  { desde: 60,  pct: 7,  plazo: '30/60/90/120/150',     paquete: 'Avanzado' },
+  { desde: 100, pct: 10, plazo: '30/60/90/120/150/180', paquete: 'Full' },
 ]
 // Material de exhibición para el PDV según piezas de la compra: mismos cortes que los paquetes.
 // img: la pieza nueva de ese escalón (public/pdv, sacadas del PDF de condiciones).
 export interface Material { desde: number; nombre: string; detalle: string; img: string | null }
 export const MATERIAL: Material[] = [
   { desde: 24,  nombre: 'POP para vidriera', detalle: 'POP para vidriera', img: '/pdv/pop-vidriera.webp' },
-  { desde: 37,  nombre: 'exhibidor de vidriera', detalle: 'Exhibidor de vidriera + POP', img: '/pdv/exhibidor-vidriera.webp' },
-  { desde: 61,  nombre: 'exhibidor de pie', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP', img: '/pdv/exhibidor-pie.webp' },
-  { desde: 101, nombre: 'gráficas a medida', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP + gráficas a medida para la óptica', img: null },
+  { desde: 36,  nombre: 'exhibidor de vidriera', detalle: 'Exhibidor de vidriera + POP', img: '/pdv/exhibidor-vidriera.webp' },
+  { desde: 60,  nombre: 'exhibidor de pie', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP', img: '/pdv/exhibidor-pie.webp' },
+  { desde: 100, nombre: 'gráficas a medida', detalle: 'Exhibidor de pie + exhibidor de vidriera + POP + gráficas a medida para la óptica', img: null },
 ]
 export const materialDe = (u: number) => [...MATERIAL].reverse().find((m) => u >= m.desde) ?? null
 
