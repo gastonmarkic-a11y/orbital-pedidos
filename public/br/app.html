@@ -589,7 +589,12 @@ function tStock(o){
   const grupos=[...new Set(act.map(x=>x.g))];
   const toggles=(k,items)=>`<div class="chips">${items.map(([v,n,hex])=>`<button class="chip" data-a="rpSel" data-k="${k}" data-v="${v}" aria-pressed="${RP[k].includes(v)}">${hex?`<span class="dot" style="background:${hex};vertical-align:-1px"></span> `:""}${n}</button>`).join("")}</div>`;
   const nTiraA=7*(RP.selC.length+RP.selM.length),nTiraP=(RP.conCris?nTiraA:0)+7*RP.selA.length;
-  return `<div class="stk">
+  const pr=(t,v,s)=>`<div><div class="tiny muted">${t}</div><div class="num" style="font-weight:700;font-size:22px">${ars(v)}</div>${s?`<div class="tiny muted">${s}</div>`:""}</div>`;
+  return `<div class="card pad" style="margin-bottom:14px"><div class="row between" style="margin-bottom:10px"><div class="lbl" style="margin:0">Tus precios de reposición</div><span class="pill">Sin IVA</span></div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
+    ${pr("Combinado · armazón + par",P.comb,`10% menos que ${ars(P.lista)}`)}${pr("Armazón solo",P.arm)}${pr("Par de cristales solo",P.par)}
+    ${pr("Precio al público",P.pub,`Tu margen por venta: ${ars(P.neto-P.comb)} sin IVA`)}</div></div>
+  <div class="stk">
   <div class="stack">
    <div class="card pad stack ia">
     <div class="row" style="gap:10px;flex-wrap:nowrap"><span class="ia-av">IA</span><div><div style="font-weight:700">Asistente de reposición</div><div class="tiny muted">Lee tu gabinete y tus ventas, te explica qué pasa y arma el pedido. Vos decidís qué va.</div></div></div>
