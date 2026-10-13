@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Precio de octubre Revendedores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: oferta. Hero oscuro con el video de la campaña Ascari (naranja) y cuenta regresiva; toda la línea por categoría en tarjetas chicas (octubre vs noviembre, botón al catálogo); extras por forma de pago. */
+:root {
+  --bg: #f6f6f9;
+  --surface: #ffffff;
+  --ink: #0b0b14;
+  --muted: #5d5f73;
+  --line: #e2e2ea;
+  --brand: #0004ff;
+  --brand-soft: #eceeff;
+  --hero: #0b0b14;
+  --hot: #ff5a1f;
+  --ok: #0a7a4b;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0c14; --surface: #15151f; --ink: #f1f1f6; --muted: #a2a3b8; --line: #2a2a3a;
+    --brand: #7c80ff; --brand-soft: #1d1f45; --hero: #05050a; --hot: #ff7a45; --ok: #4fd39a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0c14; --surface: #15151f; --ink: #f1f1f6; --muted: #a2a3b8; --line: #2a2a3a;
+  --brand: #7c80ff; --brand-soft: #1d1f45; --hero: #05050a; --hot: #ff7a45; --ok: #4fd39a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+p { margin: 0; }
+.hero { background: var(--hero); color: #f4f4f8; padding-inline: 16px; padding-block: 28px; }
+.hero-in { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr); gap: 32px; align-items: center; }
+.vid { width: 100%; max-width: 250px; aspect-ratio: 9 / 16; border-radius: 16px; overflow: hidden; background: #000; justify-self: center; }
+.vid video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; background: #ff5a1f; color: #fff; border-radius: 999px; padding: 4px 12px; }
+.hero h1 { font-size: clamp(30px, 5.6vw, 54px); font-weight: 900; line-height: 1.03; margin-top: 12px; }
+.hero h1 em { font-style: normal; color: #ff9a6b; }
+.hero .sub { color: #c4c5d6; font-size: 17px; margin-top: 12px; max-width: 46ch; }
+.count { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.count div { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 8px 14px; min-width: 84px; }
+.count strong { display: block; font-family: var(--font-display); font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+.count span { font-size: 12px; color: #c4c5d6; }
+.btn { display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 16px; text-decoration: none; border-radius: 12px; padding: 13px 20px; background: #0004ff; color: #fff; }
+.btn:hover { filter: brightness(1.12); }
+.btn:focus-visible, .chip:focus-visible { outline: 3px solid #ff9a6b; outline-offset: 2px; }
+.hero .btn { margin-top: 18px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 64px; display: grid; gap: 34px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; background: var(--bg); padding-block: 10px; }
+.chip { font: inherit; font-weight: 700; font-size: 13px; text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; }
+.cat { display: grid; gap: 12px; scroll-margin-top: 64px; }
+.cat-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cat-head h2 { font-size: 26px; font-weight: 900; }
+.cat-head .sube { font-family: var(--font-display); font-weight: 800; color: var(--hot); }
+.cat-head .baja { font-size: 13px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.card .img { position: relative; aspect-ratio: 4 / 3; background: #fff; display: flex; align-items: center; justify-content: center; }
+.card img { width: 100%; height: 100%; object-fit: contain; }
+.card .sinfoto { font-family: var(--font-display); font-weight: 800; color: #9a9bb0; font-size: 14px; }
+.badge { position: absolute; top: 6px; left: 6px; background: var(--hot); color: #fff; font-family: var(--font-display); font-weight: 900; font-size: 12px; border-radius: 999px; padding: 2px 8px; }
+.card .body { padding: 9px 10px 10px; display: grid; gap: 6px; align-content: start; }
+.card h3 { font-size: 15px; font-weight: 900; }
+.pr { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.pr .oct { font-family: var(--font-display); font-size: 18px; font-weight: 900; color: var(--brand); }
+.pr .nov { font-size: 13px; color: var(--muted); text-decoration: line-through; }
+.lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.ahorro { font-size: 12px; } .ahorro b { color: var(--ok); }
+.ref { font-size: 11px; color: var(--muted); }
+.card .buy { font-family: var(--font-display); font-weight: 800; font-size: 13px; text-decoration: none; text-align: center; border-radius: 8px; padding: 7px 8px; background: var(--brand-soft); color: var(--brand); }
+.card .buy:hover { background: var(--brand); color: #fff; }
+.extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.extra { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 4px; align-content: start; }
+.extra .big { font-family: var(--font-display); font-size: 28px; font-weight: 900; color: var(--brand); line-height: 1.05; }
+.extra b { font-family: var(--font-display); font-size: 16px; }
+.extra p { color: var(--muted); font-size: 14px; }
+.table-box { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 520px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); }
+thead th { border-top: 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+td.r0 { color: var(--ok); font-weight: 700; }
+.final { background: #0004ff; color: #fff; border-radius: 18px; padding: 24px; display: grid; gap: 12px; justify-items: start; }
+.final h2 { color: #fff; font-size: clamp(22px, 3.6vw, 30px); font-weight: 900; }
+.final p { color: #e3e4ff; max-width: 62ch; }
+.final .btn { background: #fff; color: #0004ff; }
+.note { font-size: 12px; color: var(--muted); }
+@media (max-width: 720px) { .hero-in { grid-template-columns: 1fr; gap: 20px; } .vid { max-width: 200px; } }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-in">
+    <div class="vid"><video src="media/ascari-campana.mp4" poster="media/ascari-campana.jpg" autoplay muted loop playsinline aria-label="Ascari de Orbital, campaña"></video></div>
+    <div>
+      <span class="pill">Revendedores · precio de octubre hasta el 31/10</span>
+      <h1>El 1/11 sube la lista. <em>Comprá hoy a precio de octubre.</em></h1>
+      <p class="sub">Todo lo que cargues hasta el 31 de octubre se factura con la lista óptica actual.</p>
+      <div class="count" aria-live="polite">
+        <div><strong id="c-d">—</strong><span>días</span></div>
+        <div><strong id="c-h">—</strong><span>horas</span></div>
+      </div>
+      <a class="btn" href="https://ver.orbitaleyewear.com.ar/catalogo" target="_blank" rel="noopener">Comprar ahora en el catálogo</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="chips" id="chips" aria-label="Categorías"></nav>
+  <div id="cats" style="display:grid;gap:34px"></div>
+  <p class="note" id="nota"></p>
+
+  <section aria-labelledby="t-extra" style="display:grid;gap:12px">
+    <h2 id="t-extra" style="font-size:26px;font-weight:900">Y encima, descuentos extra</h2>
+    <div class="extras" id="extras"></div>
+  </section>
+
+  <section id="planes" aria-labelledby="t-planes" style="display:grid;gap:10px" hidden>
+    <h2 id="t-planes" style="font-size:26px;font-weight:900">Cómo pagás: plazos y recargo</h2>
+    <p class="note">Recargo sobre el total del pedido. "0" es un cheque o transferencia al día. Ejemplo: 100 Adelaida a tu precio de octubre.</p>
+    <div class="table-box"><table><thead><tr><th>Plan de cheques</th><th>Recargo</th><th>100 Adelaida (octubre)</th></tr></thead><tbody id="planes-body"></tbody></table></div>
+  </section>
+
+  <section class="final" aria-labelledby="t-final">
+    <h2 id="t-final">Cargá tu pedido antes del 31/10</h2>
+    <p>Entrá con tu link personal del catálogo de Orbital o pedíselo a tu vendedor. El precio de octubre vale para todo lo que cargues hasta el 31 de octubre a las 23:59.</p>
+    <a class="btn" href="https://ver.orbitaleyewear.com.ar/catalogo" target="_blank" rel="noopener">Comprar ahora</a>
+  </section>
+</main>
+
+<script>
+(function () {
+  var D = {"modelos":[{"n":"Eivissa","c":"Destacados","img":"media/modelos/eivissa.jpg","oct":54054,"nov":70500},{"n":"Pluma","c":"Destacados","img":"media/modelos/pluma.jpg","oct":54054,"nov":70500},{"n":"Adelaida","c":"Destacados","img":"media/modelos/adelaida.jpg","oct":62162,"nov":70500},{"n":"Le Mans","c":"Destacados","img":"media/modelos/le-mans.jpg","oct":62162,"nov":70500},{"n":"Silverstone","c":"Destacados","img":"media/modelos/silverstone.jpg","oct":62162,"nov":70500},{"n":"5th Avenue","c":"Destacados","img":"media/modelos/5th-avenue.jpg","oct":72000,"nov":77000},{"n":"Ascari","c":"Destacados","img":"media/modelos/ascari.jpg","oct":72000,"nov":77000},{"n":"Casa Blanca","c":"Destacados","img":"media/modelos/casa-blanca.jpg","oct":72000,"nov":77000},{"n":"Civic Center","c":"Destacados","img":"media/modelos/civic-center.jpg","oct":72000,"nov":77000},{"n":"Adrenaline","c":"Sport","img":"media/modelos/adrenaline.jpg","oct":34000,"nov":46154},{"n":"Crystal","c":"Sport","img":"media/modelos/crystal.jpg","oct":34000,"nov":46154},{"n":"Endor","c":"Sport","img":"media/modelos/endor.jpg","oct":34000,"nov":46154},{"n":"Quartz","c":"Sport","img":"media/modelos/quartz.jpg","oct":34000,"nov":46154},{"n":"Signature","c":"Sport","img":"media/modelos/signature.jpg","oct":34000,"nov":46154},{"n":"Subzero New","c":"Sport","img":"media/modelos/subzero-new.jpg","oct":34000,"nov":46154},{"n":"Suzuka","c":"Sport","img":"media/modelos/suzuka.jpg","oct":34000,"nov":46154},{"n":"Velocity","c":"Sport","img":"media/modelos/velocity.jpg","oct":34000,"nov":46154},{"n":"Zero","c":"Sport","img":"media/modelos/zero.jpg","oct":34000,"nov":46154},{"n":"Zeta 1","c":"Sport","img":"media/modelos/zeta-1.jpg","oct":34000,"nov":46154},{"n":"Zeta 11","c":"Sport","img":"media/modelos/zeta-11.jpg","oct":34000,"nov":46154},{"n":"Zeta 2","c":"Sport","img":"media/modelos/zeta-2.jpg","oct":34000,"nov":46154},{"n":"Zeta 3","c":"Sport","img":"media/modelos/zeta-3.jpg","oct":34000,"nov":46154},{"n":"Zeta 4","c":"Sport","img":"media/modelos/zeta-4.jpg","oct":34000,"nov":46154},{"n":"Zeta 7","c":"Sport","img":"media/modelos/zeta-7.jpg","oct":34000,"nov":46154},{"n":"Zeta 8","c":"Sport","img":"media/modelos/zeta-8.jpg","oct":34000,"nov":46154},{"n":"Zeta 9","c":"Sport","img":"media/modelos/zeta-9.jpg","oct":34000,"nov":46154},{"n":"Zzr","c":"Sport","img":"media/modelos/zzr.jpg","oct":34000,"nov":46154},{"n":"Basel","c":"Zaira Nara","img":"media/modelos/basel.jpg","oct":53846,"nov":53846},{"n":"Belfast ZN","c":"Zaira Nara","img":"media/modelos/belfast-zn.jpg","oct":53846,"nov":53846},{"n":"Bruno ZN","c":"Zaira Nara","img":"media/modelos/bruno-zn.jpg","oct":53846,"nov":53846},{"n":"Central Park","c":"Zaira Nara","img":"media/modelos/central-park.jpg","oct":53846,"nov":53846},{"n":"Columbia ZN","c":"Zaira Nara","img":"media/modelos/columbia-zn.jpg","oct":53846,"nov":53846},{"n":"Emmen ZN","c":"Zaira Nara","img":"media/modelos/emmen-zn.jpg","oct":53846,"nov":53846},{"n":"Kobe","c":"Zaira Nara","img":"media/modelos/kobe.jpg","oct":53846,"nov":53846},{"n":"Londres","c":"Zaira Nara","img":"media/modelos/londres.jpg","oct":53846,"nov":53846},{"n":"Long Beach","c":"Zaira Nara","img":"media/modelos/long-beach.jpg","oct":53846,"nov":53846},{"n":"Milano","c":"Zaira Nara","img":"media/modelos/milano.jpg","oct":53846,"nov":53846},{"n":"Phoenix","c":"Zaira Nara","img":"media/modelos/phoenix.jpg","oct":53846,"nov":53846},{"n":"San Marino ZN","c":"Zaira Nara","img":"media/modelos/san-marino-zn.jpg","oct":53846,"nov":53846},{"n":"San Remo","c":"Zaira Nara","img":"media/modelos/san-remo.jpg","oct":53846,"nov":53846},{"n":"York","c":"Zaira Nara","img":"media/modelos/york.jpg","oct":53846,"nov":53846},{"n":"Brera","c":"Urbano","img":"media/modelos/brera.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Brooklyn","c":"Urbano","img":"media/modelos/brooklyn.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Charlotte","c":"Urbano","img":"media/modelos/charlotte.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":true},{"n":"Creta","c":"Urbano","img":"media/modelos/creta.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":true},{"n":"Los Hampton","c":"Urbano","img":"media/modelos/los-hampton.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Palermo","c":"Urbano","img":"media/modelos/palermo.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Paris","c":"Urbano","img":"media/modelos/paris.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Roma","c":"Urbano","img":"media/modelos/roma.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Sophia","c":"Urbano","img":"media/modelos/sophia.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":true},{"n":"Venice","c":"Urbano","img":"media/modelos/venice.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false},{"n":"Wynwood","c":"Urbano","img":"media/modelos/wynwood.jpg","oct":53900,"nov":53900,"promo":48000,"promoEntero":false}],"aud":{"pill":"Revendedores · precio de octubre hasta el 31/10","h1":"El 1/11 sube la lista. <em>Comprá hoy a precio de octubre.</em>","sub":"Todo lo que cargues hasta el 31 de octubre se factura con la lista óptica actual.","factor":1,"ref":false,"nota":"Precio óptica por unidad, sin IVA.","extras":[["+3%","Pagando contado o transferencia","Descuento extra sobre el precio de lista."],["30/60/90","Pagando con cheques","Tu plazo de revendedor."]]}};
+  var CAT = 'https://ver.orbitaleyewear.com.ar/catalogo';
+  var a = D.aud;
+  var ars = function (n) { return '$' + Math.round(n).toLocaleString('es-AR'); };
+  var p = function (n) { return Math.round(n * a.factor); };
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  // La promo Día de la Madre se muestra hasta que vence (20/10 00:00); después la tarjeta vuelve al precio normal.
+  var hayPromo = Date.now() < Date.parse('2026-10-20T00:00:00-03:00');
+  var cats = [];
+  D.modelos.forEach(function (m) { if (cats.indexOf(m.c) < 0) cats.push(m.c); });
+  var id = function (c) { return 'cat-' + c.toLowerCase().replace(/\s+/g, '-'); };
+
+  document.getElementById('chips').innerHTML = cats.map(function (c) { return '<a class="chip" href="#' + id(c) + '">' + c + '</a>'; }).join('');
+  document.getElementById('cats').innerHTML = cats.map(function (c) {
+    var ms = D.modelos.filter(function (m) { return m.c === c; });
+    var suben = ms.filter(function (m) { return m.nov > m.oct; });
+    var max = suben.reduce(function (x, m) { return Math.max(x, Math.round((m.nov / m.oct - 1) * 100)); }, 0);
+    var conPromo = hayPromo && ms.some(function (m) { return m.promo; });
+    var head = suben.length ? '<span class="sube">hasta +' + max + '% el 1/11</span>' : conPromo ? '<span class="sube">Promo Día de la Madre hasta el 19/10</span>' : '<span class="baja">Ya con el precio nuevo, más bajo</span>';
+    return '<section class="cat" id="' + id(c) + '"><div class="cat-head"><h2>' + c + '</h2>' + head + '</div><div class="grid">' +
+      ms.map(function (m) {
+        var sube = m.nov > m.oct, pct = Math.round((m.nov / m.oct - 1) * 100);
+        if (hayPromo && m.promo) {
+          var pp = Math.round((1 - m.promo / m.oct) * 100);
+          return '<article class="card"><div class="img"><img src="' + m.img + '" alt="' + esc(m.n) + '" loading="lazy" width="320" height="240"><span class="badge">−' + pp + '%</span></div>' +
+            '<div class="body"><h3>' + esc(m.n) + '</h3>' +
+            '<div><span class="lbl">Día de la Madre' + (m.promoEntero ? '' : ' · colores seleccionados') + '</span><div class="pr"><span class="oct">' + ars(p(m.promo)) + '</span><span class="nov" title="Precio sin promo">' + ars(p(m.oct)) + '</span></div></div>' +
+            '<p class="ahorro">Hasta el <b>19/10</b> · después ' + ars(p(m.oct)) + '</p>' +
+            (a.ref ? '<p class="ref">Ref. óptica ' + ars(m.promo) + '</p>' : '') +
+            '<a class="buy" href="' + CAT + '" target="_blank" rel="noopener">Comprar</a></div></article>';
+        }
+        return '<article class="card"><div class="img">' +
+          (m.img ? '<img src="' + m.img + '" alt="' + esc(m.n) + '" loading="lazy" width="320" height="240">' : '<span class="sinfoto">' + esc(m.n) + '</span>') +
+          (sube ? '<span class="badge">+' + pct + '%</span>' : '') + '</div>' +
+          '<div class="body"><h3>' + esc(m.n) + '</h3>' +
+          '<div><span class="lbl">Octubre</span><div class="pr"><span class="oct">' + ars(p(m.oct)) + '</span>' +
+          (sube ? '<span class="nov" title="Desde el 1/11">' + ars(p(m.nov)) + '</span>' : '') + '</div></div>' +
+          (sube ? '<p class="ahorro">Ahorrás <b>' + ars(p(m.nov) - p(m.oct)) + '</b> c/u</p>' : '') +
+          (a.ref ? '<p class="ref">Ref. óptica ' + ars(m.oct) + '</p>' : '') +
+          '<a class="buy" href="' + CAT + '" target="_blank" rel="noopener">Comprar</a></div></article>';
+      }).join('') + '</div></section>';
+  }).join('');
+  document.getElementById('nota').textContent = a.nota + ' Tachado: precio desde el 1/11.';
+  document.getElementById('extras').innerHTML = a.extras.map(function (e) {
+    return '<div class="extra"><span class="big">' + e[0] + '</span><b>' + e[1] + '</b><p>' + e[2] + '</p></div>';
+  }).join('');
+  if (a.planes) {
+    var base = 100 * p(62162);
+    document.getElementById('planes-body').innerHTML = a.planes.map(function (x) {
+      return '<tr><td>' + x[0] + ' días</td><td class="' + (x[1] ? '' : 'r0') + '">' + (x[1] ? '+' + x[1].toLocaleString('es-AR') + '%' : 'Sin recargo') + '</td><td>' + ars(base * (1 + x[1] / 100)) + '</td></tr>';
+    }).join('');
+    document.getElementById('planes').hidden = false;
+  }
+
+  var fin = Date.parse('2026-11-01T00:00:00-03:00');
+  function tick() {
+    var ms = Math.max(0, fin - Date.now());
+    document.getElementById('c-d').textContent = Math.floor(ms / 864e5);
+    document.getElementById('c-h').textContent = Math.floor((ms % 864e5) / 36e5);
+  }
+  tick(); setInterval(tick, 60000);
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var v = document.querySelector('video'); if (v) { v.removeAttribute('autoplay'); v.pause(); }
+  }
+})();
+</script>
+
+</body>
+</html>
