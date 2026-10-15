@@ -41,7 +41,8 @@ interface Variante {
 interface CartItem { codigo: string; modelo: string; descripcion: string | null; precio: number; cantidad: number; imagen: string | null; stock?: number; oportunidad?: boolean; precio_lista?: number }
 // o = la foto es del propio color (false = genérica del modelo, heredada por un color sin foto)
 // pm = ese color está en la promo (Día de la Madre)
-interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean; pm?: boolean }
+// sh = foto de la tienda (Shopify); g = foto del anteojo (tienda o producto, no lifestyle)
+interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean; pm?: boolean; sh?: boolean; g?: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
@@ -93,25 +94,34 @@ const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').
 // Índice de la foto de portada según el grupo (representa al grupo)
 function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
   if (!fotos?.length) return 0
-  // la tapa siempre debe ser un color CON foto (nunca placeholder)
-  const find = (fn: (f: Foto) => boolean) => { const i = fotos.findIndex((f) => !!f.u && fn(f)); return i >= 0 ? i : -1 }
+  // la tapa siempre debe ser un color CON foto (nunca placeholder).
+  // Foto de la tienda (Shopify) primero: en cada regla se busca entre las de la tienda y después entre todas.
+  const findT = (fn: (f: Foto) => boolean) => fotos.findIndex((f) => !!f.u && !!f.sh && fn(f))
+  const find = (fn: (f: Foto) => boolean) => { const i = findT(fn); return i >= 0 ? i : fotos.findIndex((f) => !!f.u && fn(f)) }
+  const hayTienda = fotos.some((f) => !!f.u && !!f.sh)
+  // Los overrides a mano se eligieron antes de tener las fotos de la tienda: si el modelo tiene alguna,
+  // el override solo vale si ese color también está en la tienda.
+  const findOv = hayTienda ? findT : find
   const hasSol = fotos.some((f) => f.tp === 'sol' && !!f.u)
   // 1a) override por modelo + grupo (tapa distinta según la sección)
   if (modelo && grupo && COVER_OVERRIDE_GRUPO[modelo]?.[grupo]) {
-    const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE_GRUPO[modelo][grupo]))
+    const j = findOv((f) => norm(f.c) === norm(COVER_OVERRIDE_GRUPO[modelo][grupo]))
     if (j >= 0) return j
   }
   // 1b) override manual por modelo (color exacto) — en Triple manda la lógica de flash, no el override
   if (modelo && COVER_OVERRIDE[modelo] && grupo !== 'triple') {
-    const j = find((f) => norm(f.c) === norm(COVER_OVERRIDE[modelo]))
+    const j = findOv((f) => norm(f.c) === norm(COVER_OVERRIDE[modelo]))
     if (j >= 0) return j
   }
   // condición + tiene que ser de sol: la tapa SIEMPRE muestra un anteojo de sol
   const S = (fn: (f: Foto) => boolean) => (f: Foto) => f.tp === 'sol' && fn(f)
   let i = -1
   if (grupo === 'destacados') {
-    // preferimos NEGRO con lente GRIS de sol; si no hay, cualquier negro de sol
-    i = find(S((f) => esNegro(f.c) && esGris(f.c)))
+    // preferimos NEGRO con lente GRIS de sol; si no hay, cualquier negro de sol (de la tienda antes que cualquier otra)
+    i = findT(S((f) => esNegro(f.c) && esGris(f.c)))
+    if (i < 0) i = findT(S((f) => esNegro(f.c)))
+    if (i < 0) i = findT((f) => f.tp === 'sol')
+    if (i < 0) i = find(S((f) => esNegro(f.c) && esGris(f.c)))
     if (i < 0) i = find(S((f) => esNegro(f.c)))
   }
   else if (grupo === 'triple') i = find(S((f) => f.t === 'Infrarrojo + Blue cut'))
@@ -169,6 +179,12 @@ interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; l
 // solo se evita mostrar el número y todo lo que hable de plata.
 const SinPreciosCtx = createContext(false)
 const useSinPrecios = () => useContext(SinPreciosCtx)
+// Link para los clientes de un distribuidor (tipo 'dist_cli'): ven el precio óptica de Orbital como
+// referencia y el pedido le llega al distribuidor por Telegram (edge function dist-cliente-pedido).
+// Fuera: chat con Orbital, escalera de bonificaciones, precios de noviembre, postventa y medios de pago.
+const DIST_MARCA: Record<string, string> = { '010001': 'Cristaldo', '010002': 'Optisur' }
+const distCliDe = (a: Acceso | null) => (a?.tipo === 'dist_cli' ? (a.cod_cliente && DIST_MARCA[a.cod_cliente]) || empresaDe(a.label) || 'tu distribuidor' : null)
+const DIST_CLI_DATOS_KEY = 'orb_distcli_datos'
 // Precio de venta sugerido por modelo para esta óptica (ej. Paesani). Solo referencia: no se factura.
 const PrecioRefCtx = createContext<Record<string, number>>({})
 // Precio desde el 1/11 por SKU (solo los que suben ≥ 2%: una suba de $23 no se anuncia) y "desde" por modelo.
@@ -201,8 +217,11 @@ function Placeholder({ label }: { label?: string }) {
 // Carrusel de fotos en la tarjeta: permite ojear los colores sin abrir el detalle
 function CardCarousel({ fotos: todas, alt, onOpen, initial: ini = 0 }: { fotos: Foto[]; alt: string; onOpen: () => void; initial?: number }) {
   // Solo colores con foto propia: si no, se repetía la genérica con el nombre de otro color
+  // y de esos, solo los que tienen foto del anteojo (tienda o producto): una lifestyle no muestra el color
+  const tapa = todas?.[ini]
   const propias = (todas ?? []).filter((f) => f.o !== false)
-  const fotos = propias.length ? propias : (todas ?? [])
+  const anteojo = propias.filter((f) => f.g || f === tapa)
+  const fotos = anteojo.length ? anteojo : propias.length ? propias : (todas ?? [])
   const initial = Math.max(0, fotos.indexOf(todas?.[ini] as Foto))
   const n = fotos.length
   const [i, setI] = useState(Math.min(initial, Math.max(0, n - 1)))
@@ -670,7 +689,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
   // Tapa con la foto de la tienda (Shopify) en ese color, si el color sigue con stock
   const tapa = grupo === 'diamadre' ? DIA_MADRE_TAPA[m.modelo] : undefined
   const iTapa = tapa ? fotos.findIndex((f) => norm(f.c) === norm(tapa.c)) : -1
-  if (iTapa >= 0) fotos = fotos.map((f, i) => (i === iTapa ? { ...f, u: tapa!.u + '?width=700', o: true } : f))
+  if (iTapa >= 0) fotos = fotos.map((f, i) => (i === iTapa ? { ...f, u: tapa!.u + '?width=700', o: true, sh: true, g: true } : f))
   return (
     <div className="relative bg-white rounded-xl border border-black/10 overflow-hidden transition hover:border-[#0004FF]/40 hover:shadow-sm h-full flex flex-col">
       <div className="relative">
@@ -1170,6 +1189,8 @@ export default function CatalogoPublico() {
   const sinPrecios = acceso?.tipo === 'dist_vend'
   // Panel de la óptica (postventa, mis anteojos, publicaciones): solo accesos de óptica con cliente
   const esOptica = acceso?.tipo === 'optica' && !!acceso.cod_cliente
+  // Cliente de un distribuidor: nombre del distribuidor (null si no es ese link)
+  const distCli = distCliDe(acceso)
 
   // ¿este token trae bono? Se consulta una vez, al validar el acceso.
   useEffect(() => {
@@ -1197,7 +1218,8 @@ export default function CatalogoPublico() {
   // El servidor no manda nada a links sin precios ni a GAFAS LUXURY (tiene su propia lista de noviembre).
   const [preciosNov, setPreciosNov] = useState<PreciosNov>(SIN_NOV)
   useEffect(() => {
-    if (!claveOk || !clave) { setPreciosNov(SIN_NOV); return }
+    // Cliente de distribuidor: el precio de noviembre lo define el distribuidor, no se anuncia el de Orbital
+    if (!claveOk || !clave || acceso?.tipo === 'dist_cli') { setPreciosNov(SIN_NOV); return }
     supabase.rpc('catalogo_precios_nov', { p_clave: clave }).then(({ data, error }) => {
       if (error || !Array.isArray(data)) { setPreciosNov(SIN_NOV); return }
       const sku: Record<string, number> = {}, desde: Record<string, number> = {}
@@ -1208,7 +1230,7 @@ export default function CatalogoPublico() {
       }
       setPreciosNov({ sku, desde })
     })
-  }, [claveOk, clave])
+  }, [claveOk, clave, acceso?.tipo])
 
   // ── Tracking: cuánto miró y qué llegó a cargar ──────────────────────────────
   // Hasta acá solo sabíamos que entró, y —si confirmaba— qué pidió. Lo del medio
@@ -1395,7 +1417,7 @@ export default function CatalogoPublico() {
           Vision Lab <span className="text-[9px] rounded-full bg-[#0004FF] text-white px-1.5 py-px ml-0.5 align-middle">PRO</span>
         </button>
       )}
-      {!sinPrecios && acceso?.tipo !== 'campana' && acceso?.tipo !== 'promo' && (
+      {!sinPrecios && !distCli && acceso?.tipo !== 'campana' && acceso?.tipo !== 'promo' && (
         <button onClick={() => setPostventa(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Postventa
@@ -1407,7 +1429,7 @@ export default function CatalogoPublico() {
           Mis compras
         </button>
       )}
-      {!sinPrecios && acceso?.tipo !== 'campana' && (
+      {!sinPrecios && !distCli && acceso?.tipo !== 'campana' && (
         <button onClick={() => setComoPagar(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Cómo pagar
@@ -1429,6 +1451,12 @@ export default function CatalogoPublico() {
       {sinPrecios && (
         <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-[11px] text-center py-1.5 px-3 font-semibold">
           👓 Disponibilidad en vivo · los precios te los pasa {empresaDe(acceso?.label) || 'tu empresa'}
+        </div>
+      )}
+      {/* Clientes de un distribuidor: el precio es de referencia, el pedido lo atiende el distribuidor */}
+      {distCli && (
+        <div className="bg-[#0004FF]/[0.06] border-b border-[#0004FF]/15 text-[#0004FF] text-[11px] text-center py-1.5 px-3 font-semibold">
+          Precio óptica de referencia de Orbital, sin IVA · el precio final y las condiciones te los confirma {distCli}
         </div>
       )}
       {/* Link de promo para grupos: precio de lista general hasta la fecha de corte */}
@@ -1573,7 +1601,7 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} descargaExcel={acceso?.cod_cliente && DESCARGA_EXCEL[acceso.cod_cliente] ? { nombre: DESCARGA_EXCEL[acceso.cod_cliente] } : undefined}modelos={planillaModelos} fotosModelo={planillaFotos} preciosNov={preciosNov.sku} secciones={planillaSecciones}
+      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} descargaExcel={acceso?.cod_cliente && !distCli && DESCARGA_EXCEL[acceso.cod_cliente] ? { nombre: DESCARGA_EXCEL[acceso.cod_cliente] } : undefined}modelos={planillaModelos} fotosModelo={planillaFotos} preciosNov={preciosNov.sku} secciones={planillaSecciones}
         cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
         onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
@@ -1589,8 +1617,8 @@ export default function CatalogoPublico() {
         <BonoBarra calc={bonoCalc} onVerPares={() => verGrupo('oportunidades')} />
       )}
 
-      {/* Ayuda al cliente: FAQ automática + WhatsApp del vendedor asignado */}
-      {!carritoOpen && !sel && !quick && !infoGrupo && (
+      {/* Ayuda al cliente: FAQ automática + WhatsApp del vendedor asignado (el cliente de un distribuidor habla con su distribuidor) */}
+      {!carritoOpen && !sel && !quick && !infoGrupo && !distCli && (
         <AyudaCatalogo acceso={acceso} offset={cartCount > 0 ? (barraFija ? "bottom-52 md:bottom-5" : "bottom-28 md:bottom-5") : (barraFija ? "bottom-28 md:bottom-5" : "bottom-5")} />
       )}
 
@@ -1773,9 +1801,19 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
   const sinPrecios = useSinPrecios()
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
-      // Los colores con foto propia primero: la ficha abre en uno que se ve (orden estable)
+      // La ficha abre en el color de la tapa y siguen los que tienen foto del anteojo (tienda primero);
+      // los que solo tienen lifestyle o no tienen foto van al final (orden estable)
       const vs = filtrarPromo(error ? [] : ((data as Variante[]) ?? []), modelo.modelo, soloPromo)
-      setVars([...vs.filter((x) => x.imagen), ...vs.filter((x) => !x.imagen)]); setLoading(false)
+      const fotos = (modelo as Partial<HomeModelo>).fotos ?? []
+      const porColor = new Map(fotos.map((f) => [norm(f.c), f]))
+      const tapa = fotos.length ? norm(fotos[coverIndex(fotos, undefined, modelo.modelo)]?.c ?? null) : ''
+      const rango = (x: Variante) => {
+        if (!x.imagen) return 4
+        const f = porColor.get(norm(x.descripcion))
+        if (tapa && norm(x.descripcion) === tapa) return 0
+        return f?.sh ? 1 : f?.g ? 2 : 3
+      }
+      setVars(vs.map((x, k) => ({ x, k })).sort((a, b) => rango(a.x) - rango(b.x) || a.k - b.k).map((o) => o.x)); setLoading(false)
     })
     supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))
     supabase.rpc('catalogo_ficha_tienda', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setFicha((data as typeof ficha) ?? null))
@@ -2127,8 +2165,10 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   const digital = bonoPct && bonoCalc && !bonoCalc.vencido ? { bono: bono!, calc: bonoCalc } : null
   const [contado, setContado] = useState<boolean | null>(null)
   const [enviado, setEnviado] = useState<{ neto: number; bono: number; contado: boolean; totalContado: number } | null>(null)
+  // Cliente de un distribuidor: el cod_cliente del link es el del distribuidor, no el de la óptica
+  const distCli = distCliDe(acceso)
   // si el link ya trae la óptica, queda pre-cargada y bloqueada
-  const identFijo = acceso?.cod_cliente || ''
+  const identFijo = distCli ? '' : acceso?.cod_cliente || ''
   const esRev = acceso?.tipo === 'revendedor'
   // Link de vendedor: elige el cliente con un buscador en vez de tipear el código exacto
   const esVend = acceso?.tipo === 'vendedor'
@@ -2137,7 +2177,7 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   // Escalera por volumen: solo ópticas con precios, sin pack ni bono de campaña (esos traen sus condiciones)
   // unidades al abrir el carrito: si desde acá sube de paquete, se le comunica lo que ganó
   const [unidadesAlAbrir] = useState(unidades)
-  const escalera = !sinPrecios && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
+  const escalera = !sinPrecios && !distCli && !esRev && !packCalc && !bono ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
   // Compra digital (Diferenciarte): el bono sigue igual; plazo del paquete y % por volumen que aplica el vendedor
   const escDigital = digital ? calcularEscalera(unidades, total, unidadesAlAbrir, promoImp) : null
   const [fase, setFase] = useState<'carrito' | 'datos' | 'ok'>('carrito')
@@ -2152,8 +2192,30 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   const [enviando, setEnviando] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [result, setResult] = useState<{ cliente: string; identificado: boolean } | null>(null)
+  // Datos de la óptica cliente del distribuidor: quedan guardados en el equipo para el próximo pedido
+  const [dc, setDc] = useState<{ optica: string; cuit: string; localidad: string; contacto: string; wsp: string }>(() => {
+    const vacio = { optica: '', cuit: '', localidad: '', contacto: '', wsp: '' }
+    try { return { ...vacio, ...JSON.parse(localStorage.getItem(DIST_CLI_DATOS_KEY) || '{}') } } catch { return vacio }
+  })
+  const dcOk = !!dc.optica.trim() && dc.wsp.replace(/\D/g, '').length >= 8
+
+  async function enviarDist() {
+    setEnviando(true); setErr(null)
+    try { localStorage.setItem(DIST_CLI_DATOS_KEY, JSON.stringify(dc)) } catch { /* noop */ }
+    const { data, error } = await supabase.functions.invoke('dist-cliente-pedido', {
+      body: { clave: acceso?.codigo || clave, ...dc, obs: obs.trim(), device: deviceId(),
+              items: items.map((c) => ({ codigo: c.codigo, cantidad: c.cantidad })) },
+    })
+    setEnviando(false)
+    const r = data as { ok: boolean; error?: string } | null
+    if (error || !r) { setErr('No se pudo enviar. Revisá la conexión.'); return }
+    if (!r.ok) { setErr(r.error || 'No se pudo enviar.'); return }
+    setResult({ cliente: dc.optica.trim(), identificado: true })
+    setFase('ok'); onDone()
+  }
 
   async function enviar() {
+    if (distCli) return enviarDist()
     setEnviando(true); setErr(null)
     const payload = items.map((c) => ({ codigo: c.codigo, modelo: c.modelo, descripcion: c.descripcion, cantidad: c.cantidad, precio: c.precio }))
     // Revendedor: marcamos el pedido y sumamos "para quién" (informativo) a las observaciones,
@@ -2224,6 +2286,10 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
                   {bono.contacto_wsp && <> · <a className="text-[#0004FF] underline" href={`https://wa.me/${bono.contacto_wsp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">escribile por WhatsApp</a></>}.
                 </p>
               </div>
+            ) : distCli ? (
+              <p className="text-xs text-neutral-500 mt-3">
+                Le llegó a <b>{distCli}</b>. Te va a escribir por WhatsApp para confirmarte stock, precio final y condiciones.
+              </p>
             ) : (
               <p className="text-xs text-neutral-400 mt-3">
                 {result.identificado ? 'Tu vendedor asignado lo va a revisar y confirmar a la brevedad.' : 'Un asesor comercial se va a contactar para confirmar los datos.'}
