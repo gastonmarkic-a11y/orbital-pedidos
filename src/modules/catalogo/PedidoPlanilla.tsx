@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, ShoppingCart, ChevronDown, ChevronRight, Minus, Plus, SlidersHorizontal } from 'lucide-react'
+import { Search, X, ShoppingCart, ChevronDown, ChevronRight, Minus, Plus, SlidersHorizontal, Download } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { CATEGORIA_FIJA } from './categorias'
@@ -17,12 +17,16 @@ export interface FilaPlanilla {
   caliente: boolean; imagen: string | null; stock: number; proyectado: boolean
 }
 
+// Miniatura: las fotos del CDN de Shopify se piden al ancho que se muestran (más nítidas y livianas)
+const mini = (url: string | null | undefined, w: number) => !url ? null : /cdn\.shopify\.com/.test(url) ? url.split('?')[0] + '?width=' + w : url
 const kAr = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 const cap = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
 interface Props {
   clave: string
   sinPrecios: boolean
+  /** Descarga de la planilla en Excel (solo clientes habilitados): disponibilidad sin cantidades */
+  descargaExcel?: { nombre: string }
   /** Orden y visibilidad de modelos: los de catalogo_home (ocultos ya filtrados por el servidor) */
   modelos: string[]
   /** Foto de referencia por modelo (la tapa del catálogo), para el encabezado del modelo */
@@ -40,7 +44,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo, preciosNov, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
+export default function PedidoPlanilla({ clave, sinPrecios, descargaExcel,modelos, fotosModelo, preciosNov, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
   const [error, setError] = useState(false)
   const [q, setQ] = useState('')
@@ -58,6 +62,21 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
       setFilas(((data as FilaPlanilla[]) ?? []).map((f) => ({ ...f, precio: Number(f.precio) || 0, precio_lista: Number(f.precio_lista) || 0, stock: Number(f.stock) || 0 })))
     })
   }, [clave])
+
+  // Fotos de la tienda (orbitaleyewear.com.ar): la foto principal de cada producto, la mejor que hay.
+  // Por SKU (para cada color) y por modelo (de sol primero, para la foto de referencia).
+  const [tienda, setTienda] = useState<{ sku: Record<string, string>; modelo: Record<string, string> }>({ sku: {}, modelo: {} })
+  useEffect(() => {
+    supabase.rpc('catalogo_fotos_tienda', { p_clave: clave }).then(({ data }) => {
+      const sku: Record<string, string> = {}, modelo: Record<string, string> = {}
+      for (const r of (data as { modelo: string; sku: string | null; tipo: string | null; imagen: string }[]) ?? []) {
+        if (r.sku && !sku[r.sku]) sku[r.sku] = r.imagen
+        if (!modelo[r.modelo] && r.tipo === 'SOL') modelo[r.modelo] = r.imagen
+      }
+      setTienda({ sku, modelo })
+    })
+  }, [clave])
+  const fotoColor = useCallback((f: FilaPlanilla) => tienda.sku[f.codigo] || f.imagen, [tienda])
 
   // Esc cierra (si no se está escribiendo en una celda: ahí solo sale de la celda)
   useEffect(() => {
@@ -147,6 +166,61 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
     return out.sort((a, b) => (orden.get(a.key) ?? 999) - (orden.get(b.key) ?? 999))
   }, [lista, categoriaDe, secciones])
 
+  // Excel de carga masiva: todos los SKU del link (sin filtros), por categoría y modelo, con una columna
+  // Cantidad vacía para completar. Nunca va el número de stock: solo "Disponible" (en rojo si quedan
+  // menos de 12) o "Proyectado". xlsx-js-style se carga recién al tocar el botón.
+  const [bajando, setBajando] = useState(false)
+  const bajarExcel = async () => {
+    if (!descargaExcel || bajando) return
+    setBajando(true)
+    try {
+      const XLSX = (await import('xlsx-js-style')).default
+      const ordenSec = new Map(secciones.map((s, i) => [s.key, i]))
+      const resto = { key: 'oportunidades', nombre: secciones.find((s) => s.key === 'oportunidades')?.nombre ?? 'Oportunidades' }
+      const cat = (f: FilaPlanilla) => categoriaDe.get(f.modelo) ?? resto
+      const filasX = [...base].sort((a, b) => (ordenSec.get(cat(a).key) ?? 999) - (ordenSec.get(cat(b).key) ?? 999))
+      const enc = ['Categoría', 'Modelo', 'Color', 'Código', 'Tipo', 'Tratamiento', ...(sinPrecios ? [] : ['Precio s/IVA']), 'Disponibilidad', 'Cantidad']
+      const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
+      const aoa: (string | number | null)[][] = [
+        [`Orbital · Carga masiva · ${descargaExcel.nombre} · ${hoy}`],
+        ['Disponible en rojo: quedan menos de 12 unidades. Proyectado: en producción, todavía no llegó.'],
+        [],
+        enc,
+        ...filasX.map((f) => [cat(f).nombre, f.modelo, colorLegible(f.descripcion) || f.descripcion || '', f.codigo, cap(f.tipo), cap(f.tratamiento),
+          ...(sinPrecios ? [] : [f.precio || null]), f.proyectado ? 'Proyectado' : 'Disponible', null]),
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      const cDisp = enc.indexOf('Disponibilidad'), cPrecio = enc.indexOf('Precio s/IVA'), cCant = enc.indexOf('Cantidad')
+      const borde = { bottom: { style: 'thin', color: { rgb: 'E4E4E7' } } }
+      ws['A1'].s = { font: { bold: true, sz: 14 } }
+      ws['A2'].s = { font: { italic: true, color: { rgb: '71717A' } } }
+      enc.forEach((_, c) => { ws[XLSX.utils.encode_cell({ r: 3, c })].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0004FF' } }, alignment: { horizontal: 'center' } } })
+      filasX.forEach((f, i) => {
+        const r = i + 4
+        for (let c = 0; c < enc.length; c++) {
+          const ref = XLSX.utils.encode_cell({ r, c })
+          ws[ref] ??= { t: 's', v: '' }
+          ws[ref].s = { border: borde }
+        }
+        ws[XLSX.utils.encode_cell({ r, c: cDisp })].s = f.proyectado
+          ? { border: borde, font: { color: { rgb: 'B45309' } } }
+          : f.stock < 12
+            ? { border: borde, font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: 'DC2626' } } }
+            : { border: borde, font: { color: { rgb: '059669' } } }
+        if (cPrecio >= 0) ws[XLSX.utils.encode_cell({ r, c: cPrecio })].z = '"$"#,##0'
+        ws[XLSX.utils.encode_cell({ r, c: cCant })].s = { border: borde, fill: { fgColor: { rgb: 'FFFBEB' } } }
+      })
+      const anchos: Record<string, number> = { Categoría: 22, Modelo: 18, Color: 30, Código: 16, Tipo: 10, Tratamiento: 16, 'Precio s/IVA': 13, Disponibilidad: 15, Cantidad: 11 }
+      ws['!cols'] = enc.map((h) => ({ wch: anchos[h] ?? 12 }))
+      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: enc.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: enc.length - 1 } }]
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3 + filasX.length, c: enc.length - 1 } }) }
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Carga masiva')
+      const slug = descargaExcel.nombre.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      XLSX.writeFile(wb, `orbital-carga-masiva-${slug}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } finally { setBajando(false) }
+  }
+
   // Plegado: todo cerrado de entrada (se ven solo las categorías). Al buscar un modelo, color o código,
   // o con "Solo cargados", se abren las categorías y modelos que coinciden; los demás filtros solo achican.
   const [catAb, setCatAb] = useState<Set<string>>(() => new Set())
@@ -207,13 +281,20 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   const hayColores = cats.some((c) => catAb.has(c.key) && c.modelos.some((m) => modAb.has(c.key + '|' + m.modelo)))
   const conTitulos = hayColores && esCompu
   const topCat = conTitulos ? ALTO_TITULOS : 0
-  const fotoDe = (m: Mod) => fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null
+  // Foto de referencia del modelo: la de la tienda del mismo color que la tapa del catálogo; si no, la primera
+  // de sus colores que está en la tienda; si no, la de sol de la tienda; si no, la tapa del catálogo.
+  const fotoDe = (m: Mod) => {
+    const tapa = fotosModelo?.[m.modelo]
+    const colorTapa = tapa ? m.filas.find((f) => f.imagen === tapa) : undefined
+    return (colorTapa && tienda.sku[colorTapa.codigo]) || m.filas.map((f) => tienda.sku[f.codigo]).find(Boolean)
+      || tienda.modelo[m.modelo] || tapa || m.filas.find((f) => f.imagen)?.imagen || null
+  }
   const filasTabla: React.ReactNode[] = []
   let nCeldas = 0
   for (const c of cats) {
     const cAb = catAb.has(c.key)
     filasTabla.push(<FilaCategoria key={'c:' + c.key} c={c} abierto={cAb} cols={cols} top={topCat} sinPrecios={sinPrecios}
-      fotos={c.modelos.slice(0, 4).map(fotoDe)} onClick={() => alternar(setCatAb, c.key)} />)
+      onClick={() => alternar(setCatAb, c.key)} />)
     if (!cAb) continue
     for (const m of c.modelos) {
       // Un modelo puede estar en su categoría y en Día de la Madre: se abre / pliega en cada una por separado
@@ -223,7 +304,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
         <FilaModelo key={'m:' + k} m={m} abierto={abierto} cols={cols} top={topCat + ALTO_CATEGORIA} sinPrecios={sinPrecios}
           onClick={() => alternar(setModAb, k)} foto={fotoDe(m)} />)
       if (abierto) for (const f of m.filas) filasTabla.push(
-        <Fila key={c.key + '|' + f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
+        <Fila key={c.key + '|' + f.codigo} f={f} foto={fotoColor(f)} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
           promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
     }
   }
@@ -239,7 +320,12 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
             <h2 className="text-[16px] font-semibold leading-tight !normal-case tracking-tight">Carga masiva</h2>
             <p className="text-[12px] text-neutral-500 leading-tight mt-0.5">{lista.length} modelos · {visibles.length} colores<span className="hidden sm:inline"> · tocá una categoría para empezar</span></p>
           </div>
-          <button onClick={onClose} aria-label="Volver al catálogo" className="shrink-0 h-9 flex items-center gap-1.5 text-[13px] font-medium text-neutral-600 px-2.5 rounded-md hover:bg-[#F4F4F5]">
+          {descargaExcel && (
+            <button onClick={bajarExcel} disabled={bajando || !filas?.length} className="ml-auto shrink-0 h-9 flex items-center gap-1.5 text-[13px] font-medium text-[#0004FF] px-2.5 rounded-md border border-[#0004FF]/30 hover:bg-[#0004FF]/5 disabled:opacity-40">
+              <Download size={16} /> <span className="hidden sm:inline">{bajando ? 'Armando…' : 'Descargar Excel'}</span><span className="sm:hidden">Excel</span>
+            </button>
+          )}
+          <button onClick={onClose} aria-label="Volver al catálogo"className="shrink-0 h-9 flex items-center gap-1.5 text-[13px] font-medium text-neutral-600 px-2.5 rounded-md hover:bg-[#F4F4F5]">
             <X size={18} /> <span className="hidden sm:inline">Volver al catálogo</span>
           </button>
         </div>
@@ -372,10 +458,10 @@ function Cargado({ u, imp, sinPrecios }: { u: number; imp: number; sinPrecios: b
   )
 }
 
-// Fila de categoría: liviana, una línea (nombre, cantidad de modelos, miniaturas y lo cargado).
+// Fila de categoría: liviana, una línea (nombre, cantidad de modelos y lo cargado), sin fotos.
 // Día de la Madre se distingue con un punto rosa. Tocándola se despliegan / pliegan sus modelos.
-function FilaCategoria({ c, abierto, cols, top, fotos, sinPrecios, onClick }: {
-  c: Cat; abierto: boolean; cols: number; top: number; fotos: (string | null)[]; sinPrecios: boolean; onClick: () => void
+function FilaCategoria({ c, abierto, cols, top, sinPrecios, onClick }: {
+  c: Cat; abierto: boolean; cols: number; top: number; sinPrecios: boolean; onClick: () => void
 }) {
   const madre = c.key === 'diamadre'
   return (
@@ -393,16 +479,6 @@ function FilaCategoria({ c, abierto, cols, top, fotos, sinPrecios, onClick }: {
             <span className="shrink-0 hidden sm:inline text-[11px] font-medium rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">{c.promo} en promo</span>
           )}
           <span className="flex-1" />
-          {!abierto && (
-            <span className="shrink-0 hidden sm:flex items-center -space-x-1.5" aria-hidden>
-              {fotos.map((u, i) => (
-                <span key={i} className="w-9 h-7 rounded-md bg-[#F4F4F5] ring-2 ring-white overflow-hidden flex items-center justify-center">
-                  {u && <img src={u} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
-                </span>
-              ))}
-            </span>
-          )}
           <Cargado u={c.u} imp={c.imp} sinPrecios={sinPrecios} />
         </button>
       </td>
@@ -425,8 +501,8 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
       <td colSpan={cols} className={`p-0 border-b border-black/[0.08] ${abierto ? 'sticky z-[5] bg-white' : ''}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
           className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left pl-4 pr-3 sm:pr-4 py-2 border-l-2 transition-colors ${acento} ${abierto ? 'bg-[#F4F4F5]' : 'hover:bg-[#FAFAFA]'}`}>
-          <span className="shrink-0 w-16 h-12 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center">
-            {foto && <img src={foto} alt={m.modelo} loading="lazy" decoding="async" className="w-full h-full object-contain"
+          <span className="shrink-0 w-20 h-14 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center">
+            {foto && <img src={mini(foto, 240)!} alt={m.modelo} loading="lazy" decoding="async" className="w-full h-full object-contain mix-blend-multiply scale-110"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
           </span>
           <span className="min-w-0 flex-1 leading-tight">
@@ -454,8 +530,8 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
   )
 }
 
-const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas, ir, cambiar }: {
-  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; tope: boolean
+const Fila = memo(function Fila({ f, foto, idx, cant, sinPrecios, promo, tope, celdas, ir, cambiar }: {
+  f: FilaPlanilla; foto: string | null; idx: number; cant: number; sinPrecios: boolean; promo: boolean; tope: boolean
   celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void
   cambiar: (f: FilaPlanilla, n: number) => void
 }) {
@@ -478,8 +554,8 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas,
   return (
     <tr className={`${cant > 0 ? 'bg-[#0004FF]/[0.03]' : 'hover:bg-[#FAFAFA]'} focus-within:bg-[#0004FF]/[0.05]`}>
       <td className={`${td} pl-4 w-14`}>
-        <div className="w-10 h-10 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center" style={f.imagen ? undefined : { background: colorSwatch(f.descripcion) }}>
-          {f.imagen && <img src={f.imagen} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain"
+        <div className="w-12 h-10 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center" style={foto ? undefined : { background: colorSwatch(f.descripcion) }}>
+          {foto && <img src={mini(foto, 160)!} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain mix-blend-multiply"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
         </div>
       </td>

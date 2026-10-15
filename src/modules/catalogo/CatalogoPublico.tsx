@@ -161,6 +161,8 @@ function deviceId(): string {
     return d
   } catch { return '' }
 }
+// Clientes que pueden bajar la carga masiva en Excel (disponibilidad, nunca cantidades). Pedido de Gastón 15/10/2026.
+const DESCARGA_EXCEL: Record<string, string> = { '010001': 'Cristaldo', '010002': 'Optisur', '031022': 'Gafas Luxury' }
 interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null; vendedor_tel?: string | null; vence_at?: string | null }
 // Catálogo de disponibilidad: el token de los vendedores de un distribuidor no ve
 // precios (ellos venden con su propia lista). El servidor ya los manda en 0; acá
@@ -1571,7 +1573,7 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} fotosModelo={planillaFotos} preciosNov={preciosNov.sku} secciones={planillaSecciones}
+      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} descargaExcel={acceso?.cod_cliente && DESCARGA_EXCEL[acceso.cod_cliente] ? { nombre: DESCARGA_EXCEL[acceso.cod_cliente] } : undefined}modelos={planillaModelos} fotosModelo={planillaFotos} preciosNov={preciosNov.sku} secciones={planillaSecciones}
         cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
         onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
