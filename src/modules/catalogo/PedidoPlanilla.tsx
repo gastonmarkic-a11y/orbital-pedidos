@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, ShoppingCart, ChevronDown } from 'lucide-react'
+import { Search, X, ShoppingCart, ChevronDown, Minus, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { colorLegible, colorSwatch } from './colorLegible'
 
@@ -105,16 +105,46 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
     return out
   }, [visibles, cantidades])
 
-  // Plegado: todo cerrado de entrada (se ven solo los modelos). Al buscar un modelo, color o código,
-  // o con "Solo cargados", se abren los modelos que coinciden; los demás filtros solo achican la lista.
+  // Categoría de cada modelo: la primera sección del catálogo que le toca (orden de GRUPOS), como el
+  // dedup de la home. Día de la Madre y Cuando baja la luz son transversales (en la home no le sacan el
+  // modelo a su sección): solo cuentan si el modelo no tiene otra. Así cada SKU aparece una sola vez.
+  const categoriaDe = useMemo(() => {
+    const m = new Map<string, { key: string; nombre: string }>()
+    for (const pasada of [false, true])
+      for (const s of secciones) {
+        if (TRANSVERSALES.has(s.key) !== pasada) continue
+        for (const mod of s.modelos) if (!m.has(mod)) m.set(mod, { key: s.key, nombre: s.nombre })
+      }
+    return m
+  }, [secciones])
+  const cats = useMemo(() => {
+    const out: Cat[] = []
+    const porKey = new Map<string, Cat>()
+    for (const m of lista) {
+      const c0 = categoriaDe.get(m.modelo) ?? OTROS
+      let c = porKey.get(c0.key)
+      if (!c) { c = { ...c0, modelos: [], u: 0, imp: 0 }; porKey.set(c0.key, c); out.push(c) }
+      c.modelos.push(m); c.u += m.u; c.imp += m.imp
+    }
+    const orden = new Map(secciones.map((s, i) => [s.key, i]))
+    return out.sort((a, b) => (orden.get(a.key) ?? 999) - (orden.get(b.key) ?? 999))
+  }, [lista, categoriaDe, secciones])
+
+  // Plegado: todo cerrado de entrada (se ven solo las categorías). Al buscar un modelo, color o código,
+  // o con "Solo cargados", se abren las categorías y modelos que coinciden; los demás filtros solo achican.
+  const [catAb, setCatAb] = useState<Set<string>>(() => new Set())
   const [modAb, setModAb] = useState<Set<string>>(() => new Set())
-  const listaRef = useRef(lista); listaRef.current = lista
-  const abrirTodo = useCallback(() => setModAb(new Set(listaRef.current.map((m) => m.modelo))), [])
-  const cerrarTodo = useCallback(() => setModAb(new Set()), [])
+  const catsRef = useRef(cats); catsRef.current = cats
+  const abrirTodo = useCallback(() => {
+    setCatAb(new Set(catsRef.current.map((c) => c.key)))
+    setModAb(new Set(catsRef.current.flatMap((c) => c.modelos.map((m) => m.modelo))))
+  }, [])
+  const cerrarTodo = useCallback(() => { setCatAb(new Set()); setModAb(new Set()) }, [])
   const filtrando = !!(qn || seccion || clasif || trat || escala || soloCargados || sinProyectado)
   const abreSolo = !!(qn || soloCargados)
   useEffect(() => { if (abreSolo) abrirTodo(); else cerrarTodo() }, [qn, soloCargados, abreSolo, abrirTodo, cerrarTodo])
-  const alternar = (k: string) => setModAb((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const alternar = (set: React.Dispatch<React.SetStateAction<Set<string>>>, k: string) =>
+    set((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
 
   // Navegación tipo Excel entre las celdas de cantidad
   // Los encabezados plegables ocupan el ancho visible (no el de la tabla): en el celu el subtotal queda a la vista
@@ -144,18 +174,26 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   const nModelosCargados = useMemo(() => new Set(base.filter((f) => (cantidades[f.codigo] ?? 0) > 0).map((f) => f.modelo)).size, [base, cantidades])
   const cols = 9 - (sinPrecios ? 2 : 0)
 
-  // Filas a dibujar: cada modelo y, si está abierto, sus colores debajo.
+  // Filas a dibujar: categoría → (abierta) sus modelos → (abierto) sus colores.
   // Los índices de navegación (Enter / flechas) cuentan solo las celdas de cantidad a la vista.
+  // Los títulos de columna solo aparecen con algún modelo abierto: los encabezados pegajosos se corren según eso.
+  const hayColores = cats.some((c) => catAb.has(c.key) && c.modelos.some((m) => modAb.has(m.modelo)))
+  const topCat = hayColores ? 32 : 0
   const filasTabla: React.ReactNode[] = []
   let nCeldas = 0
-  for (const m of lista) {
-    const abierto = modAb.has(m.modelo)
-    filasTabla.push(
-      <FilaModelo key={'m:' + m.modelo} m={m} abierto={abierto} cols={cols} sinPrecios={sinPrecios} onClick={() => alternar(m.modelo)}
-        foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
-    if (abierto) for (const f of m.filas) filasTabla.push(
-      <Fila key={f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
-        promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
+  for (const c of cats) {
+    const cAb = catAb.has(c.key)
+    filasTabla.push(<FilaCategoria key={'c:' + c.key} c={c} abierto={cAb} cols={cols} top={topCat} sinPrecios={sinPrecios} onClick={() => alternar(setCatAb, c.key)} />)
+    if (!cAb) continue
+    for (const m of c.modelos) {
+      const abierto = modAb.has(m.modelo)
+      filasTabla.push(
+        <FilaModelo key={'m:' + m.modelo} m={m} abierto={abierto} cols={cols} top={topCat + 48} sinPrecios={sinPrecios} onClick={() => alternar(setModAb, m.modelo)}
+          foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
+      if (abierto) for (const f of m.filas) filasTabla.push(
+        <Fila key={f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
+          promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
+    }
   }
   nCeldasRef.current = nCeldas
 
@@ -210,7 +248,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
           <button onClick={abrirTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Expandir todo</button>
           <span className="text-neutral-300">|</span>
           <button onClick={cerrarTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Contraer todo</button>
-          <span className="ml-auto text-[11px] text-neutral-400 truncate">{lista.length} modelo{lista.length !== 1 ? 's' : ''} · tocá uno para ver sus colores</span>
+          <span className="ml-auto text-[11px] text-neutral-400 truncate">{cats.length} categoría{cats.length !== 1 ? 's' : ''} · {lista.length} modelo{lista.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
@@ -227,7 +265,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
               <tr className="[&>th]:font-semibold [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-black/10 [&>th]:text-left [&>th]:whitespace-nowrap">
                 <th className="w-12 pl-4">Foto</th>
                 <th>Color</th>
-                <th className="w-[84px] !text-center">Cant.</th>
+                <th className="w-[140px] !text-center">Cant.</th>
                 {!sinPrecios && <th className="!text-right">Precio</th>}
                 {!sinPrecios && <th className="!text-right">Subtotal</th>}
                 <th>Disponib.</th>
@@ -282,13 +320,42 @@ function Sel({ value, onChange, children, label }: { value: string; onChange: (v
 }
 
 type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; proy: number }
+type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number }
+const TRANSVERSALES = new Set(['diamadre', 'bajaluz'])
+const OTROS = { key: 'otros', nombre: 'Otros modelos' }
+
+// Fila de categoría (barra negra, como los carteles de sección del catálogo): nombre, modelos y lo
+// cargado adentro aunque esté cerrada. Tocándola se despliegan / pliegan sus modelos.
+function FilaCategoria({ c, abierto, cols, top, sinPrecios, onClick }: {
+  c: Cat; abierto: boolean; cols: number; top: number; sinPrecios: boolean; onClick: () => void
+}) {
+  return (
+    <tr>
+      <td colSpan={cols} className={`p-0 bg-[#0a0a0a] text-white border-b border-white/15 ${abierto ? 'sticky z-[6]' : ''}`} style={abierto ? { top } : undefined}>
+        <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
+          className="sticky left-0 w-[var(--ancho-tabla,100%)] h-12 flex items-center gap-2.5 text-left px-3 sm:px-4 hover:bg-white/[0.06]">
+          <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? '' : '-rotate-90'} opacity-80`} />
+          <span className="min-w-0 flex-1 flex items-baseline gap-1.5">
+            <span className="truncate font-bold uppercase text-[12px] sm:text-[13px] tracking-[0.16em]">{c.nombre}</span>
+            <span className="shrink-0 text-[11px] text-white/55">· {c.modelos.length} modelo{c.modelos.length !== 1 ? 's' : ''}</span>
+          </span>
+          {c.u > 0 && (
+            <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
+              {c.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(c.imp)}</span>}
+            </span>
+          )}
+        </button>
+      </td>
+    </tr>
+  )
+}
 
 // Fila de modelo: foto de referencia (la tapa del catálogo), nombre, colores, precio desde,
 // disponibilidad y lo cargado. Tocando cualquier parte se despliegan / pliegan sus colores debajo.
 // Ocupa el ancho visible (no el de la tabla): en el celu es una tarjeta entera, sin scroll lateral.
 // Fuera del orden de Tab: Tab salta solo entre las celdas de cantidad, como en Excel.
-function FilaModelo({ m, abierto, cols, foto, sinPrecios, onClick }: {
-  m: Mod; abierto: boolean; cols: number; foto: string | null; sinPrecios: boolean; onClick: () => void
+function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
+  m: Mod; abierto: boolean; cols: number; top: number; foto: string | null; sinPrecios: boolean; onClick: () => void
 }) {
   const disp = m.filas.length - m.proy
   const cargado = m.u > 0 && (
@@ -298,7 +365,7 @@ function FilaModelo({ m, abierto, cols, foto, sinPrecios, onClick }: {
   )
   return (
     <tr>
-      <td colSpan={cols} className={`p-0 border-b ${abierto ? 'sticky top-[32px] z-[5] bg-white border-[#0004FF]/30' : 'border-black/10'}`}>
+      <td colSpan={cols} className={`p-0 border-b ${abierto ? 'sticky z-[5] bg-white border-[#0004FF]/30' : 'border-black/10'}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
           className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left px-3 sm:px-4 py-2.5 border-l-[3px] transition-colors
             ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
@@ -354,16 +421,27 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas,
         </span>
       </td>
       <td className={`${td} text-center`}>
-        <input
-          ref={(el) => { celdas.current[idx] = el }}
-          value={cant || ''}
-          onChange={(e) => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); cambiar(f, isNaN(n) ? 0 : n) }}
-          onFocus={(e) => e.target.select()}
-          onKeyDown={onKey}
-          inputMode="numeric" enterKeyHint="next" autoComplete="off" aria-label={`Cantidad ${f.modelo} ${color}`}
-          placeholder="0"
-          className={`w-16 h-8 text-center text-[13px] font-bold tabular-nums border bg-white placeholder:text-neutral-300 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#0004FF]/50 focus:border-[#0004FF] [scroll-margin-top:84px] [scroll-margin-bottom:12px] ${tope ? 'border-red-500' : cant > 0 ? 'border-[#0004FF]' : 'border-black/15'}`} />
-        {tope && <p className="text-[9px] text-red-600 font-semibold mt-0.5 whitespace-nowrap">{f.proyectado ? 'máx. proyectado' : 'máx. disponible'}</p>}
+        {/* − número + : los botones quedan fuera del Tab (Tab / Enter / flechas van de número en número) */}
+        <div className="inline-flex items-stretch">
+          <button type="button" tabIndex={-1} onClick={() => cambiar(f, cant - 1)} disabled={cant <= 0} aria-label={`Restar ${f.modelo} ${color}`}
+            className="w-9 h-9 border border-r-0 border-black/15 bg-white flex items-center justify-center text-neutral-700 hover:bg-[#F5F5F7] active:bg-[#0004FF]/10 disabled:text-neutral-300 disabled:hover:bg-white">
+            <Minus size={15} />
+          </button>
+          <input
+            ref={(el) => { celdas.current[idx] = el }}
+            value={cant || ''}
+            onChange={(e) => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); cambiar(f, isNaN(n) ? 0 : n) }}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={onKey}
+            inputMode="numeric" enterKeyHint="next" autoComplete="off" aria-label={`Cantidad ${f.modelo} ${color}`}
+            placeholder="0"
+            className={`w-12 h-9 text-center text-[14px] font-bold tabular-nums border bg-white placeholder:text-neutral-300 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#0004FF]/50 focus:border-[#0004FF] focus:relative [scroll-margin-top:170px] [scroll-margin-bottom:12px] ${tope ? 'border-red-500' : cant > 0 ? 'border-[#0004FF]' : 'border-black/15'}`} />
+          <button type="button" tabIndex={-1} onClick={() => cambiar(f, cant + 1)} disabled={cant >= f.stock} aria-label={`Sumar ${f.modelo} ${color}`}
+            className="w-9 h-9 border border-l-0 border-black/15 bg-white flex items-center justify-center text-[#0004FF] hover:bg-[#0004FF]/[0.06] active:bg-[#0004FF]/10 disabled:text-neutral-300 disabled:hover:bg-white">
+            <Plus size={15} />
+          </button>
+        </div>
+        {(tope || (cant > 0 && cant >= f.stock)) && <p className="text-[9px] text-red-600 font-semibold mt-0.5 whitespace-nowrap">{f.proyectado ? 'máx. proyectado' : 'máx. disponible'}</p>}
       </td>
       {!sinPrecios && (
         <td className={`${td} text-right whitespace-nowrap tabular-nums`}>
