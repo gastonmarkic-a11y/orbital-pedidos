@@ -1,12 +1,11 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send, Table2 } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { FotoProd } from './FotoProd'
 import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
-import PedidoPlanilla, { type FilaPlanilla } from './PedidoPlanilla'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import { calcularEscalera, escaleraObs } from './escalera'
 import { EscaleraResumen, EscaleraSugerencias } from './EscaleraUI'
@@ -1294,18 +1293,6 @@ export default function CatalogoPublico() {
       return { ...c, [codigo]: { ...c[codigo], cantidad: max ? Math.min(cantidad, max) : cantidad } }
     })
   }
-  // Pedido grande (planilla): cantidad absoluta por SKU, en el mismo carrito (mismo tope de stock libre / proyectado)
-  const [planilla, setPlanilla] = useState(false)
-  function setCantFila(f: FilaPlanilla, n: number) {
-    setCart((c) => {
-      const cantidad = Math.min(Math.max(0, n), f.stock)
-      if (cantidad <= 0) { const { [f.codigo]: _x, ...rest } = c; return rest }
-      return { ...c, [f.codigo]: { codigo: f.codigo, modelo: f.modelo, descripcion: f.descripcion, precio: f.precio, imagen: f.imagen, stock: f.stock, cantidad, oportunidad: esOportunidad(f.clasificacion), ...(enPromo(f.modelo, f.precio, f.precio_lista) ? { precio_lista: f.precio_lista } : {}) } }
-    })
-  }
-  const planillaSecciones = useMemo(() => GRUPOS.map((g) => ({ key: g.key, nombre: g.nombre, modelos: new Set(todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo)) })), [todos])
-  const planillaModelos = useMemo(() => todos.map((m) => m.modelo), [todos])
-  const planillaCant = useMemo(() => Object.fromEntries(Object.values(cart).map((c) => [c.codigo, c.cantidad])), [cart])
 
   function verGrupo(k: string) { setGrupoActivo(k); setQ(''); setConoce(false); window.scrollTo({ top: 0 }) }
   function irInicio() { setGrupoActivo(null); setQ(''); setConoce(false) }
@@ -1415,17 +1402,13 @@ export default function CatalogoPublico() {
         {/* En el celu, Inspiración / Postventa van en su propia fila */}
         {/* Fila deslizable: si no entra, no ensancha la página (en el celu todo se corría de costado) */}
         <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&>button]:shrink-0">{accesosHeader}</div>
-        {/* Buscador + Pedido grande (planilla tipo Excel con todos los colores) */}
-        <div className="max-w-6xl mx-auto px-4 pb-2 flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
+        {/* Buscador */}
+        <div className="max-w-6xl mx-auto px-4 pb-2">
+          <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input value={q} onChange={(e) => { setQ(e.target.value); setGrupoActivo(null); setConoce(false) }} placeholder="Buscar modelo…"
               className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
-          <button onClick={() => setPlanilla(true)} title="Cargar todos los colores en una planilla, como en Excel"
-            className="shrink-0 flex items-center gap-1.5 rounded-full border border-[#0004FF] text-[#0004FF] bg-white hover:bg-[#0004FF]/[0.06] px-3 py-2 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
-            <Table2 size={15} /> <span className="sm:hidden">Pedido grande</span><span className="hidden sm:inline">Pedido grande (planilla)</span>
-          </button>
         </div>
         {/* Propuestas: acceso directo a cada grupo */}
         <div className="max-w-6xl mx-auto px-4 pb-3">
@@ -1518,9 +1501,6 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} secciones={planillaSecciones}
-        cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
-        onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
         topModelos={todos.filter((m) => m.caliente).map((m) => m.modelo)} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
