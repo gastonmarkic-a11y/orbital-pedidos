@@ -51,6 +51,8 @@ export default function EnvioCatalogo() {
         <p className="text-sm text-neutral-500">Compartí el catálogo con un cliente. El link lo deja entrar sin clave y el pedido queda asociado a su óptica.</p>
       </div>
 
+      <PromoGrupos />
+
       {/* Enviar a un cliente */}
       <section className="rounded-2xl border border-black/10 p-4 bg-white">
         <h2 className="text-sm font-semibold mb-1">📤 Enviar a un cliente</h2>
@@ -114,5 +116,47 @@ function AccesoRow({ codigo, link, onCopy }: { codigo: string; link: string; onC
       <button onClick={() => onCopy(codigo)} className="rounded-lg border border-black/10 px-3 py-1.5 text-[12px] font-medium">Copiar código</button>
       <button onClick={() => onCopy(link)} className="rounded-lg border border-black/10 px-3 py-1.5 text-[12px] font-medium">Copiar link</button>
     </div>
+  )
+}
+
+// Promo vigente: link genérico (no es de ninguna óptica) para reenviar a grupos. El servidor solo
+// lo lista mientras no venció; la óptica se identifica al confirmar y el pedido va a su vendedor.
+// Se muestra en Enviar catálogo y en Envíos de propuestas.
+export function PromoGrupos() {
+  const toast = useToast()
+  const [promo, setPromo] = useState<Acc | null>(null)
+  useEffect(() => {
+    supabase.rpc('catalogo_accesos_suite').then(({ data }) => setPromo(((data as Acc[]) ?? []).find((a) => a.tipo === 'promo') ?? null))
+  }, [])
+  if (!promo) return null
+  const link = (codigo: string) => `https://ver.orbitaleyewear.com.ar/catalogo?k=${codigo}`
+  const copiar = (t: string) => { navigator.clipboard?.writeText(t); toast('Copiado ✓', 'success') }
+  const wa = (texto: string) => `https://wa.me/?text=${encodeURIComponent(texto)}`
+  const tg = (texto: string, url: string) => `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(texto)}`
+  const msgPromo = `🕶️ Precio de octubre Orbital
+
+El 1/11 sube la lista. Todo lo que cargues hasta el 31/10 sale con el precio de octubre.
+
+Armá tu pedido directo desde el catálogo, sobre stock real:
+${link(promo.codigo)}
+
+Al confirmar ponés el código de tu óptica o tu CUIT y el pedido queda a tu nombre. El link deja de funcionar el 31/10.`
+  return (
+    <section className="rounded-2xl border border-[#0004FF]/30 p-4 bg-[#0004FF]/[0.03]">
+      <h2 className="text-sm font-semibold mb-1">📣 Promo precio de octubre · link para grupos</h2>
+      <p className="text-[12px] text-neutral-500 mb-3">Un solo link para todos: mandalo a tus grupos. Cada óptica se identifica al confirmar y el pedido va a su vendedor. Se desactiva solo al terminar el 31/10.</p>
+      <div className="rounded-lg bg-white border border-black/10 p-2.5 mb-2">
+        <p className="text-[12px] break-all">{link(promo.codigo)}</p>
+      </div>
+      <div className="rounded-lg bg-white border border-black/10 p-2.5 mb-3">
+        <p className="text-[12px] whitespace-pre-wrap text-neutral-600">{msgPromo}</p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={() => copiar(link(promo.codigo))} className="flex-1 rounded-lg border border-black/10 bg-white py-2 text-[13px] font-medium">Copiar link</button>
+        <button onClick={() => copiar(msgPromo)} className="flex-1 rounded-lg border border-black/10 bg-white py-2 text-[13px] font-medium">Copiar mensaje</button>
+        <a href={tg(msgPromo.replace(link(promo.codigo), '').trim(), link(promo.codigo))} target="_blank" rel="noreferrer" className="flex-1 rounded-lg bg-[#229ED9] text-white py-2 text-[13px] font-medium text-center">Telegram</a>
+        <a href={wa(msgPromo)} target="_blank" rel="noreferrer" className="flex-1 rounded-lg bg-[#25D366] text-white py-2 text-[13px] font-medium text-center">WhatsApp</a>
+      </div>
+    </section>
   )
 }

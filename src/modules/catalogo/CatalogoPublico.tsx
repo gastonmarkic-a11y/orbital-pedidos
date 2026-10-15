@@ -130,7 +130,23 @@ function coverIndex(fotos: Foto[], grupo?: string, modelo?: string): number {
 // Paleta de la tienda orbitaleyewear.com.ar: blanco/negro, azul eléctrico, tipografía monospace
 const CLAVE_KEY = 'orbital_catalogo_clave'
 const ACCESO_KEY = 'orbital_catalogo_acceso'
+// El carrito es de cada link: con una clave global, al abrir el link de una óptica en un
+// equipo donde antes se abrió el de otro cliente aparecía el carrito (y los precios) del otro.
 const CART_KEY = 'orbital_catalogo_cart'
+const cartKey = (clave: string | null) => `${CART_KEY}:${clave ?? ''}`
+function leerCarrito(clave: string | null): Record<string, CartItem> {
+  try {
+    const propio = localStorage.getItem(cartKey(clave))
+    if (propio) return JSON.parse(propio)
+    // Carrito viejo (clave global): solo se hereda si era de este mismo link.
+    const viejo = localStorage.getItem(CART_KEY)
+    if (viejo != null) {
+      localStorage.removeItem(CART_KEY)
+      if (clave && localStorage.getItem(CLAVE_KEY) === clave) return JSON.parse(viejo)
+    }
+  } catch { /* noop */ }
+  return {}
+}
 // En sessionStorage, no en localStorage: la sesión de medición dura lo que dura la pestaña.
 const SESION_KEY = 'orbital_catalogo_sesion'
 const PACK_KEY = 'orbital_catalogo_pack'
@@ -143,7 +159,7 @@ function deviceId(): string {
     return d
   } catch { return '' }
 }
-interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null; vendedor_tel?: string | null }
+interface Acceso { tipo: string; codigo?: string; cod_cliente?: string | null; label?: string | null; vendedor?: string | null; vendedor_tel?: string | null; vence_at?: string | null }
 // Catálogo de disponibilidad: el token de los vendedores de un distribuidor no ve
 // precios (ellos venden con su propia lista). El servidor ya los manda en 0; acá
 // solo se evita mostrar el número y todo lo que hable de plata.
@@ -260,6 +276,21 @@ function ClaveGate({ onOk }: { onOk: (clave: string) => void }) {
 // Si ya no se puede habilitar solo, el pedido le llega a Gastón por Telegram (edge function
 // catalogo-pedir-acceso, botones Habilitar/No) y esta pantalla se abre sola cuando lo aprueba:
 // el cliente no tiene que volver a entrar ni recargar.
+// Link de promo con fecha de corte (p. ej. "Precio de octubre" para grupos): pasada la fecha no abre.
+function PromoVencida() {
+  const wa = `https://wa.me/5491178548316?text=${encodeURIComponent('Hola! Quiero ver el catálogo Orbital, el link de la promo ya no abre.')}`
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white orb-tienda px-6">
+      <div className="max-w-sm text-center">
+        <p className="text-[10px] tracking-[0.25em] uppercase text-neutral-400">Orbital®</p>
+        <h1 className="text-xl font-bold mt-2">Esta promoción terminó</h1>
+        <p className="text-sm text-neutral-500 mt-2">El link era válido hasta el fin de la promo. Pedile a tu vendedor tu catálogo personal o escribinos y te lo mandamos.</p>
+        <a href={wa} target="_blank" rel="noreferrer" className="inline-block mt-5 bg-[#0004FF] text-white rounded-xl py-2.5 px-6 text-sm font-medium">Escribir por WhatsApp</a>
+      </div>
+    </div>
+  )
+}
+
 function BloqueoGate({ label, vendedorTel, codigo }: {
   label: string | null; vendedorTel?: string | null; codigo?: string | null
 }) {
@@ -994,8 +1025,14 @@ export default function CatalogoPublico() {
     } catch { return false }
   })
   const [bloqueo, setBloqueo] = useState<{ label: string | null; vendedor_tel?: string | null } | null>(null)
+  const [vencido, setVencido] = useState(false)
+  // El acceso guardado solo vale si es del mismo link que se está abriendo (si no, mostraba el
+  // nombre de otro cliente hasta que respondía el servidor, o para siempre si el link quedaba bloqueado).
   const [acceso, setAcceso] = useState<Acceso | null>(() => {
-    try { return JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') } catch { return null }
+    try {
+      const a = JSON.parse(localStorage.getItem(ACCESO_KEY) || 'null') as Acceso | null
+      return a && clave && (a.tipo === 'clave' || a.codigo === clave) ? a : null
+    } catch { return null }
   })
   const [todos, setTodos] = useState<HomeModelo[]>([])
   const [loading, setLoading] = useState(true)
@@ -1023,16 +1060,20 @@ export default function CatalogoPublico() {
   const [infoGrupo, setInfoGrupo] = useState<string | null>(null)
   const ascariPop = useAscariPop()
   const [carritoOpen, setCarritoOpen] = useState(false)
-  const [cart, setCart] = useState<Record<string, CartItem>>(() => {
-    try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}') } catch { return {} }
-  })
+  const [cart, setCart] = useState<Record<string, CartItem>>(() => leerCarrito(clave))
+  // Si cambia el link en la misma pestaña (pantalla de clave, link inválido), se carga su carrito.
+  const cartDe = useRef(clave)
+  if (cartDe.current !== clave) { cartDe.current = clave; setCart(leerCarrito(clave)) }
 
   // Bono de campaña: vive en el token, no en el catálogo. Sin bono no se renderiza nada.
   const [bono, setBono] = useState<BonoEstado | null>(null)
   const [celebra, setCelebra] = useState<string | null>(null)
   const ganadoRef = useRef({ bonificacion: 0, piezas: 0 })
 
-  useEffect(() => { localStorage.setItem(CART_KEY, JSON.stringify(cart)) }, [cart])
+  useEffect(() => {
+    if (cartDe.current !== clave) return
+    try { localStorage.setItem(cartKey(clave), JSON.stringify(cart)) } catch { /* noop */ }
+  }, [cart, clave])
 
   // validar clave/token guardado o del link al entrar
   useEffect(() => {
@@ -1042,13 +1083,18 @@ export default function CatalogoPublico() {
       if (r?.ok) {
         setClaveOk(true); setBloqueo(null)
         localStorage.setItem(CLAVE_KEY, clave)
-        const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor, vendedor_tel: r.vendedor_tel ?? null }
+        const acc: Acceso = { tipo: r.tipo, codigo: r.codigo, cod_cliente: r.cod_cliente, label: r.label, vendedor: r.vendedor, vendedor_tel: r.vendedor_tel ?? null, vence_at: r.vence_at ?? null }
         setAcceso(acc); localStorage.setItem(ACCESO_KEY, JSON.stringify(acc))
       } else if (r?.motivo === 'otro_dispositivo') {
         // El link ya está en uso en otro equipo: mostramos la pantalla de pedir acceso. El token se
         // guarda para que, si vuelve sin el link, caiga otra vez acá y no en la pantalla de clave.
         localStorage.setItem(CLAVE_KEY, clave)
+        setAcceso((a) => (a?.codigo === clave ? a : null))
         setBloqueo({ label: r.label ?? null, vendedor_tel: r.vendedor_tel ?? null })
+      } else if (r?.motivo === 'vencido') {
+        localStorage.removeItem(CLAVE_KEY); localStorage.removeItem(ACCESO_KEY); setAcceso(null)
+        try { localStorage.removeItem(cartKey(clave)) } catch { /* noop */ }
+        setVencido(true)
       } else if (error) {
         // Falla de red: no se borra nada, al recargar vuelve a intentar con el mismo token.
       } else {
@@ -1256,6 +1302,7 @@ export default function CatalogoPublico() {
   function abrirModelo(nombre: string) { const m = todos.find((x) => x.modelo === nombre); if (m) setSel(m) }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500 bg-white orb-tienda">Cargando catálogo…</div>
+  if (vencido) return <PromoVencida />
   if (bloqueo) return <BloqueoGate label={bloqueo.label} vendedorTel={bloqueo.vendedor_tel} codigo={clave} />
   if (!clave || !claveOk) return <ClaveGate onOk={(c) => { setClave(c); setClaveOk(true) }} />
 
@@ -1279,13 +1326,13 @@ export default function CatalogoPublico() {
         className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black bg-[#0a0a0a] text-white hover:bg-black">
         Marca
       </button>
-      {!sinPrecios && acceso?.tipo !== 'campana' && (
+      {!sinPrecios && acceso?.tipo !== 'campana' && acceso?.tipo !== 'promo' && (
         <button onClick={() => setLabPro(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-[#0004FF]/40 bg-[#0004FF]/[0.06] text-[#0004FF] hover:border-[#0004FF]">
           Vision Lab <span className="text-[9px] rounded-full bg-[#0004FF] text-white px-1.5 py-px ml-0.5 align-middle">PRO</span>
         </button>
       )}
-      {!sinPrecios && acceso?.tipo !== 'campana' && (
+      {!sinPrecios && acceso?.tipo !== 'campana' && acceso?.tipo !== 'promo' && (
         <button onClick={() => setPostventa(true)}
           className="flex-1 sm:flex-none text-[11px] rounded-full px-3 py-2 font-semibold whitespace-nowrap uppercase tracking-wide border border-black/15 bg-white text-neutral-700 hover:border-[#0004FF]/40">
           Postventa
@@ -1319,6 +1366,12 @@ export default function CatalogoPublico() {
       {sinPrecios && (
         <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-[11px] text-center py-1.5 px-3 font-semibold">
           👓 Disponibilidad en vivo · los precios te los pasa {empresaDe(acceso?.label) || 'tu empresa'}
+        </div>
+      )}
+      {/* Link de promo para grupos: precio de lista general hasta la fecha de corte */}
+      {acceso?.tipo === 'promo' && (
+        <div className="bg-[#0004FF] text-white text-[11px] text-center py-1.5 px-3 font-semibold">
+          Precio de octubre{acceso.vence_at ? ` · válido hasta el ${new Date(new Date(acceso.vence_at).getTime() - 1).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', timeZone: 'America/Argentina/Buenos_Aires' })}` : ''} · el 1/11 sube la lista
         </div>
       )}
       {/* Marca de agua: catálogo personalizado del cliente (link con token) */}

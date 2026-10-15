@@ -9,6 +9,7 @@ import { daysSince } from '../../lib/dates'
 import { aNacional } from '../../lib/telefono'
 import PreparacionEnvio from './PreparacionEnvio'
 import { nombreOperador } from '../../lib/operadores'
+import { PromoGrupos } from '../actividad/EnvioCatalogo'
 
 const COOLDOWN_DIAS = 15
 const MISMO_TIPO_DIAS = 30
@@ -218,6 +219,8 @@ export default function Envios() {
           </span>
         )}
       </div>
+
+      <PromoGrupos />
 
       {esProsp && (
         <p className="text-[11px] text-faint">
