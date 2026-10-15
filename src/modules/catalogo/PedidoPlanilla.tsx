@@ -26,6 +26,8 @@ interface Props {
   modelos: string[]
   /** Foto de referencia por modelo (la tapa del catálogo), para el encabezado del modelo */
   fotosModelo?: Record<string, string>
+  /** Precio desde el 1/11 por SKU (solo los que suben): referencia para aprovechar el precio de octubre */
+  preciosNov?: Record<string, number>
   /** Secciones del catálogo y a qué modelos aplica cada una (para el filtro) */
   secciones: { key: string; nombre: string; modelos: Set<string> }[]
   cantidades: Record<string, number>
@@ -37,7 +39,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
+export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo, preciosNov, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
   const [error, setError] = useState(false)
   const [q, setQ] = useState('')
@@ -96,14 +98,16 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
     const out: Mod[] = []
     for (const f of visibles) {
       let m = out[out.length - 1]
-      if (!m || m.modelo !== f.modelo) { m = { modelo: f.modelo, filas: [], u: 0, imp: 0, desde: 0, proy: 0 }; out.push(m) }
+      if (!m || m.modelo !== f.modelo) { m = { modelo: f.modelo, filas: [], u: 0, imp: 0, desde: 0, desdeNov: 0, proy: 0 }; out.push(m) }
       const n = cantidades[f.codigo] ?? 0
       m.filas.push(f); m.u += n; m.imp += n * f.precio
       if (f.proyectado) m.proy++
       if (f.precio > 0 && (!m.desde || f.precio < m.desde)) m.desde = f.precio
+      const pn = preciosNov?.[f.codigo] ?? f.precio
+      if (pn > 0 && (!m.desdeNov || pn < m.desdeNov)) m.desdeNov = pn
     }
     return out
-  }, [visibles, cantidades])
+  }, [visibles, cantidades, preciosNov])
 
   // Categoría de cada modelo: la primera sección del catálogo que le toca (orden de GRUPOS), como el
   // dedup de la home. Día de la Madre y Cuando baja la luz son transversales (en la home no le sacan el
@@ -192,7 +196,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
           foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
       if (abierto) for (const f of m.filas) filasTabla.push(
         <Fila key={f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
-          promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
+          promo={esPromo(f)} nov={preciosNov?.[f.codigo]} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
     }
   }
   nCeldasRef.current = nCeldas
@@ -319,7 +323,7 @@ function Sel({ value, onChange, children, label }: { value: string; onChange: (v
   )
 }
 
-type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; proy: number }
+type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; desdeNov: number; proy: number }
 type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number }
 const TRANSVERSALES = new Set(['diamadre', 'bajaluz'])
 const OTROS = { key: 'otros', nombre: 'Otros modelos' }
@@ -365,7 +369,7 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
   )
   return (
     <tr>
-      <td colSpan={cols} className={`p-0 border-b ${abierto ? 'sticky z-[5] bg-white border-[#0004FF]/30' : 'border-black/10'}`} style={abierto ? { top } : undefined}>
+      <td colSpan={cols} className={`p-0 border-t-2 border-t-black/25 border-b ${abierto ? 'sticky z-[5] bg-white border-b-[#0004FF]/30' : 'border-b-black/10'}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
           className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left px-3 sm:px-4 py-2.5 border-l-[3px] transition-colors
             ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
@@ -376,7 +380,7 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
           <span className="min-w-0 flex-1">
             <span className="block truncate font-bold uppercase text-[14px] sm:text-[15px] tracking-wide leading-tight">{m.modelo}</span>
             <span className="block truncate text-[12px] text-neutral-500 mt-0.5">
-              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}
+              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}{!sinPrecios && m.desde && m.desdeNov >= m.desde * 1.02 ? <span className="text-neutral-400"> · desde el 1/11 {kAr(m.desdeNov)}</span> : null}
             </span>
             <span className="flex flex-wrap items-center gap-1 mt-1">
               {disp > 0 && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5">{disp} disponible{disp !== 1 ? 's' : ''}</span>}
@@ -393,8 +397,8 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
   )
 }
 
-const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas, ir, cambiar }: {
-  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; tope: boolean
+const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, celdas, ir, cambiar }: {
+  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; nov?: number; tope: boolean
   celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void
   cambiar: (f: FilaPlanilla, n: number) => void
 }) {
@@ -447,6 +451,7 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas,
         <td className={`${td} text-right whitespace-nowrap tabular-nums`}>
           {promo && <span className="block text-[10px] text-neutral-400 line-through leading-none">{kAr(f.precio_lista)}</span>}
           <span className={`font-semibold ${promo ? 'text-pink-700' : ''}`}>{kAr(f.precio)}</span>
+          {nov && nov >= f.precio * 1.02 ? <span className="block text-[10px] text-neutral-400 leading-tight">1/11: {kAr(nov)}</span> : null}
         </td>
       )}
       {!sinPrecios && <td className={`${td} text-right whitespace-nowrap tabular-nums font-semibold ${cant ? 'text-[#0004FF]' : 'text-neutral-300'}`}>{cant ? kAr(cant * f.precio) : '—'}</td>}

@@ -168,6 +168,16 @@ const SinPreciosCtx = createContext(false)
 const useSinPrecios = () => useContext(SinPreciosCtx)
 // Precio de venta sugerido por modelo para esta óptica (ej. Paesani). Solo referencia: no se factura.
 const PrecioRefCtx = createContext<Record<string, number>>({})
+// Precio desde el 1/11 por SKU (solo los que suben ≥ 2%: una suba de $23 no se anuncia) y "desde" por modelo.
+type PreciosNov = { sku: Record<string, number>; desde: Record<string, number> }
+const SIN_NOV: PreciosNov = { sku: {}, desde: {} }
+const NOV_MIN_SUBA = 1.02
+const PrecioNovCtx = createContext<PreciosNov>(SIN_NOV)
+// Línea chica "Desde el 1/11: $X" (se muestra solo si sube respecto del precio que ve hoy)
+function PrecioNov({ nov, hoy, className = '' }: { nov?: number; hoy: number | null | undefined; className?: string }) {
+  if (!nov || !hoy || nov < hoy * NOV_MIN_SUBA) return null
+  return <p className={`text-[10px] leading-tight text-neutral-500 ${className}`}>Desde el 1/11: <b className="text-neutral-700">{kAr(nov)}</b></p>
+}
 // "010002 - Optisur S.R.L · vendedores (sin precios)" → "Optisur S.R.L"
 const empresaDe = (label?: string | null) => ((label || '').split(' - ')[1] || label || '').split('·')[0].trim()
 const kAr = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
@@ -640,6 +650,7 @@ function ProtBadge({ triple }: { triple: boolean }) {
 // Tarjeta de modelo reutilizable (grilla y secciones)
 function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () => void; onQuick: () => void; grupo?: string }) {
   const sinPrecios = useSinPrecios()
+  const nov = useContext(PrecioNovCtx)
   // En la sección Día de la Madre la tarjeta muestra solo los colores que están en la promo
   const enMadre = grupo === 'diamadre' && tienePromo(m)
   let fotos = enMadre ? m.fotos.filter((f) => f.pm) : m.fotos
@@ -667,6 +678,7 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
               <p className="text-base font-bold text-pink-700 leading-tight">{kAr(m.precio_desde)}</p>
             </div>
           ) : <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>}
+        {!sinPrecios && <PrecioNov nov={nov.desde[m.modelo]} hoy={m.precio_desde} className="mt-0.5" />}
       </button>
       <button onClick={onQuick} className="mx-3 mb-3 rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
         <Plus size={14} /> Agregar
@@ -1165,6 +1177,23 @@ export default function CatalogoPublico() {
     })
   }, [claveOk, acceso?.tipo, acceso?.codigo, clave])
 
+  // Precio desde el 1/11 (lista de noviembre ya programada): referencia para que aproveche el precio de octubre.
+  // El servidor no manda nada a links sin precios ni a GAFAS LUXURY (tiene su propia lista de noviembre).
+  const [preciosNov, setPreciosNov] = useState<PreciosNov>(SIN_NOV)
+  useEffect(() => {
+    if (!claveOk || !clave) { setPreciosNov(SIN_NOV); return }
+    supabase.rpc('catalogo_precios_nov', { p_clave: clave }).then(({ data, error }) => {
+      if (error || !Array.isArray(data)) { setPreciosNov(SIN_NOV); return }
+      const sku: Record<string, number> = {}, desde: Record<string, number> = {}
+      for (const r of data as { modelo: string; codigo: string; precio_actual: number; precio_nov: number }[]) {
+        const nov = Number(r.precio_nov) || 0
+        if (nov >= Number(r.precio_actual) * NOV_MIN_SUBA) sku[r.codigo] = nov
+        if (nov > 0 && (!desde[r.modelo] || nov < desde[r.modelo])) desde[r.modelo] = nov
+      }
+      setPreciosNov({ sku, desde })
+    })
+  }, [claveOk, clave])
+
   // ── Tracking: cuánto miró y qué llegó a cargar ──────────────────────────────
   // Hasta acá solo sabíamos que entró, y —si confirmaba— qué pidió. Lo del medio
   // (el rato que estuvo y el carrito que armó y no cerró) es justo la señal que le
@@ -1374,7 +1403,7 @@ export default function CatalogoPublico() {
     `text-[11px] rounded-full px-3 py-1.5 font-semibold whitespace-nowrap tracking-wide uppercase transition border ${active ? ACCENT[accent] + ' border-transparent' : 'bg-white border-black/10 text-neutral-600 hover:border-[#0004FF]/40'}`
 
   return (
-    <SinPreciosCtx.Provider value={sinPrecios}><PrecioRefCtx.Provider value={preciosRef}>
+    <SinPreciosCtx.Provider value={sinPrecios}><PrecioRefCtx.Provider value={preciosRef}><PrecioNovCtx.Provider value={preciosNov}>
     <div className="min-h-screen bg-white text-[#0a0a0a] orb-tienda">
       {/* Banner chico estilo tienda */}
       <div className="bg-[#0a0a0a] text-white text-[10px] tracking-[0.25em] uppercase text-center py-1.5 px-3">
@@ -1390,6 +1419,12 @@ export default function CatalogoPublico() {
       {acceso?.tipo === 'promo' && (
         <div className="bg-[#0004FF] text-white text-[11px] text-center py-1.5 px-3 font-semibold">
           Precio de octubre{acceso.vence_at ? ` · válido hasta el ${new Date(new Date(acceso.vence_at).getTime() - 1).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', timeZone: 'America/Argentina/Buenos_Aires' })}` : ''} · el 1/11 sube la lista
+        </div>
+      )}
+      {/* Lista de noviembre: aviso para que aproveche el precio de octubre (el link de promo ya tiene el suyo) */}
+      {acceso?.tipo !== 'promo' && !sinPrecios && Object.keys(preciosNov.sku).length > 0 && (
+        <div className="bg-[#0004FF] text-white text-[11px] text-center py-1.5 px-3 font-semibold">
+          Precio de octubre · el 1/11 sube la lista: pedí ahora y te quedás con este precio
         </div>
       )}
       {/* Marca de agua: catálogo personalizado del cliente (link con token) */}
@@ -1521,7 +1556,7 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} fotosModelo={planillaFotos} secciones={planillaSecciones}
+      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} fotosModelo={planillaFotos} preciosNov={preciosNov.sku} secciones={planillaSecciones}
         cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
         onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
@@ -1560,7 +1595,7 @@ export default function CatalogoPublico() {
         </button>
       )}
     </div>
-    </PrecioRefCtx.Provider></SinPreciosCtx.Provider>
+    </PrecioNovCtx.Provider></PrecioRefCtx.Provider></SinPreciosCtx.Provider>
   )
 }
 
@@ -1572,6 +1607,7 @@ function QuickAdd({ modelo, clave, cart, soloPromo, onAdd, onSetQty, onClose, on
   const [vars, setVars] = useState<Variante[]>([])
   const [loading, setLoading] = useState(true)
   const sinPrecios = useSinPrecios()
+  const nov = useContext(PrecioNovCtx)
   useEffect(() => {
     supabase.rpc('catalogo_modelo_v2', { p_clave: clave, p_modelo: modelo.modelo, p_tipo: null, p_clasif: null, p_trat: null }).then(({ data, error }) => {
       setVars(filtrarPromo(error ? [] : ((data as Variante[]) ?? []), modelo.modelo, soloPromo)); setLoading(false)
@@ -1605,6 +1641,7 @@ function QuickAdd({ modelo, clave, cart, soloPromo, onAdd, onSetQty, onClose, on
                     <div className="p-2">
                       <p className="text-[11px] font-medium leading-tight line-clamp-2 h-[28px]">{colorLegible(v.descripcion) || v.codigo}</p>
                       <div className="flex items-center gap-1 flex-wrap">{sinPrecios ? <p className="text-[10px] font-semibold text-emerald-600 mt-0.5">Disponible</p> : enPromo(modelo.modelo, v.precio, v.precio_lista) ? <p className="text-[12px] font-bold text-pink-700 mt-0.5"><span className="text-[10px] font-normal text-neutral-400 line-through mr-1">{kAr(v.precio_lista)}</span>{kAr(v.precio)}</p> : <p className="text-[12px] font-bold text-[#0004FF] mt-0.5">{kAr(v.precio)}</p>}{v.proyectado && <span className="text-[8px] font-semibold text-[#b45309] bg-[#fdf0dd] rounded px-1 py-0.5">proyectado</span>}</div>
+                      {!sinPrecios && <PrecioNov nov={nov.sku[v.codigo]} hoy={v.precio} />}
                       {q === 0 ? (
                         <button onClick={() => onAdd(v, modelo.modelo)} className="w-full mt-1.5 rounded-lg bg-[#0004FF] text-white py-1.5 text-[11px] font-semibold flex items-center justify-center gap-1"><Plus size={12} />Agregar</button>
                       ) : (
@@ -1713,6 +1750,7 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState(true)
   const precioRef = useContext(PrecioRefCtx)
+  const nov = useContext(PrecioNovCtx)
   const [medidas, setMedidas] = useState<Medidas | null>(null)
   const [ficha, setFicha] = useState<{ linea: string | null; descripcion: string | null } | null>(null)
   const sinPrecios = useSinPrecios()
@@ -1867,6 +1905,14 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
                   {(v.tiene_preventa || enPromo(modelo.modelo, v.precio, v.precio_lista)) && <span className="text-sm text-neutral-400 line-through">{kAr(v.precio_lista)}</span>}
                   {enPromo(modelo.modelo, v.precio, v.precio_lista) && <PromoTag precio={v.precio} lista={v.precio_lista} />}
                   <span className="text-[11px] text-neutral-400">+ IVA</span>
+                </div>
+              )}
+              {!soloContenido && !sinPrecios && nov.sku[v.codigo] && nov.sku[v.codigo] >= v.precio * NOV_MIN_SUBA && (
+                <div className="mt-2 flex items-center gap-2 border border-[#0004FF]/20 bg-[#0004FF]/[0.04] px-3 py-2">
+                  <span className="text-[11px] text-neutral-600 leading-snug">
+                    Desde el 1/11 este anteojo pasa a <b className="text-[#0a0a0a]">{kAr(nov.sku[v.codigo])}</b> + IVA.
+                    {' '}Pidiendo en octubre ahorrás <b className="text-[#0004FF]">{kAr(nov.sku[v.codigo] - v.precio)}</b> por unidad.
+                  </span>
                 </div>
               )}
               {!soloContenido && !sinPrecios && precioRef[modelo.modelo] != null && (
@@ -2057,6 +2103,9 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
   const sinCargoImp = sinCargoUnidades > 0 ? importeSinCargo(items, sinCargoUnidades) : 0
   const promoImp = importePromo(items)
   const ahorro = ahorroPromo(items)
+  // Cuánto costaría este mismo pedido con la lista del 1/11 (solo los ítems que suben)
+  const nov = useContext(PrecioNovCtx)
+  const ahorroNov = items.reduce((a, c) => a + (nov.sku[c.codigo] && nov.sku[c.codigo] >= c.precio * NOV_MIN_SUBA ? (nov.sku[c.codigo] - c.precio) * c.cantidad : 0), 0)
   const bonoCalc = calcularBono(total, bono ?? null, unidades, sinCargoImp + promoImp)
   const digital = bonoPct && bonoCalc && !bonoCalc.vencido ? { bono: bono!, calc: bonoCalc } : null
   const [contado, setContado] = useState<boolean | null>(null)
@@ -2210,6 +2259,12 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
                 <div className="flex justify-between text-sm -mt-2 mb-3 text-pink-700">
                   <span>♥ Ahorro Día de la Madre <span className="text-[11px] text-pink-500">(precio cerrado, sin otros descuentos)</span></span>
                   <span className="font-semibold whitespace-nowrap">− {kAr(ahorro)}</span>
+                </div>
+              )}
+              {!sinPrecios && ahorroNov > 0 && (
+                <div className="mb-3 border border-[#0004FF]/20 bg-[#0004FF]/[0.04] px-3 py-2.5 text-[12px] leading-snug">
+                  <div className="flex justify-between gap-3"><span className="text-neutral-600">Este pedido desde el 1/11</span><span className="text-neutral-500 line-through tabular-nums">{kAr(total + ahorroNov)}</span></div>
+                  <div className="flex justify-between gap-3 mt-0.5 font-bold text-[#0004FF]"><span>Ahorrás pidiendo en octubre</span><span className="tabular-nums whitespace-nowrap">{kAr(ahorroNov)}</span></div>
                 </div>
               )}
               {packCalc && <PackResumen calc={packCalc} />}
