@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X, ShoppingCart, ChevronDown, Minus, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { colorLegible, colorSwatch } from './colorLegible'
+import { CATEGORIA_FIJA } from './categorias'
 
 // ── Carga masiva (planilla) ───────────────────────────────────────────────────
 // Todos los SKU del link en una tabla tipo Excel: una fila por color, la cantidad se tipea
@@ -341,13 +342,6 @@ type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desd
 type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number; promo: number }
 // Secciones que cruzan el catálogo: no son categoría de la planilla
 const NO_CATEGORIA = new Set(['triple', 'diamadre', 'bajaluz'])
-// Asignación fija pedida el 15/10 (manda sobre las secciones del catálogo)
-const CATEGORIA_FIJA: Record<string, string> = {
-  '5TH AVENUE': 'destacados', 'ASCARI': 'destacados', 'CASA BLANCA': 'destacados', 'CIVIC CENTER': 'destacados',
-  'ADELAIDA': 'destacados', 'BUENOS AIRES I': 'destacados', 'EIVISSA': 'destacados', 'LE MANS': 'destacados', 'SILVERSTONE': 'destacados',
-  'ATLANTIC CITY': 'urbano', 'BRERA': 'urbano', 'BROOKLYN': 'urbano', 'CHARLOTTE': 'urbano', 'CRETA': 'urbano',
-  'LOS HAMPTON': 'urbano', 'PALERMO': 'urbano', 'PARIS': 'urbano', 'ROMA': 'urbano', 'SOPHIA': 'urbano', 'VENICE': 'urbano', 'WYNWOOD': 'urbano',
-}
 
 // Fila de categoría (barra negra, como los carteles de sección del catálogo): nombre, modelos y lo
 // cargado adentro aunque esté cerrada. Tocándola se despliegan / pliegan sus modelos.
@@ -472,6 +466,7 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, ce
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full border border-black/10 shrink-0" style={{ background: colorSwatch(f.descripcion) }} />
           <span className="leading-tight">{color}</span>
+          {/infrarrojo/i.test(f.tratamiento || "") && <span className="shrink-0 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-1.5 py-0.5 tracking-wide whitespace-nowrap">TRIPLE PROT.</span>}
         </span>
       </td>
       <td className={`${td} text-center`}>

@@ -7,6 +7,7 @@ import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bon
 import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
 import PedidoPlanilla, { type FilaPlanilla } from './PedidoPlanilla'
+import { CATEGORIA_FIJA } from './categorias'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import { calcularEscalera, escaleraObs } from './escalera'
 import { EscaleraResumen, EscaleraSugerencias } from './EscaleraUI'
@@ -465,18 +466,27 @@ function PromoTag({ precio, lista, chico }: { precio: number; lista: number; chi
 const matchGrupo = (g: Grupo, m: HomeModelo) => {
   // Día de la Madre es transversal: el modelo sigue apareciendo también en su sección de siempre
   if (g.key === 'diamadre') return g.match(m)
+  // Categoría fija (categorias.ts): el modelo siempre entra en su sección
+  if (CATEGORIA_FIJA[m.modelo] === g.key) return true
   // ETHEREA y ZN son secciones exclusivas por modelo (aunque el modelo sea solo receta, como Brissa)
   if (esEtherea(m)) return g.key === 'etherea'
   if (esZN(m)) return g.key === 'zn'
   // Un modelo sin posiciones de sol solo puede vivir en "Blue cut y lentillas" (receta/lentillas, como Brasilia)
   if (!tieneSolFoto(m)) return g.key === 'bluecut'
+  // Sin sección de Triple en el inicio: el anteojo de sol que solo vivía ahí pasa a Urbanos
+  if (g.key === 'urbano' && soloTriple(m)) return true
   return (g.match(m) && !esZN(m) && !esEtherea(m))
 }
-type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea' | 'madre'; match: (m: HomeModelo) => boolean }
+const SECCIONES_PROPIAS = ['urbano', 'deportivo', 'bluecut', 'oportunidades']
+const soloTriple = (m: HomeModelo) => m.tratamientos.includes('Infrarrojo + Blue cut')
+  && !GRUPOS.some((x) => SECCIONES_PROPIAS.includes(x.key) && x.match(m))
+type Grupo = { key: string; nombre: string; sub?: string; accent: 'blue' | 'amber' | 'red' | 'dark' | 'etherea' | 'madre'; match: (m: HomeModelo) => boolean; oculto?: boolean }
 const GRUPOS: Grupo[] = [
   ...(DIA_MADRE_ACTIVO ? [{ key: 'diamadre', nombre: 'Especial Día de la Madre', sub: 'Para Ellas · domingo 18/10', accent: 'madre' as const, match: (m: HomeModelo) => esDiaMadre(m) }] : []),
   { key: 'destacados', nombre: 'Destacados', accent: 'blue', match: (m) => m.caliente || DESTACADOS_EXTRA.includes(m.modelo) },
-  { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
+  // Triple Protección no es sección del inicio ni del menú (15/10): se ve como cartel en cada modelo / color y
+  // se encuentra buscando "triple", "infrarrojo" o "blue cut". Queda oculta para los links de Inspiración (?ver=triple).
+  { key: 'triple', nombre: 'Triple Protección', sub: 'Infrarrojo + Blue cut', accent: 'blue', oculto: true, match: (m) => m.tratamientos.includes('Infrarrojo + Blue cut') && !TRIPLE_EXCLUDE.includes(m.modelo) },
   { key: 'urbano', nombre: 'Urbanos', accent: 'dark', match: (m) => m.clasificaciones.includes('urbano') },
   { key: 'deportivo', nombre: 'Deportivos', accent: 'dark', match: (m) => m.clasificaciones.includes('deportivo') && tieneSolFoto(m) },
   { key: 'etherea', nombre: 'ETHEREA', sub: 'Ultralivianos · 9 gramos', accent: 'etherea', match: (m) => esEtherea(m) },
@@ -678,7 +688,8 @@ function ModelCard({ m, onOpen, onQuick, grupo }: { m: HomeModelo; onOpen: () =>
               <p className="text-base font-bold text-pink-700 leading-tight">{kAr(m.precio_desde)}</p>
             </div>
           ) : <p className="text-base font-bold mt-1 text-[#0004FF]">{kAr(m.precio_desde)}</p>}
-        {!sinPrecios && <PrecioNov nov={nov.desde[m.modelo]} hoy={m.precio_desde} className="mt-0.5" />}
+        {/* Contra el precio de lista: en promo, la lista de siempre no es un aumento de noviembre */}
+        {!sinPrecios && <PrecioNov nov={nov.desde[m.modelo]} hoy={m.precio_lista_desde ?? m.precio_desde} className="mt-0.5" />}
       </button>
       <button onClick={onQuick} className="mx-3 mb-3 rounded-lg bg-[#0004FF]/10 text-[#0004FF] text-[12px] font-semibold py-1.5 flex items-center justify-center gap-1 hover:bg-[#0004FF]/20">
         <Plus size={14} /> Agregar
@@ -1137,7 +1148,10 @@ export default function CatalogoPublico() {
 
   const qn = q.trim().toLowerCase()
   const buscando = qn.length > 0
-  const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn))), [todos, qn])
+  // Búsqueda por nombre y también por tratamiento: "triple", "infrarrojo", "blue cut", "polarizado"...
+  const resultados = useMemo(() => conFoto(todos.filter((m) => m.modelo.toLowerCase().includes(qn)
+    || (qn.length >= 3 && m.tratamientos.some((t) => t.toLowerCase().includes(qn)))
+    || (qn.length >= 3 && 'triple proteccion'.startsWith(qn.normalize('NFD').replace(/[̀-ͯ]/g, '')) && m.tratamientos.includes('Infrarrojo + Blue cut')))), [todos, qn])
   const grupoObj = GRUPOS.find((g) => g.key === grupoActivo) || null
   // La promo de precio está prendida en la base si algún modelo de la selección viene con descuento
   const modelosPromo = todos.filter(tienePromo).length
@@ -1333,7 +1347,7 @@ export default function CatalogoPublico() {
       return { ...c, [f.codigo]: { codigo: f.codigo, modelo: f.modelo, descripcion: f.descripcion, precio: f.precio, imagen: f.imagen, stock: f.stock, cantidad, oportunidad: esOportunidad(f.clasificacion), ...(enPromo(f.modelo, f.precio, f.precio_lista) ? { precio_lista: f.precio_lista } : {}) } }
     })
   }
-  const planillaSecciones = useMemo(() => GRUPOS.map((g) => ({ key: g.key, nombre: g.nombre, modelos: new Set(todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo)) })), [todos])
+  const planillaSecciones = useMemo(() => GRUPOS.filter((g) => !g.oculto).map((g) => ({ key: g.key, nombre: g.nombre, modelos: new Set(todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo)) })), [todos])
   const planillaModelos = useMemo(() => todos.map((m) => m.modelo), [todos])
   // Foto de referencia de cada modelo en la planilla: la misma tapa que la tarjeta del catálogo
   const planillaFotos = useMemo(() => Object.fromEntries(todos.map((m) => [m.modelo, m.fotos?.[coverIndex(m.fotos, undefined, m.modelo)]?.u || m.imagenes?.[0] || ''])), [todos])
@@ -1469,7 +1483,7 @@ export default function CatalogoPublico() {
         <div className="max-w-6xl mx-auto px-4 pb-3">
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
             <button onClick={irInicio} className={navPill(!buscando && !grupoActivo && !conoce, 'dark')}>Inicio</button>
-            {GRUPOS.map((g) => (
+            {GRUPOS.filter((g) => !g.oculto).map((g) => (
               <button key={g.key} onClick={() => verGrupo(g.key)} className={navPill(grupoActivo === g.key, g.accent)}>{g.nombre}</button>
             ))}
           </div>
@@ -1517,7 +1531,7 @@ export default function CatalogoPublico() {
           (() => {
             // Dedup de arriba para abajo: cada modelo se muestra en la sección más alta que le toca (no repetir tapas)
             const usados = new Set<string>()
-            const secciones = GRUPOS.map((g) => {
+            const secciones = GRUPOS.filter((g) => !g.oculto).map((g) => {
               const items = conFoto(todos.filter((m) => matchGrupo(g, m)))
               // "Cuando baja la luz" es transversal (por color de cristal): muestra su set completo con su tapa ocre/naranja/rojo, sin dedup
               // Día de la Madre también: no le saca los modelos a su sección de siempre
@@ -1526,7 +1540,8 @@ export default function CatalogoPublico() {
                 return <SectionRow key={g.key} grupo={g} items={items} row={items}
                   onOpen={(m) => abrir(m, g.key === 'diamadre')} onQuick={(m) => rapido(m, g.key === 'diamadre')} onInfo={() => setInfoGrupo(g.key)} />
               }
-              const row = items.filter((m) => MULTI_GRUPO.includes(m.modelo) || !usados.has(m.modelo))
+              // Un modelo con categoría fija se muestra en la home solo en esa sección (en "Ver todos" de las demás sigue)
+              const row = items.filter((m) => (MULTI_GRUPO.includes(m.modelo) || !usados.has(m.modelo)) && (!CATEGORIA_FIJA[m.modelo] || CATEGORIA_FIJA[m.modelo] === g.key))
               row.forEach((m) => { if (!MULTI_GRUPO.includes(m.modelo)) usados.add(m.modelo) })
               if (!row.length) return null
               return <SectionRow key={g.key} grupo={g} items={items} row={row}
