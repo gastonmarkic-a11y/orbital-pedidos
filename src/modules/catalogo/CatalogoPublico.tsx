@@ -43,6 +43,8 @@ interface CartItem { codigo: string; modelo: string; descripcion: string | null;
 // pm = ese color está en la promo (Día de la Madre)
 // sh = foto de la tienda (Shopify); g = foto del anteojo (tienda o producto, no lifestyle)
 interface Foto { u: string; c: string | null; t: string | null; k: string | null; tp: string | null; bl: boolean; bc: boolean; ca: boolean; pr?: boolean; o?: boolean; pm?: boolean; sh?: boolean; g?: boolean }
+// Foto o video de la tienda de un color (tipo i = imagen, v = video; vista = "frente", "en cara mujer", "perfil 45°"...)
+interface MediaTienda { pos: number; tipo: 'i' | 'v'; url: string; poster: string | null; vista: string | null; claro: boolean }
 interface HomeModelo extends Modelo {
   fotos: Foto[]; clasificaciones: string[]; tratamientos: string[]; is_bajaluz: boolean; has_bluecut: boolean
 }
@@ -1817,8 +1819,20 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
     })
     supabase.rpc('catalogo_medidas', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setMedidas((data as Medidas) ?? null))
     supabase.rpc('catalogo_ficha_tienda', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => setFicha((data as typeof ficha) ?? null))
+    supabase.rpc('catalogo_media_modelo', { p_clave: clave, p_modelo: modelo.modelo }).then(({ data }) => {
+      const por: Record<string, MediaTienda[]> = {}
+      for (const m of (data as (MediaTienda & { codigo: string })[]) ?? []) (por[m.codigo] ??= []).push(m)
+      setMedia(por)
+    })
   }, [clave, modelo.modelo])
   const v = vars[i]
+  // Fotos y videos de la tienda del color elegido (frente, 45°, lateral, en cara, video). Abre en la de fondo claro.
+  const [media, setMedia] = useState<Record<string, MediaTienda[]>>({})
+  const [mi, setMi] = useState<number | null>(null)
+  useEffect(() => { setMi(null) }, [i])
+  const mv = v ? media[v.codigo] ?? [] : []
+  const miDef = Math.max(0, mv.findIndex((m) => m.tipo === 'i' && m.claro))
+  const cur = mv.length ? mv[Math.min(mi ?? miDef, mv.length - 1)] : null
   // "Sobre este anteojo": la misma "Data del anteojo" que ven los colaboradores, por color:
   // ficha de la tienda + armazón / lente / tratamiento del color elegido + medidas.
   // Sale para todos los modelos (aunque la tienda no tenga descripción).
@@ -1907,8 +1921,24 @@ function ModeloSheet({ modelo, clave, esOptica, soloContenido, cart, soloPromo, 
           <div className="p-4">
             {/* Imagen grande */}
             {/* Sin foto propia del color no mostramos la de otro color (confunde): swatch + aviso */}
-            <FotoProd src={v.imagen} alt={v.descripcion ?? ''} lazy={false} className="aspect-[4/3] sm:aspect-square rounded-xl">
-              {!v.imagen && (
+            <FotoProd src={cur ? (cur.tipo === 'v' ? cur.poster : cur.url) : v.imagen} alt={v.descripcion ?? ''} lazy={false} className="aspect-[4/3] sm:aspect-square rounded-xl">
+              {cur?.tipo === 'v' && (
+                <video key={cur.url} src={cur.url} poster={cur.poster ?? undefined} autoPlay muted loop playsInline
+                  className="absolute inset-0 w-full h-full object-contain bg-black" />
+              )}
+              {/* Miniaturas del color elegido: frente, 45°, lateral, en cara, video */}
+              {mv.length > 1 && (
+                <div className="absolute bottom-2 inset-x-2 flex justify-center gap-1.5 overflow-x-auto">
+                  {mv.map((m, k) => (
+                    <button key={m.pos} onClick={() => setMi(k)} title={m.vista ?? (m.tipo === 'v' ? 'video' : 'foto')}
+                      className={`relative shrink-0 w-11 h-11 rounded-md overflow-hidden border-2 bg-white shadow-sm ${m === cur ? 'border-[#0004FF]' : 'border-white'}`}>
+                      <img src={`${(m.tipo === 'v' ? m.poster : m.url) ?? ''}?width=120`} alt={m.vista ?? ''} loading="lazy" className="w-full h-full object-cover" />
+                      {m.tipo === 'v' && <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white text-[13px]">▶</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!v.imagen && !cur && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-500">
                   <span className="w-14 h-14 rounded-full border border-black/10 shadow-sm" style={{ background: colorSwatch(v.descripcion) }} />
                   <span className="text-[10px] tracking-wide uppercase">Foto de este color próximamente</span>
