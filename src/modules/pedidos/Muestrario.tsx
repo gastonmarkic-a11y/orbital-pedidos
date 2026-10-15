@@ -28,7 +28,7 @@ type Condiciones = {
   entrega_canal: string; entrega_pago: string | null; cond_pago: string | null; medios_pago: string[]; dto_comercial: string | null
   dto_financiero: string | null; wsp: string | null; mail: string | null; contacto_entrega: string | null; direccion_entrega: string | null; horario_entrega: string | null
 }
-type Promo = { modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string }
+type Promo = { modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string; cod_cliente: string | null }
 
 // Etiquetas UHF grabadas con el SKU: el EPC viene en hex; si decodifica a texto legible, es el código.
 function hexATexto(tag: string): string | null {
@@ -116,7 +116,7 @@ export default function Muestrario() {
   const [preciosEsp, setPreciosEsp] = useState<Record<string, number>>({})
   const [promos, setPromos] = useState<Promo[]>([])
   useEffect(() => {
-    supabase.from('promo_precio').select('modelo, codigo, precio, promo, desde, hasta').eq('activo', true)
+    supabase.from('promo_precio').select('modelo, codigo, precio, promo, desde, hasta, cod_cliente').eq('activo', true)
       .then(({ data }) => setPromos(((data ?? []) as Promo[]).map((p) => ({ ...p, precio: Number(p.precio) }))))
   }, [])
   useEffect(() => {
@@ -239,9 +239,11 @@ export default function Muestrario() {
   // Promo vigente del modelo, solo si baja lo que pagaría (lista o especial). Igual que Nuevo Pedido.
   function precioExtra(a: Art) {
     const m = a.modelo.trim().toUpperCase()
-    const esp = preciosEsp[m]
+    // Primero el SKU (ediciones Zaira con el mismo nombre que el modelo Orbital), después el modelo.
+    const esp = preciosEsp[a.codigo.trim().toUpperCase()] ?? preciosEsp[m]
     const ahora = new Date()
-    const p = promos.find((x) => x.modelo === m && (!x.codigo || x.codigo === a.codigo) && ahora >= new Date(x.desde) && ahora < new Date(x.hasta))
+    const p = promos.filter((x) => x.modelo === m && (!x.codigo || x.codigo === a.codigo) && (!x.cod_cliente || x.cod_cliente === cliente?.cod)
+      && ahora >= new Date(x.desde) && ahora < new Date(x.hasta)).sort((x, y) => x.precio - y.precio)[0]
     const base = esp ?? (a.precio ? getPrecioLista(a.precio, cliente?.nro_lista ?? 5) : 0)
     // La promo es precio óptico: a un distribuidor (lista 1) va ÷ 1,41, igual que la lista
     const precio = p ? getPrecioLista(p.precio, cliente?.nro_lista ?? 5) : 0

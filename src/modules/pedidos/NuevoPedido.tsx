@@ -68,8 +68,8 @@ export default function NuevoPedido() {
   // Precio de venta sugerido al cliente (solo referencia, no se factura). Ej.: Paesani.
   const [preciosRef, setPreciosRef] = useState<Record<string, number>>({})
   // Promos por modelo con vigencia (tabla promo_precio, ej. Día de la Madre). Precio neto cerrado.
-  // codigo null = todo el modelo; con codigo = solo ese color.
-  const [promos, setPromos] = useState<{ modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string }[]>([])
+  // codigo null = todo el modelo; con codigo = solo ese color. cod_cliente null = todos; con cod_cliente = solo ese cliente.
+  const [promos, setPromos] = useState<{ modelo: string; codigo: string | null; precio: number; promo: string; desde: string; hasta: string; cod_cliente: string | null }[]>([])
   // Fecha de referencia de la promo: la del pedido web (si la óptica lo armó en promo, se respeta aunque se cargue después).
   const [webCreado, setWebCreado] = useState<string | null>(null)
   const [busquedaStock, setBusquedaStock] = useState('')
@@ -200,7 +200,7 @@ export default function NuevoPedido() {
   }, [cliente?.cod])
 
   useEffect(() => {
-    supabase.from('promo_precio').select('modelo, codigo, precio, promo, desde, hasta').eq('activo', true)
+    supabase.from('promo_precio').select('modelo, codigo, precio, promo, desde, hasta, cod_cliente').eq('activo', true)
       .then(({ data }) => setPromos(((data ?? []) as typeof promos).map((p) => ({ ...p, precio: Number(p.precio) }))))
   }, [])
 
@@ -519,9 +519,10 @@ export default function NuevoPedido() {
   const totalUnidades = cartKeys.reduce((a, k) => a + cart[k], 0)
   // Monto REAL del pedido en vivo: usa el mismo cálculo que el remito (lista + descuentos,
   // preventa, sin cargo = $0). Así el resumen coincide exacto con lo que se factura/remite.
-  // Precio especial del cliente para un modelo (o undefined si no tiene lista especial para ese modelo).
-  const espDe = (modelo: string | null | undefined): number | undefined =>
-    modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined
+  // Precio especial del cliente para un SKU (o undefined si no tiene lista especial). Primero el SKU
+  // (ediciones Zaira que comparten nombre con el modelo Orbital), después el modelo.
+  const espDe = (codigo: string | null | undefined, modelo: string | null | undefined): number | undefined =>
+    (codigo ? preciosEsp[codigo.trim().toUpperCase()] : undefined) ?? (modelo ? preciosEsp[modelo.trim().toUpperCase()] : undefined)
   // Promo vigente para el modelo, solo si baja el precio que pagaría el cliente (lista o especial).
   // La promo es precio óptico: a un distribuidor (lista 1) se le factura ÷ 1,41, igual que la lista.
   // La venta de consigna no entra en promos.
@@ -529,9 +530,10 @@ export default function NuevoPedido() {
     if (!modelo || esConsigna || !promos.length) return undefined
     const ref = new Date(precargaWebId && webCreado ? webCreado : Date.now())
     const m = modelo.trim().toUpperCase()
-    const p = promos.find((x) => x.modelo === m && (!x.codigo || x.codigo === codigo) && ref >= new Date(x.desde) && ref < new Date(x.hasta))
+    const p = promos.filter((x) => x.modelo === m && (!x.codigo || x.codigo === codigo) && (!x.cod_cliente || x.cod_cliente === cliente?.cod)
+      && ref >= new Date(x.desde) && ref < new Date(x.hasta)).sort((a, b) => a.precio - b.precio)[0]
     if (!p) return undefined
-    const base = espDe(modelo) ?? (precioBase ? getPrecioLista(precioBase, cliente?.nro_lista ?? 5) : 0)
+    const base = espDe(codigo, modelo) ?? (precioBase ? getPrecioLista(precioBase, cliente?.nro_lista ?? 5) : 0)
     const precio = getPrecioLista(p.precio, cliente?.nro_lista ?? 5)
     return precio < base ? { precio, promo: p.promo } : undefined
   }
@@ -543,7 +545,7 @@ export default function NuevoPedido() {
     const info = stock.find((x) => x.codigo === k)
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
-    const esp = espDe(info?.modelo)
+    const esp = espDe(k, info?.modelo)
     const pr = esPreventa ? undefined : promoDe(k, info?.modelo, info?.precio)
     return {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
@@ -562,7 +564,7 @@ export default function NuevoPedido() {
     const info = stock.find((x) => x.codigo === k)
     const esRegalo = regaloSel.has(k)
     const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
-    const esp = espDe(info?.modelo)
+    const esp = espDe(k, info?.modelo)
     const pr = esPreventa ? undefined : promoDe(k, info?.modelo, info?.precio)
     const item: PedidoItem = {
       codigo: k, modelo: info?.modelo ?? '', descripcion: info?.descripcion ?? null, cantidad: cart[k],
@@ -580,7 +582,7 @@ export default function NuevoPedido() {
       tag = `♥ −${promoPct(item.precio_promo, esp ?? lista).toLocaleString('es-AR')}% ${item.promo} (lista ${formatPrecio(esp ?? lista)})`
     }
     else if (esp != null) {
-      const ref = info?.modelo ? preciosRef[info.modelo.trim().toUpperCase()] : undefined
+      const ref = preciosRef[k.trim().toUpperCase()] ?? (info?.modelo ? preciosRef[info.modelo.trim().toUpperCase()] : undefined)
       tag = '★ precio exclusivo' + (ref ? ` · venta sugerida ${formatPrecio(ref)}` : '')
     }
     else if (esPreventa) tag = 'preventa (precio fijo)'
@@ -722,7 +724,7 @@ export default function NuevoPedido() {
         const pendiente = esConsigna ? 0 : Math.max(0, cart[k] - disponible)
         const esRegalo = regaloSel.has(k)
         const esPreventa = !esRegalo && preventaSel.has(k) && info?.precio_preventa != null
-        const esp = espDe(p?.modelo ?? info?.modelo)
+        const esp = espDe(k, p?.modelo ?? info?.modelo)
         const pr = esPreventa ? undefined : promoDe(k, p?.modelo ?? info?.modelo, info?.precio)
         return {
           codigo: k,
@@ -1257,8 +1259,8 @@ export default function NuevoPedido() {
                                   {p.descripcion || '—'}
                                 </p>
                                 <p className="text-[10px] text-faint font-mono">{p.codigo}</p>
-                                {(p.precio ?? 0) > 0 && (espDe(p.modelo) != null
-                                  ? <p className="text-xs text-gold font-semibold">★ {formatPrecio(espDe(p.modelo)!)} <span className="font-normal text-faint">exclusivo</span></p>
+                                {(p.precio ?? 0) > 0 && (espDe(p.codigo, p.modelo) != null
+                                  ? <p className="text-xs text-gold font-semibold">★ {formatPrecio(espDe(p.codigo, p.modelo)!)} <span className="font-normal text-faint">exclusivo</span></p>
                                   : cliente?.nro_lista === 1
                                     ? <p className="text-xs text-gold font-semibold">{formatPrecio(getPrecioLista(p.precio!, 1))} <span className="font-normal text-faint">distribuidor · óptica {formatPrecio(p.precio)} (ref.)</span></p>
                                     : <p className="text-xs text-gold font-semibold">{formatPrecio(p.precio)}</p>
