@@ -186,6 +186,14 @@ td.r0 { color: var(--ok); font-weight: 700; }
   }
 
   var fin = Date.parse('2026-11-01T00:00:00-03:00');
+  // Desde el 1/11 la oferta terminó: la página muestra el cierre en vez de los precios de octubre.
+  if (Date.now() >= fin || /[?&]fin=1/.test(location.search)) {
+    document.title = 'Oferta finalizada';
+    document.body.innerHTML = '<main style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;text-align:center"><div style="max-width:420px">' +
+      '<h1 style="font-size:28px">La oferta de octubre finalizó</h1>' +
+      '<p style="color:var(--muted);margin-top:12px">Los precios de octubre valían hasta el 31/10. Pedile la lista vigente a tu vendedor de Orbital.</p></div></main>';
+    return;
+  }
   function tick() {
     var ms = Math.max(0, fin - Date.now());
     document.getElementById('c-d').textContent = Math.floor(ms / 864e5);

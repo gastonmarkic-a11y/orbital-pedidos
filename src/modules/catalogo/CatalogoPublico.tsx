@@ -1,11 +1,12 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ShoppingCart, Plus, Minus, Trash2, Check, Star, Info, MessageCircle, ChevronDown, Send, Table2 } from 'lucide-react'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { FotoProd } from './FotoProd'
 import { calcularBono, esBonoPct, importeSinCargo, type BonoEstado } from './bono'
 import { BonoBanner, BonoBarra, BonoCelebra, BonoLinea, BonoResumen, ResumenCompraDigital } from './BonoUI'
 import { calcularPack, esOportunidad, packObs } from './pack'
+import PedidoPlanilla, { type FilaPlanilla } from './PedidoPlanilla'
 import { PackBanner, PackPasos, PackBarra, PackResumen } from './PackUI'
 import { calcularEscalera, escaleraObs } from './escalera'
 import { EscaleraResumen, EscaleraSugerencias } from './EscaleraUI'
@@ -607,7 +608,7 @@ function EstudioRostroBanner() {
 }
 
 // Banner de campaña: Especial Día de la Madre (home y sección). Los precios no cambian.
-function DiaMadreBanner({ onVer, enSeccion, promo, modelos }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean; modelos?: number }) {
+function DiaMadreBanner({ onVer, enSeccion, promo, modelos, precio }: { onVer?: () => void; enSeccion?: boolean; promo?: boolean; modelos?: number; precio?: number }) {
   const sinPrecios = useSinPrecios()
   const Tag = onVer ? 'button' : 'div'
   // Foto de campaña (madre e hija con anteojos). La mitad izquierda es pared clara: ahí va el texto en desktop;
@@ -621,7 +622,7 @@ function DiaMadreBanner({ onVer, enSeccion, promo, modelos }: { onVer?: () => vo
         <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold uppercase tracking-tight leading-[0.95] mt-2">Modern<br />Mom</h2>
         <p className="text-sm text-neutral-700 mt-3 max-w-sm leading-relaxed">
           La selección <b>Para Ellas</b>: {modelos || DIA_MADRE_MODELOS.length} modelos de sol para armar la vidriera del regalo
-          {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
+          {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(precio && isFinite(precio) ? precio : DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
         </p>
         {onVer && !enSeccion && (
           <span className="self-start inline-block mt-4 bg-[#0a0a0a] text-white text-[12px] font-bold uppercase tracking-wide rounded-full px-5 py-2.5">Ver la selección →</span>
@@ -1130,6 +1131,8 @@ export default function CatalogoPublico() {
   const modelosPromo = todos.filter(tienePromo).length
   const promoActiva = modelosPromo > 0
   const modelosMadre = todos.filter(esDiaMadre).length
+  // Precio de promo de ESTE link (lo pone la base por cliente: Gafas Luxury 37.778, el resto 48.000)
+  const precioMadre = Math.min(...todos.filter(tienePromo).map((m) => Number(m.precio_desde) || Infinity))
   const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
@@ -1291,6 +1294,18 @@ export default function CatalogoPublico() {
       return { ...c, [codigo]: { ...c[codigo], cantidad: max ? Math.min(cantidad, max) : cantidad } }
     })
   }
+  // Pedido grande (planilla): cantidad absoluta por SKU, en el mismo carrito (mismo tope de stock libre / proyectado)
+  const [planilla, setPlanilla] = useState(false)
+  function setCantFila(f: FilaPlanilla, n: number) {
+    setCart((c) => {
+      const cantidad = Math.min(Math.max(0, n), f.stock)
+      if (cantidad <= 0) { const { [f.codigo]: _x, ...rest } = c; return rest }
+      return { ...c, [f.codigo]: { codigo: f.codigo, modelo: f.modelo, descripcion: f.descripcion, precio: f.precio, imagen: f.imagen, stock: f.stock, cantidad, oportunidad: esOportunidad(f.clasificacion), ...(enPromo(f.modelo, f.precio, f.precio_lista) ? { precio_lista: f.precio_lista } : {}) } }
+    })
+  }
+  const planillaSecciones = useMemo(() => GRUPOS.map((g) => ({ key: g.key, nombre: g.nombre, modelos: new Set(todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo)) })), [todos])
+  const planillaModelos = useMemo(() => todos.map((m) => m.modelo), [todos])
+  const planillaCant = useMemo(() => Object.fromEntries(Object.values(cart).map((c) => [c.codigo, c.cantidad])), [cart])
 
   function verGrupo(k: string) { setGrupoActivo(k); setQ(''); setConoce(false); window.scrollTo({ top: 0 }) }
   function irInicio() { setGrupoActivo(null); setQ(''); setConoce(false) }
@@ -1400,13 +1415,17 @@ export default function CatalogoPublico() {
         {/* En el celu, Inspiración / Postventa van en su propia fila */}
         {/* Fila deslizable: si no entra, no ensancha la página (en el celu todo se corría de costado) */}
         <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&>button]:shrink-0">{accesosHeader}</div>
-        {/* Buscador */}
-        <div className="max-w-6xl mx-auto px-4 pb-2">
-          <div className="relative">
+        {/* Buscador + Pedido grande (planilla tipo Excel con todos los colores) */}
+        <div className="max-w-6xl mx-auto px-4 pb-2 flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input value={q} onChange={(e) => { setQ(e.target.value); setGrupoActivo(null); setConoce(false) }} placeholder="Buscar modelo…"
               className="w-full rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
+          <button onClick={() => setPlanilla(true)} title="Cargar todos los colores en una planilla, como en Excel"
+            className="shrink-0 flex items-center gap-1.5 rounded-full border border-[#0004FF] text-[#0004FF] bg-white hover:bg-[#0004FF]/[0.06] px-3 py-2 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+            <Table2 size={15} /> <span className="sm:hidden">Pedido grande</span><span className="hidden sm:inline">Pedido grande (planilla)</span>
+          </button>
         </div>
         {/* Propuestas: acceso directo a cada grupo */}
         <div className="max-w-6xl mx-auto px-4 pb-3">
@@ -1442,7 +1461,7 @@ export default function CatalogoPublico() {
           </div>
         ) : grupoObj ? (
           <>
-            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} modelos={modelosMadre} />}
+            {grupoObj.key === 'diamadre' && <DiaMadreBanner enSeccion promo={promoActiva} modelos={modelosMadre} precio={precioMadre} />}
             <div className={`flex items-center justify-between rounded-lg px-3 py-2 mb-3 ${ACCENT[grupoObj.accent]}`}>
               <button onClick={() => setInfoGrupo(grupoObj.key)} className="flex items-center gap-1.5 min-w-0 text-left group/info" title={`Qué es ${grupoObj.nombre}`}>
                 <span className="text-[13px] font-bold tracking-[0.18em] uppercase truncate underline decoration-white/30 underline-offset-2 group-hover/info:decoration-white">{grupoObj.nombre}</span>
@@ -1477,7 +1496,7 @@ export default function CatalogoPublico() {
             })
             return (
               <>
-                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosMadre} />}
+                {DIA_MADRE_ACTIVO && <DiaMadreBanner onVer={() => verGrupo('diamadre')} promo={promoActiva} modelos={modelosMadre} precio={precioMadre} />}
                 <EstudioRostroBanner />
                 {secciones}
               </>
@@ -1499,6 +1518,9 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
+      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} secciones={planillaSecciones}
+        cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
+        onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}
         topModelos={todos.filter((m) => m.caliente).map((m) => m.modelo)} onClose={() => setCarritoOpen(false)} onDone={() => setCart({})} />}
 
