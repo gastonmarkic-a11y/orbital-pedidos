@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, ShoppingCart, ChevronDown, Minus, Plus } from 'lucide-react'
+import { Search, X, ShoppingCart, ChevronDown, ChevronRight, Minus, Plus, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { colorLegible, colorSwatch } from './colorLegible'
 import { CATEGORIA_FIJA } from './categorias'
@@ -169,7 +169,8 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const medir = () => el.style.setProperty('--ancho-tabla', el.clientWidth + 'px')
+    // Ancho visible de la columna centrada (max-w-6xl = 1152 px), no el de la tabla
+    const medir = () => el.style.setProperty('--ancho-tabla', Math.min(el.clientWidth, 1152) + 'px')
     medir()
     const ro = new ResizeObserver(medir); ro.observe(el)
     return () => ro.disconnect()
@@ -189,54 +190,71 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   const filtrosActivos = filtrando
   const limpiar = () => { setQ(''); setSeccion(''); setClasif(''); setTrat(''); setEscala(''); setSoloCargados(false); setSinProyectado(false) }
   const nModelosCargados = useMemo(() => new Set(base.filter((f) => (cantidades[f.codigo] ?? 0) > 0).map((f) => f.modelo)).size, [base, cantidades])
-  const cols = 9 - (sinPrecios ? 2 : 0)
+  const cols = 7 - (sinPrecios ? 2 : 0)
+  // Filtros: en el celu se abren con el botón "Filtros"; los títulos de columna solo van en compu
+  const [verFiltros, setVerFiltros] = useState(false)
+  const [esCompu, setEsCompu] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const f = () => setEsCompu(mq.matches)
+    mq.addEventListener('change', f)
+    return () => mq.removeEventListener('change', f)
+  }, [])
 
   // Filas a dibujar: categoría → (abierta) sus modelos → (abierto) sus colores.
   // Los índices de navegación (Enter / flechas) cuentan solo las celdas de cantidad a la vista.
-  // Los títulos de columna solo aparecen con algún modelo abierto: los encabezados pegajosos se corren según eso.
+  // Los títulos de columna (solo en compu y con algún modelo abierto) corren los encabezados pegajosos.
   const hayColores = cats.some((c) => catAb.has(c.key) && c.modelos.some((m) => modAb.has(c.key + '|' + m.modelo)))
-  const topCat = hayColores ? 32 : 0
+  const conTitulos = hayColores && esCompu
+  const topCat = conTitulos ? ALTO_TITULOS : 0
+  const fotoDe = (m: Mod) => fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null
   const filasTabla: React.ReactNode[] = []
   let nCeldas = 0
   for (const c of cats) {
     const cAb = catAb.has(c.key)
-    filasTabla.push(<FilaCategoria key={'c:' + c.key} c={c} abierto={cAb} cols={cols} top={topCat} sinPrecios={sinPrecios} onClick={() => alternar(setCatAb, c.key)} />)
+    filasTabla.push(<FilaCategoria key={'c:' + c.key} c={c} abierto={cAb} cols={cols} top={topCat} sinPrecios={sinPrecios}
+      fotos={c.modelos.slice(0, 4).map(fotoDe)} onClick={() => alternar(setCatAb, c.key)} />)
     if (!cAb) continue
     for (const m of c.modelos) {
       // Un modelo puede estar en su categoría y en Día de la Madre: se abre / pliega en cada una por separado
       const k = c.key + '|' + m.modelo
       const abierto = modAb.has(k)
       filasTabla.push(
-        <FilaModelo key={'m:' + k} m={m} abierto={abierto} cols={cols} top={topCat + 44} sinPrecios={sinPrecios} onClick={() => alternar(setModAb, k)}
-          foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
+        <FilaModelo key={'m:' + k} m={m} abierto={abierto} cols={cols} top={topCat + ALTO_CATEGORIA} sinPrecios={sinPrecios}
+          onClick={() => alternar(setModAb, k)} foto={fotoDe(m)} />)
       if (abierto) for (const f of m.filas) filasTabla.push(
         <Fila key={c.key + '|' + f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
-          promo={esPromo(f)} nov={preciosNov?.[f.codigo]} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
+          promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
     }
   }
   nCeldasRef.current = nCeldas
+  const nFiltros = [seccion, clasif, trat, escala].filter(Boolean).length + (soloCargados ? 1 : 0) + (sinProyectado ? 1 : 0)
 
   return (
     <div className="fixed inset-0 z-40 bg-white flex flex-col orb-tienda text-[#0a0a0a]" role="dialog" aria-label="Carga masiva (planilla)">
-      {/* Encabezado + filtros */}
-      <div className="border-b border-black/10 shrink-0">
-        <div className="max-w-7xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between gap-3">
+      {/* Encabezado: título, buscador y filtros (en el celu, detrás de "Filtros") */}
+      <div className="border-b border-black/[0.08] shrink-0">
+        <div className="max-w-6xl mx-auto px-4 pt-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-[#0004FF]">Orbital® · Carga masiva</p>
-            <h2 className="text-base font-bold leading-tight truncate">Planilla de carga</h2>
+            <h2 className="text-[16px] font-semibold leading-tight !normal-case tracking-tight">Carga masiva</h2>
+            <p className="text-[12px] text-neutral-500 leading-tight mt-0.5">{lista.length} modelos · {visibles.length} colores<span className="hidden sm:inline"> · tocá una categoría para empezar</span></p>
           </div>
-          <button onClick={onClose} className="shrink-0 flex items-center gap-1 text-[12px] font-semibold rounded-full border border-black/15 px-3 py-1.5 hover:border-black/40">
-            <X size={15} /> <span className="hidden sm:inline">Volver al catálogo</span>
+          <button onClick={onClose} aria-label="Volver al catálogo" className="shrink-0 h-9 flex items-center gap-1.5 text-[13px] font-medium text-neutral-600 px-2.5 rounded-md hover:bg-[#F4F4F5]">
+            <X size={18} /> <span className="hidden sm:inline">Volver al catálogo</span>
           </button>
         </div>
-        <div className="max-w-7xl mx-auto px-4 pb-2">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo, color o código…"
-              className="w-full h-9 rounded-full bg-[#F5F5F7] border border-black/10 pl-9 pr-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+        <div className="max-w-6xl mx-auto px-4 pt-3 pb-3 flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo, color o código"
+              className="w-full h-10 rounded-md bg-[#F4F4F5] border border-transparent pl-9 pr-3 text-base sm:text-[14px] placeholder:text-neutral-400 focus:outline-none focus:bg-white focus:border-black/10 focus:ring-2 focus:ring-[#0004FF]/30" />
           </div>
+          <button onClick={() => setVerFiltros((v) => !v)} aria-expanded={verFiltros}
+            className={`md:hidden shrink-0 h-10 flex items-center gap-1.5 px-3 rounded-md border text-[13px] font-medium ${nFiltros ? 'border-[#0004FF] text-[#0004FF]' : 'border-black/10 text-neutral-700'}`}>
+            <SlidersHorizontal size={15} /> Filtros{nFiltros ? ` · ${nFiltros}` : ''}
+          </button>
         </div>
-        <div className="max-w-7xl mx-auto px-4 pb-2.5 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        <div className={`${verFiltros ? 'flex' : 'hidden'} md:flex max-w-6xl mx-auto px-4 pb-3 flex-wrap items-center gap-2`}>
           <Sel label="Sección" value={seccion} onChange={setSeccion}>
             <option value="">Todas las secciones</option>
             {opciones.secciones.map((s) => <option key={s.key} value={s.key}>{s.nombre}</option>)}
@@ -257,69 +275,67 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
           )}
           {([['Solo cargados', soloCargados, setSoloCargados], ['Sin proyectados', sinProyectado, setSinProyectado]] as const).map(([l, v, set]) => (
             <button key={l} onClick={() => set(!v)} aria-pressed={v}
-              className={`shrink-0 h-9 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap ${v ? 'bg-[#0a0a0a] text-white border-transparent' : 'bg-white border-black/10 text-neutral-700'}`}>
-              {v ? '✓ ' : ''}{l}
+              className={`h-8 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap transition-colors ${v ? 'bg-[#0a0a0a] text-white border-transparent' : 'bg-white border-black/10 text-neutral-700 hover:border-black/25'}`}>
+              {l}
             </button>
           ))}
-          {filtrosActivos && <button onClick={limpiar} className="shrink-0 h-9 px-2 text-[12px] font-semibold text-[#0004FF] whitespace-nowrap">Limpiar filtros</button>}
-        </div>
-        <div className="max-w-7xl mx-auto px-4 pb-2 -mt-1 flex items-center gap-1 text-[12px]">
-          <button onClick={abrirTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Expandir todo</button>
-          <span className="text-neutral-300">|</span>
-          <button onClick={cerrarTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Contraer todo</button>
-          <span className="ml-auto text-[11px] text-neutral-400 truncate">{cats.length} categoría{cats.length !== 1 ? 's' : ''} · {lista.length} modelo{lista.length !== 1 ? 's' : ''}</span>
+          {filtrosActivos && <button onClick={limpiar} className="h-8 px-2 text-[12px] font-medium text-[#0004FF] whitespace-nowrap hover:underline">Limpiar</button>}
+          <span className="ml-auto flex items-center text-[12px] text-neutral-500">
+            <button onClick={abrirTodo} className="h-8 px-2 rounded-md hover:bg-[#F4F4F5] hover:text-[#0a0a0a] whitespace-nowrap">Expandir todo</button>
+            <button onClick={cerrarTodo} className="h-8 px-2 rounded-md hover:bg-[#F4F4F5] hover:text-[#0a0a0a] whitespace-nowrap">Contraer todo</button>
+          </span>
         </div>
       </div>
 
-      {/* Tabla: el scroll (vertical y horizontal) es de la tabla, nunca de la página */}
+      {/* Tabla: el scroll es de la tabla, nunca de la página. En el celu no hay scroll de costado:
+          las columnas secundarias se esconden y el precio pasa debajo del color. */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
         {filas == null ? (
-          <p className="text-sm text-neutral-500 text-center py-16">Cargando la planilla…</p>
+          <p className="text-[14px] text-neutral-500 text-center py-16">Cargando la planilla…</p>
         ) : error ? (
-          <p className="text-sm text-red-600 text-center py-16">No pudimos cargar la planilla. Probá de nuevo en un momento.</p>
+          <p className="text-[14px] text-red-600 text-center py-16">No pudimos cargar la planilla. Probá de nuevo en un momento.</p>
         ) : (
-          <table className="w-full min-w-[760px] border-separate border-spacing-0 text-[12px]">
-            {/* Los títulos de columna son de los colores: solo aparecen con algún modelo abierto */}
-            <thead className={`${nCeldas ? '' : 'hidden '}sticky top-0 z-10 bg-[#F5F5F7] text-[10px] uppercase tracking-[0.12em] text-neutral-500`}>
-              <tr className="[&>th]:font-semibold [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-black/10 [&>th]:text-left [&>th]:whitespace-nowrap">
-                <th className="w-12 pl-4">Foto</th>
-                <th>Color</th>
-                <th className="w-[140px] !text-center">Cant.</th>
-                {!sinPrecios && <th className="!text-right">Precio</th>}
-                {!sinPrecios && <th className="!text-right">Subtotal</th>}
-                <th>Disponib.</th>
-                <th>Código</th>
-                <th>Tratamiento</th>
-                <th className="pr-4">Clasif.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.length === 0 && (
-                <tr><td colSpan={cols} className="text-center text-sm text-neutral-400 py-16">{filtrosActivos ? 'No hay colores con esos filtros.' : 'No hay colores con stock.'}</td></tr>
-              )}
-              {filasTabla}
-            </tbody>
-          </table>
+          <div className="max-w-6xl mx-auto">
+            <table className="w-full md:min-w-[760px] border-separate border-spacing-0 text-[13px]">
+              <thead className={`${conTitulos ? '' : 'hidden '}sticky top-0 z-10 bg-white text-[11px] uppercase tracking-[0.08em] text-neutral-500`}>
+                <tr className="[&>th]:font-medium [&>th]:h-8 [&>th]:px-2 [&>th]:border-b [&>th]:border-black/[0.08] [&>th]:text-left [&>th]:whitespace-nowrap">
+                  <th className="w-14 pl-4">Foto</th>
+                  <th>Color</th>
+                  {!sinPrecios && <th className="!text-right">Precio</th>}
+                  <th className="w-[136px] !text-center">Cantidad</th>
+                  {!sinPrecios && <th className="!text-right">Subtotal</th>}
+                  <th className="hidden lg:table-cell">Código</th>
+                  <th className="hidden lg:table-cell pr-4">Tratamiento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibles.length === 0 && (
+                  <tr><td colSpan={cols} className="text-center text-[14px] text-neutral-500 py-16">{filtrosActivos ? 'No hay colores con esos filtros.' : 'No hay colores con stock.'}</td></tr>
+                )}
+                {filasTabla}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {/* Totales siempre a la vista */}
-      <div className="shrink-0 border-t border-black/10 bg-white pb-[env(safe-area-inset-bottom)]">
-        <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+      <div className="shrink-0 border-t border-black/[0.08] bg-white pb-[env(safe-area-inset-bottom)]">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0 leading-tight">
-            <p className="text-[15px] font-bold tabular-nums">
-              {cartCount.toLocaleString('es-AR')} u.
+            <p className="text-[16px] font-semibold tabular-nums">
+              {cartCount.toLocaleString('es-AR')} {cartCount === 1 ? 'unidad' : 'unidades'}
               {!sinPrecios && <span className="text-[#0004FF]"> · {kAr(cartTotal)}</span>}
-              {!sinPrecios && <span className="text-[11px] font-normal text-neutral-400"> + IVA</span>}
+              {!sinPrecios && <span className="text-[12px] font-normal text-neutral-500"> + IVA</span>}
             </p>
-            <p className="text-[11px] text-neutral-500 truncate">
-              {nModelosCargados} modelo{nModelosCargados !== 1 ? 's' : ''} · {visibles.length} de {base.length} colores
-              <span className="hidden md:inline"> · Enter / ↑ ↓ para moverte · Tab salta de celda</span>
+            <p className="text-[12px] text-neutral-500 truncate mt-0.5">
+              {nModelosCargados ? `${nModelosCargados} modelo${nModelosCargados !== 1 ? 's' : ''} cargado${nModelosCargados !== 1 ? 's' : ''}` : 'Todavía no cargaste nada'}
+              <span className="hidden md:inline"> · Enter o ↑ ↓ para moverte entre cantidades</span>
             </p>
           </div>
           <button onClick={onVerPedido} disabled={cartCount === 0}
-            className="shrink-0 flex items-center gap-2 rounded-full bg-[#0004FF] text-white px-4 sm:px-5 py-2.5 text-[13px] font-bold disabled:opacity-40">
-            <ShoppingCart size={15} /> <span className="sm:hidden">Ver pedido →</span><span className="hidden sm:inline">Ver pedido y enviar →</span>
+            className="shrink-0 h-10 flex items-center gap-2 rounded-md bg-[#0004FF] text-white px-4 text-[14px] font-medium hover:brightness-110 disabled:opacity-40 transition">
+            <ShoppingCart size={16} /> Ver pedido
           </button>
         </div>
       </div>
@@ -327,13 +343,13 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   )
 }
 
-const SEL = 'shrink-0 h-9 rounded-full border bg-white pl-3 pr-7 text-[12px] font-medium appearance-none focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30'
+const SEL = 'h-8 rounded-md border bg-white pl-3 pr-8 text-[12px] font-medium appearance-none focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30'
 function Sel({ value, onChange, children, label }: { value: string; onChange: (v: string) => void; children: React.ReactNode; label: string }) {
   return (
-    <label className="relative shrink-0">
+    <label className="relative">
       <span className="sr-only">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${SEL} ${value ? 'border-[#0004FF] text-[#0004FF]' : 'border-black/10 text-neutral-700'}`}>{children}</select>
-      <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${SEL} ${value ? 'border-[#0004FF] text-[#0004FF]' : 'border-black/10 text-neutral-700 hover:border-black/25'}`}>{children}</select>
+      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
     </label>
   )
 }
@@ -342,40 +358,52 @@ type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desd
 type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number; promo: number }
 // Secciones que cruzan el catálogo: no son categoría de la planilla
 const NO_CATEGORIA = new Set(['triple', 'diamadre', 'bajaluz'])
+// Alturas de los encabezados pegajosos (px): títulos de columna, categoría
+const ALTO_TITULOS = 32
+const ALTO_CATEGORIA = 56
 
-// Fila de categoría (barra negra, como los carteles de sección del catálogo): nombre, modelos y lo
-// cargado adentro aunque esté cerrada. Tocándola se despliegan / pliegan sus modelos.
-function FilaCategoria({ c, abierto, cols, top, sinPrecios, onClick }: {
-  c: Cat; abierto: boolean; cols: number; top: number; sinPrecios: boolean; onClick: () => void
+// Chip de lo cargado (unidades · importe), igual en categoría y modelo
+function Cargado({ u, imp, sinPrecios }: { u: number; imp: number; sinPrecios: boolean }) {
+  if (u <= 0) return null
+  return (
+    <span className="shrink-0 tabular-nums text-[12px] font-semibold whitespace-nowrap rounded-full px-2.5 py-1 bg-[#0004FF]/[0.08] text-[#0004FF]">
+      {u} u.{!sinPrecios && <span className="hidden sm:inline"> · {kAr(imp)}</span>}
+    </span>
+  )
+}
+
+// Fila de categoría: liviana, una línea (nombre, cantidad de modelos, miniaturas y lo cargado).
+// Día de la Madre se distingue con un punto rosa. Tocándola se despliegan / pliegan sus modelos.
+function FilaCategoria({ c, abierto, cols, top, fotos, sinPrecios, onClick }: {
+  c: Cat; abierto: boolean; cols: number; top: number; fotos: (string | null)[]; sinPrecios: boolean; onClick: () => void
 }) {
+  const madre = c.key === 'diamadre'
   return (
     <tr>
-      <td colSpan={cols} className={`p-0 ${c.key === 'diamadre' ? 'bg-pink-600' : 'bg-[#0a0a0a]'} text-white border-b border-white/15 ${abierto ? 'sticky z-[6]' : ''}`} style={abierto ? { top } : undefined}>
+      <td colSpan={cols} className={`p-0 border-b border-black/[0.08] ${abierto ? 'sticky z-[6] bg-[#FAFAFA]' : 'bg-white'}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
-          className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-2.5 text-left px-3 sm:px-4 hover:bg-white/[0.06] ${abierto ? 'h-11' : 'min-h-11 py-2'}`}>
-          <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? '' : '-rotate-90'} opacity-80`} />
-          <span className="min-w-0 flex-1">
-            <span className="flex items-baseline gap-1.5 min-w-0">
-              <span className="truncate font-bold uppercase text-[12px] sm:text-[13px] tracking-[0.16em]">{c.nombre}</span>
-              <span className="shrink-0 text-[11px] text-white/55">· {c.modelos.length} modelo{c.modelos.length !== 1 ? 's' : ''}</span>
-            </span>
-            {/* Cerrada: los nombres de sus modelos (los de Día de la Madre en rosa) */}
-            {!abierto && (
-              <span className="block truncate text-[11px] text-white/60 mt-0.5 tracking-wide">
-                {c.modelos.map((m, i) => (
-                  <span key={m.modelo}>{i > 0 && ' · '}<span className={m.promo > 0 && c.key !== 'diamadre' ? 'text-pink-300' : m.u > 0 ? 'text-white font-semibold' : ''}>{m.modelo}</span></span>
-                ))}
-              </span>
-            )}
+          className="sticky left-0 w-[var(--ancho-tabla,100%)] h-14 flex items-center gap-3 text-left px-4 hover:bg-[#F4F4F5] transition-colors">
+          <ChevronRight size={18} className={`shrink-0 text-neutral-400 transition-transform ${abierto ? 'rotate-90' : ''}`} />
+          {madre && <span className="shrink-0 w-2 h-2 rounded-full bg-pink-500" aria-hidden />}
+          <span className="min-w-0 flex items-baseline gap-2">
+            <span className={`truncate text-[14px] font-semibold ${madre ? 'text-pink-700' : ''}`}>{c.nombre}</span>
+            <span className="shrink-0 text-[12px] text-neutral-500">{c.modelos.length} modelo{c.modelos.length !== 1 ? 's' : ''}</span>
           </span>
-          {c.promo > 0 && c.key !== 'diamadre' && (
-            <span className="shrink-0 text-[10px] font-bold whitespace-nowrap px-1.5 py-1 bg-pink-600 text-white">♥ {c.promo} en promo<span className="hidden sm:inline"> Día de la Madre</span></span>
+          {c.promo > 0 && !madre && (
+            <span className="shrink-0 hidden sm:inline text-[11px] font-medium rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">{c.promo} en promo</span>
           )}
-          {c.u > 0 && (
-            <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
-              {c.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(c.imp)}</span>}
+          <span className="flex-1" />
+          {!abierto && (
+            <span className="shrink-0 hidden sm:flex items-center -space-x-1.5" aria-hidden>
+              {fotos.map((u, i) => (
+                <span key={i} className="w-9 h-7 rounded-md bg-[#F4F4F5] ring-2 ring-white overflow-hidden flex items-center justify-center">
+                  {u && <img src={u} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
+                </span>
+              ))}
             </span>
           )}
+          <Cargado u={c.u} imp={c.imp} sinPrecios={sinPrecios} />
         </button>
       </td>
     </tr>
@@ -383,98 +411,101 @@ function FilaCategoria({ c, abierto, cols, top, sinPrecios, onClick }: {
 }
 
 // Fila de modelo: foto de referencia (la tapa del catálogo), nombre, colores, precio desde,
-// disponibilidad y lo cargado. Tocando cualquier parte se despliegan / pliegan sus colores debajo.
-// Ocupa el ancho visible (no el de la tabla): en el celu es una tarjeta entera, sin scroll lateral.
-// Fuera del orden de Tab: Tab salta solo entre las celdas de cantidad, como en Excel.
+// disponibilidad, la referencia de noviembre y lo cargado. Toda la fila se toca para desplegar / plegar.
+// Ocupa el ancho visible: en el celu es una tarjeta entera, sin scroll lateral. Fuera del orden de Tab.
 function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
   m: Mod; abierto: boolean; cols: number; top: number; foto: string | null; sinPrecios: boolean; onClick: () => void
 }) {
   const disp = m.filas.length - m.proy
   // ¿El modelo sube el 1/11? (desde de noviembre ≥ 2% sobre el desde de hoy)
   const sube = !sinPrecios && m.desde > 0 && m.desdeNov >= m.desde * 1.02
-  const cargado = m.u > 0 && (
-    <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
-      {m.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(m.imp)}</span>}
-    </span>
-  )
+  const acento = m.u > 0 ? 'border-l-[#0004FF]' : m.promo > 0 ? 'border-l-pink-400' : 'border-l-transparent'
   return (
     <tr>
-      <td colSpan={cols} className={`p-0 border-t-2 border-t-black/25 border-b ${abierto ? 'sticky z-[5] bg-white border-b-[#0004FF]/30' : 'border-b-black/10'}`} style={abierto ? { top } : undefined}>
+      <td colSpan={cols} className={`p-0 border-b border-black/[0.08] ${abierto ? 'sticky z-[5] bg-white' : ''}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
-          className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left px-3 sm:px-4 py-2.5 border-l-[3px] transition-colors
-            ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : m.promo > 0 ? 'border-l-pink-500 bg-pink-50 hover:bg-pink-100/70' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
-          <span className="shrink-0 w-[92px] h-[62px] sm:w-[120px] sm:h-[76px] bg-[#F2F2F2] overflow-hidden flex items-center justify-center">
+          className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left pl-4 pr-3 sm:pr-4 py-2 border-l-2 transition-colors ${acento} ${abierto ? 'bg-[#F4F4F5]' : 'hover:bg-[#FAFAFA]'}`}>
+          <span className="shrink-0 w-16 h-12 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center">
             {foto && <img src={foto} alt={m.modelo} loading="lazy" decoding="async" className="w-full h-full object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate font-bold uppercase text-[14px] sm:text-[15px] tracking-wide leading-tight ${m.promo > 0 ? 'text-pink-700' : ''}`}>{m.modelo}</span>
-            <span className="block truncate text-[12px] text-neutral-500 mt-0.5">
-              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="truncate text-[14px] font-semibold uppercase tracking-wide">{m.modelo}</span>
+              {m.promo > 0 && <span className="shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Día de la Madre</span>}
             </span>
-            <span className="flex flex-wrap items-center gap-1 mt-1">
-              {m.promo > 0 && <span className="text-[10px] font-bold text-white bg-pink-600 px-1.5 py-0.5">♥ Día de la Madre{m.promo < m.filas.length ? ` · ${m.promo} color${m.promo !== 1 ? 'es' : ''}` : ''}</span>}
-              {disp > 0 && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5">{disp} disponible{disp !== 1 ? 's' : ''}</span>}
-              {m.proy > 0 && <span className="text-[10px] font-semibold text-[#b45309] bg-[#fdf0dd] px-1.5 py-0.5">📅 {m.proy} proyectado{m.proy !== 1 ? 's' : ''}</span>}
-              <span className="sm:hidden">{cargado}</span>
+            <span className="block truncate text-[12px] text-neutral-500 mt-1">
+              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}
+              {!sinPrecios && m.desde ? <> · desde <span className="font-semibold text-[#0a0a0a]">{kAr(m.desde)}</span></> : null}
+              {disp > 0 && <span className="text-emerald-700"> · {disp} disp.</span>}
+              {m.proy > 0 && <span className="text-amber-700"> · {m.proy} proy.</span>}
             </span>
             {sube && (
-              <span className="md:hidden block truncate text-[11px] font-semibold text-[#0004FF] mt-1">
-                🔒 Asegurá {kAr(m.desde)} hoy · el 1/11 sube a {kAr(m.desdeNov)}
+              <span className="block truncate text-[12px] text-neutral-500 mt-0.5">
+                <span className="font-medium text-[#0004FF]">Precio de octubre</span> · desde el 1/11 {kAr(m.desdeNov)}
               </span>
             )}
           </span>
-          {/* Nota comercial del aumento de noviembre (solo en la fila del modelo) */}
-          {sube && (
-            <span className="hidden md:block shrink-0 border border-[#0004FF]/30 bg-white px-3 py-1.5 text-right leading-tight">
-              <span className="block text-[9px] font-bold uppercase tracking-[0.18em] text-[#0004FF]">Precio de octubre</span>
-              <span className="block text-[12px] text-[#0a0a0a] mt-0.5">Asegurá <b>{kAr(m.desde)}</b> hoy</span>
-              <span className="block text-[10px] text-neutral-500 mt-0.5">Desde el 1/11 sube a <b className="text-neutral-700">{kAr(m.desdeNov)}</b> (+{Math.round((m.desdeNov / m.desde - 1) * 100)}%)</span>
-            </span>
-          )}
-          <span className="hidden sm:inline-flex">{cargado}</span>
-          <span className={`shrink-0 hidden sm:inline text-[11px] font-semibold ${abierto ? 'text-[#0004FF]' : 'text-neutral-400'}`}>{abierto ? 'Ocultar colores' : 'Ver colores'}</span>
-          <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? 'rotate-180 text-[#0004FF]' : 'text-neutral-400'}`} />
+          <Cargado u={m.u} imp={m.imp} sinPrecios={sinPrecios} />
+          <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? 'rotate-180 text-[#0a0a0a]' : 'text-neutral-400'}`} />
         </button>
       </td>
     </tr>
   )
 }
 
-const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, celdas, ir, cambiar }: {
-  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; nov?: number; tope: boolean
+const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas, ir, cambiar }: {
+  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; tope: boolean
   celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void
   cambiar: (f: FilaPlanilla, n: number) => void
 }) {
   const color = colorLegible(f.descripcion) || f.descripcion || f.codigo
+  const triple = /infrarrojo/i.test(f.tratamiento || '')
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); ir(idx + (e.key === 'Enter' && e.shiftKey ? -1 : 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); ir(idx - 1) }
     else if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
     else if (e.key === '+' || e.key === '-') { e.preventDefault(); cambiar(f, cant + (e.key === '+' ? 1 : -1)) }
   }
-  const td = 'px-2 py-1.5 border-b border-black/5 align-middle'
+  const td = 'px-2 py-2 border-b border-black/[0.06] align-middle'
+  const precio = (
+    <>
+      {promo && <span className="text-neutral-400 line-through mr-1.5">{kAr(f.precio_lista)}</span>}
+      <span className={`font-semibold ${promo ? 'text-pink-700' : ''}`}>{kAr(f.precio)}</span>
+    </>
+  )
+  const max = tope || (cant > 0 && cant >= f.stock)
   return (
-    <tr className={`${cant > 0 ? 'bg-[#0004FF]/[0.04]' : promo ? 'bg-pink-50 hover:bg-pink-100/70' : 'hover:bg-[#F5F5F7]'} focus-within:bg-[#0004FF]/[0.07]`}>
-      <td className={`${td} pl-4`}>
-        <div className="w-10 h-10 bg-[#F2F2F2] overflow-hidden flex items-center justify-center" style={f.imagen ? undefined : { background: colorSwatch(f.descripcion) }}>
+    <tr className={`${cant > 0 ? 'bg-[#0004FF]/[0.03]' : 'hover:bg-[#FAFAFA]'} focus-within:bg-[#0004FF]/[0.05]`}>
+      <td className={`${td} pl-4 w-14`}>
+        <div className="w-10 h-10 rounded-md bg-[#F4F4F5] overflow-hidden flex items-center justify-center" style={f.imagen ? undefined : { background: colorSwatch(f.descripcion) }}>
           {f.imagen && <img src={f.imagen} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
         </div>
       </td>
-      <td className={`${td} min-w-[160px]`}>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full border border-black/10 shrink-0" style={{ background: colorSwatch(f.descripcion) }} />
-          <span className="leading-tight">{color}</span>
-          {/infrarrojo/i.test(f.tratamiento || "") && <span className="shrink-0 bg-[#0004FF] text-white text-[8px] font-bold rounded-full px-1.5 py-0.5 tracking-wide whitespace-nowrap">TRIPLE PROT.</span>}
+      <td className={td}>
+        <span className="flex items-start gap-2">
+          <span className="mt-1 w-3 h-3 rounded-full border border-black/10 shrink-0" style={{ background: colorSwatch(f.descripcion) }} />
+          <span className="min-w-0 leading-snug">
+            <span className="block">{color}</span>
+            {/* Celu: precio debajo del color; lo secundario en una línea chica */}
+            {!sinPrecios && <span className="md:hidden block text-[12px] tabular-nums mt-0.5">{precio}</span>}
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] text-neutral-500">
+              {triple && <span className="font-medium text-[#0004FF]">Triple Protección</span>}
+              {f.proyectado
+                ? <span className="text-amber-700">Proyectado</span>
+                : <span className="md:hidden text-emerald-700">Disponible</span>}
+            </span>
+          </span>
         </span>
       </td>
+      {!sinPrecios && <td className={`${td} hidden md:table-cell text-right whitespace-nowrap tabular-nums`}>{precio}</td>}
       <td className={`${td} text-center`}>
         {/* − número + : los botones quedan fuera del Tab (Tab / Enter / flechas van de número en número) */}
-        <div className="inline-flex items-stretch">
+        <div className={`inline-flex items-stretch rounded-md border overflow-hidden ${max && tope ? 'border-red-400' : cant > 0 ? 'border-[#0004FF]/50' : 'border-black/15'}`}>
           <button type="button" tabIndex={-1} onClick={() => cambiar(f, cant - 1)} disabled={cant <= 0} aria-label={`Restar ${f.modelo} ${color}`}
-            className="w-9 h-9 border border-r-0 border-black/15 bg-white flex items-center justify-center text-neutral-700 hover:bg-[#F5F5F7] active:bg-[#0004FF]/10 disabled:text-neutral-300 disabled:hover:bg-white">
-            <Minus size={15} />
+            className="w-9 h-9 flex items-center justify-center text-neutral-600 hover:bg-[#F4F4F5] active:bg-[#E4E4E7] disabled:text-neutral-300 disabled:hover:bg-transparent">
+            <Minus size={14} />
           </button>
           <input
             ref={(el) => { celdas.current[idx] = el }}
@@ -484,29 +515,17 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, ce
             onKeyDown={onKey}
             inputMode="numeric" enterKeyHint="next" autoComplete="off" aria-label={`Cantidad ${f.modelo} ${color}`}
             placeholder="0"
-            className={`w-12 h-9 text-center text-[14px] font-bold tabular-nums border bg-white placeholder:text-neutral-300 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#0004FF]/50 focus:border-[#0004FF] focus:relative [scroll-margin-top:170px] [scroll-margin-bottom:12px] ${tope ? 'border-red-500' : cant > 0 ? 'border-[#0004FF]' : 'border-black/15'}`} />
+            className="w-11 h-9 text-center text-[14px] font-semibold tabular-nums border-x border-black/10 bg-white placeholder:text-neutral-300 placeholder:font-normal focus:outline-none focus:bg-[#0004FF]/[0.06] [scroll-margin-top:180px] [scroll-margin-bottom:16px]" />
           <button type="button" tabIndex={-1} onClick={() => cambiar(f, cant + 1)} disabled={cant >= f.stock} aria-label={`Sumar ${f.modelo} ${color}`}
-            className="w-9 h-9 border border-l-0 border-black/15 bg-white flex items-center justify-center text-[#0004FF] hover:bg-[#0004FF]/[0.06] active:bg-[#0004FF]/10 disabled:text-neutral-300 disabled:hover:bg-white">
-            <Plus size={15} />
+            className="w-9 h-9 flex items-center justify-center text-[#0004FF] hover:bg-[#0004FF]/[0.06] active:bg-[#0004FF]/10 disabled:text-neutral-300 disabled:hover:bg-transparent">
+            <Plus size={14} />
           </button>
         </div>
-        {(tope || (cant > 0 && cant >= f.stock)) && <p className="text-[9px] text-red-600 font-semibold mt-0.5 whitespace-nowrap">{f.proyectado ? 'máx. proyectado' : 'máx. disponible'}</p>}
+        {max && <p className="text-[11px] text-neutral-500 mt-1 whitespace-nowrap">Máximo {f.proyectado ? 'proyectado' : 'disponible'}</p>}
       </td>
-      {!sinPrecios && (
-        <td className={`${td} text-right whitespace-nowrap tabular-nums`}>
-          {promo && <span className="block text-[10px] text-neutral-400 line-through leading-none">{kAr(f.precio_lista)}</span>}
-          <span className={`font-semibold ${promo ? 'text-pink-700' : ''}`}>{kAr(f.precio)}</span>
-        </td>
-      )}
-      {!sinPrecios && <td className={`${td} text-right whitespace-nowrap tabular-nums font-semibold ${cant ? 'text-[#0004FF]' : 'text-neutral-300'}`}>{cant ? kAr(cant * f.precio) : '—'}</td>}
-      <td className={`${td} whitespace-nowrap`}>
-        {f.proyectado
-          ? <span className="text-[10px] font-semibold text-[#b45309] bg-[#fdf0dd] px-1.5 py-0.5">📅 Proyectado</span>
-          : <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5">Disponible</span>}
-      </td>
-      <td className={`${td} font-mono text-[11px] text-neutral-500 whitespace-nowrap`}>{f.codigo}</td>
-      <td className={`${td} whitespace-nowrap text-neutral-600`}>{cap(f.tratamiento) || '—'}</td>
-      <td className={`${td} pr-4 whitespace-nowrap text-neutral-600`}>{cap(f.clasificacion) || '—'}</td>
+      {!sinPrecios && <td className={`${td} hidden md:table-cell text-right whitespace-nowrap tabular-nums font-semibold ${cant ? 'text-[#0004FF]' : 'text-neutral-300'}`}>{cant ? kAr(cant * f.precio) : '—'}</td>}
+      <td className={`${td} hidden lg:table-cell font-mono text-[12px] text-neutral-500 whitespace-nowrap`}>{f.codigo}</td>
+      <td className={`${td} hidden lg:table-cell pr-4 whitespace-nowrap text-neutral-600`}>{cap(f.tratamiento) || '—'}</td>
     </tr>
   )
 })
