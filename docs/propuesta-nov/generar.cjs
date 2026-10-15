@@ -11,9 +11,12 @@ const CAT = { Premium: 'Destacados', Core: 'Destacados', Sport: 'Sport', 'zaira 
 const PROMO = { 'ATLANTIC CITY': false, BRERA: false, BROOKLYN: false, CHARLOTTE: true, CRETA: true, 'LOS HAMPTON': false, PALERMO: false, PARIS: false, ROMA: false, SOPHIA: true, VENICE: false, WYNWOOD: false }
 // Modelos que no van en la presentación (pedido de Gastón).
 const FUERA = ['BUENOS AIRES', 'BUENOS AIRES I']
+// Ajuste del 15/10: Sport baja a $40.385 óptica (distribuidor 28.642) desde el 1/11; pisa el valor del diff.
+const NOV_ESCALA = { Sport: 40385 }
 const ORDEN = ['Destacados', 'Sport', 'Zaira Nara', 'Urbano']
 const nombre = (m) => m.replace(/\s*-\s*ZN$/, ' ZN').toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase()).replace(/\bZn\b/, 'ZN').replace(/\bIi?\b/g, (x) => x.toUpperCase())
 const modelos = diff
+  .map((x) => (NOV_ESCALA[x.escala] ? { ...x, precio_optica_nov: NOV_ESCALA[x.escala] } : x))
   // Sin foto de producto (o con foto de cara) no entra en la presentación.
   .filter((x) => CAT[x.escala] && (x.stock || 0) > 0 && x.precio_optica_actual_num > 0 && imgs[x.modelo] && !FUERA.includes(x.modelo))
   // Los que bajan en noviembre ya tienen el precio nuevo desde el 13/10: octubre = noviembre.
