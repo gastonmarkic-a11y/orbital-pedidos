@@ -183,7 +183,8 @@ const SinPreciosCtx = createContext(false)
 const useSinPrecios = () => useContext(SinPreciosCtx)
 // Link para los clientes de un distribuidor (tipo 'dist_cli'): ven el precio óptica de Orbital como
 // referencia y el pedido le llega al distribuidor por Telegram (edge function dist-cliente-pedido).
-// Fuera: chat con Orbital, escalera de bonificaciones, precios de noviembre, postventa y medios de pago.
+// Fuera: chat con Orbital, escalera de bonificaciones, postventa y medios de pago. Se le manda desde la
+// oferta "precio de octubre" para sus clientes (public/oferta/clientes-cristaldo-5r2x.html).
 const DIST_MARCA: Record<string, string> = { '010001': 'Cristaldo', '010002': 'Optisur' }
 const distCliDe = (a: Acceso | null) => (a?.tipo === 'dist_cli' ? (a.cod_cliente && DIST_MARCA[a.cod_cliente]) || empresaDe(a.label) || 'tu distribuidor' : null)
 const DIST_CLI_DATOS_KEY = 'orb_distcli_datos'
@@ -1220,8 +1221,7 @@ export default function CatalogoPublico() {
   // El servidor no manda nada a links sin precios ni a GAFAS LUXURY (tiene su propia lista de noviembre).
   const [preciosNov, setPreciosNov] = useState<PreciosNov>(SIN_NOV)
   useEffect(() => {
-    // Cliente de distribuidor: el precio de noviembre lo define el distribuidor, no se anuncia el de Orbital
-    if (!claveOk || !clave || acceso?.tipo === 'dist_cli') { setPreciosNov(SIN_NOV); return }
+    if (!claveOk || !clave) { setPreciosNov(SIN_NOV); return }
     supabase.rpc('catalogo_precios_nov', { p_clave: clave }).then(({ data, error }) => {
       if (error || !Array.isArray(data)) { setPreciosNov(SIN_NOV); return }
       const sku: Record<string, number> = {}, desde: Record<string, number> = {}
@@ -1232,7 +1232,7 @@ export default function CatalogoPublico() {
       }
       setPreciosNov({ sku, desde })
     })
-  }, [claveOk, clave, acceso?.tipo])
+  }, [claveOk, clave])
 
   // ── Tracking: cuánto miró y qué llegó a cargar ──────────────────────────────
   // Hasta acá solo sabíamos que entró, y —si confirmaba— qué pidió. Lo del medio
@@ -2414,6 +2414,39 @@ function CarritoSheet({ cart, clave, acceso, bono, modoPack, onSetQty, onAdd, to
               )}
             </div>
           </>
+        ) : distCli ? (
+          <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 overflow-y-auto">
+            <div className="rounded-lg bg-[#0004FF]/5 border border-[#0004FF]/20 px-3 py-2.5">
+              <p className="text-[11px] font-medium text-[#0004FF]">Tu pedido le llega a {distCli}</p>
+              <p className="text-[12px] text-neutral-600 leading-snug">Dejá tus datos y te escribe por WhatsApp para confirmar stock, precio final y condiciones.</p>
+            </div>
+            {([
+              ['optica', 'Nombre de la óptica *', 'Óptica …', 'organization'],
+              ['wsp', 'WhatsApp *', 'Ej: 351 555 1234', 'tel'],
+              ['contacto', 'Tu nombre', '', 'name'],
+              ['localidad', 'Localidad', 'Ej: Villa Carlos Paz', 'address-level2'],
+              ['cuit', 'CUIT', '', 'off'],
+            ] as const).map(([k, label, ph, ac]) => (
+              <div key={k}>
+                <label className="text-[11px] font-medium text-neutral-500">{label}</label>
+                <input value={dc[k]} onChange={(e) => setDc((d) => ({ ...d, [k]: e.target.value }))} placeholder={ph} autoComplete={ac}
+                  inputMode={k === 'wsp' || k === 'cuit' ? 'tel' : undefined}
+                  className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+              </div>
+            ))}
+            <div>
+              <label className="text-[11px] font-medium text-neutral-500">Observaciones</label>
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border border-black/10 px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0004FF]/30" />
+            </div>
+            {err && <p className="text-sm text-red-600">{err}</p>}
+            <div className="flex justify-between text-sm pt-1"><span className="text-neutral-500">{unidades} unidades · precio de referencia</span><span className="font-bold text-lg">{kAr(total)} <span className="text-[11px] font-normal text-neutral-400">+ IVA</span></span></div>
+            <div className="flex gap-2">
+              <button onClick={() => setFase('carrito')} className="rounded-xl border border-black/10 py-3 px-5 text-sm font-medium">Volver</button>
+              <button onClick={enviar} disabled={enviando || !dcOk} className="flex-1 bg-[#0004FF] text-white rounded-xl py-3 text-sm font-medium disabled:opacity-50">
+                {enviando ? 'Enviando…' : `Enviar pedido a ${distCli}`}
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 overflow-y-auto">
             {identFijo ? (

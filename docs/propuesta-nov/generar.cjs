@@ -1,10 +1,13 @@
 // Genera las tres propuestas "Precio de octubre" (ópticas, distribuidores, revendedores) desde una plantilla.
 // Datos: diff de precios (octubre vs Excel nov) + fotos en media/modelos. Uso: node generar.cjs <diff.json>
+// Sin diff (node generar.cjs) reusa los modelos ya publicados en public/oferta/opticas.html: sirve para cambiar
+// textos o sumar una página sin volver a bajar los precios.
 const fs = require('fs')
 const path = require('path')
-const crudo = require(path.resolve(process.argv[2]))
+const crudo = process.argv[2] ? require(path.resolve(process.argv[2])) : []
 const diff = Array.isArray(crudo) ? crudo : (Object.values(crudo).find(Array.isArray) || [])
 const imgs = JSON.parse(fs.readFileSync(path.join(__dirname, 'media/modelos-img.json'), 'utf8'))
+const publicados = () => JSON.parse(fs.readFileSync(path.join(__dirname, '../../public/oferta/opticas.html'), 'utf8').match(/var D = (\{.*\});/)[1]).modelos
 
 const CAT = { Premium: 'Destacados', Core: 'Destacados', Sport: 'Sport', 'zaira nara': 'Zaira Nara', Urbano: 'Urbano' }
 // Promo Día de la Madre (promo_precio, vence 20/10 00:00): $48.000 óptica. entero=false → solo algunos colores.
@@ -15,7 +18,7 @@ const FUERA = ['BUENOS AIRES', 'BUENOS AIRES I']
 const NOV_ESCALA = { Sport: 40385 }
 const ORDEN = ['Destacados', 'Sport', 'Zaira Nara', 'Urbano']
 const nombre = (m) => m.replace(/\s*-\s*ZN$/, ' ZN').toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase()).replace(/\bZn\b/, 'ZN').replace(/\bIi?\b/g, (x) => x.toUpperCase())
-const modelos = diff
+const modelos = !process.argv[2] ? publicados() : diff
   .map((x) => (NOV_ESCALA[x.escala] ? { ...x, precio_optica_nov: NOV_ESCALA[x.escala] } : x))
   // Sin foto de producto (o con foto de cara) no entra en la presentación.
   .filter((x) => CAT[x.escala] && (x.stock || 0) > 0 && x.precio_optica_actual_num > 0 && imgs[x.modelo] && !FUERA.includes(x.modelo))
@@ -52,6 +55,10 @@ const AUD = {
       ['+3%', 'Pagando contado o transferencia', 'Descuento extra sobre tu precio de distribuidor.'],
       ['desde +1,42%', 'Más plazo, con recargo', 'Si necesitás 120, 150 o 180 días, se suma un recargo chico por el costo financiero. Mirá la tabla.'],
     ],
+    // Bloque "Para tus clientes": aparece si el distribuidor entra con su clave del catálogo (?k=) o con ?d=
+    distCli: {
+      cristaldo: { nombre: 'Cristaldo', claves: ['cristaldo481b8'], url: 'https://ver.orbitaleyewear.com.ar/oferta/clientes-cristaldo-5r2x.html' },
+    },
     planes: [
       ['30 / 60 / 90', 0], ['30 / 60 / 90 / 120', 1.42], ['30 / 60 / 90 / 120 / 150', 2.82], ['30 / 60 / 90 / 120 / 150 / 180', 4.22],
       ['0 / 30 / 60 / 90', 0], ['0 / 30 / 60 / 90 / 120', 0.25], ['0 / 30 / 60 / 90 / 120 / 150', 1.58], ['0 / 30 / 60 / 90 / 120 / 150 / 180', 2.93],
@@ -69,11 +76,25 @@ const AUD = {
       ['30/60/90', 'Pagando con cheques', 'Tu plazo de revendedor.'],
     ],
   },
+  // Para que Cristaldo se la mande a sus ópticas: precio óptica de Orbital como referencia y el botón
+  // entra al catálogo de sus clientes (acceso dist_cli): el pedido le llega a él por Telegram.
+  'clientes-cristaldo': {
+    titulo: 'Precio de octubre · Cristaldo',
+    pill: 'Orbital por Cristaldo · precio de octubre hasta el 31/10',
+    h1: 'El 1/11 sube Orbital. <em>Pedí hoy a precio de octubre.</em>',
+    sub: 'Elegí modelos y colores, armá tu pedido y le llega directo a Cristaldo, que te confirma stock, precio final y condiciones.',
+    factor: 1, ref: false,
+    clave: 'cristaldo-clientes-8k3v',
+    nota: 'Precio óptica de Orbital por unidad, sin IVA, como referencia. El precio final y las condiciones te los confirma Cristaldo.',
+    extras: [],
+    final: ['Armá tu pedido antes del 31/10', 'Entrá al catálogo, elegí modelos y colores y confirmá con tus datos. El pedido le llega a Cristaldo, que te escribe por WhatsApp para cerrarlo.'],
+    finTexto: 'Pedile la lista vigente a Cristaldo.',
+  },
 }
 
 // Direcciones públicas: la de distribuidores no se adivina (precios de distribuidor).
 const PUB = path.join(__dirname, '../../public/oferta')
-const SLUG = { opticas: 'opticas', distribuidores: 'distribuidores-7q4m', revendedores: 'revendedores' }
+const SLUG = { opticas: 'opticas', distribuidores: 'distribuidores-7q4m', revendedores: 'revendedores', 'clientes-cristaldo': 'clientes-cristaldo-5r2x' }
 fs.mkdirSync(PUB, { recursive: true })
 const plantilla = fs.readFileSync(path.join(__dirname, 'plantilla.html'), 'utf8')
 for (const [k, a] of Object.entries(AUD)) {
