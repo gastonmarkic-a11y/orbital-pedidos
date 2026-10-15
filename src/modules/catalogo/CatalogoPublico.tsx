@@ -622,7 +622,7 @@ function DiaMadreBanner({ onVer, enSeccion, promo, modelos, precio }: { onVer?: 
         <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold uppercase tracking-tight leading-[0.95] mt-2">Modern<br />Mom</h2>
         <p className="text-sm text-neutral-700 mt-3 max-w-sm leading-relaxed">
           La selección <b>Para Ellas</b>: {modelos || DIA_MADRE_MODELOS.length} modelos de sol para armar la vidriera del regalo
-          {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(precio && isFinite(precio) ? precio : DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
+          {sinPrecios || !promo ? '.' : <>, <b>todos a {kAr(precio || DIA_MADRE_PRECIO)}</b> + IVA con descuento especial. Hasta el 19/10.</>}
         </p>
         {onVer && !enSeccion && (
           <span className="self-start inline-block mt-4 bg-[#0a0a0a] text-white text-[12px] font-bold uppercase tracking-wide rounded-full px-5 py-2.5">Ver la selección →</span>
@@ -1132,7 +1132,8 @@ export default function CatalogoPublico() {
   const promoActiva = modelosPromo > 0
   const modelosMadre = todos.filter(esDiaMadre).length
   // Precio de promo de ESTE link (lo pone la base por cliente: Gafas Luxury 37.778, el resto 48.000)
-  const precioMadre = Math.min(...todos.filter(tienePromo).map((m) => Number(m.precio_desde) || Infinity))
+  // (el máximo de los "desde": un modelo puede tener un color fuera de promo más barato, ej. Rebecca a 36.800)
+  const precioMadre = Math.max(0, ...todos.filter(tienePromo).map((m) => Number(m.precio_desde) || 0))
   const modelosGrupo = useMemo(() => (grupoObj ? conFoto(todos.filter((m) => matchGrupo(grupoObj, m))) : []), [todos, grupoObj])
 
   const cartCount = Object.values(cart).reduce((a, c) => a + c.cantidad, 0)
