@@ -1324,7 +1324,7 @@ export default function CatalogoPublico() {
       return { ...c, [codigo]: { ...c[codigo], cantidad: max ? Math.min(cantidad, max) : cantidad } }
     })
   }
-  // Pedido grande (planilla): cantidad absoluta por SKU, en el mismo carrito (mismo tope de stock libre / proyectado)
+  // Carga masiva (planilla): cantidad absoluta por SKU, en el mismo carrito (mismo tope de stock libre / proyectado)
   const [planilla, setPlanilla] = useState(false)
   function setCantFila(f: FilaPlanilla, n: number) {
     setCart((c) => {
@@ -1453,7 +1453,7 @@ export default function CatalogoPublico() {
         {/* En el celu, Inspiración / Postventa van en su propia fila */}
         {/* Fila deslizable: si no entra, no ensancha la página (en el celu todo se corría de costado) */}
         <div className="sm:hidden max-w-6xl mx-auto px-4 pb-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&>button]:shrink-0">{accesosHeader}</div>
-        {/* Buscador + Pedido grande (planilla tipo Excel con todos los colores) */}
+        {/* Buscador + Carga masiva (planilla tipo Excel con todos los colores) */}
         <div className="max-w-6xl mx-auto px-4 pb-2 flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -1462,7 +1462,7 @@ export default function CatalogoPublico() {
           </div>
           <button onClick={() => setPlanilla(true)} title="Cargar todos los colores en una planilla, como en Excel"
             className="shrink-0 flex items-center gap-1.5 rounded-full border border-[#0004FF] text-[#0004FF] bg-white hover:bg-[#0004FF]/[0.06] px-3 py-2 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
-            <Table2 size={15} /> <span className="sm:hidden">Pedido grande</span><span className="hidden sm:inline">Pedido grande (planilla)</span>
+            <Table2 size={15} /> Carga masiva
           </button>
         </div>
         {/* Propuestas: acceso directo a cada grupo */}

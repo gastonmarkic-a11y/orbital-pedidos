@@ -3,7 +3,7 @@ import { Search, X, ShoppingCart, ChevronDown, Minus, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { colorLegible, colorSwatch } from './colorLegible'
 
-// ── Pedido grande (planilla) ──────────────────────────────────────────────────
+// ── Carga masiva (planilla) ───────────────────────────────────────────────────
 // Todos los SKU del link en una tabla tipo Excel: una fila por color, la cantidad se tipea
 // y se salta con Enter / flechas / Tab. Escribe en el MISMO carrito del catálogo (el padre
 // arma el CartItem), así el checkout de siempre (catalogo_checkout) cierra el pedido.
@@ -98,38 +98,50 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
     const out: Mod[] = []
     for (const f of visibles) {
       let m = out[out.length - 1]
-      if (!m || m.modelo !== f.modelo) { m = { modelo: f.modelo, filas: [], u: 0, imp: 0, desde: 0, desdeNov: 0, proy: 0 }; out.push(m) }
+      if (!m || m.modelo !== f.modelo) { m = { modelo: f.modelo, filas: [], u: 0, imp: 0, desde: 0, desdeNov: 0, proy: 0, promo: 0 }; out.push(m) }
       const n = cantidades[f.codigo] ?? 0
       m.filas.push(f); m.u += n; m.imp += n * f.precio
       if (f.proyectado) m.proy++
+      if (esPromo(f)) m.promo++
       if (f.precio > 0 && (!m.desde || f.precio < m.desde)) m.desde = f.precio
       const pn = preciosNov?.[f.codigo] ?? f.precio
       if (pn > 0 && (!m.desdeNov || pn < m.desdeNov)) m.desdeNov = pn
     }
     return out
-  }, [visibles, cantidades, preciosNov])
+  }, [visibles, cantidades, preciosNov, esPromo])
 
-  // Categoría de cada modelo: la primera sección del catálogo que le toca (orden de GRUPOS), como el
-  // dedup de la home. Día de la Madre y Cuando baja la luz son transversales (en la home no le sacan el
-  // modelo a su sección): solo cuentan si el modelo no tiene otra. Así cada SKU aparece una sola vez.
+  // Categoría de cada modelo: primero la asignación fija (CATEGORIA_FIJA); si no, la primera sección del
+  // catálogo que le toca (orden de GRUPOS). Triple Protección, Día de la Madre y Cuando baja la luz no son
+  // categorías de la planilla (cruzan el catálogo): el modelo va a su categoría de siempre. Sin ninguna,
+  // va a Oportunidades. Así cada SKU aparece una sola vez.
   const categoriaDe = useMemo(() => {
+    const nombre = new Map(secciones.map((s) => [s.key, s.nombre]))
     const m = new Map<string, { key: string; nombre: string }>()
-    for (const pasada of [false, true])
-      for (const s of secciones) {
-        if (TRANSVERSALES.has(s.key) !== pasada) continue
-        for (const mod of s.modelos) if (!m.has(mod)) m.set(mod, { key: s.key, nombre: s.nombre })
-      }
+    for (const [mod, key] of Object.entries(CATEGORIA_FIJA)) if (nombre.has(key)) m.set(mod, { key, nombre: nombre.get(key)! })
+    for (const s of secciones) {
+      if (NO_CATEGORIA.has(s.key)) continue
+      for (const mod of s.modelos) if (!m.has(mod)) m.set(mod, { key: s.key, nombre: s.nombre })
+    }
+    // Los que solo estaban en Triple / Día de la Madre / Baja la luz son anteojos de sol de uso diario: van a Urbanos
+    if (nombre.has('urbano'))
+      for (const s of secciones) if (NO_CATEGORIA.has(s.key))
+        for (const mod of s.modelos) if (!m.has(mod)) m.set(mod, { key: 'urbano', nombre: nombre.get('urbano')! })
     return m
   }, [secciones])
   const cats = useMemo(() => {
     const out: Cat[] = []
     const porKey = new Map<string, Cat>()
+    const resto = { key: 'oportunidades', nombre: secciones.find((s) => s.key === 'oportunidades')?.nombre ?? 'Oportunidades' }
     for (const m of lista) {
-      const c0 = categoriaDe.get(m.modelo) ?? OTROS
+      const c0 = categoriaDe.get(m.modelo) ?? resto
       let c = porKey.get(c0.key)
-      if (!c) { c = { ...c0, modelos: [], u: 0, imp: 0 }; porKey.set(c0.key, c); out.push(c) }
-      c.modelos.push(m); c.u += m.u; c.imp += m.imp
+      if (!c) { c = { ...c0, modelos: [], u: 0, imp: 0, promo: 0 }; porKey.set(c0.key, c); out.push(c) }
+      c.modelos.push(m); c.u += m.u; c.imp += m.imp; if (m.promo > 0) c.promo++
     }
+    // Especial Día de la Madre: los modelos con colores en promo aparecen además acá (siguen también en su categoría)
+    const enPromoMods = lista.filter((m) => m.promo > 0)
+    if (enPromoMods.length) out.push({ key: 'diamadre', nombre: secciones.find((s) => s.key === 'diamadre')?.nombre ?? 'Especial Día de la Madre',
+      modelos: enPromoMods, u: enPromoMods.reduce((a, m) => a + m.u, 0), imp: enPromoMods.reduce((a, m) => a + m.imp, 0), promo: enPromoMods.length })
     const orden = new Map(secciones.map((s, i) => [s.key, i]))
     return out.sort((a, b) => (orden.get(a.key) ?? 999) - (orden.get(b.key) ?? 999))
   }, [lista, categoriaDe, secciones])
@@ -141,7 +153,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   const catsRef = useRef(cats); catsRef.current = cats
   const abrirTodo = useCallback(() => {
     setCatAb(new Set(catsRef.current.map((c) => c.key)))
-    setModAb(new Set(catsRef.current.flatMap((c) => c.modelos.map((m) => m.modelo))))
+    setModAb(new Set(catsRef.current.flatMap((c) => c.modelos.map((m) => c.key + '|' + m.modelo))))
   }, [])
   const cerrarTodo = useCallback(() => { setCatAb(new Set()); setModAb(new Set()) }, [])
   const filtrando = !!(qn || seccion || clasif || trat || escala || soloCargados || sinProyectado)
@@ -181,7 +193,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
   // Filas a dibujar: categoría → (abierta) sus modelos → (abierto) sus colores.
   // Los índices de navegación (Enter / flechas) cuentan solo las celdas de cantidad a la vista.
   // Los títulos de columna solo aparecen con algún modelo abierto: los encabezados pegajosos se corren según eso.
-  const hayColores = cats.some((c) => catAb.has(c.key) && c.modelos.some((m) => modAb.has(m.modelo)))
+  const hayColores = cats.some((c) => catAb.has(c.key) && c.modelos.some((m) => modAb.has(c.key + '|' + m.modelo)))
   const topCat = hayColores ? 32 : 0
   const filasTabla: React.ReactNode[] = []
   let nCeldas = 0
@@ -190,24 +202,26 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo
     filasTabla.push(<FilaCategoria key={'c:' + c.key} c={c} abierto={cAb} cols={cols} top={topCat} sinPrecios={sinPrecios} onClick={() => alternar(setCatAb, c.key)} />)
     if (!cAb) continue
     for (const m of c.modelos) {
-      const abierto = modAb.has(m.modelo)
+      // Un modelo puede estar en su categoría y en Día de la Madre: se abre / pliega en cada una por separado
+      const k = c.key + '|' + m.modelo
+      const abierto = modAb.has(k)
       filasTabla.push(
-        <FilaModelo key={'m:' + m.modelo} m={m} abierto={abierto} cols={cols} top={topCat + 48} sinPrecios={sinPrecios} onClick={() => alternar(setModAb, m.modelo)}
+        <FilaModelo key={'m:' + k} m={m} abierto={abierto} cols={cols} top={topCat + 44} sinPrecios={sinPrecios} onClick={() => alternar(setModAb, k)}
           foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
       if (abierto) for (const f of m.filas) filasTabla.push(
-        <Fila key={f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
+        <Fila key={c.key + '|' + f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
           promo={esPromo(f)} nov={preciosNov?.[f.codigo]} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
     }
   }
   nCeldasRef.current = nCeldas
 
   return (
-    <div className="fixed inset-0 z-40 bg-white flex flex-col orb-tienda text-[#0a0a0a]" role="dialog" aria-label="Pedido grande (planilla)">
+    <div className="fixed inset-0 z-40 bg-white flex flex-col orb-tienda text-[#0a0a0a]" role="dialog" aria-label="Carga masiva (planilla)">
       {/* Encabezado + filtros */}
       <div className="border-b border-black/10 shrink-0">
         <div className="max-w-7xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-[#0004FF]">Orbital® · Pedido grande</p>
+            <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-[#0004FF]">Orbital® · Carga masiva</p>
             <h2 className="text-base font-bold leading-tight truncate">Planilla de carga</h2>
           </div>
           <button onClick={onClose} className="shrink-0 flex items-center gap-1 text-[12px] font-semibold rounded-full border border-black/15 px-3 py-1.5 hover:border-black/40">
@@ -323,10 +337,17 @@ function Sel({ value, onChange, children, label }: { value: string; onChange: (v
   )
 }
 
-type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; desdeNov: number; proy: number }
-type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number }
-const TRANSVERSALES = new Set(['diamadre', 'bajaluz'])
-const OTROS = { key: 'otros', nombre: 'Otros modelos' }
+type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; desdeNov: number; proy: number; promo: number }
+type Cat = { key: string; nombre: string; modelos: Mod[]; u: number; imp: number; promo: number }
+// Secciones que cruzan el catálogo: no son categoría de la planilla
+const NO_CATEGORIA = new Set(['triple', 'diamadre', 'bajaluz'])
+// Asignación fija pedida el 15/10 (manda sobre las secciones del catálogo)
+const CATEGORIA_FIJA: Record<string, string> = {
+  '5TH AVENUE': 'destacados', 'ASCARI': 'destacados', 'CASA BLANCA': 'destacados', 'CIVIC CENTER': 'destacados',
+  'ADELAIDA': 'destacados', 'BUENOS AIRES I': 'destacados', 'EIVISSA': 'destacados', 'LE MANS': 'destacados', 'SILVERSTONE': 'destacados',
+  'ATLANTIC CITY': 'urbano', 'BRERA': 'urbano', 'BROOKLYN': 'urbano', 'CHARLOTTE': 'urbano', 'CRETA': 'urbano',
+  'LOS HAMPTON': 'urbano', 'PALERMO': 'urbano', 'PARIS': 'urbano', 'ROMA': 'urbano', 'SOPHIA': 'urbano', 'VENICE': 'urbano', 'WYNWOOD': 'urbano',
+}
 
 // Fila de categoría (barra negra, como los carteles de sección del catálogo): nombre, modelos y lo
 // cargado adentro aunque esté cerrada. Tocándola se despliegan / pliegan sus modelos.
@@ -335,14 +356,27 @@ function FilaCategoria({ c, abierto, cols, top, sinPrecios, onClick }: {
 }) {
   return (
     <tr>
-      <td colSpan={cols} className={`p-0 bg-[#0a0a0a] text-white border-b border-white/15 ${abierto ? 'sticky z-[6]' : ''}`} style={abierto ? { top } : undefined}>
+      <td colSpan={cols} className={`p-0 ${c.key === 'diamadre' ? 'bg-pink-600' : 'bg-[#0a0a0a]'} text-white border-b border-white/15 ${abierto ? 'sticky z-[6]' : ''}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
-          className="sticky left-0 w-[var(--ancho-tabla,100%)] h-12 flex items-center gap-2.5 text-left px-3 sm:px-4 hover:bg-white/[0.06]">
+          className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-2.5 text-left px-3 sm:px-4 hover:bg-white/[0.06] ${abierto ? 'h-11' : 'min-h-11 py-2'}`}>
           <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? '' : '-rotate-90'} opacity-80`} />
-          <span className="min-w-0 flex-1 flex items-baseline gap-1.5">
-            <span className="truncate font-bold uppercase text-[12px] sm:text-[13px] tracking-[0.16em]">{c.nombre}</span>
-            <span className="shrink-0 text-[11px] text-white/55">· {c.modelos.length} modelo{c.modelos.length !== 1 ? 's' : ''}</span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-1.5 min-w-0">
+              <span className="truncate font-bold uppercase text-[12px] sm:text-[13px] tracking-[0.16em]">{c.nombre}</span>
+              <span className="shrink-0 text-[11px] text-white/55">· {c.modelos.length} modelo{c.modelos.length !== 1 ? 's' : ''}</span>
+            </span>
+            {/* Cerrada: los nombres de sus modelos (los de Día de la Madre en rosa) */}
+            {!abierto && (
+              <span className="block truncate text-[11px] text-white/60 mt-0.5 tracking-wide">
+                {c.modelos.map((m, i) => (
+                  <span key={m.modelo}>{i > 0 && ' · '}<span className={m.promo > 0 && c.key !== 'diamadre' ? 'text-pink-300' : m.u > 0 ? 'text-white font-semibold' : ''}>{m.modelo}</span></span>
+                ))}
+              </span>
+            )}
           </span>
+          {c.promo > 0 && c.key !== 'diamadre' && (
+            <span className="shrink-0 text-[10px] font-bold whitespace-nowrap px-1.5 py-1 bg-pink-600 text-white">♥ {c.promo} en promo<span className="hidden sm:inline"> Día de la Madre</span></span>
+          )}
           {c.u > 0 && (
             <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
               {c.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(c.imp)}</span>}
@@ -362,6 +396,8 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
   m: Mod; abierto: boolean; cols: number; top: number; foto: string | null; sinPrecios: boolean; onClick: () => void
 }) {
   const disp = m.filas.length - m.proy
+  // ¿El modelo sube el 1/11? (desde de noviembre ≥ 2% sobre el desde de hoy)
+  const sube = !sinPrecios && m.desde > 0 && m.desdeNov >= m.desde * 1.02
   const cargado = m.u > 0 && (
     <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
       {m.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(m.imp)}</span>}
@@ -372,22 +408,36 @@ function FilaModelo({ m, abierto, cols, top, foto, sinPrecios, onClick }: {
       <td colSpan={cols} className={`p-0 border-t-2 border-t-black/25 border-b ${abierto ? 'sticky z-[5] bg-white border-b-[#0004FF]/30' : 'border-b-black/10'}`} style={abierto ? { top } : undefined}>
         <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
           className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left px-3 sm:px-4 py-2.5 border-l-[3px] transition-colors
-            ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
+            ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : m.promo > 0 ? 'border-l-pink-500 bg-pink-50 hover:bg-pink-100/70' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
           <span className="shrink-0 w-[92px] h-[62px] sm:w-[120px] sm:h-[76px] bg-[#F2F2F2] overflow-hidden flex items-center justify-center">
             {foto && <img src={foto} alt={m.modelo} loading="lazy" decoding="async" className="w-full h-full object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-bold uppercase text-[14px] sm:text-[15px] tracking-wide leading-tight">{m.modelo}</span>
+            <span className={`block truncate font-bold uppercase text-[14px] sm:text-[15px] tracking-wide leading-tight ${m.promo > 0 ? 'text-pink-700' : ''}`}>{m.modelo}</span>
             <span className="block truncate text-[12px] text-neutral-500 mt-0.5">
-              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}{!sinPrecios && m.desde && m.desdeNov >= m.desde * 1.02 ? <span className="text-neutral-400"> · desde el 1/11 {kAr(m.desdeNov)}</span> : null}
+              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}
             </span>
             <span className="flex flex-wrap items-center gap-1 mt-1">
+              {m.promo > 0 && <span className="text-[10px] font-bold text-white bg-pink-600 px-1.5 py-0.5">♥ Día de la Madre{m.promo < m.filas.length ? ` · ${m.promo} color${m.promo !== 1 ? 'es' : ''}` : ''}</span>}
               {disp > 0 && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5">{disp} disponible{disp !== 1 ? 's' : ''}</span>}
               {m.proy > 0 && <span className="text-[10px] font-semibold text-[#b45309] bg-[#fdf0dd] px-1.5 py-0.5">📅 {m.proy} proyectado{m.proy !== 1 ? 's' : ''}</span>}
               <span className="sm:hidden">{cargado}</span>
             </span>
+            {sube && (
+              <span className="md:hidden block truncate text-[11px] font-semibold text-[#0004FF] mt-1">
+                🔒 Asegurá {kAr(m.desde)} hoy · el 1/11 sube a {kAr(m.desdeNov)}
+              </span>
+            )}
           </span>
+          {/* Nota comercial del aumento de noviembre (solo en la fila del modelo) */}
+          {sube && (
+            <span className="hidden md:block shrink-0 border border-[#0004FF]/30 bg-white px-3 py-1.5 text-right leading-tight">
+              <span className="block text-[9px] font-bold uppercase tracking-[0.18em] text-[#0004FF]">Precio de octubre</span>
+              <span className="block text-[12px] text-[#0a0a0a] mt-0.5">Asegurá <b>{kAr(m.desde)}</b> hoy</span>
+              <span className="block text-[10px] text-neutral-500 mt-0.5">Desde el 1/11 sube a <b className="text-neutral-700">{kAr(m.desdeNov)}</b> (+{Math.round((m.desdeNov / m.desde - 1) * 100)}%)</span>
+            </span>
+          )}
           <span className="hidden sm:inline-flex">{cargado}</span>
           <span className={`shrink-0 hidden sm:inline text-[11px] font-semibold ${abierto ? 'text-[#0004FF]' : 'text-neutral-400'}`}>{abierto ? 'Ocultar colores' : 'Ver colores'}</span>
           <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? 'rotate-180 text-[#0004FF]' : 'text-neutral-400'}`} />
@@ -411,7 +461,7 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, ce
   }
   const td = 'px-2 py-1.5 border-b border-black/5 align-middle'
   return (
-    <tr className={`${cant > 0 ? 'bg-[#0004FF]/[0.04]' : 'hover:bg-[#F5F5F7]'} focus-within:bg-[#0004FF]/[0.07]`}>
+    <tr className={`${cant > 0 ? 'bg-[#0004FF]/[0.04]' : promo ? 'bg-pink-50 hover:bg-pink-100/70' : 'hover:bg-[#F5F5F7]'} focus-within:bg-[#0004FF]/[0.07]`}>
       <td className={`${td} pl-4`}>
         <div className="w-10 h-10 bg-[#F2F2F2] overflow-hidden flex items-center justify-center" style={f.imagen ? undefined : { background: colorSwatch(f.descripcion) }}>
           {f.imagen && <img src={f.imagen} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain"
@@ -451,7 +501,6 @@ const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, nov, tope, ce
         <td className={`${td} text-right whitespace-nowrap tabular-nums`}>
           {promo && <span className="block text-[10px] text-neutral-400 line-through leading-none">{kAr(f.precio_lista)}</span>}
           <span className={`font-semibold ${promo ? 'text-pink-700' : ''}`}>{kAr(f.precio)}</span>
-          {nov && nov >= f.precio * 1.02 ? <span className="block text-[10px] text-neutral-400 leading-tight">1/11: {kAr(nov)}</span> : null}
         </td>
       )}
       {!sinPrecios && <td className={`${td} text-right whitespace-nowrap tabular-nums font-semibold ${cant ? 'text-[#0004FF]' : 'text-neutral-300'}`}>{cant ? kAr(cant * f.precio) : '—'}</td>}
