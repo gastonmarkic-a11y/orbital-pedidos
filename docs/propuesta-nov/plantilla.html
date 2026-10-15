@@ -132,7 +132,12 @@ td.r0 { color: var(--ok); font-weight: 700; }
 <script>
 (function () {
   var D = {{DATOS}};
-  var CAT = 'https://ver.orbitaleyewear.com.ar/catalogo';
+  // El botón al catálogo entra con la clave del link (?k= / ?c= si vino personalizado; si no, la del link
+  // de la promo) para que no caiga en la pantalla de clave.
+  var qs = new URLSearchParams(location.search);
+  var clave = qs.get('k') || qs.get('c') || 'promo-octubre-3fb48';
+  var CAT = 'https://ver.orbitaleyewear.com.ar/catalogo' + (clave ? '?k=' + encodeURIComponent(clave) : '');
+  document.querySelectorAll('a[href="https://ver.orbitaleyewear.com.ar/catalogo"]').forEach(function (el) { el.href = CAT; });
   var a = D.aud;
   var ars = function (n) { return '$' + Math.round(n).toLocaleString('es-AR'); };
   var p = function (n) { return Math.round(n * a.factor); };
