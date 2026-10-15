@@ -1306,6 +1306,8 @@ export default function CatalogoPublico() {
   }
   const planillaSecciones = useMemo(() => GRUPOS.map((g) => ({ key: g.key, nombre: g.nombre, modelos: new Set(todos.filter((m) => matchGrupo(g, m)).map((m) => m.modelo)) })), [todos])
   const planillaModelos = useMemo(() => todos.map((m) => m.modelo), [todos])
+  // Foto de referencia de cada modelo en la planilla: la misma tapa que la tarjeta del catálogo
+  const planillaFotos = useMemo(() => Object.fromEntries(todos.map((m) => [m.modelo, m.fotos?.[coverIndex(m.fotos, undefined, m.modelo)]?.u || m.imagenes?.[0] || ''])), [todos])
   const planillaCant = useMemo(() => Object.fromEntries(Object.values(cart).map((c) => [c.codigo, c.cantidad])), [cart])
 
   function verGrupo(k: string) { setGrupoActivo(k); setQ(''); setConoce(false); window.scrollTo({ top: 0 }) }
@@ -1519,7 +1521,7 @@ export default function CatalogoPublico() {
       {contenido && <ContenidoBuscar modelos={todos} clave={clave} esOptica={esOptica} solapaInicial={contenidoSolapa} onElegir={(m) => { setSelContenido(m); setContenido(false) }} onClose={() => setContenido(false)} />}
       {selContenido && <ModeloSheet modelo={selContenido} clave={clave} esOptica={esOptica} soloContenido cart={cart} onAdd={addCart} onSetQty={setQty} onClose={() => { setSelContenido(null); setContenido(true) }} />}
       {sel && <ModeloSheet modelo={sel} clave={clave} esOptica={esOptica} cart={cart} soloPromo={soloPromo} onAdd={addCart} onSetQty={setQty} onClose={() => setSel(null)} />}
-      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} secciones={planillaSecciones}
+      {planilla && <PedidoPlanilla clave={clave} sinPrecios={sinPrecios} modelos={planillaModelos} fotosModelo={planillaFotos} secciones={planillaSecciones}
         cantidades={planillaCant} cartCount={cartCount} cartTotal={cartTotal} esPromo={(f) => enPromo(f.modelo, f.precio, f.precio_lista)}
         onSetCant={setCantFila} onVerPedido={() => { setPlanilla(false); setCarritoOpen(true) }} onClose={() => setPlanilla(false)} />}
       {carritoOpen && <CarritoSheet cart={cart} clave={clave} acceso={acceso} bono={bono} modoPack={!!packCalc} onSetQty={setQty} onAdd={addCart}

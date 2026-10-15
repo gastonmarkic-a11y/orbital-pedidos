@@ -24,6 +24,8 @@ interface Props {
   sinPrecios: boolean
   /** Orden y visibilidad de modelos: los de catalogo_home (ocultos ya filtrados por el servidor) */
   modelos: string[]
+  /** Foto de referencia por modelo (la tapa del catálogo), para el encabezado del modelo */
+  fotosModelo?: Record<string, string>
   /** Secciones del catálogo y a qué modelos aplica cada una (para el filtro) */
   secciones: { key: string; nombre: string; modelos: Set<string> }[]
   cantidades: Record<string, number>
@@ -35,7 +37,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
+export default function PedidoPlanilla({ clave, sinPrecios, modelos, fotosModelo, secciones, cantidades, cartCount, cartTotal, esPromo, onSetCant, onVerPedido, onClose }: Props) {
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
   const [error, setError] = useState(false)
   const [q, setQ] = useState('')
@@ -45,7 +47,6 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
   const [escala, setEscala] = useState('')
   const [soloCargados, setSoloCargados] = useState(false)
   const [sinProyectado, setSinProyectado] = useState(false)
-  const [agrupar, setAgrupar] = useState(true)
   const [tope, setTope] = useState<string | null>(null)
 
   useEffect(() => {
@@ -90,22 +91,46 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
       (!soloCargados || (cantidades[f.codigo] ?? 0) > 0))
   }, [base, qn, seccion, secciones, clasif, trat, escala, sinProyectado, soloCargados, cantidades])
 
-  // Grupos por modelo con subtotales (se calculan sobre las filas visibles)
-  const grupos = useMemo(() => {
-    const out: { modelo: string; filas: { f: FilaPlanilla; idx: number }[]; u: number; imp: number }[] = []
-    visibles.forEach((f, idx) => {
-      let g = out[out.length - 1]
-      if (!g || g.modelo !== f.modelo) { g = { modelo: f.modelo, filas: [], u: 0, imp: 0 }; out.push(g) }
-      const c = cantidades[f.codigo] ?? 0
-      g.filas.push({ f, idx }); g.u += c; g.imp += c * f.precio
-    })
+  // Una fila por modelo (en el orden del catálogo) con sus colores adentro y subtotales (sobre las filas visibles)
+  const lista = useMemo(() => {
+    const out: Mod[] = []
+    for (const f of visibles) {
+      let m = out[out.length - 1]
+      if (!m || m.modelo !== f.modelo) { m = { modelo: f.modelo, filas: [], u: 0, imp: 0, desde: 0, proy: 0 }; out.push(m) }
+      const n = cantidades[f.codigo] ?? 0
+      m.filas.push(f); m.u += n; m.imp += n * f.precio
+      if (f.proyectado) m.proy++
+      if (f.precio > 0 && (!m.desde || f.precio < m.desde)) m.desde = f.precio
+    }
     return out
   }, [visibles, cantidades])
 
+  // Plegado: todo cerrado de entrada (se ven solo los modelos). Al buscar un modelo, color o código,
+  // o con "Solo cargados", se abren los modelos que coinciden; los demás filtros solo achican la lista.
+  const [modAb, setModAb] = useState<Set<string>>(() => new Set())
+  const listaRef = useRef(lista); listaRef.current = lista
+  const abrirTodo = useCallback(() => setModAb(new Set(listaRef.current.map((m) => m.modelo))), [])
+  const cerrarTodo = useCallback(() => setModAb(new Set()), [])
+  const filtrando = !!(qn || seccion || clasif || trat || escala || soloCargados || sinProyectado)
+  const abreSolo = !!(qn || soloCargados)
+  useEffect(() => { if (abreSolo) abrirTodo(); else cerrarTodo() }, [qn, soloCargados, abreSolo, abrirTodo, cerrarTodo])
+  const alternar = (k: string) => setModAb((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+
   // Navegación tipo Excel entre las celdas de cantidad
+  // Los encabezados plegables ocupan el ancho visible (no el de la tabla): en el celu el subtotal queda a la vista
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const medir = () => el.style.setProperty('--ancho-tabla', el.clientWidth + 'px')
+    medir()
+    const ro = new ResizeObserver(medir); ro.observe(el)
+    return () => ro.disconnect()
+  }, [filas])
   const celdas = useRef<(HTMLInputElement | null)[]>([])
+  const nCeldasRef = useRef(0)
   const ir = useCallback((idx: number) => {
-    const el = celdas.current[idx]
+    const el = celdas.current[Math.max(0, Math.min(nCeldasRef.current - 1, idx))]
     if (el) { el.focus(); el.select() }
   }, [])
   const onSet = useRef(onSetCant); onSet.current = onSetCant
@@ -114,10 +139,25 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
     onSet.current(f, Math.max(0, n))
   }, [])
 
-  const filtrosActivos = !!(qn || seccion || clasif || trat || escala || soloCargados || sinProyectado)
+  const filtrosActivos = filtrando
   const limpiar = () => { setQ(''); setSeccion(''); setClasif(''); setTrat(''); setEscala(''); setSoloCargados(false); setSinProyectado(false) }
   const nModelosCargados = useMemo(() => new Set(base.filter((f) => (cantidades[f.codigo] ?? 0) > 0).map((f) => f.modelo)).size, [base, cantidades])
-  const cols = (agrupar ? 9 : 10) - (sinPrecios ? 2 : 0)
+  const cols = 9 - (sinPrecios ? 2 : 0)
+
+  // Filas a dibujar: cada modelo y, si está abierto, sus colores debajo.
+  // Los índices de navegación (Enter / flechas) cuentan solo las celdas de cantidad a la vista.
+  const filasTabla: React.ReactNode[] = []
+  let nCeldas = 0
+  for (const m of lista) {
+    const abierto = modAb.has(m.modelo)
+    filasTabla.push(
+      <FilaModelo key={'m:' + m.modelo} m={m} abierto={abierto} cols={cols} sinPrecios={sinPrecios} onClick={() => alternar(m.modelo)}
+        foto={fotosModelo?.[m.modelo] || m.filas.find((f) => f.imagen)?.imagen || null} />)
+    if (abierto) for (const f of m.filas) filasTabla.push(
+      <Fila key={f.codigo} f={f} idx={nCeldas++} cant={cantidades[f.codigo] ?? 0} sinPrecios={sinPrecios}
+        promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} cambiar={cambiar} />)
+  }
+  nCeldasRef.current = nCeldas
 
   return (
     <div className="fixed inset-0 z-40 bg-white flex flex-col orb-tienda text-[#0a0a0a]" role="dialog" aria-label="Pedido grande (planilla)">
@@ -158,7 +198,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
               {opciones.escala.map((p) => <option key={p} value={p}>{kAr(p)}</option>)}
             </Sel>
           )}
-          {([['Agrupar por modelo', agrupar, setAgrupar], ['Solo cargados', soloCargados, setSoloCargados], ['Sin proyectados', sinProyectado, setSinProyectado]] as const).map(([l, v, set]) => (
+          {([['Solo cargados', soloCargados, setSoloCargados], ['Sin proyectados', sinProyectado, setSinProyectado]] as const).map(([l, v, set]) => (
             <button key={l} onClick={() => set(!v)} aria-pressed={v}
               className={`shrink-0 h-9 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap ${v ? 'bg-[#0a0a0a] text-white border-transparent' : 'bg-white border-black/10 text-neutral-700'}`}>
               {v ? '✓ ' : ''}{l}
@@ -166,20 +206,26 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
           ))}
           {filtrosActivos && <button onClick={limpiar} className="shrink-0 h-9 px-2 text-[12px] font-semibold text-[#0004FF] whitespace-nowrap">Limpiar filtros</button>}
         </div>
+        <div className="max-w-7xl mx-auto px-4 pb-2 -mt-1 flex items-center gap-1 text-[12px]">
+          <button onClick={abrirTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Expandir todo</button>
+          <span className="text-neutral-300">|</span>
+          <button onClick={cerrarTodo} className="h-8 px-2 font-semibold text-[#0004FF] hover:bg-[#0004FF]/[0.06] whitespace-nowrap">Contraer todo</button>
+          <span className="ml-auto text-[11px] text-neutral-400 truncate">{lista.length} modelo{lista.length !== 1 ? 's' : ''} · tocá uno para ver sus colores</span>
+        </div>
       </div>
 
       {/* Tabla: el scroll (vertical y horizontal) es de la tabla, nunca de la página */}
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
         {filas == null ? (
           <p className="text-sm text-neutral-500 text-center py-16">Cargando la planilla…</p>
         ) : error ? (
           <p className="text-sm text-red-600 text-center py-16">No pudimos cargar la planilla. Probá de nuevo en un momento.</p>
         ) : (
           <table className="w-full min-w-[760px] border-separate border-spacing-0 text-[12px]">
-            <thead className="sticky top-0 z-10 bg-[#F5F5F7] text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+            {/* Los títulos de columna son de los colores: solo aparecen con algún modelo abierto */}
+            <thead className={`${nCeldas ? '' : 'hidden '}sticky top-0 z-10 bg-[#F5F5F7] text-[10px] uppercase tracking-[0.12em] text-neutral-500`}>
               <tr className="[&>th]:font-semibold [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-black/10 [&>th]:text-left [&>th]:whitespace-nowrap">
                 <th className="w-12 pl-4">Foto</th>
-                {!agrupar && <th>Modelo</th>}
                 <th>Color</th>
                 <th className="w-[84px] !text-center">Cant.</th>
                 {!sinPrecios && <th className="!text-right">Precio</th>}
@@ -194,10 +240,7 @@ export default function PedidoPlanilla({ clave, sinPrecios, modelos, secciones, 
               {visibles.length === 0 && (
                 <tr><td colSpan={cols} className="text-center text-sm text-neutral-400 py-16">{filtrosActivos ? 'No hay colores con esos filtros.' : 'No hay colores con stock.'}</td></tr>
               )}
-              {grupos.map((g) => (
-                <GrupoFilas key={g.modelo} g={g} agrupar={agrupar} cols={cols} sinPrecios={sinPrecios}
-                  cantidades={cantidades} tope={tope} esPromo={esPromo} celdas={celdas} ir={ir} total={visibles.length} cambiar={cambiar} />
-              ))}
+              {filasTabla}
             </tbody>
           </table>
         )}
@@ -238,45 +281,60 @@ function Sel({ value, onChange, children, label }: { value: string; onChange: (v
   )
 }
 
-type Grupo = { modelo: string; filas: { f: FilaPlanilla; idx: number }[]; u: number; imp: number }
-function GrupoFilas({ g, agrupar, cols, sinPrecios, cantidades, tope, esPromo, celdas, ir, total, cambiar }: {
-  g: Grupo; agrupar: boolean; cols: number; sinPrecios: boolean; cantidades: Record<string, number>; tope: string | null
-  esPromo: (f: FilaPlanilla) => boolean; celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void; total: number
-  cambiar: (f: FilaPlanilla, n: number) => void
+type Mod = { modelo: string; filas: FilaPlanilla[]; u: number; imp: number; desde: number; proy: number }
+
+// Fila de modelo: foto de referencia (la tapa del catálogo), nombre, colores, precio desde,
+// disponibilidad y lo cargado. Tocando cualquier parte se despliegan / pliegan sus colores debajo.
+// Ocupa el ancho visible (no el de la tabla): en el celu es una tarjeta entera, sin scroll lateral.
+// Fuera del orden de Tab: Tab salta solo entre las celdas de cantidad, como en Excel.
+function FilaModelo({ m, abierto, cols, foto, sinPrecios, onClick }: {
+  m: Mod; abierto: boolean; cols: number; foto: string | null; sinPrecios: boolean; onClick: () => void
 }) {
+  const disp = m.filas.length - m.proy
+  const cargado = m.u > 0 && (
+    <span className="shrink-0 tabular-nums text-[12px] font-bold whitespace-nowrap px-2 py-1 bg-[#0004FF] text-white">
+      {m.u} u.{!sinPrecios && <span className="font-semibold"> · {kAr(m.imp)}</span>}
+    </span>
+  )
   return (
-    <>
-      {agrupar && (
-        <tr>
-          <td colSpan={cols} className="sticky top-[33px] z-[5] bg-white border-b border-black/10 px-4 pt-3 pb-1.5">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[13px] font-bold uppercase tracking-wide">{g.modelo} <span className="text-[11px] font-normal normal-case tracking-normal text-neutral-400">· {g.filas.length} color{g.filas.length !== 1 ? 'es' : ''}</span></p>
-              {g.u > 0 && (
-                <p className="text-[12px] font-semibold tabular-nums whitespace-nowrap">
-                  {g.u} u.{!sinPrecios && <span className="text-[#0004FF]"> · {kAr(g.imp)}</span>}
-                </p>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-      {g.filas.map(({ f, idx }) => (
-        <Fila key={f.codigo} f={f} idx={idx} cant={cantidades[f.codigo] ?? 0} agrupar={agrupar} sinPrecios={sinPrecios}
-          promo={esPromo(f)} tope={tope === f.codigo} celdas={celdas} ir={ir} total={total} cambiar={cambiar} />
-      ))}
-    </>
+    <tr>
+      <td colSpan={cols} className={`p-0 border-b ${abierto ? 'sticky top-[32px] z-[5] bg-white border-[#0004FF]/30' : 'border-black/10'}`}>
+        <button type="button" tabIndex={-1} onClick={onClick} aria-expanded={abierto}
+          className={`sticky left-0 w-[var(--ancho-tabla,100%)] flex items-center gap-3 text-left px-3 sm:px-4 py-2.5 border-l-[3px] transition-colors
+            ${abierto ? 'bg-[#0004FF]/[0.05] border-l-[#0004FF]' : m.u > 0 ? 'border-l-[#0004FF] hover:bg-[#F5F5F7]' : 'border-l-transparent hover:bg-[#F5F5F7]'}`}>
+          <span className="shrink-0 w-[92px] h-[62px] sm:w-[120px] sm:h-[76px] bg-[#F2F2F2] overflow-hidden flex items-center justify-center">
+            {foto && <img src={foto} alt={m.modelo} loading="lazy" decoding="async" className="w-full h-full object-contain"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-bold uppercase text-[14px] sm:text-[15px] tracking-wide leading-tight">{m.modelo}</span>
+            <span className="block truncate text-[12px] text-neutral-500 mt-0.5">
+              {m.filas.length} color{m.filas.length !== 1 ? 'es' : ''}{!sinPrecios && m.desde ? <> · desde <b className="text-[#0a0a0a]">{kAr(m.desde)}</b></> : null}
+            </span>
+            <span className="flex flex-wrap items-center gap-1 mt-1">
+              {disp > 0 && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5">{disp} disponible{disp !== 1 ? 's' : ''}</span>}
+              {m.proy > 0 && <span className="text-[10px] font-semibold text-[#b45309] bg-[#fdf0dd] px-1.5 py-0.5">📅 {m.proy} proyectado{m.proy !== 1 ? 's' : ''}</span>}
+              <span className="sm:hidden">{cargado}</span>
+            </span>
+          </span>
+          <span className="hidden sm:inline-flex">{cargado}</span>
+          <span className={`shrink-0 hidden sm:inline text-[11px] font-semibold ${abierto ? 'text-[#0004FF]' : 'text-neutral-400'}`}>{abierto ? 'Ocultar colores' : 'Ver colores'}</span>
+          <ChevronDown size={18} className={`shrink-0 transition-transform ${abierto ? 'rotate-180 text-[#0004FF]' : 'text-neutral-400'}`} />
+        </button>
+      </td>
+    </tr>
   )
 }
 
-const Fila = memo(function Fila({ f, idx, cant, agrupar, sinPrecios, promo, tope, celdas, ir, total, cambiar }: {
-  f: FilaPlanilla; idx: number; cant: number; agrupar: boolean; sinPrecios: boolean; promo: boolean; tope: boolean
-  celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void; total: number
+const Fila = memo(function Fila({ f, idx, cant, sinPrecios, promo, tope, celdas, ir, cambiar }: {
+  f: FilaPlanilla; idx: number; cant: number; sinPrecios: boolean; promo: boolean; tope: boolean
+  celdas: React.MutableRefObject<(HTMLInputElement | null)[]>; ir: (i: number) => void
   cambiar: (f: FilaPlanilla, n: number) => void
 }) {
   const color = colorLegible(f.descripcion) || f.descripcion || f.codigo
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); ir(Math.min(total - 1, idx + (e.key === 'Enter' && e.shiftKey ? -1 : 1))) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); ir(Math.max(0, idx - 1)) }
+    if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); ir(idx + (e.key === 'Enter' && e.shiftKey ? -1 : 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); ir(idx - 1) }
     else if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
     else if (e.key === '+' || e.key === '-') { e.preventDefault(); cambiar(f, cant + (e.key === '+' ? 1 : -1)) }
   }
@@ -289,7 +347,6 @@ const Fila = memo(function Fila({ f, idx, cant, agrupar, sinPrecios, promo, tope
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
         </div>
       </td>
-      {!agrupar && <td className={`${td} font-semibold whitespace-nowrap`}>{f.modelo}</td>}
       <td className={`${td} min-w-[160px]`}>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full border border-black/10 shrink-0" style={{ background: colorSwatch(f.descripcion) }} />
