@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
+import ZonasGeneral from './ZonasGeneral'
 
 // Panel "Zonas": por vendedor, cada barrio (CABA) / localidad (conurbano / interior) con su CABEZA DE ZONA,
 // los días del plan en que le toca y TODOS los clientes de la zona. Sale de panel_zonas():
@@ -154,6 +155,7 @@ export default function ZonasPanel() {
   useEffect(() => {
     setLoading(true)
     setError(null)
+    if (ven === 'General') { setLoading(false); return }
     supabase.rpc('panel_zonas', { p_vendedor: ven }).then(({ data, error }) => {
       if (error) { setError(error.message); setLoading(false); return }
       const d = data as { clientes: Cliente[]; cabezas: Cabeza[]; dias: Dia[]; kits: { exhibicion: number; presencia: number } }
@@ -222,7 +224,7 @@ export default function ZonasPanel() {
         </div>
         {esSupervisor && (
           <div className="flex gap-1 bg-white border border-black/10 rounded-lg p-0.5">
-            {VENDEDORES.map((v) => (
+            {[...VENDEDORES, { cod: 'General', label: '🗺 General' }].map((v) => (
               <button key={v.cod} onClick={() => { setVen(v.cod); setAbierta(null) }}
                 className={`text-xs px-3 py-1.5 rounded-md font-medium ${ven === v.cod ? 'bg-brand text-white' : 'text-muted'}`}>{v.label}</button>
             ))}
@@ -230,7 +232,7 @@ export default function ZonasPanel() {
         )}
       </div>
 
-      {loading ? <p className="text-sm text-muted p-4">Cargando zonas…</p> : error ? <p className="text-sm text-red-600 p-4">No se pudieron cargar las zonas: {error}</p> : (
+      {ven === 'General' ? <ZonasGeneral /> : loading ? <p className="text-sm text-muted p-4">Cargando zonas…</p> : error ? <p className="text-sm text-red-600 p-4">No se pudieron cargar las zonas: {error}</p> : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {[
