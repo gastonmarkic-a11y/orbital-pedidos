@@ -1511,15 +1511,18 @@ export default function NuevoPedido() {
               const mat = materialDe(totalUnidades)
               const sig = ESCALERA.find((e) => e.desde > totalUnidades)
               const noAplica = cliente?.nro_lista === 1 || !!cliente?.nota?.includes('REVENDEDOR')
+              // Con lista exclusiva (ej. Paesani) el precio ya es especial: sin bonif. comercial, solo el 3% si paga contado.
+              const sinBonif = Object.keys(preciosEsp).length > 0
+              const pct = sinBonif ? 0 : paq.pct
               const aplicar = (contado: boolean) => {
-                setDtoComercial(paq.pct ? String(paq.pct) : '')
+                setDtoComercial(pct ? String(pct) : '')
                 if (contado) { setDtoFinanciero(String(CONTADO_PCT)); setCuotas([{ dias: 0, pct: 100 }]) }
                 else { setDtoFinanciero(''); setCuotas(repartirCuotas(paq.plazo.split('/').map(Number))) }
               }
               return (
                 <div className="rounded-lg border border-brand/20 bg-brand/[0.04] p-2.5 text-xs space-y-1.5">
                   <p>
-                    📊 <b>Paquete {paq.paquete}</b> ({totalUnidades} u.): bonif. comercial <b>{paq.pct}%</b> · cheques <b>{paq.plazo}</b> · contado <b>+{CONTADO_PCT}%</b>
+                    📊 <b>Paquete {paq.paquete}</b> ({totalUnidades} u.): {sinBonif ? <>sin bonif. comercial (precio exclusivo)</> : <>bonif. comercial <b>{paq.pct}%</b></>} · cheques <b>{paq.plazo}</b> · contado <b>+{CONTADO_PCT}%</b>
                     {mat && <> · 📦 {mat.detalle}</>}
                   </p>
                   {sig && <p className="text-muted">🎁 Con {sig.desde - totalUnidades} u. más pasa al paquete {sig.paquete}: {premioPaquete(paq, sig).join(', ')}.</p>}
@@ -1527,7 +1530,7 @@ export default function NuevoPedido() {
                     ? <p className="text-muted">No aplica a distribuidores ni revendedores.</p>
                     : <div className="flex gap-1.5">
                         <button type="button" onClick={() => aplicar(false)} className="px-2.5 py-1 rounded-md border border-brand text-brandDark font-semibold">Aplicar · cheques {paq.plazo}</button>
-                        <button type="button" onClick={() => aplicar(true)} className="px-2.5 py-1 rounded-md border border-emerald-600 text-emerald-700 font-semibold">Aplicar · contado {paq.pct ? paq.pct + '% + ' : ''}{CONTADO_PCT}%</button>
+                        <button type="button" onClick={() => aplicar(true)} className="px-2.5 py-1 rounded-md border border-emerald-600 text-emerald-700 font-semibold">Aplicar · contado {pct ? pct + '% + ' : ''}{CONTADO_PCT}%</button>
                       </div>}
                 </div>
               )
