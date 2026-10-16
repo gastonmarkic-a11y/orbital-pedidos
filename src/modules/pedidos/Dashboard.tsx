@@ -5,6 +5,7 @@ import { formatPrecio, clienteCorto } from '../../lib/format'
 import { addDias, diasDesde, formatFecha, parsePedidoFecha } from '../../lib/dates'
 import { fetchPaged } from '../../lib/fetchAll'
 import { estadoLabel, ESTADO_COLORS, esMovimientoConsigna, esPedidoShopify, importeDe, parseFP } from './calc'
+import { faltanteDe } from './FichaCobranza'
 
 const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
 const ESTADOS_ORDEN = ['pendiente', 'en_preparacion', 'observado', 'listo', 'facturado', 'listo_despachar', 'despachado']
@@ -217,6 +218,20 @@ export default function DashboardPedidos() {
   }
   const maxMes = Math.max(...Object.values(porMes).map((m) => m.total), 1)
 
+  // Vendido y no entregado: pedidos con ítems `pendiente` (lo que no salió por falta de stock).
+  const sinEntregar = pedidos
+    .map((l) => {
+      const f = faltanteDe(l, stock)
+      const uds = l.total_units || (l.items ?? []).reduce((a, i) => a + i.cantidad, 0)
+      return { l, uds, imp: imp(l), faltUds: f.uds, faltImp: f.importe }
+    })
+    .filter((r) => r.faltUds > 0)
+    .sort((a, b) => b.faltImp - a.faltImp)
+  const sinEntregarTot = sinEntregar.reduce(
+    (a, r) => ({ uds: a.uds + r.uds, imp: a.imp + r.imp, faltUds: a.faltUds + r.faltUds, faltImp: a.faltImp + r.faltImp }),
+    { uds: 0, imp: 0, faltUds: 0, faltImp: 0 }
+  )
+
   const kanban = ESTADOS_ORDEN.filter((e) => e !== 'listo_despachar' || (counts['listo_despachar'] ?? 0) > 0)
 
   return (
@@ -293,6 +308,44 @@ export default function DashboardPedidos() {
           </div>
         ))}
       </div>
+
+      {/* VENDIDO Y NO ENTREGADO */}
+      {sinEntregar.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">🚫 Vendido y no entregado (falta de stock)</p>
+          <div className="bg-white rounded-xl border border-black/10 p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              {[
+                { label: 'No entregado', val: `${sinEntregarTot.faltUds.toLocaleString('es-AR')} u`, color: 'text-red-600' },
+                { label: 'Monto no entregado', val: formatPrecio(sinEntregarTot.faltImp) || '$ 0', color: 'text-red-600' },
+                { label: 'Vendido en esos pedidos', val: `${sinEntregarTot.uds.toLocaleString('es-AR')} u`, color: 'text-ink' },
+                { label: 'Monto vendido', val: formatPrecio(sinEntregarTot.imp) || '$ 0', color: 'text-ink' },
+              ].map((k) => (
+                <div key={k.label} className="bg-black/[0.03] rounded-lg p-2.5">
+                  <p className={`text-lg font-bold ${k.color}`}>{k.val}</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted font-semibold">{k.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="divide-y divide-black/5">
+              {sinEntregar.map((r) => (
+                <div key={r.l.id} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{clienteCorto(r.l.cliente)} <span className="text-faint font-normal">#{r.l.id}</span></p>
+                    <p className="text-faint text-[10px]">
+                      Vendido {r.uds} u · {formatPrecio(r.imp) || '$ 0'} · {estadoLabel(r.l.estado)}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-red-600">{r.faltUds} u · {formatPrecio(r.faltImp) || '$ 0'}</p>
+                    <p className="text-faint text-[10px]">{r.uds ? Math.round((r.faltUds / r.uds) * 100) : 0}% sin entregar</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ALERTAS */}
       {alertas.length > 0 && (
