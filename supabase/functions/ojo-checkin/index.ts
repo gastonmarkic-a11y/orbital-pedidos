@@ -884,6 +884,37 @@ async function armarRutaCabeza(vendedor: string, checkinId: number, lat: number,
   ].join("\n");
 }
 
+// ---------- relectura de fotos viejas ----------
+// Las fotos anteriores a la v4 no tienen exhibidor de Orbital ni participación de marcas: se vuelven a leer
+// de a tandas (POST {"reanalizar": n}). Actualiza el check-in y, si es la última foto del cliente, su ficha.
+async function reanalizar(n: number) {
+  const { data: pend } = await sb.from("visitas_checkin").select("id, cod_cliente, foto_url, direccion_geo, analisis, creado_en")
+    .not("foto_url", "is", null).order("creado_en", { ascending: false }).limit(200);
+  const faltan = (pend ?? []).filter((k) => !(k.analisis && "tiene_exhibidor_orbital" in k.analisis));
+  const { data: niveles } = await sb.from("pop_niveles").select("*").eq("activo", true).order("nivel");
+  let hechas = 0, fallas = 0;
+  for (const k of faltan.slice(0, n)) {
+    try {
+      const r = await fetch(k.foto_url);
+      if (!r.ok) { fallas++; continue; }
+      const mime = r.headers.get("content-type") ?? "image/jpeg";
+      const a = await leerVidriera(new Uint8Array(await r.arrayBuffer()), niveles ?? [], k.direccion_geo ? `La óptica está en: ${k.direccion_geo}.` : "", mime);
+      if (!a) { fallas++; continue; }
+      // se conserva lo que ya estaba (nombre leído, etc.) y se suma lo nuevo
+      const nuevo = { ...(k.analisis ?? {}), ...a };
+      await sb.from("visitas_checkin").update({ analisis: nuevo }).eq("id", k.id);
+      if (k.cod_cliente) {
+        const { data: cli } = await sb.from("clientes").select("foto_vidriera_url").eq("cod", k.cod_cliente).maybeSingle();
+        if (cli?.foto_vidriera_url === k.foto_url) {
+          await sb.from("clientes").update({ vidriera_analisis: nuevo, tiene_orbital: a.tiene_orbital ?? null }).eq("cod", k.cod_cliente);
+        }
+      }
+      hechas++;
+    } catch (e) { console.error("reanalizar", k.id, String(e)); fallas++; }
+  }
+  return { hechas, fallas, quedan: Math.max(0, faltan.length - hechas - fallas) };
+}
+
 // ---------- entrada ----------
 Deno.serve(async (req: Request) => {
   const auth = req.headers.get("authorization") ?? "";
@@ -892,6 +923,10 @@ Deno.serve(async (req: Request) => {
   if (!ok) return new Response("unauthorized", { status: 401 });
   try {
     const body = await req.json().catch(() => ({}));
+    if (body.reanalizar) {
+      const res = await reanalizar(Math.min(10, Number(body.reanalizar) || 5));
+      return new Response(JSON.stringify(res), { headers: { "Content-Type": "application/json" } });
+    }
     const u = body.update ?? body;
     if (u.callback_query) await manejarCallback(u.callback_query);
     else if (u.message) await manejarMensaje(u.message);

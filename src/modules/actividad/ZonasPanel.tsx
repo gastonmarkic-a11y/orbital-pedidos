@@ -22,7 +22,21 @@ type Cliente = {
   oportunidad: string | null
   direccion: string | null
   tel: string | null
+  // punto de venta: lo que leyó la última foto del check-in, POP y material especial
+  foto_fecha: string | null
+  foto_url: string | null
+  tiene_orbital: boolean | null
+  exhibidor: boolean | null
+  marcas: string[] | null
+  participacion: { marca: string; porcentaje: number }[] | null
+  espacio: string | null
+  pop_nivel: number | null
+  kit: string | null
+  especial: string | null
+  ult_checkin: string | null
+  contacto: { fecha: string; estado: string; visita: string | null } | null
 }
+type Dia = { fecha: string; visitas: number; fotos: number; fotos_leidas: number; contactos_lista: number; contactos: number; agendados: number; pop: number; zona: string | null; checkin_cabeza: boolean | null }
 type Cabeza = {
   micro_zona: string
   area: string
@@ -31,8 +45,10 @@ type Cabeza = {
   prioridad: number
   nombre: string | null
   plan: string[] | null
+  sector: number
+  n_clientes: number | null
 }
-type Zona = { zona: string; area: string; cabeza: Cabeza | null; clientes: Cliente[]; peso: number }
+type Zona = { zona: string; area: string; cabezas: Cabeza[]; clientes: Cliente[]; peso: number }
 
 const VENDEDORES = [
   { cod: 'Lola', label: 'Lola' },
@@ -57,11 +73,42 @@ const fechaCorta = (f: string) => {
   return `${DIA[d.getDay()]} ${f.slice(8, 10)}/${f.slice(5, 7)}`
 }
 const esProspectoFuerte = (c: Cliente) => n0(c.puntaje) >= 45
+const ESTADO_CONTACTO: Record<string, string> = { pendiente: '💬 por escribir', enviado: '💬 escrito', agendado: '📅 agendó', no_responde: '💬 no responde', no_interesa: '🚫 no le interesa' }
+const ddmm = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
 
-function ordenarClientes(cs: Cliente[], cabeza: string | undefined) {
+function Meta({ v, meta, label, sub }: { v: number; meta: number; label: string; sub?: string }) {
+  const ok = v >= meta
+  const p = meta ? Math.min(100, Math.round((v / meta) * 100)) : 0
+  return (
+    <div className="bg-white border border-black/10 rounded-xl p-2.5">
+      <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">{label}</p>
+      <p className={`text-xl font-bold tabular-nums ${ok ? 'text-emerald-700' : ''}`}>{v}<span className="text-sm text-faint">/{meta}</span></p>
+      <div className="h-1 bg-black/5 rounded-full overflow-hidden mt-1"><div className={`h-full ${ok ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${p}%` }} /></div>
+      {sub && <p className="text-[10px] text-faint mt-1">{sub}</p>}
+    </div>
+  )
+}
+
+// Lectura del punto de venta en una línea: Orbital / exhibidor / marcas / POP / material especial.
+function LecturaPDV({ c }: { c: Cliente }) {
+  if (!c.foto_fecha && !c.kit && !c.especial && c.tiene_orbital == null) return <span className="text-faint">sin foto</span>
+  const part = (c.participacion ?? []).slice(0, 3).map((x) => `${x.marca} ${x.porcentaje}%`).join(' · ')
+  const marcas = (c.marcas ?? []).slice(0, 3).join(', ')
+  return (
+    <span className="space-x-1">
+      {c.foto_url ? <a href={c.foto_url} target="_blank" rel="noreferrer" className="text-brandDark">📸 {ddmm(c.foto_fecha)}</a> : c.foto_fecha ? <span>📸 {ddmm(c.foto_fecha)}</span> : null}
+      {c.tiene_orbital != null && <span className={c.tiene_orbital ? 'text-emerald-700' : 'text-red-600'}>{c.tiene_orbital ? 'Orbital ✓' : 'sin Orbital'}</span>}
+      {c.tiene_orbital && c.exhibidor != null && <span className={c.exhibidor ? 'text-emerald-700' : 'text-orange-700'}>{c.exhibidor ? 'exhibidor ✓' : 'sin exhibidor'}</span>}
+      {(part || marcas) && <span className="text-muted">· {part || marcas}</span>}
+      {c.kit && <span>· 🧰 {c.kit.toLowerCase()}</span>}
+      {c.especial && <span className="text-violet-700">· ⭐ especial: {c.especial}</span>}
+    </span>
+  )
+}
+
+function ordenarClientes(cs: Cliente[], cabezas: Set<string>) {
   return [...cs].sort((a, b) => {
-    if (a.cod === cabeza) return -1
-    if (b.cod === cabeza) return 1
+    if (cabezas.has(a.cod) !== cabezas.has(b.cod)) return cabezas.has(a.cod) ? -1 : 1
     const ea = ESTADO_ORDEN[a.estado] ?? 9, eb = ESTADO_ORDEN[b.estado] ?? 9
     if (ea !== eb) return ea - eb
     if (a.estado === 'Activo') return n0(b.u12) - n0(a.u12)
@@ -76,6 +123,8 @@ export default function ZonasPanel() {
   const [ven, setVen] = useState<string>(VENDEDORES.some((v) => v.cod === codigoEfectivo) ? (codigoEfectivo as string) : 'Lola')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cabezas, setCabezas] = useState<Cabeza[]>([])
+  const [dias, setDias] = useState<Dia[]>([])
+  const [kits, setKits] = useState<{ exhibicion: number; presencia: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [areaF, setAreaF] = useState('')
@@ -89,9 +138,11 @@ export default function ZonasPanel() {
     setError(null)
     supabase.rpc('panel_zonas', { p_vendedor: ven }).then(({ data, error }) => {
       if (error) { setError(error.message); setLoading(false); return }
-      const d = data as { clientes: Cliente[]; cabezas: Cabeza[] }
+      const d = data as { clientes: Cliente[]; cabezas: Cabeza[]; dias: Dia[]; kits: { exhibicion: number; presencia: number } }
       setClientes(d?.clientes ?? [])
       setCabezas(d?.cabezas ?? [])
+      setDias(d?.dias ?? [])
+      setKits(d?.kits ?? null)
       setLoading(false)
     })
   }, [ven])
@@ -99,17 +150,18 @@ export default function ZonasPanel() {
   const zonas = useMemo(() => {
     const m = new Map<string, Zona>()
     const get = (zona: string, area: string) => {
-      if (!m.has(zona)) m.set(zona, { zona, area, cabeza: null, clientes: [], peso: 0 })
+      if (!m.has(zona)) m.set(zona, { zona, area, cabezas: [], clientes: [], peso: 0 })
       return m.get(zona)!
     }
     for (const c of clientes) get(c.micro_zona, c.area).clientes.push(c)
-    for (const k of cabezas) { const z = get(k.micro_zona, k.area); z.cabeza = k; z.peso = k.prioridad }
+    for (const k of cabezas) { const z = get(k.micro_zona, k.area); z.cabezas.push(k); z.peso += k.prioridad }
     for (const z of m.values()) {
-      if (!z.cabeza) z.peso = z.clientes.reduce((s, c) => s + (c.estado === 'Activo' ? Math.max(0, n0(c.u12)) : 0), 0)
-      z.clientes = ordenarClientes(z.clientes, z.cabeza?.cod)
+      z.cabezas.sort((a, b) => a.sector - b.sector)
+      if (!z.cabezas.length) z.peso = z.clientes.reduce((s, c) => s + (c.estado === 'Activo' ? Math.max(0, n0(c.u12)) : 0), 0)
+      z.clientes = ordenarClientes(z.clientes, new Set(z.cabezas.map((k) => k.cod)))
     }
     // primero las zonas con cabeza (por lo que hay en juego), después el resto
-    return [...m.values()].sort((a, b) => Number(!!b.cabeza) - Number(!!a.cabeza) || b.peso - a.peso || b.clientes.length - a.clientes.length)
+    return [...m.values()].sort((a, b) => Number(b.cabezas.length > 0) - Number(a.cabezas.length > 0) || b.peso - a.peso || b.clientes.length - a.clientes.length)
   }, [clientes, cabezas])
 
   const areas = useMemo(() => [...new Set(zonas.map((z) => z.area))].sort(), [zonas])
@@ -117,7 +169,7 @@ export default function ZonasPanel() {
     const q = busqueda.trim().toLowerCase()
     return zonas.filter((z) => {
       if (areaF && z.area !== areaF) return false
-      if (soloCabeza && !z.cabeza) return false
+      if (soloCabeza && !z.cabezas.length) return false
       if (!q) return true
       return z.zona.toLowerCase().includes(q) || z.clientes.some((c) => (c.nombre || '').toLowerCase().includes(q) || c.cod.toLowerCase().includes(q))
     })
@@ -146,7 +198,7 @@ export default function ZonasPanel() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {[
-              { l: 'Zonas', v: zonas.length, s: `${zonas.filter((z) => z.cabeza).length} con cabeza de zona` },
+              { l: 'Zonas', v: zonas.length, s: `${zonas.filter((z) => z.cabezas.length).length} con cabeza · ${cabezas.length} cabezas en total` },
               { l: 'Clientes', v: clientes.length, s: `${cuenta(clientes, 'Activo')} activos` },
               { l: 'A recuperar', v: cuenta(clientes, 'En caída') + cuenta(clientes, 'Perdido reciente') + cuenta(clientes, 'Perdido'), s: 'en caída o perdidos' },
               { l: 'Prospectos fuertes', v: clientes.filter(esProspectoFuerte).length, s: '45+ puntos' },
@@ -158,6 +210,55 @@ export default function ZonasPanel() {
               </div>
             ))}
           </div>
+
+          {/* Seguimiento del campo: objetivo diario (5 visitas + 25 contactos + 5 POP) y lectura de fotos */}
+          {(() => {
+            const hoy = dias[0]
+            const conFoto = clientes.filter((c) => c.foto_fecha)
+            const conOrb = conFoto.filter((c) => c.tiene_orbital)
+            const sinExh = conOrb.filter((c) => c.exhibidor === false)
+            const especiales = clientes.filter((c) => c.especial)
+            return (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  <Meta label={`Visitas hoy${hoy?.zona ? ' · ' + hoy.zona : ''}`} v={hoy?.visitas ?? 0} meta={5} sub={hoy?.checkin_cabeza ? '✅ check-in en la cabeza' : 'sin check-in en la cabeza todavía'} />
+                  <Meta label="Contactos para agendar" v={hoy?.contactos ?? 0} meta={25} sub={`${hoy?.contactos_lista ?? 0} en la lista · 📅 ${hoy?.agendados ?? 0} agendaron`} />
+                  <Meta label="POP instalados hoy" v={hoy?.pop ?? 0} meta={5} sub={kits ? `quedan ${kits.exhibicion} kits exhibición · ${kits.presencia} presencia` : ''} />
+                  <div className="bg-white border border-black/10 rounded-xl p-2.5">
+                    <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">Fotos de PDV leídas</p>
+                    <p className="text-xl font-bold tabular-nums">{conFoto.length}</p>
+                    <p className="text-[10px] text-faint mt-1">{conOrb.length} con Orbital · <b className="text-orange-700">{sinExh.length} sin exhibidor</b> (Kit Exhibición)</p>
+                  </div>
+                  <div className="bg-white border border-black/10 rounded-xl p-2.5">
+                    <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">Material especial</p>
+                    <p className="text-xl font-bold tabular-nums">{especiales.length}</p>
+                    <p className="text-[10px] text-faint mt-1">{especiales.filter((c) => c.especial === 'relevar').length} a relevar (foto + medidas) · {especiales.filter((c) => c.especial === 'instalado').length} instalados</p>
+                  </div>
+                </div>
+                {dias.length > 0 && (
+                  <div className="bg-white border border-black/10 rounded-xl p-2.5 overflow-x-auto">
+                    <p className="text-[11px] font-semibold mb-1">Últimos días hábiles</p>
+                    <table className="text-[11px] w-full">
+                      <thead><tr className="text-[10px] uppercase text-faint text-left"><th className="pr-3">Día</th><th className="pr-3">Cabeza</th><th className="pr-3 text-right">Visitas /5</th><th className="pr-3 text-right">Fotos (leídas)</th><th className="pr-3 text-right">Contactos /25</th><th className="pr-3 text-right">Agendados</th><th className="text-right">POP /5</th></tr></thead>
+                      <tbody>
+                        {dias.map((d) => (
+                          <tr key={d.fecha} className="border-t border-black/5">
+                            <td className="pr-3 whitespace-nowrap">{fechaCorta(d.fecha)}</td>
+                            <td className="pr-3 text-muted">{d.zona ?? '—'}{d.zona ? (d.checkin_cabeza ? ' ✅' : ' ⏳') : ''}</td>
+                            <td className={`pr-3 text-right tabular-nums ${d.visitas >= 5 ? 'text-emerald-700 font-semibold' : d.visitas ? '' : 'text-faint'}`}>{d.visitas}</td>
+                            <td className="pr-3 text-right tabular-nums">{d.fotos} ({d.fotos_leidas})</td>
+                            <td className={`pr-3 text-right tabular-nums ${d.contactos >= 25 ? 'text-emerald-700 font-semibold' : d.contactos ? '' : 'text-faint'}`}>{d.contactos_lista ? `${d.contactos}/${d.contactos_lista}` : '—'}</td>
+                            <td className="pr-3 text-right tabular-nums">{d.agendados || ''}</td>
+                            <td className={`text-right tabular-nums ${d.pop >= 5 ? 'text-emerald-700 font-semibold' : d.pop ? '' : 'text-faint'}`}>{d.pop}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           <div className="bg-white rounded-xl border border-black/10 p-2.5 space-y-2">
             <div className="flex flex-wrap gap-1.5 items-center">
@@ -180,7 +281,9 @@ export default function ZonasPanel() {
               const open = abierta === z.zona
               const todos = verTodos.has(z.zona)
               const lista = todos ? z.clientes : z.clientes.slice(0, 40)
-              const proximos = (z.cabeza?.plan ?? []).slice(0, 4)
+              const proximos = [...new Set(z.cabezas.flatMap((k) => k.plan ?? []))].sort().slice(0, 4)
+              const fotos = z.clientes.filter((c) => c.foto_fecha)
+              const sinExh = fotos.filter((c) => c.tiene_orbital && c.exhibidor === false).length
               return (
                 <div key={z.zona} className={`bg-white rounded-xl border ${open ? 'border-brand/50' : 'border-black/10'}`}>
                   <button onClick={() => setAbierta(open ? null : z.zona)} className="w-full text-left p-3">
@@ -194,9 +297,15 @@ export default function ZonasPanel() {
                         {z.clientes.length} clientes · {cuenta(z.clientes, 'Activo')} activos · {cuenta(z.clientes, 'En caída') + cuenta(z.clientes, 'Perdido reciente') + cuenta(z.clientes, 'Perdido')} a recuperar · {z.clientes.filter(esProspectoFuerte).length} prospectos fuertes
                       </span>
                     </div>
-                    <p className="mt-1 text-[12px] text-muted truncate">
-                      🎯 <b className="text-ink">Cabeza:</b> {z.cabeza ? `${z.cabeza.nombre} (${MOTIVO[z.cabeza.motivo] ?? z.cabeza.motivo})` : 'sin cabeza (zona sin clientes con ventas o sin ubicación)'}
+                    <p className="mt-1 text-[12px] text-muted">
+                      🎯 <b className="text-ink">{z.cabezas.length > 1 ? `Cabezas (${z.cabezas.length}):` : 'Cabeza:'}</b>{' '}
+                      {z.cabezas.length
+                        ? z.cabezas.map((k) => `${k.nombre} (${MOTIVO[k.motivo] ?? k.motivo}${z.cabezas.length > 1 && k.n_clientes ? `, ${k.n_clientes} clientes cerca` : ''}${k.plan?.length ? ' · ' + k.plan.slice(0, 2).map(fechaCorta).join(', ') : ''})`).join('  ·  ')
+                        : 'sin cabeza (zona sin clientes con ventas, sin ubicación o de otro vendedor)'}
                     </p>
+                    {fotos.length > 0 && (
+                      <p className="text-[11px] text-faint">📸 {fotos.length} PDV con foto · {fotos.filter((c) => c.tiene_orbital).length} con Orbital{sinExh ? ` · ${sinExh} sin exhibidor` : ''}</p>
+                    )}
                   </button>
 
                   {open && (
@@ -211,13 +320,14 @@ export default function ZonasPanel() {
                               <th className="py-1 pr-2 text-right">Mejor año</th>
                               <th className="py-1 pr-2">Últ. compra</th>
                               <th className="py-1 pr-2 text-right">Prior./Puntaje</th>
+                              <th className="py-1 pr-2">Punto de venta (foto)</th>
                               <th className="py-1 pr-2">Dirección</th>
                               <th className="py-1">Contacto</th>
                             </tr>
                           </thead>
                           <tbody>
                             {lista.map((c) => {
-                              const esCabeza = c.cod === z.cabeza?.cod
+                              const esCabeza = z.cabezas.some((k) => k.cod === c.cod)
                               return (
                                 <tr key={c.cod} className={`border-t border-black/5 ${esCabeza ? 'bg-brand/5' : ''}`}>
                                   <td className="py-1 pr-2">
@@ -232,8 +342,12 @@ export default function ZonasPanel() {
                                   <td className="py-1 pr-2 text-right tabular-nums">
                                     {c.prioridad != null ? n0(c.prioridad) : c.puntaje != null ? <span title={c.oportunidad ?? ''}>{n0(c.puntaje)}</span> : ''}
                                   </td>
+                                  <td className="py-1 pr-2 max-w-[320px]"><LecturaPDV c={c} /></td>
                                   <td className="py-1 pr-2 text-muted truncate max-w-[220px]">{c.direccion ?? ''}</td>
-                                  <td className="py-1"><TelefonoAcciones whatsapp={c.tel} telefono={null} compact /></td>
+                                  <td className="py-1">
+                                    <TelefonoAcciones whatsapp={c.tel} telefono={null} compact />
+                                    {c.contacto && <span className="block text-[10px] text-muted whitespace-nowrap">{ESTADO_CONTACTO[c.contacto.estado] ?? c.contacto.estado}{c.contacto.visita ? ` · visita ${ddmm(c.contacto.visita)}` : ''}</span>}
+                                  </td>
                                 </tr>
                               )
                             })}

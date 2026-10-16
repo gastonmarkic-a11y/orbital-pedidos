@@ -134,7 +134,7 @@ async function dia(solo: string | null, prueba: boolean, fecha: string | null) {
     if (solo && c.vendedor !== solo) continue;
     if (c.enviado_at && !solo) { salida[c.vendedor] = "ya enviado"; continue; }
     const { data: f } = await sb.rpc("ficha_optica", { p_cod: c.cod_cliente });
-    const { data: cz } = await sb.from("cabeza_zona").select("lat, lon").eq("vendedor", c.vendedor).eq("micro_zona", c.micro_zona).maybeSingle();
+    const { data: cz } = await sb.from("cabeza_zona").select("lat, lon").eq("vendedor", c.vendedor).eq("cod_cliente", c.cod_cliente).maybeSingle();
     const { data: acc } = await sb.from("acciones_seguimiento")
       .select("id, cod_cliente, temperatura, titulo, fecha_programada, pieza_id")
       .eq("vendedor", c.vendedor).eq("estado", "pendiente").lte("fecha_programada", hoy).order("fecha_programada").limit(15);
