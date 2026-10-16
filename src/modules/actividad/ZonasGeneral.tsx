@@ -13,7 +13,22 @@ type VendG = {
   contactos_hoy: number; contactos_periodo: number; agendados: number; pop_periodo: number; dias_habiles: number
 }
 type Datos = { zonas: ZonaG[]; cabezas: CabezaG[]; vendedores: VendG[] }
-type Feature = { properties: { nombre: string }; geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: number[][][] | number[][][][] } }
+type Feature = { properties: { nombre: string; lon?: number; lat?: number }; geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: number[][][] | number[][][][] } }
+
+// punto dentro de polígono (ray casting) sobre el anillo exterior de cada parte
+function enAnillo(r: number[][], x: number, y: number) {
+  let ok = false
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, yi] = r[i], [xj, yj] = r[j]
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ok = !ok
+  }
+  return ok
+}
+function dentro(f: Feature, x: number, y: number) {
+  return f.geometry.type === 'Polygon'
+    ? enAnillo((f.geometry.coordinates as number[][][])[0], x, y)
+    : (f.geometry.coordinates as number[][][][]).some((p) => enAnillo(p[0], x, y))
+}
 
 // Un color por vendedor, el mismo en CABA y en el conurbano.
 export const COLOR_VENDEDOR: Record<string, string> = { Lola: '#7C3AED', Bruno: '#0284C7', Adrian: '#D97706' }
@@ -35,6 +50,7 @@ const W = 900
 export default function ZonasGeneral() {
   const [d, setD] = useState<Datos | null>(null)
   const [geo, setGeo] = useState<Feature[]>([])
+  const [partidos, setPartidos] = useState<Feature[]>([])
   const [error, setError] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('amba')
   const [solo, setSolo] = useState('')
@@ -47,7 +63,26 @@ export default function ZonasGeneral() {
       else setD(data as Datos)
     })
     fetch('/geo/caba-barrios.json').then((r) => r.json()).then((g) => setGeo(g.features ?? [])).catch(() => setGeo([]))
+    // límites oficiales de los partidos del AMBA (IGN, vía datos.gob.ar)
+    fetch('/geo/amba-partidos.json').then((r) => r.json()).then((g) => setPartidos(g.features ?? [])).catch(() => setPartidos([]))
   }, [])
+
+  // dueño de cada partido: se ubica el centro de cada localidad del conurbano dentro de su partido
+  // y gana el vendedor con más clientes sumados
+  const duenoPartido = useMemo(() => {
+    const m = new Map<string, { v: string; por: Record<string, number> }>()
+    for (const z of d?.zonas ?? []) {
+      if (z.area !== 'Conurbano' || z.lat == null || z.lon == null) continue
+      // primero por nombre (la localidad que es cabecera del partido), si no por ubicación
+      const f = partidos.find((p) => norm(p.properties.nombre) === norm(z.micro_zona)) ?? partidos.find((p) => dentro(p, z.lon!, z.lat!))
+      if (!f) continue
+      const o = m.get(f.properties.nombre) ?? { v: z.vendedor, por: {} }
+      o.por[z.vendedor] = (o.por[z.vendedor] ?? 0) + z.n
+      o.v = Object.entries(o.por).sort((a, b) => b[1] - a[1])[0][0]
+      m.set(f.properties.nombre, o)
+    }
+    return m
+  }, [d, partidos])
 
   // dueño de cada barrio de CABA: el vendedor con más clientes ahí
   const duenoBarrio = useMemo(() => {
@@ -72,7 +107,6 @@ export default function ZonasGeneral() {
       ? (f.geometry.coordinates as number[][][]).map(ring).join('')
       : (f.geometry.coordinates as number[][][][]).map((p) => p.map(ring).join('')).join('')
 
-  const zonasConu = (d?.zonas ?? []).filter((z) => z.area === 'Conurbano' && z.lat != null && z.lon != null)
   const cabezas = (d?.cabezas ?? []).filter((k) => k.lat != null && k.lon != null)
   const atenua = (vend: string) => (solo && solo !== vend ? 0.15 : 1)
 
@@ -133,13 +167,22 @@ export default function ZonasGeneral() {
           </span>
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto bg-[#F7F5F0] rounded-lg" onClick={() => setSel(null)}>
-          {/* conurbano: una mancha por localidad, tamaño por clientes */}
-          {zonasConu.map((z) => (
-            <circle key={z.vendedor + z.micro_zona} cx={px(z.lon!)} cy={py(z.lat!)} r={Math.max(5, Math.sqrt(z.n) * 3.2) * escala}
-              fill={COLOR_VENDEDOR[z.vendedor]} fillOpacity={0.22 * atenua(z.vendedor)} stroke={COLOR_VENDEDOR[z.vendedor]} strokeOpacity={0.5 * atenua(z.vendedor)} strokeWidth={1}>
-              <title>{`${z.micro_zona} · ${NOMBRE[z.vendedor]} · ${z.n} clientes (${z.activos} activos, ${z.recuperar} a recuperar)`}</title>
-            </circle>
-          ))}
+          {/* conurbano: cada partido pintado con el color del vendedor que tiene más clientes ahí */}
+          {partidos.map((f) => {
+            const p = duenoPartido.get(f.properties.nombre)
+            const col = p ? COLOR_VENDEDOR[p.v] : '#cfcac0'
+            const detalle = p ? Object.entries(p.por).sort((a, b) => b[1] - a[1]).map(([vv, n]) => `${NOMBRE[vv]} ${n}`).join(' · ') : 'sin clientes'
+            return (
+              <path key={'p' + f.properties.nombre} d={pathDe(f)} fill={col} fillOpacity={p ? 0.32 * atenua(p.v) : 0.35} stroke="#fff" strokeWidth={vista === 'amba' ? 1 : 1.5}>
+                <title>{`${f.properties.nombre} · ${detalle}`}</title>
+              </path>
+            )
+          })}
+          {vista !== 'caba' && partidos.filter((f) => f.properties.lon != null).map((f) => {
+            const x = px(f.properties.lon!), y = py(f.properties.lat!)
+            if (x < 0 || x > W || y < 0 || y > H) return null
+            return <text key={'pt' + f.properties.nombre} x={x} y={y} fontSize={vista === 'amba' ? 8 : 10} textAnchor="middle" fill="#44403c" fontWeight={600} pointerEvents="none">{f.properties.nombre}</text>
+          })}
           {/* CABA: barrios pintados por dueño */}
           {geo.map((f) => {
             const due = duenoBarrio.get(norm(f.properties.nombre))
@@ -155,11 +198,6 @@ export default function ZonasGeneral() {
             const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length
             return <text key={'t' + f.properties.nombre} x={px(cx)} y={py(cy)} fontSize={9} textAnchor="middle" fill="#57534e" pointerEvents="none">{f.properties.nombre}</text>
           })}
-          {/* nombres de las localidades grandes del conurbano */}
-          {vista !== 'caba' && zonasConu.filter((z) => z.n >= (vista === 'amba' ? 15 : 6)).map((z) => (
-            <text key={'l' + z.vendedor + z.micro_zona} x={px(z.lon!)} y={py(z.lat!) - Math.max(5, Math.sqrt(z.n) * 3.2) * escala - 2}
-              fontSize={vista === 'amba' ? 8 : 9} textAnchor="middle" fill="#44403c" opacity={atenua(z.vendedor)} pointerEvents="none">{z.micro_zona}</text>
-          ))}
           {/* cabezas de zona */}
           {cabezas.map((k) => (
             <circle key={k.vendedor + k.cod} cx={px(k.lon!)} cy={py(k.lat!)} r={(k.sector === 1 ? 4.2 : 3.2) * Math.min(escala, 1.6)}
@@ -175,7 +213,7 @@ export default function ZonasGeneral() {
             {sel.n_clientes ? ` · ${sel.n_clientes} clientes cerca` : ''}{sel.proxima ? ` · próxima visita ${ddmm(sel.proxima)}` : ' · sin fecha en el plan'}
           </div>
         )}
-        <p className="text-[10px] text-faint">Barrios de CABA pintados por el vendedor con más clientes; en el conurbano, cada mancha es una localidad (más grande = más clientes). Los círculos blancos son las cabezas de zona (más grandes = sector 1). Tocá uno para ver el detalle.</p>
+        <p className="text-[10px] text-faint">Barrios de CABA y partidos del conurbano pintados con el color del vendedor que tiene más clientes ahí (pasá el mouse para ver el reparto). Los círculos blancos son las cabezas de zona (más grandes = sector 1). Tocá uno para ver el detalle.</p>
       </div>
 
       {/* todas las zonas */}
