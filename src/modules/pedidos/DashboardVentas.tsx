@@ -6,6 +6,9 @@ import type { Pedido, StockItem } from '../../lib/types'
 
 // Estados que cuentan como facturado (igual que el dashboard operativo).
 const FACTURABLES = ['facturado', 'listo_despachar', 'despachado']
+// Vendido pero todavía sin facturar (cargado en el mes, sigue en circuito).
+const SIN_FACTURAR = ['pendiente', 'en_preparacion', 'observado', 'listo']
+const ESTADO_LBL: Record<string, string> = { pendiente: 'pendiente', en_preparacion: 'en preparación', observado: 'observado', listo: 'listo', liquidacion: 'liquidación sin facturar' }
 
 // Dashboard de ventas — SOLO PESOS. Interactivo y ecualizable:
 //  - Scope: General (admin) o una cartera puntual (por código de cliente). Vendedor: su cartera.
@@ -22,6 +25,7 @@ const kAr = (n: number) => fmtArs.format(Math.round(n))
 
 interface Punto { ars: number; u: number; ops: number; b2b: number; b2c: number }
 interface Fila { k: string; sub?: string; v: number; u: number }
+interface Pend { cliente: string; estados: Set<string>; liq: boolean; obs: string[]; n: number; v: number; u: number }
 
 export default function DashboardVentas() {
   const { rolEfectivo, codigoEfectivo } = useAuth()
@@ -32,6 +36,7 @@ export default function DashboardVentas() {
   const esGeneral = scope === 'general'
 
   const [serie, setSerie] = useState<{ anio_mes: string; p: Punto }[]>([])
+  const [pendMes, setPendMes] = useState<Map<string, Map<string, Pend>>>(new Map())
   const [mesSel, setMesSel] = useState('')
   const [mesCmp, setMesCmp] = useState('')
   const [metrica, setMetrica] = useState<'ars' | 'u'>('ars')
@@ -73,20 +78,51 @@ export default function DashboardVentas() {
         // Empalme: meses posteriores al histórico Tango (jul-26) → B2B desde los pedidos
         // facturados de la app, con el MISMO cálculo que el operativo (así agosto coincide).
         const cutoff = ((m.data as { anio_mes: string }[]) ?? []).reduce((mx, r) => (r.anio_mes > mx ? r.anio_mes : mx), '0000-00')
-        const [ped, stk] = await Promise.all([
+        const [ped, stk, liq] = await Promise.all([
           supabase.from('pedidos').select('*'),
           supabase.from('stock').select('codigo,precio,precio_preventa'),
+          supabase.from('consigna_liquidacion').select('cod_madre,created_at,total_units,importe,pedido_factura_id').eq('facturada', false),
         ])
         const stock = (stk.data as StockItem[]) ?? []
-        for (const p of (ped.data as Pedido[]) ?? []) {
-          if (!FACTURABLES.includes(p.estado ?? '')) continue
+        const pend = new Map<string, Map<string, Pend>>()
+        const sumar = (mes: string, k: string, estado: string, v: number, u: number, obs?: string | null, liqui = false) => {
+          let pm = pend.get(mes); if (!pm) { pm = new Map(); pend.set(mes, pm) }
+          let r = pm.get(k); if (!r) { r = { cliente: k, estados: new Set(), liq: false, obs: [], n: 0, v: 0, u: 0 }; pm.set(k, r) }
+          r.estados.add(estado); r.n += 1; r.v += v; r.u += u
+          if (liqui) r.liq = true
+          if (obs?.trim()) r.obs.push(obs.trim())
+        }
+        const pedidos = (ped.data as Pedido[]) ?? []
+        for (const p of pedidos) {
           const mes = p.created_at ? String(p.created_at).slice(0, 7) : ''
           if (!mes || mes <= cutoff) continue // no duplicar lo que ya está en el histórico
+          // Consignación: la reposición es mercadería en consigna, NO venta. La venta es la liquidación.
+          if (p.origen === 'reposicion') continue
+          if (SIN_FACTURAR.includes(p.estado ?? '')) {
+            // Consumidor final de la web (8888xx) ya entra como B2C desde Shopify: no es B2B pendiente.
+            if ((p.cod_cliente ?? '').startsWith('8888')) continue
+            sumar(mes, p.cliente || p.cod_cliente || '—', p.estado!, importeDe(p, stock), p.total_units ?? 0, p.obs_deposito)
+            continue
+          }
+          if (!FACTURABLES.includes(p.estado ?? '')) continue
           const a = get(mes)
           const n = importeDe(p, stock)
           a.ars += n; a.b2b += n; a.ops += 1; a.u += (p.total_units ?? 0)
         }
+        // Liquidaciones de consigna sin facturar = vendido sin facturar (si ya tienen pedido de factura, lo cuenta el pedido).
+        const liqs = ((liq.data as { cod_madre: string; created_at: string; total_units: number; importe: number; pedido_factura_id: number | null }[]) ?? [])
+          .filter((l) => !l.pedido_factura_id)
+        if (liqs.length) {
+          const { data: cl } = await supabase.from('clientes').select('cod,razon').in('cod', [...new Set(liqs.map((l) => l.cod_madre))])
+          const nom = new Map(((cl as { cod: string; razon: string }[]) ?? []).map((c) => [c.cod, c.razon]))
+          for (const l of liqs) {
+            const mes = String(l.created_at).slice(0, 7)
+            sumar(mes, `${l.cod_madre} - ${nom.get(l.cod_madre) ?? 'consigna'}`, 'liquidacion', Number(l.importe) || 0, l.total_units ?? 0, null, true)
+          }
+        }
+        if (!cancel) setPendMes(pend)
       } else {
+        setPendMes(new Map())
         const { data } = await supabase.rpc('ventas_cartera_mensual', { p_cartera: scope })
         for (const r of (data as { anio_mes: string; unidades: number; importe_ars: number; clientes: number }[]) ?? []) {
           const a = get(r.anio_mes); a.ars += r.importe_ars; a.u += r.unidades; a.ops += r.clientes; a.b2b += r.importe_ars
@@ -201,6 +237,10 @@ export default function DashboardVentas() {
     }
     return r
   }
+  const pendientes = [...(pendMes.get(mesNuevo)?.values() ?? [])].sort((a, b) => b.v - a.v || b.u - a.u)
+  const pendTot = pendientes.reduce((t, r) => ({ v: t.v + r.v, u: t.u + r.u, n: t.n + r.n }), { v: 0, u: 0, n: 0 })
+  const pendLiq = pendientes.filter((r) => r.liq).reduce((t, r) => t + r.v, 0)
+
   const ytdCur = acum(y, m)
   const ytdPrev = acum(String(+y - 1), m)
   const ytdFullCur = acum(y)
@@ -422,6 +462,46 @@ export default function DashboardVentas() {
         <Kpi titulo={esGeneral ? 'Operaciones' : 'Clientes con compra'} valor={ent.format(cur.ops)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(cur.ops, cmp?.ops)} />
         <Kpi titulo="Ticket promedio" valor={kAr(ticket)} sub={`vs ${etiqueta(mesViejo)}`} pct={delta(ticket, ticketCmp)} />
       </div>
+
+      {/* Vendido sin facturar: pedidos cargados en el mes que siguen en circuito (no suman arriba) */}
+      {esGeneral && pendientes.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-amber-300/70">
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <p className="text-xs font-semibold text-muted uppercase tracking-wide">⏳ Vendido sin facturar · {etiqueta(mesNuevo)}</p>
+              <p className="text-2xl font-bold text-amber-600 leading-tight">{kAr(pendTot.v)}</p>
+              <p className="text-[11px] text-muted">{ent.format(pendTot.u)} u · {pendTot.n} pedidos · {pendientes.length} clientes</p>
+            </div>
+            <div className="text-right text-[11px] space-y-0.5">
+              <p className="text-faint">Si se factura todo, {etiqueta(mesNuevo)} queda en</p>
+              <p className="text-lg font-bold text-brandDark leading-tight">{kAr(cur.ars + pendTot.v)}</p>
+              {pendLiq > 0 && <p className="text-faint">incluye {kAr(pendLiq)} de liquidaciones de consigna</p>}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {pendientes.map((r) => (
+              <div key={r.cliente} className="flex items-center gap-2 text-xs border-t border-black/5 pt-1.5">
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-ink" title={r.cliente}>
+                    {r.cliente}
+                    {r.liq && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 align-middle">consigna</span>}
+                  </p>
+                  <p className="text-[10px] text-faint truncate" title={r.obs.join(' · ')}>
+                    {[...r.estados].map((e) => ESTADO_LBL[e] ?? e).join(' · ')}{r.n > 1 ? ` · ${r.n} pedidos` : ''}{r.obs.length ? ` · ${r.obs[0]}` : ''}
+                  </p>
+                </div>
+                <span className="w-14 text-right text-muted shrink-0">{ent.format(r.u)} u</span>
+                <span className="w-24 text-right font-semibold text-ink shrink-0">{r.v ? kAr(r.v) : <span className="text-faint font-normal">sin precio</span>}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-faint mt-2">
+            Pedidos B2B cargados en el mes en estado pendiente, en preparación, observado o listo. No suman a la facturación de arriba;
+            cuando se facturan, entran en este mismo mes. Importe calculado con la lista y descuentos del pedido. Sin consumidor final web (ya entra por Shopify).
+            Consignación: solo cuentan las liquidaciones; las reposiciones a los locales no son venta.
+          </p>
+        </div>
+      )}
 
       {/* Evolución interactiva con feedback claro */}
       <div className="bg-white rounded-xl p-4 border border-black/10">
