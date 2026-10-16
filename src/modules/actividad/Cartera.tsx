@@ -8,6 +8,7 @@ import { Cliente, Propuesta } from '../../lib/types'
 import { daysSince, firstOfMonth } from '../../lib/dates'
 import HistorialModal from './HistorialModal'
 import CompradoresTienda from './CompradoresTienda'
+import MapaBarrio from './MapaBarrio'
 import PreparacionEnvio, { leerEnvioPendiente } from '../envios/PreparacionEnvio'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
 import { telefonosCliente } from '../../lib/telefono'
@@ -96,6 +97,8 @@ export default function Cartera() {
   const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian')
   const esRevendedor = rolEfectivo === 'revendedor'
   const [modoCartera, setModoCartera] = useState<'prospectos' | 'venta_directa'>('prospectos')
+  // Vista de la cartera: lista de clientes o mapa comercial por barrio (ancla, a recuperar, prospectos).
+  const [vista, setVista] = useState<'lista' | 'mapa'>('lista')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cohorte, setCohorte] = useState<Record<string, { v2026: boolean; v2025: boolean; ultimoAnio: number | null; u2025: number }>>({})
   const [ultimaAct, setUltimaAct] = useState<Record<string, string>>({})
@@ -599,10 +602,41 @@ export default function Cartera() {
     </div>
   ) : null
 
+  // El mapa por barrio es para carteras de vendedor de zona (no pools, tienda ni corporativo ni revendedores).
+  const mostrarMapa = !esRevendedor && !esProspOperador && !!codigoActivo && !['Tienda', 'Corporativo', 'Marketing', 'Ulises'].includes(codigoActivo)
+  const selectorVista = mostrarMapa && (
+    <div className="flex gap-1 bg-black/5 rounded-lg p-1 w-fit">
+      {(
+        [
+          ['lista', '📋 Lista'],
+          ['mapa', '🗺 Mapa por barrio'],
+        ] as ['lista' | 'mapa', string][]
+      ).map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => setVista(v)}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md ${vista === v ? 'bg-white shadow-sm text-brandDark' : 'text-muted'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (mostrarMapa && vista === 'mapa')
+    return (
+      <div className="space-y-3 text-ink">
+        {solapas}
+        {selectorVista}
+        <MapaBarrio vendedor={codigoActivo} />
+      </div>
+    )
+
   if (loading)
     return (
       <div className="space-y-3 text-ink">
         {solapas}
+        {selectorVista}
         <p className="text-sm text-muted p-4">Cargando cartera...</p>
       </div>
     )
@@ -614,6 +648,7 @@ export default function Cartera() {
   return (
     <div className="space-y-3 text-ink">
       {solapas}
+      {selectorVista}
 
       {/* Tienda online: la cartera son 2 clientes facturadores, el detalle real son los compradores de Shopify. */}
       {codigoActivo === 'Tienda' && <CompradoresTienda />}

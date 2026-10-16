@@ -7,6 +7,7 @@ import DrillClientes, { DrillRow } from './DrillClientes'
 import PreparacionEnvio from '../envios/PreparacionEnvio'
 import { Cliente } from '../../lib/types'
 import LlamarBtn from '../../lib/LlamarBtn'
+import MiDiaCampo from './MiDiaCampo'
 
 // Agenda de CAMPO (Adrián / Bruno): recorrido diario en Buenos Aires + GBA de sus
 // clientes de canje + a recuperar (7 propios/día por zona) + los 5 turnos de prospección.
@@ -425,6 +426,9 @@ export default function AgendaCampo() {
           </div>
         )}
       </div>
+
+      {/* Cabeza de zona del día + ruta tras el check-in + acciones del mes */}
+      <MiDiaCampo ven={ven} />
 
       <AjusteIAAgenda ven={ven} onAplicado={cargar} />
 

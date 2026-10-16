@@ -18,6 +18,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   del EXIF (foto mandada como archivo — Telegram borra el GPS de las fotos comprimidas), de la
 //   ubicación compartida o de las coordenadas del cliente reconocido por el cartel. Si el vendedor
 //   aparece a más de 4 km de lo que le queda, se rearma la ruta desde ahí.
+//   v3 (2026-10-16, Gastón): CABEZA DE ZONA. Si el vendedor tiene cabeza del día (cabeza_dia, la manda
+//   ojo-cabeza-dia a la mañana), la ruta son las 4 ópticas que siguen (opticas_del_dia: a recuperar,
+//   prospectos estratégicos y activos sin visita, cerca y de su cartera) con la ficha completa de cada
+//   una (ficha_optica). Cuando termina las 4 y manda otra foto, le pasa 4 más.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -402,6 +406,7 @@ async function manejarCallback(cq: any) {
   if (Number(cq.from?.id) !== Number(ck.telegram_user_id) && !(await esAdmin(Number(cq.from?.id)))) {
     await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Esto lo confirma quien hizo el check-in 🙂" }); return;
   }
+  if (eleccion?.startsWith("R-")) { await resultadoVisita(ck, eleccion.slice(2), cq, chatId, msgId); return; }
   if (eleccion === "DESHACER") {
     if (ck.estado !== "confirmado") { await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Ya estaba abierto" }); return; }
     await tg("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } });
@@ -531,10 +536,59 @@ async function confirmar(ck: any, cod: string, chatId: number, replyTo: number, 
   if (ruta.texto) lineas.push(`\n${ruta.texto}`);
 
   const extra: Record<string, unknown> = { reply_to_message_id: replyTo };
-  if (auto) extra.reply_markup = { inline_keyboard: [[{ text: "✏️ No es esta óptica", callback_data: `ck:${ck.id}:DESHACER` }]] };
+  // cómo le fue: con un toque queda la temperatura y la acción del mes que viene
+  const teclado = tecladoResultado(ck.id);
+  if (auto) teclado.push([{ text: "✏️ No es esta óptica", callback_data: `ck:${ck.id}:DESHACER` }]);
+  extra.reply_markup = { inline_keyboard: teclado };
+  lineas.push("\n<b>¿Cómo te fue?</b> Tocá al salir 👇");
   if (auto) lineas[0] = lineas[0].replace("Visita registrada", "Check-in automático");
   await enviar(chatId, lineas.join("\n"), extra);
   if (ruta.nueva) await enviar(chatId, ruta.nueva, { disable_web_page_preview: true });
+}
+
+// ---------- resultado de la visita → temperatura → acción del mes siguiente ----------
+// El insert en actividad_diaria dispara trg_actividad_accion (SQL), que calcula caliente/tibia/fría
+// (resultado + notas + catálogo abierto) y programa la acción: empujón comercial o branding mensual.
+const RESULTADOS: Record<string, { txt: string; res: string }> = {
+  ya: { txt: "✅ Compró", res: "vendio" },
+  cmp: { txt: "🛒 Va a comprar", res: "cmp" },
+  cat: { txt: "📖 Le mandé catálogo", res: "cat" },
+  pie: { txt: "🤔 Lo piensa", res: "pie" },
+  no: { txt: "🧊 Sin interés", res: "no_interesa" },
+};
+function tecladoResultado(id: number) {
+  return [
+    [{ text: RESULTADOS.ya.txt, callback_data: `ck:${id}:R-ya` }, { text: RESULTADOS.cmp.txt, callback_data: `ck:${id}:R-cmp` }],
+    [{ text: RESULTADOS.cat.txt, callback_data: `ck:${id}:R-cat` }, { text: RESULTADOS.pie.txt, callback_data: `ck:${id}:R-pie` }],
+    [{ text: RESULTADOS.no.txt, callback_data: `ck:${id}:R-no` }],
+  ];
+}
+async function resultadoVisita(ck: any, clave: string, cq: any, chatId: number, msgId: number) {
+  const r = RESULTADOS[clave];
+  if (!r || ck.estado !== "confirmado" || !ck.cod_cliente) {
+    await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Primero confirmá en qué óptica estás" }); return;
+  }
+  const { data: cli } = await sb.from("clientes").select("nomcomerc, razon, localidad").eq("cod", ck.cod_cliente).maybeSingle();
+  await sb.from("actividad_diaria").insert({
+    fecha: hoyAR(), vendedor: ck.vendedor, cod_cliente: ck.cod_cliente, nombre_comercio: cli?.nomcomerc?.trim() || cli?.razon,
+    localidad: cli?.localidad, origen: "checkin", resultado_contacto: r.res,
+    actividad_desarrollo: `Resultado de la visita: ${r.txt}`,
+  });
+  if (clave === "ya" && ck.agenda_campo_id) await sb.from("agenda_campo").update({ resultado: "vendio" }).eq("id", ck.agenda_campo_id);
+  const { data: acc } = await sb.from("acciones_seguimiento").select("temperatura, titulo, fecha_programada, pieza_id")
+    .eq("cod_cliente", ck.cod_cliente).eq("estado", "pendiente").maybeSingle();
+  let pieza = "";
+  if (acc?.pieza_id) {
+    const { data: p } = await sb.from("piezas_marketing").select("titulo").eq("id", acc.pieza_id).maybeSingle();
+    if (p?.titulo) pieza = ` · material: ${esc(p.titulo)}`;
+  }
+  await tg("answerCallbackQuery", { callback_query_id: cq.id, text: `Anotado: ${r.txt}` });
+  await tg("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } });
+  const temp = acc ? ({ caliente: "🔥 caliente", tibia: "🙂 tibia", fria: "🧊 fría" } as Record<string, string>)[acc.temperatura] : "";
+  const f = acc ? String(acc.fecha_programada) : "";
+  await enviar(chatId, acc
+    ? `📝 <b>${esc(cli?.nomcomerc?.trim() || cli?.razon || ck.cod_cliente)}</b>: ${r.txt}. Relación ${temp}.\n⏭ ${esc(acc.titulo)} — ${f.slice(8, 10)}/${f.slice(5, 7)}${pieza}`
+    : `📝 Anotado: ${r.txt}.`, { reply_to_message_id: msgId });
 }
 
 // ---------- deshacer un check-in automático ----------
@@ -616,7 +670,12 @@ async function rutaTrasVisita(ck: any, cod: string, lat: number | null, lon: num
   const enRuta = (rutaHoy ?? []).find((r) => r.cod_cliente === cod);
   if (enRuta && !enRuta.visitado) await sb.from("ruta_dia").update({ visitado: true, visitado_checkin_id: ck.id, visitado_en: ahora }).eq("id", enRuta.id);
 
+  // cabeza de zona del día: se marca el check-in y, terminadas las 4 ópticas, la próxima foto trae 4 más
+  const { data: cabeza } = await sb.from("cabeza_dia").select("cod_cliente, checkin_at").eq("vendedor", vendedor).eq("fecha", hoy).maybeSingle();
+  if (cabeza && cabeza.cod_cliente === cod && !cabeza.checkin_at) await sb.from("cabeza_dia").update({ checkin_at: ahora }).eq("vendedor", vendedor).eq("fecha", hoy);
+
   let rearmar = !(rutaHoy ?? []).length;
+  if (!rearmar && cabeza && !enRuta && !(rutaHoy ?? []).some((r) => !r.visitado)) rearmar = true;
   if (!rearmar && !enRuta && lat != null && lon != null) {
     const pend = (rutaHoy ?? []).filter((r) => !r.visitado).map((r) => r.cod_cliente);
     if (pend.length) {
@@ -631,7 +690,9 @@ async function rutaTrasVisita(ck: any, cod: string, lat: number | null, lon: num
     }
     if ((rutaHoy ?? []).length) await sb.from("ruta_dia").delete().eq("vendedor", vendedor).eq("fecha", hoy).eq("visitado", false);
     if (!enRuta) await sb.from("ruta_dia").upsert({ fecha: hoy, vendedor, cod_cliente: cod, orden: 0, distancia_m: 0, motivo: "arranque (foto)", origen_checkin_id: ck.id, visitado: true, visitado_checkin_id: ck.id, visitado_en: ahora }, { onConflict: "fecha,vendedor,cod_cliente" });
-    const nueva = await armarRuta(vendedor, ck.id, lat, lon, localidad, (rutaHoy ?? []).length > 0);
+    const nueva = cabeza
+      ? await armarRutaCabeza(vendedor, ck.id, lat, lon, cabeza.cod_cliente === cod, (rutaHoy ?? []).length > 0)
+      : await armarRuta(vendedor, ck.id, lat, lon, localidad, (rutaHoy ?? []).length > 0);
     return { nueva };
   }
   // avance
@@ -703,6 +764,74 @@ async function armarRuta(vendedor: string, checkinId: number, lat: number, lon: 
     "",
     `🧭 <a href="${recorrido}">Abrir el recorrido en Google Maps</a>`,
     "<i>En cada una mandame la foto de la vidriera y la tacho. Si vas a otra que no está, también vale.</i>",
+  ].join("\n");
+}
+
+// ---------- ruta desde la cabeza de zona: 4 ópticas con ficha completa ----------
+const RUTA_CABEZA = 4;
+
+// Ficha para llevar a la visita (sale de ficha_optica). Compacta: 4 entran en un mensaje de Telegram.
+function fichaHtml(f: any, k?: number, motivo?: string, distancia?: number): string {
+  if (!f) return "";
+  const mes = (m: string | null) => (m ? `${m.slice(5, 7)}/${m.slice(2, 4)}` : "—");
+  const n = (v: unknown) => Math.round(Number(v ?? 0));
+  const dir = [f.direccion, f.barrio || f.localidad].filter(Boolean).join(", ");
+  const l: string[] = [];
+  l.push(`${k != null ? `${k}. ` : ""}<b>${esc(f.nombre)}</b> (${esc(f.cod)})${f.estado ? ` — ${esc(f.estado)}` : " — prospecto"}${f.nivel_partner ? ` · ${esc(f.nivel_partner)}` : ""}`);
+  if (motivo) l.push(`   🎯 <i>${esc(motivo)}</i>${distancia != null ? ` · ${distancia < 1000 ? `${distancia} m` : `${(distancia / 1000).toFixed(1)} km`}` : ""}`);
+  if (dir) l.push(`   📍 ${esc(dir)}`);
+  if (f.contacto || f.tel) l.push(`   ☎️ ${esc([f.contacto, f.tel].filter(Boolean).join(" · "))}`);
+  if (f.estado) l.push(`   🛒 12m: ${n(f.u12)} u (antes ${n(f.u_prev12)}) · mejor año ${n(f.u_mejor_anio)} u · últ. compra ${mes(f.ult_mes)}`);
+  if (f.modelos?.length) l.push(`   👓 Compra: ${esc(f.modelos.map((m: any) => `${m.modelo} (${m.u})`).join(", "))}`);
+  if (f.tiene_orbital != null) l.push(`   ${f.tiene_orbital ? "🟢 Orbital en vidriera" : "🔴 Sin Orbital en vidriera"}${f.vidriera ? ` — ${esc(String(f.vidriera).replace(/^"|"$/g, "")).slice(0, 120)}` : ""}`);
+  const cat = f.catalogo_30d?.visitas ? `📖 Abrió el catálogo ${f.catalogo_30d.visitas} vez/veces en 30 días${n(f.catalogo_min_30d) ? ` (${n(f.catalogo_min_30d)} min)` : ""}` : "";
+  if (cat) l.push(`   ${cat}`);
+  if (f.ultima_actividad) l.push(`   🗒 Último contacto ${esc(String(f.ultima_actividad.fecha).slice(8, 10))}/${esc(String(f.ultima_actividad.fecha).slice(5, 7))}: ${esc(f.ultima_actividad.resultado ?? "")}${f.ultima_actividad.nota ? ` — ${esc(f.ultima_actividad.nota)}` : ""}`);
+  if (f.accion_pendiente) l.push(`   ⏭ Pendiente: ${esc(f.accion_pendiente.titulo)}`);
+  if (f.que_ofrecer) l.push(`   💡 ${esc(f.que_ofrecer)}`);
+  return l.join("\n");
+}
+
+async function armarRutaCabeza(vendedor: string, checkinId: number, lat: number, lon: number, enCabeza: boolean, esRearmado: boolean): Promise<string> {
+  const hoy = hoyAR();
+  const { data: ya } = await sb.from("ruta_dia").select("cod_cliente, orden").eq("vendedor", vendedor).eq("fecha", hoy);
+  const excluir = (ya ?? []).map((r) => r.cod_cliente);
+  const ultimoOrden = Math.max(0, ...(ya ?? []).map((r) => Number(r.orden ?? 0)));
+  const { data: ops, error } = await sb.rpc("opticas_del_dia", { p_vendedor: vendedor, p_lat: lat, p_lon: lon, p_excluir: excluir, p_n: RUTA_CABEZA });
+  if (error) console.error("opticas_del_dia", JSON.stringify(error));
+  const elegidas = (ops ?? []) as any[];
+  if (!elegidas.length) {
+    // sin candidatas de su cartera cerca: la ruta clásica de la zona
+    return await armarRuta(vendedor, checkinId, lat, lon, null, esRearmado);
+  }
+  // orden de recorrido: vecino más cercano desde donde está
+  const orden: any[] = [];
+  let px = lat, py = lon;
+  const resto = [...elegidas];
+  while (resto.length) {
+    let i = 0, mejor = Infinity;
+    resto.forEach((c, k) => { const d = distM(px, py, Number(c.lat), Number(c.lon)); if (d < mejor) { mejor = d; i = k; } });
+    const [c] = resto.splice(i, 1);
+    orden.push(c); px = Number(c.lat); py = Number(c.lon);
+  }
+  await sb.from("ruta_dia").upsert(orden.map((c, k) => ({
+    fecha: hoy, vendedor, cod_cliente: c.cod, orden: ultimoOrden + k + 1, distancia_m: c.distancia_m, motivo: c.motivo,
+    de_agenda: false, origen_checkin_id: checkinId,
+  })), { onConflict: "fecha,vendedor,cod_cliente" });
+  await sb.from("cabeza_dia").update({ ruta_enviada_at: new Date().toISOString() }).eq("vendedor", vendedor).eq("fecha", hoy);
+
+  const fichas = await Promise.all(orden.map(async (c) => (await sb.rpc("ficha_optica", { p_cod: c.cod })).data));
+  const bloques = orden.map((c, k) => `${fichaHtml(fichas[k], k + 1, c.motivo, c.distancia_m)}\n   🗺 <a href="${mapsPunto(Number(c.lat), Number(c.lon))}">Mapa</a>`);
+  const pts = orden.map((c) => `${c.lat},${c.lon}`);
+  const recorrido = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${pts[pts.length - 1]}&travelmode=walking${pts.length > 1 ? `&waypoints=${encodeURIComponent(pts.slice(0, -1).join("|"))}` : ""}`;
+  const titulo = esRearmado
+    ? "🗺️ <b>4 ópticas más</b> desde donde estás"
+    : enCabeza ? "🗺️ <b>Arrancaste por la cabeza de zona.</b> Estas son las 4 que siguen hoy:" : "🗺️ <b>Tu ruta de hoy</b> — las 4 que siguen:";
+  return [
+    titulo, "",
+    bloques.join("\n\n"), "",
+    `🧭 <a href="${recorrido}">Abrir el recorrido en Google Maps</a>`,
+    "<i>En cada una mandame la foto de la vidriera y la tacho. Después de la visita contame qué pasó (vendió, mandó catálogo, lo piensa…) y te programo la acción del mes que viene.</i>",
   ].join("\n");
 }
 
