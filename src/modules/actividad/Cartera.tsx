@@ -88,7 +88,10 @@ export default function Cartera() {
   const esAdministracion = rolEfectivo === 'administracion'
   const esAdmin = rolEfectivo === 'admin' || esAdministracion
   const [tabVendedor, setTabVendedor] = useState('Adrian')
-  const codigoActivo = esAdmin ? tabVendedor : codigoEfectivo
+  // Ulises (prospector) ve su cartera y además el pool de Prospección (Marketing), igual que Administración.
+  const esUlises = !esAdmin && codigoEfectivo === 'Ulises'
+  const [tabUlises, setTabUlises] = useState<'Ulises' | 'Marketing'>('Ulises')
+  const codigoActivo = esAdmin ? tabVendedor : esUlises ? tabUlises : codigoEfectivo
   // Operador de prospección (Luna=Marketing, Damián=ProspeccionVenta) logueado directamente
   const esProspOperador = !esAdmin && (codigoEfectivo === 'Marketing' || codigoEfectivo === 'Damian')
   const esRevendedor = rolEfectivo === 'revendedor'
@@ -407,7 +410,8 @@ export default function Cartera() {
       localidad: np.localidad.trim() || null,
       zona: np.zona.trim() || null,
       origen: 'propio',
-      vendedor_asignado: codigoActivo || codigoEfectivo,
+      // Lo que carga Ulises desde la solapa Prospección queda en su cartera (no puede crear en el pool).
+      vendedor_asignado: esUlises ? 'Ulises' : codigoActivo || codigoEfectivo,
       clasificacion_recupero: 'sin_historial',
       nota: ('⏳ Código de cliente pendiente de validación por Administración. ' + np.nota.trim()).trim(),
     })
@@ -560,7 +564,7 @@ export default function Cartera() {
   }
 
   // Solapas de dueño (admin): visibles también mientras carga, para poder cambiar de cartera.
-  const solapas = esAdmin && (
+  const solapas = esAdmin ? (
     <div className="flex gap-1 overflow-x-auto border-b border-black/10 pb-px">
       {tabsVendedor.map((t) => (
         <button
@@ -574,7 +578,26 @@ export default function Cartera() {
         </button>
       ))}
     </div>
-  )
+  ) : esUlises ? (
+    <div className="flex gap-1 overflow-x-auto border-b border-black/10 pb-px">
+      {(
+        [
+          ['Ulises', 'Mi cartera'],
+          ['Marketing', 'Prospección'],
+        ] as ['Ulises' | 'Marketing', string][]
+      ).map(([cod, label]) => (
+        <button
+          key={cod}
+          onClick={() => setTabUlises(cod)}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 ${
+            tabUlises === cod ? 'text-brandDark border-brand' : 'text-muted border-transparent'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null
 
   if (loading)
     return (
