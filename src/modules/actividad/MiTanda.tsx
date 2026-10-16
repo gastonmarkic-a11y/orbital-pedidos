@@ -49,6 +49,7 @@ const POSTA: Record<string, { label: string; calida: boolean }> = {
   P4_activo: { label: 'Cliente activo', calida: true },
   P5_dormido: { label: 'Reactivación', calida: false },
   P6_perdido: { label: 'Recuperación', calida: false },
+  AGENDA: { label: 'Agendar visita (cabeza de zona)', calida: true },
 }
 const postaInfo = (p: string) => POSTA[p] ?? { label: p, calida: false }
 
