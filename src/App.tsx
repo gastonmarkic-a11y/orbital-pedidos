@@ -43,6 +43,7 @@ import Conversaciones from './modules/atencion/Conversaciones'
 import BannerPendientes from './modules/atencion/BannerPendientes'
 import BannerPedidosWeb from './modules/atencion/BannerPedidosWeb'
 import MapaZonas from './modules/atencion/MapaZonas'
+import ZonasPanel from './modules/actividad/ZonasPanel'
 import EnviosEcom from './modules/atencion/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
@@ -228,6 +229,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       ],
       secundarios: [
         { to: '/cartera', label: 'Cartera' },
+        { to: '/zonas', label: 'Zonas' },
         { to: '/panel-resultados', label: 'Resultados' },
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
@@ -277,6 +279,8 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
   if (rol === 'vendedor') principales.push({ to: '/mi-catalogo', label: 'Catálogo' })
   // Los de campo cargan nafta, peajes y estacionamiento contra sus check-ins.
   if (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigo ?? '')) secundarios.push({ to: '/gastos', label: 'Gastos de auto' })
+  // Zonas: sus barrios con la cabeza de zona y todos los clientes de cada uno.
+  if (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigo ?? '')) principales.push({ to: '/zonas', label: 'Zonas' })
   if (rol === 'vendedor' && codigo === 'Corporativo') menu.push({ to: '/actividad-admin', label: 'Equipo' }, { to: '/consignas', label: 'Consignas' })
   // Ulises (prospección de zona CABA): su herramienta principal es la cola de prospección social (todas las zonas).
   if (rol === 'vendedor' && codigo === 'Ulises') principales.push({ to: '/prospeccion-social', label: 'Prospección social' })
@@ -286,6 +290,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
     menu.push(
       { to: '/pedidos/dashboard', label: 'Dashboard', grupo: V },
       { to: '/pedidos/clientes', label: 'Clientes', grupo: V },
+      { to: '/zonas', label: 'Zonas y cabezas de zona', grupo: V },
       { to: '/pedidos/cobranzas', label: 'Cobranzas', grupo: V },
       { to: '/conversaciones', label: 'Conversaciones (bot)', grupo: V },
       { to: '/envios-ecom', label: 'Envíos', grupo: V },
@@ -783,6 +788,8 @@ function Layout() {
           {['admin', 'administracion', 'financiero', 'vendedor'].includes(rol) && <Route path="/cobros" element={<PanelCobros />} />}
           {(rol === 'admin' || rol === 'administracion' || rol === 'vendedor') && <Route path="/ventas-historico" element={<DashboardVentas />} />}
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
+          {/* Zonas: cada barrio con su cabeza de zona y todos sus clientes (el vendedor de campo ve solo lo suyo) */}
+          {(rol === 'admin' || rol === 'administracion' || (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigoEfectivo))) && <Route path="/zonas" element={<ZonasPanel />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
 
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />
