@@ -858,6 +858,24 @@ async function registrarRespuestaCliente(c: Clasificacion, texto: string, chatId
   await telegramSend(chatId, `📝 Anotado: <b>${cliente.razon}</b> — ${etiqueta[c.interes ?? "otro"] ?? "anotado"}${ctx}.`, messageId);
 }
 
+// Respuesta a una tarjeta de comentario de Instagram: la manda ig-comentarios
+// (por privado, o en el comentario si empieza con "público:" o si Meta no deja el privado).
+async function responderComentarioIG(commentId: string, texto: string, chatId: number, messageId: number, autorNombre: string) {
+  try {
+    const { data: k } = await supabase.from("app_config").select("valor").eq("clave", "cron_key").maybeSingle();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ig-comentarios`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-cron-key": (k as { valor: string } | null)?.valor ?? "" },
+      body: JSON.stringify({ accion: "responder", comment_id: commentId, texto, autor: autorNombre }),
+    });
+    const r = await res.json().catch(() => ({})) as { ok?: boolean; via?: string; detalle?: string };
+    if (r.ok) await telegramSend(chatId, `✅ Respondido por ${r.via} en Instagram`, messageId);
+    else await telegramSend(chatId, `❌ <b>No salió</b>: ${esc(r.detalle ?? `HTTP ${res.status}`)}`, messageId);
+  } catch (e) {
+    await telegramSend(chatId, `❌ No pude mandarlo: ${(e as Error).message}`, messageId);
+  }
+}
+
 // Le contesta al cliente por el canal real (WhatsApp / IG / Messenger) reusando
 // at-responder, que ya sabe manejar la ventana de 24 h de Meta y deja el mensaje
 // registrado en at_mensajes para que IRIS tenga el historial completo.
@@ -1999,6 +2017,13 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (hilo?.conversacion_id) {
       await responderAlCliente(hilo.conversacion_id, texto, chatId, messageId, autorNombre);
+      return new Response("ok", { status: 200 });
+    }
+    // Tarjeta de comentario de Instagram (ig-comentarios): la respuesta va al comentario.
+    const { data: comentario } = await supabase.from("ig_comentarios")
+      .select("comment_id").eq("telegram_chat_id", chatId).eq("telegram_message_id", respondeA).maybeSingle();
+    if (comentario?.comment_id) {
+      await responderComentarioIG(comentario.comment_id, texto, chatId, messageId, autorNombre);
       return new Response("ok", { status: 200 });
     }
     const { data: avisoPros } = await supabase.from("ojo_prospectos_aviso")
