@@ -435,6 +435,13 @@ export default function DashboardVentas() {
           <p className="text-3xl md:text-4xl font-bold text-amber-400 leading-tight">{kAr(cur.ars)}</p>
           <p className="text-[11px] text-white/60 mt-0.5">{ent.format(cur.u)} u · {ent.format(cur.ops)} {esGeneral ? 'operaciones' : 'clientes'} · ticket {kAr(ticket)}</p>
           <p className="text-[11px] mt-1">vs {etiqueta(mesViejo)}: {deltaBig(cur.ars, cmp?.ars)}</p>
+          {esGeneral && pendTot.n > 0 && (
+            <div className="mt-2.5 pt-2 border-t border-white/10">
+              <p className="text-[10px] uppercase tracking-wider text-white/50">⏳ Vendido sin facturar</p>
+              <p className="text-xl font-bold text-orange-300 leading-tight">+ {kAr(pendTot.v)}</p>
+              <p className="text-[11px] text-white/60">{ent.format(pendTot.u)} u · {pendTot.n} pedidos · con eso: <b className="text-white">{kAr(cur.ars + pendTot.v)}</b></p>
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-center justify-center">
           {esCurso && progreso != null ? (
