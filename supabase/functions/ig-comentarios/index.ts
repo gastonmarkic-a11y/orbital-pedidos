@@ -281,6 +281,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (!body.comment_id || !body.texto) return json({ error: "faltan datos" }, 400);
       return json(await responder(String(body.comment_id), String(body.texto), String(body.autor ?? "Orbital")));
     }
+    // Todos los comentarios de una pieza, también los más viejos que BACKLOG_DIAS (para rescatar alguno a mano).
+    if (body.accion === "listar" && body.media_id) {
+      const j = await graph(`${body.media_id}/comments?fields=id,text,username,timestamp&limit=100`, PAGE_TOKEN);
+      return json(j?.data ?? []);
+    }
     return json(await barrer(!!body.simular));
   } catch (e) {
     console.error("ig-comentarios", (e as Error).message);
