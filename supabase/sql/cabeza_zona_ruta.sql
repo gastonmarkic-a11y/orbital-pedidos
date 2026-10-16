@@ -70,7 +70,8 @@ begin
     from cli group by 1, 2),
   npro as (select vendedor, micro_zona, count(*) n from pro group by 1, 2),
   cand as (
-    select vendedor, micro_zona, area, cod, 'ancla' motivo, 1 tier, u12::numeric s, lat, lon from cli where estado = 'Activo'
+    -- ancla solo si compra en serio (12+ u/año); si no, primero va el a recuperar o el prospecto fuerte
+    select vendedor, micro_zona, area, cod, 'ancla' motivo, case when u12 >= 12 then 1 else 4 end tier, u12::numeric s, lat, lon from cli where estado = 'Activo'
     union all
     select vendedor, micro_zona, area, cod, 'recuperar', 2, prioridad_recupero::numeric, lat, lon from cli where estado <> 'Activo'
     union all
@@ -266,7 +267,8 @@ begin
                 else '🌱 Branding: material de marca del mes' end,
     case p_temp when 'caliente' then 'Respuesta caliente en la visita. Mandar la propuesta con la condición del mes y llamar para cerrar.'
                 when 'tibia' then 'Mostró interés. Mandar el material y una condición concreta; volver a llamar a los 3 días.'
-                else 'Interés bajo. Un contacto por mes con material de marca, sin presionar: trabajo lento y constante.' end,
+                else 'Interés bajo. Un contacto por mes con material de marca, sin presionar: trabajo lento y constante.' end
+      || coalesce(' ' || nullif(vidriera_resumen(p_cod), ''), ''),
     pieza)
   returning id into nuevo;
   return nuevo;
@@ -402,3 +404,38 @@ grant execute on function mi_dia_campo(text), marcar_accion(bigint, text) to aut
 -- Lun-vie 8:15 AR: ojo-cabeza-dia asigna la cabeza del día y le manda a cada vendedor la ficha + acciones del día.
 select cron.schedule('cabezas-zona-recalcular', '50 10 * * 1', $$select recalcular_cabezas_zona()$$);
 select cron.schedule('ojo-cabeza-dia', '15 11 * * 1-5', $$select net.http_post(url := 'https://towcgvphxeqilpdnboki.supabase.co/functions/v1/ojo-cabeza-dia?tarea=dia', headers := jsonb_build_object('Content-Type','application/json','x-cron-key',(select valor from app_config where clave='cron_key')), body := '{}'::jsonb, timeout_milliseconds := 120000)$$);
+
+-- ---------- remarketing continuo + datos de la vidriera (16/10/2026, 2ª parte) ----------
+-- Lo que vio la foto del check-in (Orbital presente, competencia, POP sugerido) entra en el detalle de cada acción.
+create or replace function vidriera_resumen(p_cod text) returns text
+language sql stable security definer set search_path = public as $$
+  select concat_ws(' ',
+    case when c.tiene_orbital is false then 'Vidriera sin Orbital: sumar material de marca'
+           || coalesce(' y ofrecer POP nivel ' || pn.nivel || ' (' || pn.nombre || ')', '') || '.'
+         when c.tiene_orbital is true then 'Ya exhibe Orbital: reforzar con lanzamientos y revisar el POP.' end,
+    case when jsonb_array_length(coalesce(c.vidriera_analisis -> 'marcas_visibles', '[]'::jsonb)) > 0
+         then 'Competencia vista: ' || (select string_agg(x, ', ') from (select jsonb_array_elements_text(c.vidriera_analisis -> 'marcas_visibles') x limit 4) m) || '.' end)
+  from clientes c
+  left join lateral (select pop_sugerido from visitas_checkin v where v.cod_cliente = c.cod and v.pop_sugerido is not null order by v.confirmado_en desc nulls last limit 1) vk on true
+  left join pop_niveles pn on pn.nivel = vk.pop_sugerido
+  where c.cod = p_cod $$;
+revoke execute on function vidriera_resumen(text) from public, anon, authenticated;
+-- programar_accion: el detalle termina con  || coalesce(' ' || nullif(vidriera_resumen(p_cod), ''), '')
+
+-- Remarketing continuo: cumplida una acción se programa la del mes siguiente (nadie queda sin contacto mensual).
+-- branding → branding; empujón caliente → tibio; empujón tibio → tibio si sigue mirando el catálogo, si no branding.
+create or replace function trg_accion_hecha() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare sig text;
+begin
+  if new.estado = 'hecha' and old.estado = 'pendiente' then
+    sig := case when new.tipo = 'branding' then 'fria'
+                when new.temperatura = 'caliente' then 'tibia'
+                else case when temperatura_cliente(new.cod_cliente, null, null) = 'fria' then 'fria' else 'tibia' end end;
+    perform programar_accion(new.cod_cliente, new.vendedor, null, sig, greatest(new.fecha_programada, hoy_ar()));
+  end if;
+  return new;
+exception when others then
+  raise warning 'acciones_seguimiento (encadenar): %', sqlerrm;
+  return new;
+end $$;

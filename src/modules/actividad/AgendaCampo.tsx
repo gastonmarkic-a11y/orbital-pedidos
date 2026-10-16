@@ -332,6 +332,7 @@ export default function AgendaCampo() {
   const [salv, setSalv] = useState<Record<number, Bienv[]>>({})
   const [salvLoad, setSalvLoad] = useState<number | null>(null)
   const [eventos, setEventos] = useState<Evento[]>([])
+  const [verPlanAnterior, setVerPlanAnterior] = useState(false)
 
   async function cargar() {
     setLoading(true)
@@ -415,7 +416,7 @@ export default function AgendaCampo() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-lg font-bold">Agenda de campo</h1>
-          <p className="text-xs text-muted">Buenos Aires + GBA · canje y a recuperar · {dias.length} días · faltan {totalPend}</p>
+          <p className="text-xs text-muted">Arrancás por la cabeza de zona del día · con el check-in de la foto en Ojo se arma la ruta</p>
         </div>
         {/* El vendedor ve SOLO su recorrido. El selector es para supervisión. */}
         {esSupervisor && (
@@ -427,12 +428,20 @@ export default function AgendaCampo() {
         )}
       </div>
 
-      {/* Cabeza de zona del día + ruta tras el check-in + acciones del mes */}
+      {/* Desde el 19/10 la agenda del día es la cabeza de zona: barrio + óptica por donde arrancar.
+          La ruta (4 ópticas con ficha) se arma con el check-in de la foto en Ojo y aparece acá abajo. */}
       <MiDiaCampo ven={ven} />
 
-      <AjusteIAAgenda ven={ven} onAplicado={cargar} />
+      {/* El plan de visitas anterior (agenda_campo por días) queda solo para supervisión. */}
+      {esSupervisor && (
+        <button onClick={() => setVerPlanAnterior((v) => !v)} className="text-xs font-medium px-3 py-1.5 rounded-full border border-black/10 text-muted">
+          {verPlanAnterior ? 'Ocultar plan de visitas anterior' : 'Ver plan de visitas anterior (supervisión)'}
+        </button>
+      )}
 
-      {loading ? <p className="text-sm text-muted p-4">Cargando…</p> : dias.length === 0 ? (
+      {verPlanAnterior && <AjusteIAAgenda ven={ven} onAplicado={cargar} />}
+
+      {!verPlanAnterior ? null : loading ? <p className="text-sm text-muted p-4">Cargando…</p> : dias.length === 0 ? (
         <p className="text-sm text-faint text-center py-10 bg-white rounded-xl border border-black/10">No hay plan de campo generado para {ven}.</p>
       ) : (
         <div className="space-y-2.5">
