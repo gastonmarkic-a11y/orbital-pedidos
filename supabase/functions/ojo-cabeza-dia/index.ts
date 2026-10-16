@@ -9,6 +9,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   hoy (acciones_seguimiento: empujón comercial a calientes/tibias, branding mensual a frías) con el
 //   material sugerido. Antes recalcula las temperaturas (catálogo abierto después de la visita).
 //   GET/POST ?tarea=dia  (x-cron-key o Bearer service role)  ·  ?tarea=dia&solo=Bruno para probar con uno.
+//   v2 (2026-10-16): objetivo diario 5 visitas + 25 contactos. Genera contactos_dia (ópticas de las zonas de
+//   los próximos días del plan) y los manda en un 2º mensaje con link de WhatsApp y el texto armado.
 //   &prueba=1 arma los mensajes y los devuelve sin enviar nada (igual asigna la cabeza del día);
 //   con &fecha=AAAA-MM-DD prueba otro día sin activar el modo cabeza hoy.
 
@@ -65,6 +67,51 @@ function fichaHtml(f: any): string {
   return l.join("\n");
 }
 
+// WhatsApp: misma normalización que la app (src/lib/telefono.ts → aNacional): 549 + 10 dígitos.
+function waDe(raw: string | null | undefined): string {
+  for (const parte of String(raw ?? "").split(/\s*[/,;|]+\s*|\s+[yYoO]\s+/)) {
+    let d = parte.replace(/\D/g, "");
+    if (d.length < 6) continue;
+    d = d.replace(/^00/, "");
+    if (d.length > 10 && d.startsWith("54")) d = d.slice(2);
+    d = d.replace(/^0+/, "");
+    if (d.length === 11 && d.startsWith("9")) d = d.slice(1);
+    if (d.length === 12) for (const al of [4, 3, 2]) if (d.slice(al, al + 2) === "15") { d = d.slice(0, al) + d.slice(al + 2); break; }
+    if (d.length === 8) d = "11" + d;
+    if (d.length === 10) return "549" + d;
+  }
+  return "";
+}
+const DIA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+const fechaCorta = (f: string) => { const d = new Date(f + "T12:00:00"); return `${DIA[d.getDay()]} ${f.slice(8, 10)}/${f.slice(5, 7)}`; };
+const MOT_CONTACTO: Record<string, string> = { recuperar: "a recuperar", activo: "activo", prospecto: "prospecto", "sin compras": "sin compras" };
+
+// 2º mensaje: los 25 contactos para ir armando agenda en las zonas de los próximos días.
+async function mensajeContactos(vendedor: string, fecha: string): Promise<string[]> {
+  const { data: cs } = await sb.from("contactos_dia").select("cod_cliente, micro_zona, fecha_visita, motivo, orden")
+    .eq("fecha", fecha).eq("vendedor", vendedor).order("orden");
+  if (!cs?.length) return [];
+  const { data: clis } = await sb.from("clientes").select("cod, nomcomerc, razon, contacto, whatsapp, telefono").in("cod", cs.map((c) => c.cod_cliente));
+  const cli = new Map((clis ?? []).map((x: any) => [x.cod, x]));
+  const l: string[] = [`📲 <b>25 contactos para ir armando agenda</b> (ópticas de los barrios de los próximos días). Escribiles hoy para dejar visitas confirmadas:`, ""];
+  let k = 0;
+  for (const c of cs) {
+    const x: any = cli.get(c.cod_cliente);
+    if (!x) continue;
+    k++;
+    const nombre = x.nomcomerc?.trim() || x.razon || c.cod_cliente;
+    const { data: txt } = await sb.rpc("mensaje_contacto", { p_vendedor: vendedor, p_motivo: c.motivo, p_zona: c.micro_zona, p_fecha: c.fecha_visita, p_contacto: x.contacto });
+    const wa = waDe(x.whatsapp) || waDe(x.telefono);
+    const link = wa ? ` · <a href="https://wa.me/${wa}?text=${encodeURIComponent(String(txt ?? ""))}">WhatsApp</a>` : ` · ☎️ ${esc(x.telefono ?? "")}`;
+    l.push(`${k}. <b>${esc(nombre)}</b> — ${esc(c.micro_zona)} (${fechaCorta(c.fecha_visita)}) · ${esc(MOT_CONTACTO[c.motivo] ?? c.motivo)}${link}`);
+  }
+  // en tandas de 10 para no pasar el límite de largo de Telegram
+  const items = l.slice(2), partes: string[] = [];
+  for (let i = 0; i < items.length; i += 10) partes.push((i === 0 ? l[0] + "\n\n" : "") + items.slice(i, i + 10).join("\n"));
+  if (partes.length) partes[partes.length - 1] += "\n\n<i>El link abre WhatsApp con el mensaje armado. Marcá en Suite → Agenda cuáles quedaron agendados: esas ópticas entran primero en tu ruta del día de la visita.</i>";
+  return partes;
+}
+
 const MOTIVO: Record<string, string> = {
   ancla: "es el cliente ancla del barrio (el que más compra)",
   recuperar: "es el primero a recuperar del barrio",
@@ -77,6 +124,11 @@ async function dia(solo: string | null, prueba: boolean, fecha: string | null) {
   const { data: cabezas, error } = await sb.rpc("asignar_cabezas_dia", fecha ? { p_fecha: fecha } : {});
   if (error) throw new Error("asignar_cabezas_dia: " + error.message);
   const hoy = (cabezas ?? [])[0]?.fecha;
+  // los 25 contactos del día (zonas de los próximos días); en prueba solo se leen si ya existen
+  if (hoy && !prueba) {
+    const { error: e2 } = await sb.rpc("generar_contactos_dia", { p_fecha: hoy });
+    if (e2) console.error("generar_contactos_dia", JSON.stringify(e2));
+  }
   const salida: Record<string, string> = {};
   for (const c of (cabezas ?? []) as any[]) {
     if (solo && c.vendedor !== solo) continue;
@@ -95,6 +147,7 @@ async function dia(solo: string | null, prueba: boolean, fecha: string | null) {
 
     const l: string[] = [];
     l.push(`☀️ <b>Buen día ${esc(NOMBRE[c.vendedor] ?? c.vendedor)}.</b> Hoy arrancás por <b>${esc(c.micro_zona)}</b>.`);
+    l.push(`🎯 Objetivo del día: <b>5 visitas</b> (la cabeza + las 4 que siguen) y <b>25 contactos</b> para agendar (te los paso abajo).`);
     l.push(`🎯 Cabeza de zona: ${esc(MOTIVO[c.motivo] ?? c.motivo)}.\n`);
     l.push(fichaHtml(f));
     if (cz?.lat != null) l.push(`🗺 <a href="${mapsPunto(Number(cz.lat), Number(cz.lon))}">Cómo llegar</a>`);
@@ -111,10 +164,20 @@ async function dia(solo: string | null, prueba: boolean, fecha: string | null) {
       l.push(`<i>Mandalo desde Cartera → Enviar (queda registrado y la acción se cierra sola).</i>`);
     }
     const texto = l.join("\n");
-    if (prueba) { salida[c.vendedor] = texto; continue; }  // arma el mensaje sin mandarlo
+    const contactos = await mensajeContactos(c.vendedor, c.fecha);
+    if (prueba) { salida[c.vendedor] = [texto, ...contactos].join("\n\n----\n"); continue; }  // arma sin mandar
     let ok = false;
-    for (const id of await idsDe(c.vendedor)) ok = (await enviar(id, texto)) || ok;
-    if (!ok) ok = await enviar(await chatVentas(), `@${esc(c.vendedor)} (no te pude escribir por privado: mandale /start a Ojo)\n\n${texto}`);
+    const ids = await idsDe(c.vendedor);
+    for (const id of ids) {
+      const ok1 = await enviar(id, texto);
+      if (ok1) for (const m of contactos) await enviar(id, m);
+      ok = ok1 || ok;
+    }
+    if (!ok) {
+      const grupo = await chatVentas();
+      ok = await enviar(grupo, `@${esc(c.vendedor)} (no te pude escribir por privado: mandale /start a Ojo)\n\n${texto}`);
+      if (ok) for (const m of contactos) await enviar(grupo, `@${esc(c.vendedor)}\n${m}`);
+    }
     if (ok) await sb.from("cabeza_dia").update({ enviado_at: new Date().toISOString() }).eq("fecha", c.fecha).eq("vendedor", c.vendedor);
     salida[c.vendedor] = ok ? `enviado (${c.micro_zona})` : "no se pudo enviar";
   }

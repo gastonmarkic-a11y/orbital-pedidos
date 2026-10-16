@@ -22,6 +22,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   ojo-cabeza-dia a la mañana), la ruta son las 4 ópticas que siguen (opticas_del_dia: a recuperar,
 //   prospectos estratégicos y activos sin visita, cerca y de su cartera) con la ficha completa de cada
 //   una (ficha_optica). Cuando termina las 4 y manda otra foto, le pasa 4 más.
+//   v4 (2026-10-16): la lectura de la foto suma participación de marcas y exhibidor de Orbital. Según eso
+//   ofrece instalar un Kit Exhibición (tiene Orbital sin exhibidor) o Kit Presencia (sin Orbital) del stock
+//   del vendedor (pop_instalar), y pide foto + medidas si la óptica está elegida para material especial.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -147,6 +150,8 @@ type Analisis = {
   marcas_visibles: string[]; exhibidores_pop: string[]; espacio_vidriera: "bajo" | "medio" | "alto";
   espacio_mostrador: "bajo" | "medio" | "alto" | "no_se_ve"; nivel_local: "economico" | "medio" | "premium";
   estado_vidriera: string; observaciones: string; pop_sugerido: number; pop_motivo: string; confianza: number;
+  // v4: participación de marcas en la exhibición (para el panel de puntos de venta) y si hay exhibidor de Orbital
+  participacion: { marca: string; porcentaje: number }[]; tiene_exhibidor_orbital: boolean;
 };
 
 async function leerVidriera(b: Uint8Array, niveles: any[], contextoCliente: string, mime = "image/jpeg"): Promise<Analisis | null> {
@@ -169,13 +174,15 @@ Analizá la foto y contestá SOLO un JSON con estas claves:
 ${menu}
 Regla: si no hay nada de Orbital, arrancá por un nivel que se pueda poner hoy mismo; si ya tiene Orbital y hay espacio, subí un nivel. Si no es óptica, pop_sugerido = 1.
 - confianza (0 a 1): qué tan segura es la lectura del nombre.
+- tiene_exhibidor_orbital (bool): si hay un exhibidor, display o cartel de Orbital (no solo anteojos sueltos).
+- participacion ([{marca, porcentaje}]): estimación de qué parte de la exhibición visible (anteojos, exhibidores y cartelería) ocupa cada marca, en %. Incluí "Orbital" si aparece, cada marca que se distinga y "Sin marca / genéricos" para el resto. Que sume 100. Vacío si no se ve exhibición.
 Español rioplatense. Sin texto fuera del JSON.`;
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: "claude-sonnet-5-5", max_tokens: 1200,
+        model: "claude-sonnet-5-5", max_tokens: 1800,
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: mime, data: base64(b) } },
           { type: "text", text: prompt },
@@ -407,6 +414,7 @@ async function manejarCallback(cq: any) {
     await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Esto lo confirma quien hizo el check-in 🙂" }); return;
   }
   if (eleccion?.startsWith("R-")) { await resultadoVisita(ck, eleccion.slice(2), cq, chatId, msgId); return; }
+  if (eleccion?.startsWith("K-")) { await instalarKit(ck, eleccion.slice(2), cq, chatId, msgId); return; }
   if (eleccion === "DESHACER") {
     if (ck.estado !== "confirmado") { await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Ya estaba abierto" }); return; }
     await tg("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } });
@@ -543,7 +551,48 @@ async function confirmar(ck: any, cod: string, chatId: number, replyTo: number, 
   lineas.push("\n<b>¿Cómo te fue?</b> Tocá al salir 👇");
   if (auto) lineas[0] = lineas[0].replace("Visita registrada", "Check-in automático");
   await enviar(chatId, lineas.join("\n"), extra);
+  await ofrecerKit(ck, cod, a, chatId);
   if (ruta.nueva) await enviar(chatId, ruta.nueva, { disable_web_page_preview: true });
+}
+
+// ---------- POP en la visita (sin compra) + material especial ----------
+// Con Orbital y sin exhibidor → Kit Exhibición. Sin Orbital → Kit Presencia. Va en mensaje aparte con su botón.
+const KIT_TXT: Record<string, { titulo: string; boton: string; detalle: string }> = {
+  EXHIBICION: { titulo: "🧰 Tiene Orbital pero no tiene exhibidor", boton: "🧰 Instalé el Kit Exhibición", detalle: "Armale la exhibición con un Kit Exhibición (exhibidor de mostrador + sticker + folletos), sin necesidad de compra." },
+  PRESENCIA: { titulo: "🏷 No tiene nada de Orbital", boton: "🏷 Dejé el Kit Presencia", detalle: "Dejale un Kit Presencia (sticker \"Vendemos Orbital\" + folletos Triple Protección + display chico) para abrir la puerta." },
+};
+async function ofrecerKit(ck: any, cod: string, a: Analisis | null, chatId: number) {
+  try {
+    const l: string[] = [];
+    let kit: string | null = null;
+    if (a?.es_optica && a.tiene_orbital && !a.tiene_exhibidor_orbital) kit = "EXHIBICION";
+    else if (a?.es_optica && !a.tiene_orbital) kit = "PRESENCIA";
+    let teclado: any[] = [];
+    if (kit) {
+      const { data: quedan } = await sb.rpc("pop_kits_disponibles", { p_vendedor: ck.vendedor, p_kit: kit });
+      l.push(`<b>${KIT_TXT[kit].titulo}</b>\n${KIT_TXT[kit].detalle}`);
+      if (Number(quedan) > 0) {
+        l.push(`Te quedan <b>${quedan}</b> kits.`);
+        teclado = [[{ text: KIT_TXT[kit].boton, callback_data: `ck:${ck.id}:K-${kit}` }]];
+      } else l.push("⚠️ No te quedan kits de este tipo: avisale a Administración para reponer.");
+    }
+    const { data: esp } = await sb.from("pdp_especial").select("tipo_sugerido, estado").eq("cod_cliente", cod).maybeSingle();
+    if (esp && esp.estado === "relevar") {
+      l.push(`\n📐 <b>Esta óptica está elegida para material especial</b> (${esc(esp.tipo_sugerido)}). Sacá una <b>foto frontal de la vidriera completa</b> y pasale a Administración las <b>medidas</b> (ancho × alto de la vidriera y del espacio libre).`);
+    }
+    if (!l.length) return;
+    await enviar(chatId, l.join("\n"), teclado.length ? { reply_markup: { inline_keyboard: teclado } } : {});
+  } catch (e) { console.error("ofrecerKit", String(e)); }
+}
+async function instalarKit(ck: any, kit: string, cq: any, chatId: number, msgId: number) {
+  if (!KIT_TXT[kit] || ck.estado !== "confirmado" || !ck.cod_cliente) {
+    await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Primero confirmá en qué óptica estás" }); return;
+  }
+  const { data: quedan, error } = await sb.rpc("pop_instalar", { p_vendedor: ck.vendedor, p_cod: ck.cod_cliente, p_kit: kit, p_checkin: ck.id });
+  if (error) { await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "No pude registrarlo, probá de nuevo" }); return; }
+  await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Kit registrado ✅" });
+  await tg("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } });
+  await enviar(chatId, `✅ Kit ${kit === "EXHIBICION" ? "Exhibición" : "Presencia"} instalado. Te quedan <b>${quedan}</b>.${Number(quedan) <= 5 ? " ⚠️ Pedí reposición a Administración." : ""}\n📸 Si podés, mandá una foto de cómo quedó.`, { reply_to_message_id: msgId });
 }
 
 // ---------- resultado de la visita → temperatura → acción del mes siguiente ----------

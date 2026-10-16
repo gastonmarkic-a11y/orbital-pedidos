@@ -44,6 +44,7 @@ import BannerPendientes from './modules/atencion/BannerPendientes'
 import BannerPedidosWeb from './modules/atencion/BannerPedidosWeb'
 import MapaZonas from './modules/atencion/MapaZonas'
 import ZonasPanel from './modules/actividad/ZonasPanel'
+import PanelPDV from './modules/actividad/PanelPDV'
 import EnviosEcom from './modules/atencion/Envios'
 import DashboardPedidos from './modules/pedidos/Dashboard'
 import Cobranzas from './modules/pedidos/Cobranzas'
@@ -230,6 +231,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       secundarios: [
         { to: '/cartera', label: 'Cartera' },
         { to: '/zonas', label: 'Zonas' },
+        { to: '/puntos-de-venta', label: 'Puntos de venta' },
         { to: '/panel-resultados', label: 'Resultados' },
         { to: '/pedidos/dashboard', label: 'Dashboard' },
         { to: '/pedidos/clientes', label: 'Clientes' },
@@ -291,6 +293,7 @@ function navConfig(rol: Rol, codigo?: string): NavConfig {
       { to: '/pedidos/dashboard', label: 'Dashboard', grupo: V },
       { to: '/pedidos/clientes', label: 'Clientes', grupo: V },
       { to: '/zonas', label: 'Zonas y cabezas de zona', grupo: V },
+      { to: '/puntos-de-venta', label: 'Puntos de venta (visitas y marcas)', grupo: V },
       { to: '/pedidos/cobranzas', label: 'Cobranzas', grupo: V },
       { to: '/conversaciones', label: 'Conversaciones (bot)', grupo: V },
       { to: '/envios-ecom', label: 'Envíos', grupo: V },
@@ -790,6 +793,7 @@ function Layout() {
           {(rol === 'admin' || rol === 'administracion' || codigoEfectivo === 'Corporativo') && <Route path="/mapa-zonas" element={<MapaZonas />} />}
           {/* Zonas: cada barrio con su cabeza de zona y todos sus clientes (el vendedor de campo ve solo lo suyo) */}
           {(rol === 'admin' || rol === 'administracion' || (rol === 'vendedor' && ['Adrian', 'Bruno', 'Lola'].includes(codigoEfectivo))) && <Route path="/zonas" element={<ZonasPanel />} />}
+          {(rol === 'admin' || rol === 'administracion') && <Route path="/puntos-de-venta" element={<PanelPDV />} />}
           <Route path="/envios-ecom" element={<EnviosEcom />} />
 
           <Route path="*" element={<Navigate to={homeFor(rol)} replace />} />

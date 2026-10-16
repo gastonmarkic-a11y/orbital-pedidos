@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../lib/toast'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
+import { abrirWhatsApp, telefonosCliente } from '../../lib/telefono'
+
+const ESTADO_CONTACTO: Record<string, string> = {
+  pendiente: 'pendiente', enviado: '✉️ enviado', agendado: '📅 agendado', no_responde: 'no responde', no_interesa: 'no le interesa',
+}
 
 // "Mi día" de campo: la cabeza de zona del día (por dónde arrancar), las ópticas que siguen después del
 // check-in (las arma ojo-checkin con la foto) y las acciones del mes que vencen (empujón comercial a
@@ -46,7 +51,22 @@ type Accion = {
   pieza_url: string | null
 }
 
+type Contacto = {
+  cod: string
+  nombre: string | null
+  contacto: string | null
+  whatsapp: string | null
+  telefono: string | null
+  zona: string
+  fecha_visita: string
+  motivo: string
+  estado: 'pendiente' | 'enviado' | 'agendado' | 'no_responde' | 'no_interesa'
+  mensaje: string
+}
+
 type Dia = {
+  objetivo: { visitas_meta: number; visitas: number; contactos_meta: number; contactos: number; agendados: number } | null
+  contactos: Contacto[] | null
   cabeza: { micro_zona: string; motivo: string; checkin_at: string | null; ficha: Ficha } | null
   ruta: { orden: number; motivo: string | null; visitado: boolean; distancia_m: number | null; ficha: Ficha }[] | null
   acciones: Accion[] | null
@@ -101,6 +121,7 @@ export default function MiDiaCampo({ ven }: { ven: string }) {
   const [dia, setDia] = useState<Dia | null>(null)
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState<number | null>(null)
+  const [guardandoC, setGuardandoC] = useState<string | null>(null)
 
   async function cargar() {
     setLoading(true)
@@ -120,13 +141,49 @@ export default function MiDiaCampo({ ven }: { ven: string }) {
     cargar()
   }
 
+  async function marcarContacto(c: Contacto, estado: Contacto['estado']) {
+    setGuardandoC(c.cod)
+    const { error } = await supabase.rpc('marcar_contacto', { p_cod: c.cod, p_estado: estado })
+    setGuardandoC(null)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    if (estado === 'agendado') toast(`📅 Agendado para el ${ddmm(c.fecha_visita)}: entra primero en tu ruta de ese día`, 'success')
+    cargar()
+  }
+  function escribir(c: Contacto) {
+    const num = telefonosCliente(c.whatsapp, c.telefono).find((n) => n.wa)
+    if (!num) { toast('Ese contacto no tiene un celular válido', 'error'); return }
+    abrirWhatsApp(num.wa, c.mensaje)
+    if (c.estado === 'pendiente') marcarContacto(c, 'enviado')
+  }
+
   if (loading) return <p className="text-sm text-muted p-2">Cargando tu día…</p>
   const cabeza = dia?.cabeza
   const ruta = dia?.ruta ?? []
   const acciones = dia?.acciones ?? []
+  const contactos = dia?.contactos ?? []
+  const obj = dia?.objetivo
 
   return (
     <div className="space-y-2.5">
+      {obj && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { l: 'Visitas de hoy', v: obj.visitas, m: obj.visitas_meta, c: 'bg-emerald-500' },
+            { l: 'Contactos para agendar', v: obj.contactos, m: obj.contactos_meta, c: 'bg-sky-500' },
+            { l: 'Visitas agendadas', v: obj.agendados, m: null, c: 'bg-brand' },
+          ].map((k) => (
+            <div key={k.l} className="bg-white border border-black/10 rounded-xl p-2.5">
+              <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">{k.l}</p>
+              <p className="text-xl font-bold tabular-nums">{k.v}{k.m != null && <span className="text-sm text-faint">/{k.m}</span>}</p>
+              {k.m != null && (
+                <div className="h-1 bg-black/5 rounded-full overflow-hidden mt-1">
+                  <div className={`h-full ${k.c}`} style={{ width: `${Math.min(100, Math.round((k.v / k.m) * 100))}%` }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="bg-white rounded-2xl border border-brand/40 p-3 space-y-2">
         {cabeza ? (
           <>
@@ -152,6 +209,26 @@ export default function MiDiaCampo({ ven }: { ven: string }) {
             <div key={r.orden} className={`border-t border-black/5 pt-2 ${r.visitado ? 'opacity-50' : ''}`}>
               <p className="text-[11px] text-faint mb-0.5">{r.visitado ? '✓ visitada · ' : ''}{r.motivo}{r.distancia_m != null ? ` · ${r.distancia_m < 1000 ? `${r.distancia_m} m` : `${(r.distancia_m / 1000).toFixed(1)} km`}` : ''}</p>
               <FichaOptica f={r.ficha} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {contactos.length > 0 && (
+        <div className="bg-white rounded-2xl border border-black/10 p-3 space-y-2">
+          <p className="text-sm font-bold">📲 Contactos para ir armando agenda ({contactos.filter((c) => c.estado !== 'pendiente').length}/{contactos.length})</p>
+          <p className="text-[11px] text-faint">Ópticas de los barrios de los próximos días. "WhatsApp" abre el mensaje armado; si confirman, tocá "Agendó": entra primero en tu ruta de ese día.</p>
+          {contactos.map((c) => (
+            <div key={c.cod} className={`border-t border-black/5 pt-2 text-[12px] flex items-center gap-2 flex-wrap ${c.estado === 'no_interesa' || c.estado === 'no_responde' ? 'opacity-50' : ''}`}>
+              <b className="text-ink">{c.nombre ?? c.cod}</b>
+              <span className="text-faint">{c.zona} · {ddmm(c.fecha_visita)} · {c.motivo}</span>
+              {c.estado !== 'pendiente' && <span className="text-[10px] rounded-full px-2 py-0.5 bg-black/5 text-muted">{ESTADO_CONTACTO[c.estado]}</span>}
+              <span className="ml-auto flex gap-1.5">
+                <button disabled={guardandoC === c.cod} onClick={() => escribir(c)} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-600 text-white">WhatsApp</button>
+                <button disabled={guardandoC === c.cod || c.estado === 'agendado'} onClick={() => marcarContacto(c, 'agendado')} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-brand text-white">Agendó</button>
+                <button disabled={guardandoC === c.cod} onClick={() => marcarContacto(c, 'no_responde')} className="text-[11px] px-2.5 py-1 rounded-full border border-black/10 text-muted">No responde</button>
+                <button disabled={guardandoC === c.cod} onClick={() => marcarContacto(c, 'no_interesa')} className="text-[11px] px-2.5 py-1 rounded-full border border-black/10 text-muted">No</button>
+              </span>
             </div>
           ))}
         </div>
