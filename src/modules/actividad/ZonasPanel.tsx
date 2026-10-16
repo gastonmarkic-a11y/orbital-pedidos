@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import TelefonoAcciones from '../../lib/TelefonoAcciones'
@@ -74,19 +74,35 @@ const fechaCorta = (f: string) => {
 }
 const esProspectoFuerte = (c: Cliente) => n0(c.puntaje) >= 45
 const ESTADO_CONTACTO: Record<string, string> = { pendiente: '💬 por escribir', enviado: '💬 escrito', agendado: '📅 agendó', no_responde: '💬 no responde', no_interesa: '🚫 no le interesa' }
+// Arranque de la acción de campo (cabeza de zona + 25 contactos + 5 POP)
+const DESDE = '2026-10-14'
 const ddmm = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
 
-function Meta({ v, meta, label, sub }: { v: number; meta: number; label: string; sub?: string }) {
+function Meta({ v, meta, label, sub, activo, onClick }: { v: number; meta: number; label: string; sub?: string; activo?: boolean; onClick?: () => void }) {
   const ok = v >= meta
   const p = meta ? Math.min(100, Math.round((v / meta) * 100)) : 0
   return (
-    <div className="bg-white border border-black/10 rounded-xl p-2.5">
+    <button onClick={onClick} className={`text-left bg-white border rounded-xl p-2.5 hover:border-brand/60 ${activo ? 'border-brand ring-2 ring-brand/20' : 'border-black/10'}`}>
       <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">{label}</p>
       <p className={`text-xl font-bold tabular-nums ${ok ? 'text-emerald-700' : ''}`}>{v}<span className="text-sm text-faint">/{meta}</span></p>
       <div className="h-1 bg-black/5 rounded-full overflow-hidden mt-1"><div className={`h-full ${ok ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${p}%` }} /></div>
       {sub && <p className="text-[10px] text-faint mt-1">{sub}</p>}
-    </div>
+    </button>
   )
+}
+
+// Filtros que se activan tocando las tarjetas de seguimiento: la lista muestra solo esos clientes.
+type Filtro = 'visitas' | 'contactos' | 'agendados' | 'pop' | 'fotos' | 'orbital' | 'sin_exh' | 'especial' | 'relevar'
+const FILTRO_LABEL: Record<Filtro, string> = {
+  visitas: 'Visitados (check-in) en el período',
+  contactos: 'Contactos para agendar del día',
+  agendados: 'Agendaron visita',
+  pop: 'Con POP instalado',
+  fotos: 'Con foto de PDV leída',
+  orbital: 'Con Orbital en el PDV',
+  sin_exh: 'Con Orbital y sin exhibidor (Kit Exhibición)',
+  especial: 'Con material especial',
+  relevar: 'Material especial a relevar (foto + medidas)',
 }
 
 // Lectura del punto de venta en una línea: Orbital / exhibidor / marcas / POP / material especial.
@@ -125,6 +141,8 @@ export default function ZonasPanel() {
   const [cabezas, setCabezas] = useState<Cabeza[]>([])
   const [dias, setDias] = useState<Dia[]>([])
   const [kits, setKits] = useState<{ exhibicion: number; presencia: number } | null>(null)
+  const [filtro, setFiltro] = useState<Filtro | null>(null)
+  const tocar = (f: Filtro) => { setAbierta(null); setFiltro((x) => (x === f ? null : f)) }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [areaF, setAreaF] = useState('')
@@ -165,15 +183,33 @@ export default function ZonasPanel() {
   }, [clientes, cabezas])
 
   const areas = useMemo(() => [...new Set(zonas.map((z) => z.area))].sort(), [zonas])
+  const coincide = useCallback((c: Cliente, f: Filtro) => {
+    switch (f) {
+      case 'visitas': return !!c.ult_checkin && c.ult_checkin.slice(0, 10) >= DESDE
+      case 'contactos': return !!c.contacto && c.contacto.fecha >= DESDE
+      case 'agendados': return c.contacto?.estado === 'agendado' && c.contacto.fecha >= DESDE
+      case 'pop': return !!c.kit
+      case 'fotos': return !!c.foto_fecha
+      case 'orbital': return !!c.foto_fecha && !!c.tiene_orbital
+      case 'sin_exh': return !!c.tiene_orbital && c.exhibidor === false
+      case 'especial': return !!c.especial
+      case 'relevar': return c.especial === 'relevar'
+    }
+  }, [])
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
-    return zonas.filter((z) => {
-      if (areaF && z.area !== areaF) return false
-      if (soloCabeza && !z.cabezas.length) return false
-      if (!q) return true
-      return z.zona.toLowerCase().includes(q) || z.clientes.some((c) => (c.nombre || '').toLowerCase().includes(q) || c.cod.toLowerCase().includes(q))
-    })
-  }, [zonas, areaF, soloCabeza, busqueda])
+    return zonas
+      // con un filtro de las tarjetas, cada zona queda solo con esos clientes (y se ocultan las zonas sin ninguno)
+      .map((z) => (filtro ? { ...z, clientes: z.clientes.filter((c) => coincide(c, filtro)) } : z))
+      .filter((z) => {
+        if (filtro && !z.clientes.length) return false
+        if (areaF && z.area !== areaF) return false
+        if (soloCabeza && !z.cabezas.length) return false
+        if (!q) return true
+        return z.zona.toLowerCase().includes(q) || z.clientes.some((c) => (c.nombre || '').toLowerCase().includes(q) || c.cod.toLowerCase().includes(q))
+      })
+  }, [zonas, areaF, soloCabeza, busqueda, filtro, coincide])
+  const nFiltro = useMemo(() => (filtro ? clientes.filter((c) => coincide(c, filtro)).length : 0), [clientes, filtro, coincide])
 
   const cuenta = (cs: Cliente[], e: string) => cs.filter((c) => c.estado === e).length
 
@@ -214,34 +250,51 @@ export default function ZonasPanel() {
           {/* Seguimiento del campo: objetivo diario (5 visitas + 25 contactos + 5 POP) y lectura de fotos */}
           {(() => {
             const hoy = dias[0]
+            const per = dias.filter((d) => d.fecha >= DESDE)
+            const suma = (k: 'visitas' | 'contactos' | 'agendados' | 'pop') => per.reduce((s, d) => s + d[k], 0)
             const conFoto = clientes.filter((c) => c.foto_fecha)
             const conOrb = conFoto.filter((c) => c.tiene_orbital)
             const sinExh = conOrb.filter((c) => c.exhibidor === false)
             const especiales = clientes.filter((c) => c.especial)
+            const chip = (f: Filtro, txt: string, cls = '') => (
+              <span role="button" onClick={(e) => { e.stopPropagation(); tocar(f) }}
+                className={`underline decoration-dotted cursor-pointer ${filtro === f ? 'text-brandDark font-semibold' : cls}`}>{txt}</span>
+            )
             return (
               <div className="space-y-2">
+                <p className="text-[11px] text-faint">Tocá una tarjeta para ver solo esos clientes abajo. Período: desde el {fechaCorta(DESDE)}, cuando arrancó la acción.</p>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                  <Meta label={`Visitas hoy${hoy?.zona ? ' · ' + hoy.zona : ''}`} v={hoy?.visitas ?? 0} meta={5} sub={hoy?.checkin_cabeza ? '✅ check-in en la cabeza' : 'sin check-in en la cabeza todavía'} />
-                  <Meta label="Contactos para agendar" v={hoy?.contactos ?? 0} meta={25} sub={`${hoy?.contactos_lista ?? 0} en la lista · 📅 ${hoy?.agendados ?? 0} agendaron`} />
-                  <Meta label="POP instalados hoy" v={hoy?.pop ?? 0} meta={5} sub={kits ? `quedan ${kits.exhibicion} kits exhibición · ${kits.presencia} presencia` : ''} />
-                  <div className="bg-white border border-black/10 rounded-xl p-2.5">
+                  <Meta label={`Visitas hoy${hoy?.zona ? ' · ' + hoy.zona : ''}`} v={hoy?.visitas ?? 0} meta={5} activo={filtro === 'visitas'} onClick={() => tocar('visitas')}
+                    sub={`${hoy?.checkin_cabeza ? '✅ check-in en la cabeza' : 'sin check-in en la cabeza'} · desde ${ddmm(DESDE)}: ${suma('visitas')}`} />
+                  <Meta label="Contactos para agendar" v={hoy?.contactos ?? 0} meta={25} activo={filtro === 'contactos'} onClick={() => tocar('contactos')}
+                    sub={`${hoy?.contactos_lista ?? 0} en la lista hoy · desde ${ddmm(DESDE)}: ${suma('contactos')} · 📅 ${suma('agendados')} agendaron`} />
+                  <Meta label="POP instalados hoy" v={hoy?.pop ?? 0} meta={5} activo={filtro === 'pop'} onClick={() => tocar('pop')}
+                    sub={`desde ${ddmm(DESDE)}: ${suma('pop')} · quedan ${kits?.exhibicion ?? 0} kits exhibición · ${kits?.presencia ?? 0} presencia`} />
+                  <button onClick={() => tocar('fotos')} className={`text-left bg-white border rounded-xl p-2.5 hover:border-brand/60 ${filtro === 'fotos' ? 'border-brand ring-2 ring-brand/20' : 'border-black/10'}`}>
                     <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">Fotos de PDV leídas</p>
                     <p className="text-xl font-bold tabular-nums">{conFoto.length}</p>
-                    <p className="text-[10px] text-faint mt-1">{conOrb.length} con Orbital · <b className="text-orange-700">{sinExh.length} sin exhibidor</b> (Kit Exhibición)</p>
-                  </div>
-                  <div className="bg-white border border-black/10 rounded-xl p-2.5">
+                    <p className="text-[10px] text-faint mt-1">{chip('orbital', `${conOrb.length} con Orbital`)} · {chip('sin_exh', `${sinExh.length} sin exhibidor`, 'text-orange-700 font-semibold')} (Kit Exhibición)</p>
+                  </button>
+                  <button onClick={() => tocar('especial')} className={`text-left bg-white border rounded-xl p-2.5 hover:border-brand/60 ${filtro === 'especial' ? 'border-brand ring-2 ring-brand/20' : 'border-black/10'}`}>
                     <p className="text-[10px] text-muted uppercase font-semibold tracking-wide">Material especial</p>
                     <p className="text-xl font-bold tabular-nums">{especiales.length}</p>
-                    <p className="text-[10px] text-faint mt-1">{especiales.filter((c) => c.especial === 'relevar').length} a relevar (foto + medidas) · {especiales.filter((c) => c.especial === 'instalado').length} instalados</p>
-                  </div>
+                    <p className="text-[10px] text-faint mt-1">{chip('relevar', `${especiales.filter((c) => c.especial === 'relevar').length} a relevar`)} (foto + medidas) · {especiales.filter((c) => c.especial === 'instalado').length} instalados</p>
+                  </button>
                 </div>
-                {dias.length > 0 && (
+                {filtro && (
+                  <div className="flex items-center gap-2 bg-brand/10 text-brandDark rounded-lg px-3 py-1.5 text-[12px]">
+                    <span>Filtro: <b>{FILTRO_LABEL[filtro]}</b>{['visitas', 'contactos', 'agendados'].includes(filtro) ? ` (desde ${ddmm(DESDE)})` : ''} · {nFiltro} clientes</span>
+                    {filtro === 'contactos' && <span role="button" onClick={() => tocar('agendados')} className="underline cursor-pointer">ver solo los que agendaron</span>}
+                    <button onClick={() => setFiltro(null)} className="ml-auto font-semibold">✕ Quitar filtro</button>
+                  </div>
+                )}
+                {per.length > 0 && (
                   <div className="bg-white border border-black/10 rounded-xl p-2.5 overflow-x-auto">
-                    <p className="text-[11px] font-semibold mb-1">Últimos días hábiles</p>
+                    <p className="text-[11px] font-semibold mb-1">Días hábiles desde el {fechaCorta(DESDE)}</p>
                     <table className="text-[11px] w-full">
                       <thead><tr className="text-[10px] uppercase text-faint text-left"><th className="pr-3">Día</th><th className="pr-3">Cabeza</th><th className="pr-3 text-right">Visitas /5</th><th className="pr-3 text-right">Fotos (leídas)</th><th className="pr-3 text-right">Contactos /25</th><th className="pr-3 text-right">Agendados</th><th className="text-right">POP /5</th></tr></thead>
                       <tbody>
-                        {dias.map((d) => (
+                        {per.map((d) => (
                           <tr key={d.fecha} className="border-t border-black/5">
                             <td className="pr-3 whitespace-nowrap">{fechaCorta(d.fecha)}</td>
                             <td className="pr-3 text-muted">{d.zona ?? '—'}{d.zona ? (d.checkin_cabeza ? ' ✅' : ' ⏳') : ''}</td>
@@ -278,7 +331,8 @@ export default function ZonasPanel() {
 
           <div className="space-y-2">
             {visibles.map((z) => {
-              const open = abierta === z.zona
+              // con filtro las zonas vienen abiertas (tocar la zona la cierra)
+              const open = filtro ? abierta !== z.zona : abierta === z.zona
               const todos = verTodos.has(z.zona)
               const lista = todos ? z.clientes : z.clientes.slice(0, 40)
               const proximos = [...new Set(z.cabezas.flatMap((k) => k.plan ?? []))].sort().slice(0, 4)
@@ -286,7 +340,7 @@ export default function ZonasPanel() {
               const sinExh = fotos.filter((c) => c.tiene_orbital && c.exhibidor === false).length
               return (
                 <div key={z.zona} className={`bg-white rounded-xl border ${open ? 'border-brand/50' : 'border-black/10'}`}>
-                  <button onClick={() => setAbierta(open ? null : z.zona)} className="w-full text-left p-3">
+                  <button onClick={() => setAbierta(abierta === z.zona ? null : z.zona)} className="w-full text-left p-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold">{z.zona}</span>
                       <span className="text-[10px] text-faint">{z.area}</span>
